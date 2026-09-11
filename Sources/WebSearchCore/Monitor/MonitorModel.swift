@@ -1,5 +1,4 @@
 import Foundation
-import WebSearchCore
 
 /// A snapshot of everything the dashboard displays for one refresh cycle.
 ///

@@ -149,6 +149,9 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
+        // Responding through the channel rather than the context keeps the write path
+        // free of a non-Sendable capture, which strict concurrency rejects.
+        let channel = context.channel
         switch unwrapInboundIn(data) {
         case .head(let head):
             requestHead = head
@@ -162,7 +165,7 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
                 requestHead = nil
                 bodyBuffer.clear()
                 respond(
-                    context: context,
+                    to: channel,
                     status: .payloadTooLarge,
                     contentType: "text/plain; charset=utf-8",
                     body: Data("Request body too large".utf8)
@@ -181,9 +184,14 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
             let configuration = self.configuration
             let transport = self.transport
             let log = self.log
+            let eventLoop = context.eventLoop
+            let channel = context.channel
 
-            // MCP request handling is async; hop off the event loop.
-            context.eventLoop.makeFutureWithTask {
+            // MCP request handling is async; hop off the event loop. The completion runs
+            // back on the event loop, where writing through the channel is safe. A
+            // ChannelHandlerContext must not be captured here: it is not Sendable and may
+            // outlive the handler by one turn.
+            eventLoop.makeFutureWithTask {
                 await handler.dispatch(
                     head: head,
                     body: body,
@@ -192,17 +200,19 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
                     log: log
                 )
             }.whenComplete { result in
-                switch result {
-                case .success(let response):
-                    handler.write(response, context: context)
-                case .failure(let error):
-                    log.error("HTTP request handling failed", metadata: ["error": "\(error)"])
-                    handler.respond(
-                        context: context,
-                        status: .internalServerError,
-                        contentType: "text/plain; charset=utf-8",
-                        body: Data("Internal error".utf8)
-                    )
+                eventLoop.execute {
+                    switch result {
+                    case .success(let response):
+                        handler.write(response, to: channel)
+                    case .failure(let error):
+                        log.error("HTTP request handling failed", metadata: ["error": "\(error)"])
+                        handler.respond(
+                            to: channel,
+                            status: .internalServerError,
+                            contentType: "text/plain; charset=utf-8",
+                            body: Data("Internal error".utf8)
+                        )
+                    }
                 }
             }
         }
@@ -347,12 +357,12 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
     }
 
     /// Write a response and finish the exchange.
-    private func write(_ response: PreparedResponse, context: ChannelHandlerContext) {
+    private func write(_ response: PreparedResponse, to channel: Channel) {
         if let stream = response.stream {
-            writeStream(stream, response: response, context: context)
+            writeStreamToChannel(stream, response: response, channel: channel)
         } else {
             respond(
-                context: context,
+                to: channel,
                 status: response.status,
                 headers: response.headers,
                 body: response.body
@@ -365,10 +375,10 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
     /// No `Content-Length` is set, which lets NIO frame the body with chunked transfer
     /// encoding; each SSE frame the transport produces becomes one chunk. The content
     /// type comes from the transport and is `text/event-stream`.
-    private func writeStream(
+    private func writeStreamToChannel(
         _ stream: AsyncThrowingStream<Data, Swift.Error>,
         response: PreparedResponse,
-        context: ChannelHandlerContext
+        channel: Channel
     ) {
         var headers = HTTPHeaders()
         for (name, value) in response.headers {
@@ -378,48 +388,17 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
         headers.remove(name: "Content-Length")
 
         let head = HTTPResponseHead(version: .http1_1, status: response.status, headers: headers)
-        context.writeAndFlush(wrapOutboundOut(.head(head)), promise: nil)
+        channel.writeAndFlush(HTTPServerResponsePart.head(head), promise: nil)
 
-        let handler = self
-        let channel = context.channel
-        let log = self.log
-
-        // The stream is not Sendable across arbitrary threads, so consumption is
-        // anchored to this channel's event loop and each frame is written back onto it.
-        nonisolated(unsafe) let stream = stream
-        Task {
-            do {
-                for try await frame in stream {
-                    try await channel.eventLoop.submit {
-                        var buffer = channel.allocator.buffer(capacity: frame.count)
-                        buffer.writeBytes(frame)
-                        channel.writeAndFlush(
-                            NIOAny(HTTPServerResponsePart.body(.byteBuffer(buffer)))
-                        ).whenFailure { error in
-                            log.debug(
-                                "SSE frame write failed",
-                                metadata: ["error": "\(error)"]
-                            )
-                        }
-                    }.get()
-                }
-                try await channel.eventLoop.submit {
-                    channel.writeAndFlush(NIOAny(HTTPServerResponsePart.end(nil)))
-                        .whenComplete { _ in channel.close(promise: nil) }
-                }.get()
-            } catch {
-                log.debug("SSE stream ended with an error", metadata: ["error": "\(error)"])
-                _ = channel.eventLoop.submit {
-                    channel.close(promise: nil)
-                }
-            }
-        }
-        _ = handler
+        // Hand the stream to a relay bound to the channel. Keeping the writing out of
+        // this handler avoids capturing a ChannelHandlerContext in a @Sendable closure,
+        // which is not safe: the context may outlive the handler by one event-loop turn.
+        SSEStreamRelay(channel: channel, log: log).relay(stream)
     }
 
     /// Write a response, defaulting the headers appropriately.
     private func respond(
-        context: ChannelHandlerContext,
+        to channel: Channel,
         status: HTTPResponseStatus,
         contentType: String? = nil,
         headers extraHeaders: [(String, String)] = [],
@@ -440,16 +419,16 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
         headers.add(name: "Connection", value: "close")
 
         let head = HTTPResponseHead(version: .http1_1, status: status, headers: headers)
-        context.write(wrapOutboundOut(.head(head)), promise: nil)
+        channel.write(HTTPServerResponsePart.head(head), promise: nil)
 
         if let body, !body.isEmpty {
-            var buffer = context.channel.allocator.buffer(capacity: body.count)
+            var buffer = channel.allocator.buffer(capacity: body.count)
             buffer.writeBytes(body)
-            context.write(wrapOutboundOut(.body(.byteBuffer(buffer))), promise: nil)
+            channel.write(HTTPServerResponsePart.body(.byteBuffer(buffer)), promise: nil)
         }
 
-        context.writeAndFlush(wrapOutboundOut(.end(nil))).whenComplete { _ in
-            context.close(promise: nil)
+        channel.writeAndFlush(HTTPServerResponsePart.end(nil)).whenComplete { _ in
+            channel.close(promise: nil)
         }
     }
 
@@ -458,5 +437,68 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
         guard let url = URL(string: origin), let host = url.host() else { return false }
         return host == "127.0.0.1" || host == "::1" || host == "localhost"
             || host.hasPrefix("127.")
+    }
+}
+
+// MARK: - Server-Sent Events relay
+
+/// Writes an SSE stream to a channel.
+///
+/// Exists so the stream path does not capture a `ChannelHandlerContext` in a `@Sendable`
+/// closure. Holding the `Channel` and its `EventLoop` is safe: every write is hopped onto
+/// the event loop, and the channel is only read for its allocator.
+///
+/// `@unchecked Sendable` is honest here: the type owns no mutable state, and the channel
+/// and event loop it holds are themselves thread-safe.
+private final class SSEStreamRelay: @unchecked Sendable {
+    private let channel: Channel
+    private let log: Log
+
+    init(channel: Channel, log: Log) {
+        self.channel = channel
+        self.log = log
+    }
+
+    /// Consume the stream and write each frame as a chunk, then close.
+    func relay(_ stream: AsyncThrowingStream<Data, Swift.Error>) {
+        let log = self.log
+
+        Task {
+            do {
+                for try await frame in stream {
+                    do {
+                        try await writeFrame(frame).get()
+                    } catch {
+                        log.debug("SSE frame write failed", metadata: ["error": "\(error)"])
+                        break
+                    }
+                }
+                _ = try? await finish().get()
+            } catch {
+                log.debug("SSE stream ended with an error", metadata: ["error": "\(error)"])
+                _ = try? await close().get()
+            }
+        }
+    }
+
+    private func writeFrame(_ frame: Data) -> EventLoopFuture<Void> {
+        channel.eventLoop.makeFutureWithTask { [channel] in
+            var buffer = channel.allocator.buffer(capacity: frame.count)
+            buffer.writeBytes(frame)
+            try await channel.writeAndFlush(HTTPServerResponsePart.body(.byteBuffer(buffer)))
+        }
+    }
+
+    private func finish() -> EventLoopFuture<Void> {
+        channel.eventLoop.makeFutureWithTask { [channel] in
+            try await channel.writeAndFlush(HTTPServerResponsePart.end(nil))
+            try await channel.close()
+        }
+    }
+
+    private func close() -> EventLoopFuture<Void> {
+        channel.eventLoop.makeFutureWithTask { [channel] in
+            try await channel.close()
+        }
     }
 }

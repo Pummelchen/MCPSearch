@@ -1,5 +1,4 @@
 import Foundation
-import WebSearchCore
 
 /// Probes every configured provider through the same code path the server uses.
 ///

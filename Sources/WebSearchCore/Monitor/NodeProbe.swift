@@ -1,5 +1,4 @@
 import Foundation
-import WebSearchCore
 
 /// Probes one SearXNG instance and reports what it can actually do.
 ///
