@@ -1,8 +1,10 @@
-# SwiftWebSearchMCP
+# MCPSearch
 
-A Swift-native MCP server that gives local AI clients reliable public-web search and
-page fetching. It talks MCP over stdio, sits in front of a set of search providers,
-and degrades gracefully when a provider fails.
+**MCP Search Engine** — a Swift-native MCP server that gives local AI clients
+reliable public-web search and page fetching. It talks MCP over stdio, sits in front
+of a set of search providers, and degrades gracefully when a provider fails.
+
+The executable and Swift modules are named `SwiftWebSearchMCP` / `WebSearchCore`.
 
 - **Swift 6.3.3**, strict concurrency, no runtime dependency on Node or Python.
 - **No mandatory paid infrastructure.** Every credential is optional; the server
@@ -270,3 +272,7 @@ with uncertain points explicitly marked as unverified.
 - Google Custom Search and Bing Search APIs are deliberately not supported: Google's
   JSON API is closed to new customers and retires in 2027, and Bing's was retired in
   August 2025.
+
+## License
+
+MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Pummelchen.
