@@ -1,4 +1,16 @@
+# Build products and tooling state.
 .build/
 *.xcodeproj
 .DS_Store
 .swiftpm/
+
+# Local configuration and secrets.
+#
+# The server reads credentials from the environment, or from a KEY=VALUE file named by
+# SEARCH_CONFIG_FILE. Keep real keys in config.env (this file) and out of git entirely.
+# These patterns are deliberately broad so a future filename cannot leak a live key.
+config.env
+*.env
+!example.env
+.env.local
+.env.*.local

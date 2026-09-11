@@ -68,10 +68,15 @@ public struct TavilyProvider: SearchProvider {
             rateLimitStatusCodes: [429]
         )
 
+        // Decoded with default keys, NOT `.convertFromSnakeCase`. The DTO declares
+        // explicit `CodingKeys` for the snake_case fields (`published_date`), and a
+        // snake-case strategy converts the incoming key to `publishedDate` *before*
+        // matching those keys — so the field silently decodes to nil. Every multi-word
+        // field here has an explicit mapping, so the strategy must stay off.
         let payload = try response.body.decodeJSON(
             TavilyResponse.self,
             provider: .tavily,
-            using: JSONCoding.snakeCaseDecoder
+            using: JSONCoding.decoder()
         )
 
         var seen: Set<String> = []
@@ -151,9 +156,12 @@ public struct TavilyProvider: SearchProvider {
         }
     }
 
-    /// Tavily writes snake_case, so this is decoded with
-    /// `JSONCoding.snakeCaseDecoder`; `published_date` is the only field whose JSON
-    /// spelling does not match a plain camelCase conversion of the docs name.
+    /// Tavily writes snake_case, and every multi-word field is mapped explicitly here.
+    ///
+    /// Because the mapping is explicit, this type must be decoded with default keys:
+    /// `.convertFromSnakeCase` would rewrite `published_date` to `publishedDate` before
+    /// these keys are consulted, leaving the field nil.
+    ///
     struct TavilyResponse: Decodable {
         let query: String?
         let answer: String?

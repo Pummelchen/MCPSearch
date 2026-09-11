@@ -183,6 +183,54 @@ final class ProviderContractTests: XCTestCase {
         XCTAssertFalse(request.url.absoluteString.contains("tvly-secret"))
     }
 
+    /// Regression: `published_date` is snake_case while the DTO maps its keys explicitly.
+    ///
+    /// Decoding with `.convertFromSnakeCase` rewrites the incoming key to
+    /// `publishedDate` before the explicit `CodingKeys` are consulted, so the field
+    /// silently decoded to nil. The original happy-path fixture omitted the field
+    /// entirely, which is why the bug survived every stub-based test: a live search with
+    /// a recency filter was the first thing to expose it.
+    func testTavilyDecodesSnakeCasePublishedDate() async throws {
+        let http = MockHTTPClient()
+        http.respondJSON(
+            """
+            {
+              "query": "swift release notes",
+              "results": [
+                {"title":"Swift 6.3 Released","url":"https://swift.org/blog/6-3/",
+                 "content":"Release notes.","score":0.88,
+                 "published_date":"Tue, 24 Mar 2026 10:00:00 GMT"},
+                {"title":"Undated result","url":"https://example.com/undated",
+                 "content":"No date.","published_date":null}
+              ]
+            }
+            """
+        )
+        let provider = TavilyProvider(
+            apiKey: "tvly-secret",
+            http: http,
+            configuration: configuration
+        )
+        let response = try await provider.search(Fixtures.request("swift release notes"))
+
+        XCTAssertEqual(response.results.count, 2)
+
+        // Tavily emits RFC 1123, not ISO 8601.
+        let dated = try XCTUnwrap(
+            response.results.first?.publishedAt,
+            "published_date must decode; nil here means the snake-case strategy was applied"
+        )
+        let expected = DateComponents(
+            calendar: Calendar(identifier: .gregorian),
+            timeZone: TimeZone(identifier: "UTC"),
+            year: 2026, month: 3, day: 24, hour: 10
+        ).date
+        XCTAssertEqual(dated, expected)
+
+        // An explicit null must stay nil rather than failing the whole decode.
+        XCTAssertNil(response.results.last?.publishedAt)
+    }
+
     func testTavilyMapsRecencyAndDomainsAndOmitsInvalidFields() async throws {
         let http = MockHTTPClient()
         http.respondJSON(#"{"results":[]}"#)
