@@ -160,7 +160,7 @@ public struct Renderer: Sendable {
         _ provider: String, _ kind: String, _ state: String, _ last: String,
         _ average: String, _ count: String, _ rate: String, _ note: String
     ) -> String {
-        Terminal.pad(provider, to: 17) + Terminal.pad(kind, to: 10)
+        Terminal.pad(provider, to: 17) + Terminal.pad(kind, to: 12)
             + Terminal.pad(state, to: 8) + Terminal.pad(last, to: 8, alignment: .right)
             + Terminal.pad(average, to: 8, alignment: .right)
             + Terminal.pad(count, to: 4, alignment: .right)
@@ -169,7 +169,7 @@ public struct Renderer: Sendable {
 
     private func providerRow(_ status: ProviderStatus, columns: Int) -> String {
         let name = Terminal.pad("  " + glyph(status.state) + " " + status.displayName, to: 17)
-        let kind = Terminal.pad(status.kind, to: 10)
+        let kind = Terminal.pad(status.kind, to: 12)
         let state = stateText(status.state)
         let last = Terminal.pad(
             status.lastLatencyMilliseconds.map { "\($0)ms" } ?? "–",
@@ -207,7 +207,7 @@ public struct Renderer: Sendable {
             note = ""
         }
 
-        let used = Terminal.displayWidth("  " + String(repeating: "x", count: 17 + 10 + 7 + 8 + 8 + 4 + 6) + "  ")
+        let used = Terminal.displayWidth("  " + String(repeating: "x", count: 17 + 12 + 7 + 8 + 8 + 4 + 6) + "  ")
         let available = max(10, columns - used - 7)
         return name + kind + state + last + average + count + rate + "  "
             + Terminal.truncate(note, to: available)
