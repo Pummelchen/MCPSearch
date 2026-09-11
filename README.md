@@ -94,6 +94,8 @@ lives there.
 | --- | --- |
 | [Installation & Setup](https://github.com/Pummelchen/MCPSearch/wiki/Installation) | Requirements, building, client configuration |
 | [Compatibility](https://github.com/Pummelchen/MCPSearch/wiki/Compatibility) | OpenAI, Anthropic and Open Responses; transports and schema rules |
+| [Self-Hosting](https://github.com/Pummelchen/MCPSearch/wiki/Self-Hosting) | The SearXNG cluster on the nodes |
+| [Monitor](https://github.com/Pummelchen/MCPSearch/wiki/Monitor) | The live `mcps-mon` dashboard |
 | [Tools Reference](https://github.com/Pummelchen/MCPSearch/wiki/Tools-Reference) | Every tool, argument and response field |
 | [Architecture](https://github.com/Pummelchen/MCPSearch/wiki/Architecture) | Layering, request flow, fusion algorithm |
 | [Providers](https://github.com/Pummelchen/MCPSearch/wiki/Providers) | Adapters and the API quirks they depend on |
@@ -108,11 +110,21 @@ lives there.
 
 ```bash
 swift build                    # debug
-swift test                     # 215 tests, no network required
+swift test                     # 250 tests, no network required
 swift test --filter LiveProviderTests   # opt-in; calls real providers, needs a key
 python3 scripts/mcp_smoke.py   # end-to-end stdio handshake
 python3 scripts/mcp_smoke.py --http   # end-to-end Streamable HTTP session
 ```
+
+There is also a live terminal dashboard for providers and nodes:
+
+```bash
+swift run mcps-mon            # node health, refreshes every 10s
+swift run mcps-mon --probe    # also measure provider latency and errors
+```
+
+See the wiki for the [monitor](https://github.com/Pummelchen/MCPSearch/wiki/Monitor)
+and [self-hosting](https://github.com/Pummelchen/MCPSearch/wiki/Self-Hosting).
 
 The default suite is hermetic and needs no credentials. Live tests skip themselves
 unless `TAVILY_API_KEY` is set in the environment or in a git-ignored `config.env`.

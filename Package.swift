@@ -11,6 +11,8 @@ let package = Package(
     ],
     products: [
         .executable(name: "SwiftWebSearchMCP", targets: ["SwiftWebSearchMCP"]),
+        // Named for the shell: the product name is what the binary is called.
+        .executable(name: "mcps-mon", targets: ["MCPSMonitor"]),
         .library(name: "WebSearchCore", targets: ["WebSearchCore"]),
     ],
     dependencies: [
@@ -61,6 +63,23 @@ let package = Package(
             // No resource bundle: every test fixture is an inline Swift literal. A
             // `.copy("Fixtures")` declaration previously pointed at a directory that
             // was not tracked in git, which broke clean checkouts.
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+
+        // A live terminal dashboard for providers and nodes. Runs on the machine the
+        // operator is looking at, and depends only on the core library so it can be
+        // built without the server's MCP stack.
+        .executableTarget(
+            name: "MCPSMonitor",
+            dependencies: ["WebSearchCore"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+
+        // Options parsing lives in the executable, so testing it needs the executable as
+        // a dependency. SwiftPM supports that for executable targets.
+        .testTarget(
+            name: "MCPSMonitorTests",
+            dependencies: ["MCPSMonitor"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
     ]
