@@ -316,9 +316,20 @@ def wait_for_health(port: int, timeout: float = 20.0) -> None:
     raise Failure(f"HTTP transport did not become healthy on port {port}")
 
 
+def free_loopback_port() -> int:
+    """Ask the OS for an unused loopback port.
+
+    A fixed port would make two concurrent smoke runs collide, which matters because
+    this script is cheap enough to run in parallel.
+    """
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
 def run_http_smoke(binary: str) -> None:
     """Start the server in HTTP mode and exercise the Streamable HTTP transport."""
-    port = 18077
+    port = free_loopback_port()
     environment = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "SEARCH_LOG_LEVEL": "info",

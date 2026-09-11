@@ -108,7 +108,7 @@ lives there.
 
 ```bash
 swift build                    # debug
-swift test                     # 209 tests, no network required
+swift test                     # 215 tests, no network required
 swift test --filter LiveProviderTests   # opt-in; calls real providers, needs a key
 python3 scripts/mcp_smoke.py   # end-to-end stdio handshake
 python3 scripts/mcp_smoke.py --http   # end-to-end Streamable HTTP session
