@@ -16,6 +16,9 @@ server that gives local AI clients reliable public-web search and page fetching.
 - **Rank fusion, not score comparison.** Provider relevance scores are not on a shared
   scale, so results are fused with weighted Reciprocal Rank Fusion.
 - **Swift 6.3.3**, strict concurrency, no runtime dependency on Node or Python.
+- **Client-compatible by construction.** Tool schemas satisfy the strictest consumer's
+  validation, and both stdio and Streamable HTTP are supported — see
+  [Compatibility](https://github.com/Pummelchen/MCPSearch/wiki/Compatibility).
 
 ## Quick start
 
@@ -44,6 +47,17 @@ export SEARXNG_BASE_URL=https://searx.example.com
 
 The server starts with no credentials and explains what is missing. Diagnostics go to
 stderr; **stdout carries JSON-RPC framing only**.
+
+For the remote connectors used by OpenAI's Responses API and Anthropic's Messages API,
+which cannot reach a stdio server, serve Streamable HTTP instead:
+
+```bash
+SwiftWebSearchMCP --transport http --port 8080   # MCP at /mcp, plus GET /health
+```
+
+It binds `127.0.0.1` unless you pass `--host`, and it has no authentication, so put a
+TLS-terminating reverse proxy in front before exposing it. Every local client uses the
+default stdio mode.
 
 ## Tools
 
@@ -79,6 +93,7 @@ lives there.
 | Page | Contents |
 | --- | --- |
 | [Installation & Setup](https://github.com/Pummelchen/MCPSearch/wiki/Installation) | Requirements, building, client configuration |
+| [Compatibility](https://github.com/Pummelchen/MCPSearch/wiki/Compatibility) | OpenAI, Anthropic and Open Responses; transports and schema rules |
 | [Tools Reference](https://github.com/Pummelchen/MCPSearch/wiki/Tools-Reference) | Every tool, argument and response field |
 | [Architecture](https://github.com/Pummelchen/MCPSearch/wiki/Architecture) | Layering, request flow, fusion algorithm |
 | [Providers](https://github.com/Pummelchen/MCPSearch/wiki/Providers) | Adapters and the API quirks they depend on |
@@ -93,16 +108,18 @@ lives there.
 
 ```bash
 swift build                    # debug
-swift test                     # 186 tests, no network required
+swift test                     # 209 tests, no network required
 swift test --filter LiveProviderTests   # opt-in; calls real providers, needs a key
 python3 scripts/mcp_smoke.py   # end-to-end stdio handshake
+python3 scripts/mcp_smoke.py --http   # end-to-end Streamable HTTP session
 ```
 
 The default suite is hermetic and needs no credentials. Live tests skip themselves
 unless `TAVILY_API_KEY` is set in the environment or in a git-ignored `config.env`.
 
-CI runs on `macos-26` (Swift 6.3): build, test, release build, stdio smoke test, and a
-second test run with credentials present to prove the suite is hermetic.
+CI runs on `macos-26` (Swift 6.3): build, test, release build, smoke tests over both
+transports, and a second test run with credentials present to prove the suite is
+hermetic.
 
 ## License
 
