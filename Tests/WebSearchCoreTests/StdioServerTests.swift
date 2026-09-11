@@ -181,9 +181,12 @@ final class StdioServerTests: XCTestCase {
     // MARK: - Protocol
 
     func testInitializeHandshakeSucceeds() throws {
+        // `startInitializedServer` performs a real initialize round trip, asserts the
+        // server identity and completes the handshake, so reaching the end without
+        // throwing is the assertion. Cleanup is explicit rather than a trailing
+        // `defer`, which the compiler notes would execute immediately.
         let server = try startInitializedServer(environment: [:])
-        defer { server.stop() }
-        // Reaching this point means a real initialize round trip completed.
+        server.stop()
     }
 
     func testToolsListExposesTheThreeDocumentedToolsWithValidSchemas() throws {

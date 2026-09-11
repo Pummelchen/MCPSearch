@@ -48,7 +48,9 @@ let package = Package(
         .testTarget(
             name: "WebSearchCoreTests",
             dependencies: ["WebSearchCore"],
-            resources: [.copy("Fixtures")],
+            // No resource bundle: every test fixture is an inline Swift literal. A
+            // `.copy("Fixtures")` declaration previously pointed at a directory that
+            // was not tracked in git, which broke clean checkouts.
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
     ]
