@@ -220,7 +220,12 @@ final class StdioServerTests: XCTestCase {
                 "locale", "provider", "mode",
             ])
         )
-        XCTAssertEqual(schema["required"] as? [String], ["query"])
+        XCTAssertEqual(
+            Set(schema["required"] as? [String] ?? []),
+            Set(properties.keys),
+            "every declared property must also be required; optionality is expressed "
+                + "as a nullable type so the schema survives strict validation"
+        )
         // Provider-specific tuning must not leak into the public contract.
         XCTAssertNil(properties["search_depth"])
         XCTAssertNil(properties["freshness"])
@@ -228,7 +233,11 @@ final class StdioServerTests: XCTestCase {
 
         let open = try XCTUnwrap(tools.first { $0["name"] as? String == "web_open" })
         let openSchema = try XCTUnwrap(open["inputSchema"] as? [String: Any])
-        XCTAssertEqual(openSchema["required"] as? [String], ["url"])
+        let openProperties = try XCTUnwrap(openSchema["properties"] as? [String: Any])
+        XCTAssertEqual(
+            Set(openSchema["required"] as? [String] ?? []),
+            Set(openProperties.keys)
+        )
     }
 
     /// The advertised `provider` values must exactly match the providers that can
@@ -266,8 +275,17 @@ final class StdioServerTests: XCTestCase {
             enumValues.contains("jina"),
             "`jina` cannot serve a search and must not be advertised"
         )
-        // The default must be offered.
-        XCTAssertEqual(provider["default"] as? String, "auto")
+        // `default` is not a supported JSON Schema keyword for strict consumers and is
+        // rejected outright by some, so the default is documented in the description
+        // instead of declared as a keyword.
+        XCTAssertNil(provider["default"], "`default` must not appear in the schema")
+        let description = try XCTUnwrap(provider["description"] as? String)
+        XCTAssertTrue(
+            description.contains("auto"),
+            "the default provider must be documented in the description"
+        )
+        // Optionality is expressed as a nullable type, which strict consumers accept.
+        XCTAssertEqual(provider["type"] as? [String], ["string", "null"])
     }
 
     // MARK: - Tool calls

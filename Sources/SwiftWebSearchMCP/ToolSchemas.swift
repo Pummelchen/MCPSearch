@@ -9,6 +9,31 @@ import WebSearchCore
 ///    that map cleanly across every provider are exposed.
 /// 2. The server never trusts client input, so every argument is validated here
 ///    before it reaches the orchestrator.
+///
+/// ## Cross-client schema discipline
+///
+/// The advertised schemas are written to be accepted by the strictest mainstream
+/// consumers, because a schema that one client rejects can break the whole request.
+/// Verified requirements that shape every schema below:
+///
+/// - **`additionalProperties: false` on every object.** OpenAI *requires* this under
+///   strict mode; the most common real-world "MCP server breaks OpenAI" failure is a
+///   *missing* one. It is not a risk to be removed.
+/// - **Every declared property must also appear in `required`.** Optionality is
+///   expressed as a **nullable type** (`["string", "null"]`), which OpenAI supports
+///   under strict mode and documents as the idiom for optional fields. Clients that
+///   are not strict simply omit the argument.
+/// - **No `format` keyword.** OpenAI rejects anything outside a nine-value allowlist
+///   (`date-time`, `time`, `date`, `duration`, `email`, `hostname`, `ipv4`, `ipv6`,
+///   `uuid`); `format: "uri"` is a hard error, so URL shape is described in prose and
+///   validated server-side.
+/// - **No `default` keyword.** It is not a supported keyword and is rejected outright
+///   on some OpenAI-compatible deployments. Defaults live in the description text and
+///   are applied by the argument parser.
+/// - **No `oneOf` / `allOf` / `not`.** Combinators, if ever needed, must be `anyOf`.
+/// - **Zero-argument tools still declare `properties`** (as an empty object); an object
+///   schema with no `properties` key is rejected.
+/// - The root is always a closed object, never a union.
 public enum ToolSchemas {
     public static let searchToolName = "web_search"
     public static let openToolName = "web_open"
@@ -25,61 +50,75 @@ public enum ToolSchemas {
                     "description": "Natural-language or keyword web search query",
                 ],
                 "max_results": [
-                    "type": "integer",
+                    // Optional in the schema; expressed as nullable rather than omitted
+                    // from `required`, because strict consumers require every property
+                    // to be listed. Absent or null resolves to the default (8).
+                    "type": ["integer", "null"],
                     "minimum": 1,
                     "maximum": 20,
-                    "default": 8,
-                    "description": "Maximum number of fused results to return",
+                    "description": "Maximum number of fused results to return; 1-20, default 8",
                 ],
                 "recency": [
-                    "type": "string",
+                    "type": ["string", "null"],
                     "enum": ["any", "day", "week", "month", "year"],
-                    "default": "any",
-                    "description": "Restrict results to a publication time window",
+                    "description": "Publication time window; default \"any\"",
                 ],
                 "include_domains": [
-                    "type": "array",
+                    "type": ["array", "null"],
                     "items": ["type": "string"],
                     "maxItems": 20,
-                    "description": "Only return results from these domains",
+                    "description": "Only return results from these domains; at most 20",
                 ],
                 "exclude_domains": [
-                    "type": "array",
+                    "type": ["array", "null"],
                     "items": ["type": "string"],
                     "maxItems": 20,
-                    "description": "Never return results from these domains",
+                    "description": "Never return results from these domains; at most 20",
                 ],
                 "locale": [
-                    "type": "string",
+                    "type": ["string", "null"],
                     "description": "Optional locale such as en-US or de-DE",
                 ],
                 "provider": [
-                    "type": "string",
+                    "type": ["string", "null"],
                     "enum": [
                         "auto", "tavily", "brave", "mojeek", "exa", "searxng",
                         "open_web_search", "duckduckgo", "startpage", "parallel",
                     ],
-                    "default": "auto",
                     "description": Value.string(
-                        "Force a single provider instead of automatic selection"
+                        "Force a single provider instead of automatic selection; "
+                            + "default \"auto\""
                     ),
                 ],
                 "mode": [
-                    "type": "string",
+                    "type": ["string", "null"],
                     "enum": ["fast", "balanced", "thorough"],
-                    "default": "balanced",
                     "description": Value.string(
                         "fast uses one provider; balanced fuses two; thorough fuses three "
-                            + "and may add an aggregator"
+                            + "and may add an aggregator; default \"balanced\""
                     ),
                 ],
             ],
-            "required": ["query"],
+            "required": [
+                "query", "max_results", "recency", "include_domains", "exclude_domains",
+                "locale", "provider", "mode",
+            ],
             "additionalProperties": false,
         ]
     }
 
     /// Output schema advertised to clients that support structured results.
+    ///
+    /// This describes `structuredContent` exactly, and is closed with
+    /// `additionalProperties: false` with a complete `required` list, so it survives
+    /// strict validation. Note that neither OpenAI nor Anthropic surfaces a tool's
+    /// `outputSchema` to the model; the matching text block is what reaches it, and
+    /// this schema is documentation plus a contract for hosts that read it.
+    ///
+    /// The full page text is deliberately **not** duplicated here: it is carried once,
+    /// in the text content block. Duplicating it previously doubled `web_open`
+    /// payloads to roughly 25 000 characters, which is at the ceiling of what some
+    /// hosts accept for a single tool result.
     public static var webSearchOutput: Value {
         [
             "type": "object",
@@ -97,15 +136,36 @@ public enum ToolSchemas {
                             "published_at": ["type": ["string", "null"]],
                             "sources": ["type": "array", "items": ["type": "string"]],
                         ],
-                        "required": ["rank", "title", "url", "sources"],
+                        "required": [
+                            "rank", "title", "url", "snippet", "published_at", "sources",
+                        ],
+                        "additionalProperties": false,
                     ],
                 ],
                 "providers_used": ["type": "array", "items": ["type": "string"]],
-                "providers_failed": ["type": "array", "items": ["type": "object"]],
+                "providers_failed": [
+                    "type": "array",
+                    "items": [
+                        "type": "object",
+                        "properties": [
+                            "provider": ["type": "string"],
+                            "category": ["type": "string"],
+                            "message": ["type": "string"],
+                        ],
+                        "required": ["provider", "category", "message"],
+                        "additionalProperties": false,
+                    ],
+                ],
                 "warnings": ["type": "array", "items": ["type": "string"]],
                 "retrieved_at": ["type": "string"],
+                "elapsed_ms": ["type": "integer"],
+                "served_from_cache": ["type": "boolean"],
             ],
-            "required": ["query", "results", "providers_used", "retrieved_at"],
+            "required": [
+                "query", "results", "providers_used", "providers_failed", "warnings",
+                "retrieved_at", "elapsed_ms", "served_from_cache",
+            ],
+            "additionalProperties": false,
         ]
     }
 
@@ -117,22 +177,30 @@ public enum ToolSchemas {
             "properties": [
                 "url": [
                     "type": "string",
-                    "format": "uri",
-                    "description": "Absolute http or https URL to fetch",
+                    // No `format: "uri"`: that keyword is rejected by OpenAI's schema
+                    // validation. Only public http/https URLs are accepted, which the
+                    // SSRF policy enforces server-side.
+                    "description": "Absolute http or https URL of a public page to fetch",
                 ],
                 "max_characters": [
-                    "type": "integer",
+                    "type": ["integer", "null"],
                     "minimum": 1000,
                     "maximum": 50000,
-                    "default": 12000,
-                    "description": "Maximum number of characters of readable text to return",
+                    "description": Value.string(
+                        "Maximum readable characters to return; 1000-50000, default 12000"
+                    ),
                 ],
             ],
-            "required": ["url"],
+            "required": ["url", "max_characters"],
             "additionalProperties": false,
         ]
     }
 
+    /// Output schema for `web_open`.
+    ///
+    /// The readable text itself lives in the text content block rather than here, so it
+    /// is transmitted exactly once. `text_characters` reports its size, which is what a
+    /// caller needs in order to detect truncation without re-reading the payload.
     public static var webOpenOutput: Value {
         [
             "type": "object",
@@ -142,12 +210,16 @@ public enum ToolSchemas {
                 "status": ["type": "integer"],
                 "title": ["type": ["string", "null"]],
                 "content_type": ["type": ["string", "null"]],
-                "text": ["type": "string"],
                 "extraction_method": ["type": "string"],
                 "truncated": ["type": "boolean"],
+                "text_characters": ["type": "integer"],
                 "warnings": ["type": "array", "items": ["type": "string"]],
             ],
-            "required": ["url", "final_url", "status", "text", "extraction_method"],
+            "required": [
+                "url", "final_url", "status", "title", "content_type",
+                "extraction_method", "truncated", "text_characters", "warnings",
+            ],
+            "additionalProperties": false,
         ]
     }
 
@@ -156,6 +228,8 @@ public enum ToolSchemas {
     public static var statusInput: Value {
         [
             "type": "object",
+            // A zero-argument tool still declares `properties`. An object schema with no
+            // `properties` key at all is rejected by strict validation.
             "properties": Value.object([:]),
             "additionalProperties": false,
         ]
@@ -165,12 +239,58 @@ public enum ToolSchemas {
         [
             "type": "object",
             "properties": [
-                "providers": ["type": "array", "items": ["type": "object"]],
-                "cache": ["type": "object"],
+                "providers": [
+                    "type": "array",
+                    "items": [
+                        "type": "object",
+                        "properties": [
+                            "provider": ["type": "string"],
+                            "status": ["type": "string"],
+                            "configured": ["type": "boolean"],
+                            "is_aggregator": ["type": "boolean"],
+                            "is_experimental_scraper": ["type": "boolean"],
+                            "source_family": ["type": "string"],
+                            "circuit_state": ["type": "string"],
+                            "requests": ["type": "integer"],
+                            "successes": ["type": "integer"],
+                            "failures": ["type": "integer"],
+                            "last_result_count": ["type": "integer"],
+                            "average_latency_ms": ["type": "integer"],
+                            "last_error": ["type": ["string", "null"]],
+                            "last_error_category": ["type": ["string", "null"]],
+                            "last_success_at": ["type": ["string", "null"]],
+                            "note": ["type": ["string", "null"]],
+                        ],
+                        "required": [
+                            "provider", "status", "configured", "is_aggregator",
+                            "is_experimental_scraper", "source_family", "circuit_state",
+                            "requests", "successes", "failures", "last_result_count",
+                            "average_latency_ms", "last_error", "last_error_category",
+                            "last_success_at", "note",
+                        ],
+                        "additionalProperties": false,
+                    ],
+                ],
+                "cache": [
+                    "type": "object",
+                    "properties": [
+                        "entries": ["type": "integer"],
+                        "hits": ["type": "integer"],
+                        "misses": ["type": "integer"],
+                        "ttl_seconds": ["type": "integer"],
+                    ],
+                    "required": ["entries", "hits", "misses", "ttl_seconds"],
+                    "additionalProperties": false,
+                ],
                 "scrapers_enabled": ["type": "boolean"],
                 "parallel_enabled": ["type": "boolean"],
+                "provider_order": ["type": "array", "items": ["type": "string"]],
             ],
-            "required": ["providers"],
+            "required": [
+                "providers", "cache", "scrapers_enabled", "parallel_enabled",
+                "provider_order",
+            ],
+            "additionalProperties": false,
         ]
     }
 }
@@ -381,19 +501,24 @@ public enum ToolOutputFormatter {
         return header.joined(separator: "\n") + "\n\n" + result.text
     }
 
+    /// Structured form of `web_open`.
+    ///
+    /// The readable text is **not** repeated here; it is carried once in the text
+    /// content block. `text_characters` reports its length so a caller can detect
+    /// truncation, and every property declared in the output schema is always present
+    /// (absent optionals are explicit `null`) so the payload satisfies a closed schema.
     public static func openStructured(_ result: FetchResult, requestedURL: URL) -> Value {
-        var fields: [String: Value] = [
+        Value.object([
             "url": .string(requestedURL.absoluteString),
             "final_url": .string(result.finalURL.absoluteString),
             "status": .int(result.statusCode),
-            "text": .string(result.text),
+            "title": result.title.map { Value.string($0) } ?? .null,
+            "content_type": result.contentType.map { Value.string($0) } ?? .null,
             "extraction_method": .string(result.method.rawValue),
             "truncated": .bool(result.truncated),
+            "text_characters": .int(result.text.count),
             "warnings": .array(result.warnings.map { Value.string($0) }),
-        ]
-        fields["title"] = result.title.map { Value.string($0) } ?? .null
-        fields["content_type"] = result.contentType.map { Value.string($0) } ?? .null
-        return .object(fields)
+        ])
     }
 
     // MARK: web_search_status
@@ -406,7 +531,9 @@ public enum ToolOutputFormatter {
         var providers: [Value] = []
         providers.reserveCapacity(states.count)
         for state in states {
-            var fields: [String: Value] = [
+            // Every property is always emitted, using explicit nulls where a value is
+            // absent, so the payload matches the closed output schema exactly.
+            let fields: [String: Value] = [
                 "provider": .string(state.provider.rawValue),
                 "status": .string(state.status.rawValue),
                 "configured": .bool(state.configured),
@@ -419,19 +546,13 @@ public enum ToolOutputFormatter {
                 "failures": .int(state.failures),
                 "last_result_count": .int(state.lastResultCount),
                 "average_latency_ms": .int(state.averageLatencyMilliseconds),
+                "last_error": state.lastError.map { Value.string($0) } ?? .null,
+                "last_error_category":
+                    state.lastErrorCategory.map { Value.string($0.rawValue) } ?? .null,
+                "last_success_at":
+                    state.lastSuccessAt.map { Value.string(timestamp($0)) } ?? .null,
+                "note": state.note.map { Value.string($0) } ?? .null,
             ]
-            if let lastError = state.lastError {
-                fields["last_error"] = .string(lastError)
-            }
-            if let category = state.lastErrorCategory {
-                fields["last_error_category"] = .string(category.rawValue)
-            }
-            if let note = state.note {
-                fields["note"] = .string(note)
-            }
-            if let lastSuccess = state.lastSuccessAt {
-                fields["last_success_at"] = .string(timestamp(lastSuccess))
-            }
             providers.append(.object(fields))
         }
 
