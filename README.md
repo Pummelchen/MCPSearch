@@ -10,7 +10,7 @@ server that gives local AI clients reliable public-web search and page fetching.
 - **No mandatory paid infrastructure.** Every credential is optional; the server runs
   with zero API keys and reports exactly what is missing.
 - **API-first.** Supported JSON APIs and self-hosted SearXNG are preferred. HTML
-  scrapers exist but are opt-in, rate limited and down-weighted.
+  scrapers exist but are opt-in and rate limited.
 - **One vendor outage never fails a search.** Providers fail over; only total failure
   is an error.
 - **Rank fusion, not score comparison.** Provider relevance scores are not on a shared

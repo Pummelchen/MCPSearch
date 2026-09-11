@@ -135,9 +135,33 @@ final class RankFusionTests: XCTestCase {
         XCTAssertEqual(fused.results.first?.url.host(), "ind.example.com")
     }
 
-    func testScrapersAreDownWeighted() {
-        // DuckDuckGo is a scraper; Mojeek is an independent index. With equal ranks,
-        // the independent index must win through the weight difference.
+    /// Registry weights must stay within the range where rank can still compete.
+    ///
+    /// This is the invariant behind the fusion defect found by live testing: the score
+    /// is `weight / (k + rank)`, so a weight ratio wider than the reachable rank ratio
+    /// `(k + maxRank) / (k + 1)` lets one provider's whole result list outrank another's
+    /// regardless of relevance. At `k = 60` that ratio is about 1.07 for five results, so
+    /// the registry weights are all 1.0 and provider quality is expressed through
+    /// corroboration and source-family signals instead.
+    func testRegistryWeightsCannotOverrideRankOrdering() {
+        let configuration = RankFusion.Configuration()
+
+        // The weight multiplier applied to any single provider must stay inside the
+        // range a rank can overcome for a realistic result count.
+        let maxRank = 5
+        let reachableRatio = (configuration.k + Double(maxRank)) / (configuration.k + 1)
+        XCTAssertLessThan(
+            configuration.duplicatedAggregatorWeight,
+            reachableRatio,
+            "the duplication discount must not be wide enough to outrank a whole list"
+        )
+        XCTAssertEqual(configuration.scraperWeight, 1.0, accuracy: 0.0001)
+        XCTAssertEqual(configuration.independentIndexWeight, 1.0, accuracy: 0.0001)
+    }
+
+    /// A same-rank result from either provider is a genuine tie, decided deterministically
+    /// rather than by provider preference.
+    func testSameRankResultsTieAndBreakDeterministically() {
         let fused = RankFusion.fuse(
             responses: [
                 response(.mojeek, [("Independent", "https://m.example.com/1")]),
@@ -146,7 +170,52 @@ final class RankFusionTests: XCTestCase {
             limit: 10,
             configuration: RankFusion.Configuration(maxResultsPerDomain: 0)
         )
-        XCTAssertEqual(fused.results.first?.url.host(), "m.example.com")
+        XCTAssertEqual(fused.results.count, 2)
+        // Both are rank 1 with equal weight, so the tie is broken by canonical URL,
+        // which makes the order stable across runs.
+        XCTAssertEqual(
+            fused.results.map { $0.url.host() },
+            ["d.example.com", "m.example.com"]
+        )
+        XCTAssertEqual(
+            fused.diagnostics.map(\.score),
+            fused.diagnostics.map(\.score).sorted(by: >),
+            "diagnostics should be in descending score order"
+        )
+
+        // Re-running produces the identical order.
+        let again = RankFusion.fuse(
+            responses: [
+                response(.mojeek, [("Independent", "https://m.example.com/1")]),
+                response(.duckDuckGo, [("Scraped", "https://d.example.com/2")]),
+            ],
+            limit: 10,
+            configuration: RankFusion.Configuration(maxResultsPerDomain: 0)
+        )
+        XCTAssertEqual(
+            fused.results.map(\.url),
+            again.results.map(\.url)
+        )
+    }
+
+    /// Corroboration, not weight, is what lifts one result above another from a
+    /// different provider.
+    func testCorroborationOutranksASingleVoteRegardlessOfProvider() {
+        let fused = RankFusion.fuse(
+            responses: [
+                response(.mojeek, [("Solo", "https://m.example.com/solo")]),
+                response(.tavily, [("Shared", "https://t.example.com/shared")]),
+                response(.duckDuckGo, [("Shared", "https://t.example.com/shared")]),
+            ],
+            limit: 10,
+            configuration: RankFusion.Configuration(maxResultsPerDomain: 0)
+        )
+        XCTAssertEqual(
+            fused.results.first?.url.host(),
+            "t.example.com",
+            "a URL reported by two providers must outrank a single-vote result"
+        )
+        XCTAssertEqual(fused.results.first?.sources.count, 2)
     }
 
     func testLimitIsRespected() {
@@ -171,25 +240,45 @@ final class RankFusionTests: XCTestCase {
     /// It is folded into the per-contribution weight, and a previous version applied
     /// it a second time in the scoring loop, which squared it (0.7 x 0.7) and made the
     /// second application dead code because the guard was always true.
-    func testAggregatorDiscountIsAppliedExactlyOnce() {
+    /// An aggregator is discounted **only** when it resells an index that another
+    /// provider in the same run already owns.
+    ///
+    /// A blanket aggregator penalty is actively harmful. Because the score is
+    /// `weight / (k + rank)`, once the weight ratio exceeds the reachable rank ratio
+    /// `(k + maxRank) / (k + 1)` — only about 1.08 at `k = 60` — one provider's entire
+    /// result list outranks another's and fusion degenerates into provider preference.
+    /// That was observed live: Tavily's 6th result outranked Parallel's 1st by 1.82x,
+    /// and the fused output was 100% Tavily despite Parallel ranking better on the query.
+    func testAggregatorIsDiscountedOnlyWhenItResellsAnOwnedIndex() {
         let configuration = RankFusion.Configuration()
-        XCTAssertEqual(configuration.aggregatorWeight, 0.7, accuracy: 0.0001)
+        XCTAssertEqual(configuration.duplicatedAggregatorWeight, 0.7, accuracy: 0.0001)
 
-        // A SearXNG contribution weighs its registry weight (0.9) times one discount.
-        let searxng = RankFusion.weight(
+        // Not duplicating anything: full registry weight, so rank decides.
+        let loneAggregator = RankFusion.weight(
             for: .meta,
             provider: .searxng,
             base: 0.9,
+            duplicatedOwnedIndex: false,
             configuration: configuration
         )
-        XCTAssertEqual(searxng, 0.9 * 0.7, accuracy: 0.0001)
+        XCTAssertEqual(loneAggregator, 0.9, accuracy: 0.0001)
+
+        // Reselling an index another provider owns: discounted exactly once.
+        let duplicating = RankFusion.weight(
+            for: .meta,
+            provider: .searxng,
+            base: 0.9,
+            duplicatedOwnedIndex: true,
+            configuration: configuration
+        )
+        XCTAssertEqual(duplicating, 0.9 * 0.7, accuracy: 0.0001)
         XCTAssertNotEqual(
-            searxng,
+            duplicating,
             0.9 * 0.7 * 0.7,
-            "the aggregator discount must not be applied twice"
+            "the discount must not be applied twice"
         )
 
-        // Independent indexes are not discounted.
+        // Independent indexes are never discounted.
         let mojeek = RankFusion.weight(
             for: .mojeek,
             provider: .mojeek,
@@ -197,9 +286,90 @@ final class RankFusionTests: XCTestCase {
             configuration: configuration
         )
         XCTAssertEqual(mojeek, 1.0, accuracy: 0.0001)
+    }
 
-        // An aggregator still ranks below an equally-ranked independent index.
-        XCTAssertLessThan(searxng, mojeek)
+    /// Duplication is detected from the upstream engines an aggregator reports.
+    func testUpstreamEngineMappingDetectsDuplication() {
+        XCTAssertEqual(RankFusion.family(forUpstreamEngine: "brave"), .brave)
+        XCTAssertEqual(RankFusion.family(forUpstreamEngine: "BraveSearch"), .brave)
+        XCTAssertEqual(RankFusion.family(forUpstreamEngine: "duckduckgo"), .duckDuckGo)
+        XCTAssertEqual(RankFusion.family(forUpstreamEngine: "google"), .google)
+        XCTAssertEqual(RankFusion.family(forUpstreamEngine: "mojeek"), .mojeek)
+        // Engines no direct adapter owns must not trigger a discount.
+        XCTAssertNil(RankFusion.family(forUpstreamEngine: "wikipedia"))
+        XCTAssertNil(RankFusion.family(forUpstreamEngine: "bing"))
+
+        // A SearXNG instance reporting Brave, while Brave is configured directly.
+        let responses = [
+            response(.brave, [("B", "https://b.example.com/1")]),
+            response(.searxng, [("S", "https://s.example.com/1")], upstream: ["brave"]),
+        ]
+        let owned: Set<SourceFamily> = [.brave]
+        XCTAssertTrue(
+            RankFusion.resellsIndexAlreadyOwned(
+                response: responses[1],
+                ownedFamilies: owned
+            )
+        )
+
+        // The same aggregator reporting an engine nobody else covers is not penalised.
+        let solo = response(.searxng, [("S", "https://s.example.com/1")], upstream: ["wikipedia"])
+        XCTAssertFalse(
+            RankFusion.resellsIndexAlreadyOwned(response: solo, ownedFamilies: owned)
+        )
+
+        // A non-aggregator is never treated as duplicating.
+        XCTAssertFalse(
+            RankFusion.resellsIndexAlreadyOwned(
+                response: responses[0],
+                ownedFamilies: owned
+            )
+        )
+    }
+
+    /// The defect this replaced: a weaker provider's whole list outranking a stronger
+    /// provider's list purely because of a blanket weight penalty.
+    ///
+    /// Fusion must interleave by rank when providers return disjoint result sets.
+    func testDisjointProvidersInterleaveByRankRatherThanByProvider() {
+        let tavily = (1...4).map { ("Tavily \($0)", "https://tavily.example.com/\($0)") }
+        let parallel = (1...4).map { ("Parallel \($0)", "https://parallel.example.com/\($0)") }
+
+        let fused = RankFusion.fuse(
+            responses: [
+                response(.tavily, tavily),
+                response(.parallel, parallel),
+            ],
+            limit: 8,
+            configuration: RankFusion.Configuration(maxResultsPerDomain: 0)
+        )
+
+        // With the aggregator no longer blanket-discounted, the two providers interleave
+        // instead of one sweeping the list. Note this is *interleaving*, not a strict
+        // alternation: their registry weights are close enough (1.1 vs 0.8) that a
+        // same-rank result from either can land first, with the canonical URL deciding
+        // the tie. Before the fix one provider occupied every one of the top six slots.
+        let providers = fused.results.map(\.provider)
+        XCTAssertEqual(
+            Set(providers).count,
+            2,
+            "both providers must appear in the fused list"
+        )
+        let topFour = Array(providers.prefix(4))
+        XCTAssertEqual(
+            topFour.filter { $0 == .tavily }.count,
+            2,
+            "expected the two providers to share the top four, got \(topFour)"
+        )
+        XCTAssertEqual(
+            topFour.filter { $0 == .parallel }.count,
+            2,
+            "expected the two providers to interleave, got \(topFour)"
+        )
+        // Both providers must contribute to the first half of the list, which is the
+        // property a single-provider sweep would violate.
+        XCTAssertTrue(providers.prefix(4).contains(.parallel))
+        XCTAssertTrue(providers.prefix(4).contains(.tavily))
     }
 
     /// An aggregator that is the only source of a result still contributes it: the

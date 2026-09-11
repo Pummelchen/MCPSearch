@@ -15,7 +15,15 @@ public struct BraveProvider: SearchProvider {
         supportsInlineContent: true,
         supportsPagination: true
     )
-    public let fusionWeight: Double = 1.1
+    /// Registry weight for rank fusion.
+    ///
+    /// Deliberately 1.0. The fusion score is `weight / (k + rank)`, so a weight ratio
+    /// wider than the reachable rank ratio `(k + maxRank) / (k + 1)` — only about 1.07
+    /// for five results at `k = 60` — lets one provider's *entire* list outrank
+    /// another's, and fusion stops merging by rank. Provider quality is expressed
+    /// through the source-family, aggregation and corroboration signals instead, which
+    /// do not have that failure mode.
+    public nonisolated let fusionWeight: Double = 1.0
 
     private let apiKey: String
     private let http: any HTTPClient

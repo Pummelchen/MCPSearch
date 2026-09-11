@@ -18,6 +18,14 @@ public enum SearchError: Error, Sendable, Hashable {
     case notConfigured(ProviderID)
     case unsupportedRequest(ProviderID, String)
     case allProvidersFailed
+    /// No provider produced a usable result, with the per-provider reasons attached.
+    ///
+    /// Carrying the reasons matters most when a single provider was requested
+    /// explicitly: "All eligible search providers failed" tells a caller nothing, while
+    /// "Startpage is temporarily unavailable" is actionable. The first few reasons are
+    /// included in `safeDescription` so the message is useful without a second call to
+    /// `web_search_status`.
+    case providersFailed([ProviderFailure])
     case blockedURL(URL)
     case extractionFailed(URL)
     /// A page fetch failed for a reason other than policy or extraction, such as a
@@ -40,7 +48,7 @@ public enum SearchError: Error, Sendable, Hashable {
         case .networkFailure: .network
         case .notConfigured: .notConfigured
         case .unsupportedRequest: .unsupportedRequest
-        case .allProvidersFailed: .unknown
+        case .allProvidersFailed, .providersFailed: .unknown
         case .blockedURL: .unsupportedRequest
         case .extractionFailed: .malformedResponse
         case .fetchFailed: .network
@@ -59,8 +67,8 @@ public enum SearchError: Error, Sendable, Hashable {
              .notConfigured(let id),
              .unsupportedRequest(let id, _):
             id
-        case .invalidRequest, .allProvidersFailed, .blockedURL, .extractionFailed,
-             .fetchFailed:
+        case .invalidRequest, .allProvidersFailed, .providersFailed, .blockedURL,
+             .extractionFailed, .fetchFailed:
             nil
         }
     }
@@ -93,6 +101,8 @@ public enum SearchError: Error, Sendable, Hashable {
             "\(id.displayName) cannot serve this request: \(detail)"
         case .allProvidersFailed:
             "All eligible search providers failed."
+        case .providersFailed(let failures):
+            SearchError.describe(failures)
         case .blockedURL(let url):
             "Blocked URL: \(url.host() ?? url.absoluteString)"
         case .fetchFailed(let url, let reason):
@@ -100,6 +110,22 @@ public enum SearchError: Error, Sendable, Hashable {
         case .extractionFailed(let url):
             "Could not extract readable content from \(url.host() ?? url.absoluteString)."
         }
+    }
+}
+
+extension SearchError {
+    /// Summarise per-provider failures into one actionable sentence.
+    ///
+    /// Lists every provider when there are few, so a search that degraded across several
+    /// providers is fully explained in one message.
+    public static func describe(_ failures: [ProviderFailure]) -> String {
+        guard !failures.isEmpty else {
+            return "All eligible search providers failed."
+        }
+        let parts = failures.map { failure in
+            "\(failure.provider.displayName): \(failure.message)"
+        }
+        return "No search provider produced results. " + parts.joined(separator: " ")
     }
 }
 

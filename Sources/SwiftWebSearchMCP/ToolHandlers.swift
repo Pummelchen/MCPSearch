@@ -222,6 +222,10 @@ struct ToolHandlers: Sendable {
         case .allProvidersFailed:
             "All eligible search providers failed. Run web_search_status for per-provider "
                 + "detail."
+        case .providersFailed(let failures):
+            // The reasons are already phrased for a human, so surface them directly
+            // rather than making the caller run a second diagnostic call.
+            SearchError.describe(failures)
         case .authenticationRequired(let provider):
             "\(provider.displayName) rejected the configured credentials. Check the API key."
         case .notConfigured(let provider):

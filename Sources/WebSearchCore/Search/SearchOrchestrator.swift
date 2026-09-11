@@ -147,7 +147,9 @@ public actor SearchOrchestrator {
                         + failures.map(\.message).joined(separator: " ")
                 )
             }
-            throw SearchError.allProvidersFailed
+            // Attach the per-provider reasons. With a single explicitly requested
+            // provider, "all providers failed" alone tells a caller nothing.
+            throw SearchError.providersFailed(failures)
         }
 
         let usedProviderIDs = accumulated.map(\.provider).reduce(into: [ProviderID]()) { ids, id in

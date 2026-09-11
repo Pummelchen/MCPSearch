@@ -24,11 +24,29 @@ public enum RankFusion {
         public var k: Double
         /// Extra weight for providers whose results came from an independent crawl.
         public var independentIndexWeight: Double
-        /// Weight multiplier applied to aggregator providers *before* independence
-        /// is established.
-        public var aggregatorWeight: Double
+        /// Weight multiplier applied to an aggregator that resells an index already
+        /// represented in the same run by a provider that owns it.
+        ///
+        /// This is deliberately **not** a blanket penalty. The score is
+        /// `weight / (k + rank)`, so once a weight ratio exceeds the reachable rank ratio
+        /// `(k + maxRank) / (k + 1)`, one provider's *entire* result list outranks
+        /// another's and fusion stops ordering by relevance, becoming a provider
+        /// preference instead. With the default `k = 60` and a page of results that
+        /// ratio is only about 1.08, so even a modest penalty is enough to cause it.
+        ///
+        /// An aggregator is therefore discounted only when it demonstrably resells an
+        /// index that another provider in the same run already owns; otherwise its
+        /// results compete on rank, which is the point of rank fusion. Search engines
+        /// expose no per-result engine attribution through the APIs used here, so that is
+        /// detected from the upstream engines the adapter reports.
+        public var duplicatedAggregatorWeight: Double
         /// Weight multiplier applied to opt-in HTML scrapers, whose markup is not a
         /// contract and whose ordering is therefore less trustworthy.
+        ///
+        /// Also 1.0 by default, for the same reason: a lower value would let a scraper's
+        /// worst result outrank another provider's best. Scrapers are already opt-in,
+        /// rate limited and off by default, so the ranking does not need to punish them
+        /// further.
         public var scraperWeight: Double
         /// Maximum number of results any single domain may contribute.
         public var maxResultsPerDomain: Int
@@ -36,13 +54,13 @@ public enum RankFusion {
         public init(
             k: Double = 60,
             independentIndexWeight: Double = 1.0,
-            aggregatorWeight: Double = 0.7,
-            scraperWeight: Double = 0.6,
+            duplicatedAggregatorWeight: Double = 0.7,
+            scraperWeight: Double = 1.0,
             maxResultsPerDomain: Int = 2
         ) {
             self.k = k
             self.independentIndexWeight = independentIndexWeight
-            self.aggregatorWeight = aggregatorWeight
+            self.duplicatedAggregatorWeight = duplicatedAggregatorWeight
             self.scraperWeight = scraperWeight
             self.maxResultsPerDomain = maxResultsPerDomain
         }
@@ -82,6 +100,14 @@ public enum RankFusion {
         var clusters: [String: Cluster] = [:]
         var order: [String] = []
 
+        // Source families that a provider *owning* an index contributed in this run.
+        // Only these can be duplicated by an aggregator.
+        let ownedFamilies: Set<SourceFamily> = Set(
+            responses
+                .filter { !$0.provider.isAggregator }
+                .map { $0.provider.sourceFamily }
+        )
+
         for response in responses {
             let provider = response.provider
             let family = provider.sourceFamily
@@ -89,6 +115,10 @@ public enum RankFusion {
                 for: family,
                 provider: provider,
                 base: providerWeights[provider] ?? 1.0,
+                duplicatedOwnedIndex: RankFusion.resellsIndexAlreadyOwned(
+                    response: response,
+                    ownedFamilies: ownedFamilies
+                ),
                 configuration: configuration
             )
 
@@ -219,20 +249,63 @@ public enum RankFusion {
         return (results, diagnostics)
     }
 
+    /// Whether an aggregator is reselling an index that another provider in this run
+    /// already owns.
+    ///
+    /// Decided from the upstream engines the adapter reports. Engines are matched by
+    /// name against the `SourceFamily` they belong to, so an instance that internally
+    /// queried Brave is recognised as duplicating a directly-configured Brave, while an
+    /// instance querying engines nobody else covers is not penalised.
+    static func resellsIndexAlreadyOwned(
+        response: ProviderSearchResponse,
+        ownedFamilies: Set<SourceFamily>
+    ) -> Bool {
+        guard response.provider.isAggregator, !ownedFamilies.isEmpty else { return false }
+        for engine in response.upstreamEngines {
+            if let family = RankFusion.family(forUpstreamEngine: engine),
+               ownedFamilies.contains(family)
+            {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Map an upstream engine name, as reported by an aggregator, onto its source family.
+    ///
+    /// Only engines whose owning index is represented by a direct adapter can matter
+    /// here; anything else returns nil and is ignored.
+    static func family(forUpstreamEngine engine: String) -> SourceFamily? {
+        let name = engine.lowercased()
+        if name.contains("brave") { return .brave }
+        if name.contains("mojeek") { return .mojeek }
+        if name.contains("tavily") { return .tavily }
+        if name.contains("exa") { return .exa }
+        if name.contains("google") || name.contains("startpage") { return .google }
+        if name.contains("duckduckgo") || name.contains("ddg") { return .duckDuckGo }
+        return nil
+    }
+
     /// Weight applied to one contribution, combining registry weight, source-family
     /// trust and provider class.
+    ///
+    /// - Parameter duplicatedOwnedIndex: true only when an aggregator is reselling an
+    ///   index already owned by another provider in the same run. See
+    ///   `Configuration.duplicatedAggregatorWeight` for why this must not be a blanket
+    ///   penalty.
     static func weight(
         for family: SourceFamily,
         provider: ProviderID,
         base: Double,
+        duplicatedOwnedIndex: Bool = false,
         configuration: Configuration
     ) -> Double {
         var weight = base
         if family.isIndependentIndex {
             weight *= configuration.independentIndexWeight
         }
-        if provider.isAggregator {
-            weight *= configuration.aggregatorWeight
+        if duplicatedOwnedIndex {
+            weight *= configuration.duplicatedAggregatorWeight
         }
         if provider.isExperimentalScraper {
             weight *= configuration.scraperWeight

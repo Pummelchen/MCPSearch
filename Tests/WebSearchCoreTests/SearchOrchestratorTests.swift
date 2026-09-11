@@ -221,12 +221,55 @@ final class SearchOrchestratorTests: XCTestCase {
 
         do {
             _ = try await orchestrator.search(Fixtures.request(mode: .balanced))
-            XCTFail("expected allProvidersFailed")
+            XCTFail("expected a failure")
         } catch let error as SearchError {
             XCTAssertEqual(error.category, .unknown)
-            if case .allProvidersFailed = error {} else {
-                XCTFail("expected allProvidersFailed, got \(error)")
+            // The per-provider reasons must travel with the error: with a single
+            // explicitly requested provider, "all providers failed" alone is useless.
+            guard case .providersFailed(let failures) = error else {
+                return XCTFail("expected providersFailed, got \(error)")
             }
+            XCTAssertEqual(failures.count, 2)
+            XCTAssertEqual(Set(failures.map(\.provider)), Set([.tavily, .brave]))
+            // And the rendered message must name them.
+            let message = error.safeDescription
+            XCTAssertTrue(message.contains("Tavily"), message)
+            XCTAssertTrue(message.contains("Brave"), message)
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
+    /// A single explicitly requested provider that fails must say why, rather than
+    /// reporting a generic "all providers failed".
+    func testExplicitProviderFailureExplainsTheReason() async {
+        var configuration = Fixtures.configuration(providerOrder: [.startpage])
+        configuration.enableScrapers = true
+        let startpage = MockSearchProvider.failing(
+            .startpage,
+            with: .providerUnavailable(.startpage)
+        )
+        let (orchestrator, _, _) = makeOrchestrator(
+            providers: [startpage],
+            configuration: configuration
+        )
+
+        do {
+            _ = try await orchestrator.search(
+                Fixtures.request(mode: .fast),
+                requestedProvider: .startpage
+            )
+            XCTFail("expected a failure")
+        } catch let error as SearchError {
+            let message = error.safeDescription
+            XCTAssertTrue(
+                message.contains("Startpage"),
+                "the message must name the provider that failed, got: \(message)"
+            )
+            XCTAssertFalse(
+                message.contains("All eligible search providers failed"),
+                "a single-provider failure should not be reported generically: \(message)"
+            )
         } catch {
             XCTFail("unexpected error: \(error)")
         }
