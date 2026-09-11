@@ -79,11 +79,15 @@ jobs:
           python3 scripts/mcp_smoke.py "$BIN"
           python3 scripts/mcp_smoke.py --http "$BIN"
 
-      # Prove the hermeticity claim rather than assuming it: the suite must still pass
-      # when provider credentials are present in the environment.
-      - name: Test again with provider credentials present
+      # Prove the hermeticity claim rather than assuming it: the default suite must
+      # still pass when provider credentials are present in the environment.
+      #
+      # These values are deliberately obvious placeholders. The live provider tests
+      # recognise them as unusable and skip, so this step exercises hermeticity without
+      # ever contacting a vendor.
+      - name: Test again with placeholder provider credentials present
         env:
-          TAVILY_API_KEY: tvly-not-a-real-key
-          BRAVE_SEARCH_API_KEY: not-a-real-key
+          TAVILY_API_KEY: tvly-ci-placeholder-not-a-real-key
+          BRAVE_SEARCH_API_KEY: ci-placeholder-not-a-real-key
           SEARXNG_BASE_URL: https://searx.invalid
         run: swift test

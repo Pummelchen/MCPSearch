@@ -35,14 +35,34 @@ final class LiveProviderTests: XCTestCase {
         var description: String { "no live provider credentials available" }
     }
 
+    /// Credential values that look like placeholders rather than real keys.
+    ///
+    /// CI deliberately runs the suite with provider variables set to fake values, to
+    /// prove the default suite is hermetic. That must **not** activate these live tests:
+    /// a present-but-fake key would otherwise send real requests and fail with an
+    /// authentication error, turning a passing build red. A key is therefore only
+    /// treated as usable when it looks like a genuine credential.
+    private static let placeholderMarkers = [
+        "not-a-real-key", "placeholder", "fake", "dummy", "example", "invalid", "ci-",
+    ]
+
+    /// Whether a value looks like a usable credential rather than a test placeholder.
+    static func isUsableKey(_ value: String) -> Bool {
+        let normalized = value.lowercased()
+        guard normalized.count >= 20 else { return false }
+        return !placeholderMarkers.contains { normalized.contains($0) }
+    }
+
     /// Read `TAVILY_API_KEY` from the environment, falling back to `config.env`.
     ///
     /// `config.env` is git-ignored, so a developer can keep a real key locally without
     /// any risk of committing it.
     private static func liveKey(_ name: String) -> String? {
         let environment = ProcessInfo.processInfo.environment
-        if let value = environment[name], !value.trimmingCharacters(in: .whitespaces).isEmpty {
-            return value.trimmingCharacters(in: .whitespaces)
+        if let value = environment[name]?.trimmingCharacters(in: .whitespaces),
+           !value.isEmpty
+        {
+            return isUsableKey(value) ? value : nil
         }
 
         // Walk up from the test bundle to find the package root's config.env.
@@ -53,7 +73,7 @@ final class LiveProviderTests: XCTestCase {
                let parsed = AppConfiguration.parseDotEnv(contents)[name],
                !parsed.isEmpty
             {
-                return parsed
+                return isUsableKey(parsed) ? parsed : nil
             }
             directory = directory.deletingLastPathComponent()
         }
@@ -105,6 +125,41 @@ final class LiveProviderTests: XCTestCase {
     }
 
     // MARK: - Credential validity
+
+    /// The placeholder guard must reject the values CI uses to prove hermeticity.
+    ///
+    /// Without this, running the suite with a fake key present would activate these live
+    /// tests and turn a passing build red with an authentication failure.
+    func testPlaceholderCredentialsAreNotTreatedAsUsable() {
+        // Values the CI workflow and example configuration actually use.
+        for placeholder in [
+            "tvly-not-a-real-key",
+            "tvly-ci-placeholder",
+            "not-a-real-key",
+            "fake",
+            "dummy-key",
+            "example-key",
+            "invalid",
+            "tvly-dev-placeholder-value",
+        ] {
+            XCTAssertFalse(
+                LiveProviderTests.isUsableKey(placeholder),
+                "'\(placeholder)' is a placeholder and must not enable live tests"
+            )
+        }
+
+        // Too short to be a real key.
+        XCTAssertFalse(LiveProviderTests.isUsableKey("short"))
+        XCTAssertFalse(LiveProviderTests.isUsableKey(""))
+
+        // A realistic Tavily key shape is accepted.
+        XCTAssertTrue(
+            LiveProviderTests.isUsableKey("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")
+        )
+        XCTAssertTrue(
+            LiveProviderTests.isUsableKey("tvly-abcdefghijklmnopqrstuvwxyz0123456789")
+        )
+    }
 
     /// A deliberately invalid key must be reported as a configuration problem.
     ///
