@@ -1,0 +1,44 @@
+# Minimal SearXNG settings for local, personal use by SwiftWebSearchMCP.
+#
+# The stock image ships with `search.formats: [html]` only, which makes
+# `format=json` return HTTP 403. Enabling json here is what makes the instance
+# usable as a provider, and is the single most common reason a self-hosted
+# SearXNG "does not work" with an MCP server.
+use_default_settings: true
+
+general:
+  debug: false
+  instance_name: "MCPSearch local"
+
+server:
+  # Local-only: reachable from this machine. Do not expose without adding a
+  # reverse proxy and the limiter.
+  bind_address: "0.0.0.0"
+  port: 8080
+  # The limiter requires Redis/Valkey; it is off because this instance is bound
+  # to a private Docker network and used by one client.
+  limiter: false
+  public_instance: false
+  secret_key: "change-me-local-only-not-a-credential"
+  image_proxy: false
+
+search:
+  # Required: without `json` the API returns 403 and the provider cannot be used.
+  formats:
+    - html
+    - json
+  safe_search: 0
+  autocomplete: ""
+  # Keep aggregation fast enough for the MCP server's wall-clock budgets.
+  max_page: 1
+
+ui:
+  static_use_hash: true
+
+outgoing:
+  request_timeout: 6.0
+  max_request_timeout: 10.0
+  # SearXNG pools outgoing requests through this many connections; a modest value
+  # keeps latency predictable on a shared home connection.
+  pool_connections: 20
+  pool_maxsize: 20

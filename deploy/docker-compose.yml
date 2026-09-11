@@ -1,0 +1,23 @@
+services:
+  searxng:
+    image: searxng/searxng:latest
+    container_name: mcps-searxng
+    restart: unless-stopped
+    ports:
+      # Bound to loopback: this instance has no authentication and is meant for the
+      # local MCP server. Change to "127.0.0.1:8888:8080" explicitly, or put a reverse
+      # proxy in front, if the port ever needs to be reachable from elsewhere.
+      - "127.0.0.1:8888:8080"
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    environment:
+      # Keeps SearXNG's own logs out of the way; the MCP server never reads them.
+      - SEARXNG_BASE_URL=http://localhost:8080/
+    healthcheck:
+      # A JSON request is the right probe: it fails when `search.formats` lacks `json`,
+      # which is the failure that otherwise shows up as a mysterious 403 in the server.
+      test: ["CMD-SHELL", "wget -q -O /dev/null 'http://localhost:8080/search?q=health&format=json' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
