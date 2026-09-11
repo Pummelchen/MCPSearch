@@ -1,0 +1,248 @@
+#!/bin/bash
+# Provision one node with a container runtime and a SearXNG instance.
+#
+# Runs on the node. Idempotent: safe to re-run, which matters because Homebrew and
+# Colima installs can fail partway on a headless machine.
+#
+# Docker Desktop is deliberately not used: it requires a GUI session. Colima is a
+# headless container runtime for macOS with a docker-compatible CLI, which is what a
+# screen-less Mac Mini needs.
+set -uo pipefail
+
+NODE_NAME="$(hostname -s)"
+LOG_PREFIX="[$(date +%H:%M:%S) $NODE_NAME]"
+say() { echo "$LOG_PREFIX $*"; }
+fail() { echo "$LOG_PREFIX ERROR: $*" >&2; exit 1; }
+
+# Keep the VM small: these machines have 8 GB of RAM and are also doing other work.
+COLIMA_CPU="${COLIMA_CPU:-2}"
+COLIMA_MEMORY="${COLIMA_MEMORY:-2}"
+COLIMA_DISK="${COLIMA_DISK:-20}"
+SEARXNG_PORT="${SEARXNG_PORT:-8888}"
+
+# ---------------------------------------------------------------------------
+# 0. sudo
+# ---------------------------------------------------------------------------
+# An ssh command runs a non-login, non-interactive shell: no TTY, so sudo cannot prompt.
+# Cache the credential up front from SUDO_PASSWORD when the account has no passwordless
+# sudo, then the rest of this script can use sudo normally.
+if ! sudo -n true 2>/dev/null; then
+    if [ -n "${SUDO_PASSWORD:-}" ]; then
+        say "caching sudo credential"
+        printf '%s\n' "$SUDO_PASSWORD" | sudo -S -v 2>/dev/null \
+            || fail "sudo rejected the supplied password"
+    else
+        fail "sudo needs a password: re-run with the SUDO_PASSWORD environment variable set"
+    fi
+fi
+sudo -n true 2>/dev/null || fail "sudo is not usable"
+say "sudo available"
+
+# ---------------------------------------------------------------------------
+# 1. Homebrew
+# ---------------------------------------------------------------------------
+# A non-login shell does not apply Homebrew's shellenv, so `command -v brew` reports
+# "not found" even when Homebrew is installed. Check the known prefixes first, otherwise
+# a working installation gets needlessly reinstalled.
+for prefix in /opt/homebrew /usr/local; do
+    if [ -x "${prefix}/bin/brew" ]; then
+        eval "$("${prefix}/bin/brew" shellenv)"
+        break
+    fi
+done
+
+if ! command -v brew >/dev/null 2>&1; then
+    say "installing Homebrew (non-interactive)"
+    # NONINTERACTIVE avoids the "press RETURN" prompt; sudo is already cached above.
+    NONINTERACTIVE=1 /bin/bash -c \
+        "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
+        >/tmp/brew-install.log 2>&1 \
+        || fail "Homebrew install failed; see /tmp/brew-install.log"
+    for prefix in /opt/homebrew /usr/local; do
+        [ -x "${prefix}/bin/brew" ] && eval "$("${prefix}/bin/brew" shellenv)" && break
+    done
+fi
+
+command -v brew >/dev/null 2>&1 || fail "brew not available after install attempt"
+say "brew ready: $(brew --version | head -1)"
+
+# Persist the environment for future interactive logins, once.
+if ! grep -q 'brew shellenv' "${HOME}/.zprofile" 2>/dev/null; then
+    printf '\neval "$(%s/bin/brew shellenv)"\n' "$(brew --prefix)" >> "${HOME}/.zprofile"
+fi
+
+# ---------------------------------------------------------------------------
+# 2. Colima + docker CLI
+# ---------------------------------------------------------------------------
+if ! command -v colima >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1; then
+    say "installing colima and docker CLI"
+    # Do not treat brew's exit status as the result. On a machine that once had Docker
+    # Desktop, `brew install docker` still exits non-zero while successfully installing,
+    # because it cannot create symlinks into an /Applications/Docker.app that is not
+    # there. The binaries are what matter, so they are checked below.
+    HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 \
+        brew install colima docker docker-compose >/tmp/brew-pkgs.log 2>&1 \
+        || say "brew reported a problem (see /tmp/brew-pkgs.log); verifying binaries"
+fi
+
+# The docker *client* formula installs its binary but can fail to link it when a
+# `docker.lima` symlink from lima already occupies the name. Link it explicitly; this is
+# idempotent and is exactly what was missing on the first three nodes.
+if ! command -v docker >/dev/null 2>&1; then
+    say "linking the docker CLI"
+    brew link --overwrite docker >/tmp/brew-link.log 2>&1 \
+        || say "brew link reported a problem (see /tmp/brew-link.log)"
+fi
+
+command -v colima >/dev/null 2>&1 || fail "colima not installed"
+# `docker` may resolve to a broken Docker Desktop symlink; `docker --version` is the
+# only check that proves the client actually runs.
+docker --version >/dev/null 2>&1 || fail "docker CLI is present but not runnable"
+say "colima ready: $(colima version 2>/dev/null | head -1)"
+say "docker client: $(docker --version 2>/dev/null)"
+
+# ---------------------------------------------------------------------------
+# 2b. Container client configuration
+# ---------------------------------------------------------------------------
+# A machine that once had Docker Desktop can carry a ~/.docker/config.json pointing at
+# its credential helper. Without the app installed, every registry operation dies with
+# `exec: "docker-credential-desktop": executable file not found`, including pulls of
+# public images that need no credentials at all. Strip that key rather than requiring
+# the helper.
+if [ -f "${HOME}/.docker/config.json" ]; then
+    if grep -q '"credsStore"' "${HOME}/.docker/config.json" 2>/dev/null; then
+        say "removing the stale Docker Desktop credential store from ~/.docker/config.json"
+        python3 - <<'PYEOF'
+import json, pathlib
+path = pathlib.Path.home() / ".docker" / "config.json"
+try:
+    config = json.loads(path.read_text())
+except (OSError, ValueError):
+    raise SystemExit(0)
+if config.pop("credsStore", None) is not None:
+    path.write_text(json.dumps(config, indent=2))
+PYEOF
+    fi
+fi
+
+# ---------------------------------------------------------------------------
+# 3. Start the VM
+# ---------------------------------------------------------------------------
+if ! colima status >/dev/null 2>&1; then
+    say "starting colima VM (cpu=$COLIMA_CPU mem=${COLIMA_MEMORY}GB disk=${COLIMA_DISK}GB)"
+    colima start \
+        --cpu "$COLIMA_CPU" \
+        --memory "$COLIMA_MEMORY" \
+        --disk "$COLIMA_DISK" \
+        --vm-type vz \
+        --mount-type virtiofs \
+        >/tmp/colima-start.log 2>&1 \
+        || fail "colima start failed; see /tmp/colima-start.log"
+fi
+colima status >/dev/null 2>&1 || fail "colima is not running"
+
+# Make the docker CLI find the Colima socket for this shell and for future logins.
+DOCKER_SOCK="unix://${HOME}/.colima/default/docker.sock"
+export DOCKER_HOST="$DOCKER_SOCK"
+if ! grep -q 'DOCKER_HOST' "${HOME}/.zshrc" 2>/dev/null; then
+    printf '\nexport DOCKER_HOST="%s"\n' "$DOCKER_SOCK" >> "${HOME}/.zshrc"
+fi
+
+for i in $(seq 1 30); do
+    docker info >/dev/null 2>&1 && break
+    sleep 2
+done
+docker info >/dev/null 2>&1 || fail "docker daemon not reachable after colima start"
+say "docker daemon ready: $(docker version --format '{{.Server.Version}}' 2>/dev/null)"
+
+# ---------------------------------------------------------------------------
+# 4. SearXNG
+# ---------------------------------------------------------------------------
+INSTALL_DIR="${HOME}/mcps-searxng"
+mkdir -p "${INSTALL_DIR}/searxng"
+
+# Written here rather than copied so the node is self-contained and re-provisioning
+# needs nothing but this script.
+cat > "${INSTALL_DIR}/searxng/settings.yml" <<'SETTINGS'
+# Local SearXNG for SwiftWebSearchMCP on a cluster node.
+use_default_settings: true
+
+general:
+  instance_name: "MCPSearch node"
+
+server:
+  bind_address: "0.0.0.0"
+  port: 8080
+  # No Redis/Valkey here; the instance is private to the LAN.
+  limiter: false
+  public_instance: false
+  secret_key: "node-local-only-not-a-credential"
+  image_proxy: false
+
+search:
+  # Required: the stock image enables html only, so format=json returns HTTP 403.
+  formats:
+    - html
+    - json
+  safe_search: 0
+  max_page: 1
+
+outgoing:
+  request_timeout: 6.0
+  max_request_timeout: 10.0
+  pool_connections: 20
+  pool_maxsize: 20
+SETTINGS
+
+# Prefer a locally-loaded image (transferred over the LAN) so each node does not
+# re-download ~200 MB from the internet.
+if docker image inspect searxng/searxng:latest >/dev/null 2>&1; then
+    say "searxng image already present"
+elif [ -f /tmp/searxng-image.tar ]; then
+    say "loading searxng image from /tmp/searxng-image.tar"
+    docker load -i /tmp/searxng-image.tar >/tmp/docker-load.log 2>&1 \
+        || fail "docker load failed; see /tmp/docker-load.log"
+else
+    say "pulling searxng image from the internet"
+    docker pull searxng/searxng:latest >/tmp/docker-pull.log 2>&1 \
+        || fail "docker pull failed; see /tmp/docker-pull.log"
+fi
+
+docker rm -f mcps-searxng >/dev/null 2>&1
+
+# Bound to all interfaces on the node so the main machine can reach it over the LAN.
+# The node itself is on a private network and the instance has no authentication, so
+# this is a LAN-only exposure by design: no port forwarding, no public DNS.
+docker run -d \
+    --name mcps-searxng \
+    --restart unless-stopped \
+    -p "${SEARXNG_PORT}:8080" \
+    -v "${INSTALL_DIR}/searxng/settings.yml:/etc/searxng/settings.yml:ro" \
+    searxng/searxng:latest >/tmp/docker-run.log 2>&1 \
+    || fail "docker run failed; see /tmp/docker-run.log"
+
+say "waiting for searxng to answer JSON"
+READY=no
+for i in $(seq 1 30); do
+    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+        "http://127.0.0.1:${SEARXNG_PORT}/search?q=health&format=json" 2>/dev/null)"
+    if [ "$code" = "200" ]; then READY=yes; break; fi
+    sleep 2
+done
+[ "$READY" = "yes" ] || fail "searxng did not answer JSON on port ${SEARXNG_PORT} (last HTTP $code)"
+
+# Survive a reboot. The container has `--restart unless-stopped`, but that only helps
+# once the Docker daemon is running, and the Colima VM does not start itself.
+if brew services list 2>/dev/null | grep -q '^colima'; then
+    brew services start colima >/tmp/brew-services.log 2>&1 \
+        && say "colima registered to start at login" \
+        || say "could not register colima as a service (see /tmp/brew-services.log)"
+fi
+
+TAILSCALE_IP="$(/usr/local/bin/tailscale ip -4 2>/dev/null | head -1)"
+[ -n "$TAILSCALE_IP" ] || TAILSCALE_IP="$(/Applications/Tailscale.app/Contents/MacOS/Tailscale ip -4 2>/dev/null | head -1)"
+[ -n "$TAILSCALE_IP" ] || TAILSCALE_IP="$(ipconfig getifaddr en0 2>/dev/null)"
+[ -n "$TAILSCALE_IP" ] || TAILSCALE_IP="$(hostname)"
+
+say "READY  searxng http://${TAILSCALE_IP}:${SEARXNG_PORT}"
+say "container: $(docker ps --filter name=mcps-searxng --format '{{.Status}}')"
