@@ -1,0 +1,167 @@
+import Foundation
+import SwiftSoup
+
+/// DuckDuckGo — best-effort public-search adapter, **disabled by default**.
+///
+/// This is an escape hatch for when no supported API or SearXNG route is available.
+/// The public HTML interface is not an API contract: selectors change, bot challenges
+/// appear, and regional behaviour differs. Enable it only with
+/// `SEARCH_ENABLE_SCRAPERS=true`, and treat any result as lower confidence than an
+/// API provider — the fusion layer already down-weights scrapers.
+public struct DuckDuckGoProvider: SearchProvider {
+    public let id: ProviderID = .duckDuckGo
+    public let capabilities = ProviderCapabilities(
+        supportsIncludeDomains: false,
+        supportsExcludeDomains: false,
+        supportsRecency: true,
+        supportsLocale: false,
+        supportsAnswer: false,
+        supportsInlineContent: false,
+        supportsPagination: false
+    )
+    /// Scrapers get a lower vote because their ordering is not a documented contract.
+    public let fusionWeight: Double = 1.0
+
+    private let http: any HTTPClient
+    private let configuration: AppConfiguration
+    private let scrapersEnabled: Bool
+    private let log: Log
+
+    public static let endpoint = URL(string: "https://html.duckduckgo.com/html/")!
+
+    /// Result containers, most specific first.
+    public static let containerSelectors = [
+        "div.result", "div.web-result", "div.results_links", "article[data-testid=result]",
+        "div[data-testid=result]", "li.result",
+    ]
+    public static let linkSelectors = [
+        "a.result__a", "h2 a", "a.result-link", "a[data-testid=result-title-a]",
+    ]
+    public static let snippetSelectors = [
+        "a.result__snippet", ".result__snippet", "td.result-snippet", ".result-snippet",
+        "[data-result=snippet]", "div.result__body + div",
+    ]
+
+    public init(
+        http: any HTTPClient,
+        configuration: AppConfiguration,
+        scrapersEnabled: Bool,
+        log: Log = .disabled
+    ) {
+        self.http = http
+        self.configuration = configuration
+        self.scrapersEnabled = scrapersEnabled
+        self.log = log
+    }
+
+    public var isConfigured: Bool { scrapersEnabled }
+
+    public func search(_ request: SearchRequest) async throws -> ProviderSearchResponse {
+        guard scrapersEnabled else {
+            throw SearchError.notConfigured(.duckDuckGo)
+        }
+
+        let started = DispatchTime.now().uptimeNanoseconds
+
+        guard var components = URLComponents(
+            url: DuckDuckGoProvider.endpoint,
+            resolvingAgainstBaseURL: false
+        ) else {
+            throw SearchError.unsupportedRequest(.duckDuckGo, "could not build request URL")
+        }
+        var items = [URLQueryItem(name: "q", value: request.normalizedQuery)]
+        // `kl` is DDG's region hint; it is best-effort and undocumented.
+        if let region = request.locale?.region {
+            items.append(URLQueryItem(name: "kl", value: "\(region.lowercased())-\(region.lowercased())"))
+        }
+        if let df = DuckDuckGoProvider.dateFilter(for: request.recency) {
+            items.append(URLQueryItem(name: "df", value: df))
+        }
+        components.queryItems = items
+
+        guard let url = components.url else {
+            throw SearchError.unsupportedRequest(.duckDuckGo, "could not build request URL")
+        }
+
+        let response = try await http.send(
+            HTTPRequest.get(
+                url,
+                headers: [
+                    "Accept": "text/html,application/xhtml+xml",
+                    "Accept-Language": "en-US,en;q=0.9",
+                ],
+                label: "duckduckgo.search"
+            ),
+            maxBytes: configuration.maxSearchResponseBytes
+        )
+
+        if response.statusCode == 429 {
+            throw SearchError.rateLimited(.duckDuckGo, retryAfter: nil)
+        }
+        // DuckDuckGo answers automated requests with HTTP 202 and an "anomaly modal"
+        // challenge page rather than 403, so the status must be checked explicitly.
+        if response.statusCode == 202 {
+            throw SearchError.providerUnavailable(.duckDuckGo)
+        }
+        guard response.isSuccess else {
+            throw SearchError.providerUnavailable(.duckDuckGo)
+        }
+
+        let page = try ScraperSupport.parse(
+            html: response.text(),
+            containerSelectors: DuckDuckGoProvider.containerSelectors,
+            linkSelectors: DuckDuckGoProvider.linkSelectors,
+            snippetSelectors: DuckDuckGoProvider.snippetSelectors,
+            base: "https://duckduckgo.com",
+            // DDG's own hosts appear in navigation and redirect wrappers.
+            excludeHosts: ["duckduckgo.com", "duck.co"]
+        )
+
+        // A challenge page and a genuine empty result set need different handling.
+        if page.detectedBlock == .botChallenge {
+            throw SearchError.providerUnavailable(.duckDuckGo)
+        }
+        if page.results.isEmpty {
+            throw SearchError.malformedResponse(.duckDuckGo)
+        }
+
+        var seen: Set<String> = []
+        var results: [SearchResult] = []
+        for (index, item) in page.results.enumerated() {
+            guard let result = ResultNormalizer.make(
+                provider: .duckDuckGo,
+                rank: index + 1,
+                title: item.title,
+                urlString: item.url,
+                snippet: item.snippet,
+                request: request,
+                seenKeys: &seen
+            ) else { continue }
+            results.append(result)
+        }
+
+        let elapsed = Int((DispatchTime.now().uptimeNanoseconds - started) / 1_000_000)
+        log.debug(
+            "DuckDuckGo scrape complete",
+            metadata: ["results": "\(results.count)", "latency_ms": "\(elapsed)"]
+        )
+
+        return ProviderSearchResponse(
+            provider: .duckDuckGo,
+            results: results,
+            latencyMilliseconds: elapsed,
+            warnings: ["DuckDuckGo results come from an undocumented HTML interface."]
+        )
+    }
+
+    /// DDG's `df` date filter values.
+    static func dateFilter(for recency: Recency) -> String? {
+        switch recency {
+        case .any: nil
+        case .day: "d"
+        case .week: "w"
+        case .month: "m"
+        case .year: "y"
+        }
+    }
+}

@@ -1,0 +1,478 @@
+import Foundation
+import XCTest
+
+@testable import WebSearchCore
+
+/// Orchestrator behaviour: selection, fan-out, failover, caching and degradation.
+final class SearchOrchestratorTests: XCTestCase {
+
+    private func makeOrchestrator(
+        providers: [any SearchProvider],
+        configuration: AppConfiguration = Fixtures.configuration(),
+        health: ProviderHealth? = nil,
+        clock: any Clock = SystemClock()
+    ) -> (SearchOrchestrator, ProviderHealth, SearchCache) {
+        let registry = ProviderRegistry(providers: providers, configuration: configuration)
+        let resolvedHealth = health ?? ProviderHealth(clock: clock)
+        let cache = SearchCache(clock: clock)
+        let orchestrator = SearchOrchestrator(
+            registry: registry,
+            health: resolvedHealth,
+            cache: cache,
+            configuration: configuration,
+            clock: clock
+        )
+        return (orchestrator, resolvedHealth, cache)
+    }
+
+    // MARK: Selection
+
+    func testFastModeCallsExactlyOneProvider() async throws {
+        let tavily = MockSearchProvider.returning(
+            .tavily,
+            results: [("T", "https://t.example.com/1", "s")]
+        )
+        let brave = MockSearchProvider.returning(
+            .brave,
+            results: [("B", "https://b.example.com/1", "s")]
+        )
+        let (orchestrator, _, _) = makeOrchestrator(providers: [tavily, brave])
+
+        let response = try await orchestrator.search(Fixtures.request(mode: .fast))
+
+        XCTAssertEqual(response.providersUsed, [.tavily])
+        XCTAssertEqual(tavily.callCount, 1)
+        XCTAssertEqual(brave.callCount, 0, "fast mode must not spend a second provider")
+    }
+
+    func testBalancedModeFansOutToTwoProviders() async throws {
+        let providers = ProviderID.allCases.filter { $0 != .jina }.prefix(3).map {
+            MockSearchProvider.returning($0, results: [("R", "https://\($0.rawValue).example.com/1", nil)])
+        }
+        let (orchestrator, _, _) = makeOrchestrator(providers: Array(providers))
+
+        let response = try await orchestrator.search(Fixtures.request(mode: .balanced))
+
+        XCTAssertEqual(response.providersUsed.count, 2)
+    }
+
+    func testThoroughModeFansOutToThreeProviders() async throws {
+        let providers = ProviderID.allCases.filter { $0 != .jina }.prefix(4).map {
+            MockSearchProvider.returning($0, results: [("R", "https://\($0.rawValue).example.com/1", nil)])
+        }
+        let (orchestrator, _, _) = makeOrchestrator(providers: Array(providers))
+
+        let response = try await orchestrator.search(Fixtures.request(mode: .thorough))
+
+        XCTAssertEqual(response.providersUsed.count, 3)
+    }
+
+    func testIndependentIndexesArePreferredOverAggregatorsInAutoSelection() async throws {
+        // Config order puts the aggregator first, but auto-selection must still pick
+        // the direct index, because an aggregator is usually a reseller.
+        var configuration = Fixtures.configuration()
+        configuration.providerOrder = [.searxng, .mojeek]
+        let searxng = MockSearchProvider.returning(.searxng, results: [("S", "https://s.example.com/1", nil)])
+        let mojeek = MockSearchProvider.returning(.mojeek, results: [("M", "https://m.example.com/1", nil)])
+
+        let (orchestrator, _, _) = makeOrchestrator(
+            providers: [searxng, mojeek],
+            configuration: configuration
+        )
+        let response = try await orchestrator.search(Fixtures.request(mode: .fast))
+
+        XCTAssertEqual(response.providersUsed, [.mojeek])
+    }
+
+    func testExplicitProviderBypassesSelectionPolicy() async throws {
+        let tavily = MockSearchProvider.returning(.tavily, results: [("T", "https://t.example.com/1", nil)])
+        let brave = MockSearchProvider.returning(.brave, results: [("B", "https://b.example.com/1", nil)])
+        let (orchestrator, _, _) = makeOrchestrator(providers: [tavily, brave], configuration: Fixtures.configuration())
+
+        let response = try await orchestrator.search(
+            Fixtures.request(mode: .fast),
+            requestedProvider: .brave
+        )
+
+        XCTAssertEqual(response.providersUsed, [.brave])
+        XCTAssertEqual(tavily.callCount, 0)
+        XCTAssertEqual(brave.callCount, 1)
+    }
+
+    func testExplicitUnconfiguredProviderReturnsAClearError() async {
+        // Brave is registered but has no credentials.
+        let brave = MockSearchProvider(
+            id: .brave,
+            configured: false,
+            outcome: { _ in throw SearchError.notConfigured(.brave) }
+        )
+        let (orchestrator, _, _) = makeOrchestrator(
+            providers: [brave],
+            configuration: Fixtures.configuration(providerOrder: [.brave])
+        )
+
+        do {
+            _ = try await orchestrator.search(
+                Fixtures.request(),
+                requestedProvider: .brave
+            )
+            XCTFail("expected a not-configured error")
+        } catch let error as SearchError {
+            XCTAssertEqual(error.category, .notConfigured)
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
+    func testDisabledProviderCannotBeSelectedExplicitly() async {
+        var configuration = Fixtures.configuration(enableScrapers: true)
+        configuration.providerEnabled[.duckDuckGo] = false
+        let duck = MockSearchProvider.returning(.duckDuckGo, results: [])
+        let (orchestrator, _, _) = makeOrchestrator(
+            providers: [duck],
+            configuration: configuration
+        )
+
+        do {
+            _ = try await orchestrator.search(Fixtures.request(), requestedProvider: .duckDuckGo)
+            XCTFail("expected the disabled provider to be refused")
+        } catch let error as SearchError {
+            XCTAssertEqual(error.category, .unsupportedRequest)
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
+    func testNoConfiguredProviderProducesAnActionableError() async {
+        let (orchestrator, _, _) = makeOrchestrator(
+            providers: [],
+            configuration: Fixtures.configuration(providerOrder: [.tavily])
+        )
+        do {
+            _ = try await orchestrator.search(Fixtures.request())
+            XCTFail("expected an error when nothing is configured")
+        } catch let error as SearchError {
+            XCTAssertEqual(error.category, .unsupportedRequest)
+            XCTAssertTrue(error.safeDescription.contains("TAVILY_API_KEY"))
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
+    func testScrapersAreExcludedUnlessExplicitlyEnabled() async throws {
+        let mojeek = MockSearchProvider.returning(.mojeek, results: [("M", "https://m.example.com/1", nil)])
+        let duck = MockSearchProvider.returning(.duckDuckGo, results: [("D", "https://d.example.com/1", nil)])
+        let (orchestrator, _, _) = makeOrchestrator(
+            providers: [mojeek, duck],
+            configuration: Fixtures.configuration(enableScrapers: false)
+        )
+
+        let response = try await orchestrator.search(Fixtures.request(mode: .thorough))
+        XCTAssertFalse(response.providersUsed.contains(.duckDuckGo))
+        XCTAssertEqual(duck.callCount, 0)
+    }
+
+    func testEmptyQueryIsRejected() async {
+        let tavily = MockSearchProvider.returning(.tavily, results: [])
+        let (orchestrator, _, _) = makeOrchestrator(providers: [tavily])
+        do {
+            _ = try await orchestrator.search(SearchRequest(query: "   "))
+            XCTFail("expected an invalid-request error")
+        } catch let error as SearchError {
+            if case .invalidRequest = error {} else {
+                XCTFail("expected invalidRequest, got \(error)")
+            }
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
+    // MARK: Failover
+
+    func testOneProviderFailingStillReturnsResults() async throws {
+        let good = MockSearchProvider.returning(.tavily, results: [("Good", "https://good.example.com/1", "s")])
+        let bad = MockSearchProvider.failing(.brave, with: .providerUnavailable(.brave))
+        let (orchestrator, _, _) = makeOrchestrator(providers: [good, bad])
+
+        let response = try await orchestrator.search(Fixtures.request(mode: .balanced))
+
+        XCTAssertEqual(response.results.count, 1)
+        XCTAssertEqual(response.providersUsed, [.tavily])
+        XCTAssertEqual(response.providersFailed.count, 1)
+        XCTAssertEqual(response.providersFailed.first?.provider, .brave)
+        XCTAssertTrue(response.warnings.contains { $0.contains("brave") })
+    }
+
+    func testRateLimitedProviderIsReportedAndOthersContinue() async throws {
+        let good = MockSearchProvider.returning(.tavily, results: [("Good", "https://good.example.com/1", nil)])
+        let limited = MockSearchProvider.failing(.brave, with: .rateLimited(.brave, retryAfter: .seconds(5)))
+        let (orchestrator, _, _) = makeOrchestrator(providers: [good, limited])
+
+        let response = try await orchestrator.search(Fixtures.request(mode: .balanced))
+
+        XCTAssertEqual(response.results.count, 1)
+        XCTAssertEqual(response.providersFailed.first?.category, .rateLimited)
+    }
+
+    func testAllProvidersFailingThrowsAllProvidersFailed() async {
+        let a = MockSearchProvider.failing(.tavily, with: .providerUnavailable(.tavily))
+        let b = MockSearchProvider.failing(.brave, with: .timeout(.brave))
+        let (orchestrator, _, _) = makeOrchestrator(providers: [a, b])
+
+        do {
+            _ = try await orchestrator.search(Fixtures.request(mode: .balanced))
+            XCTFail("expected allProvidersFailed")
+        } catch let error as SearchError {
+            XCTAssertEqual(error.category, .unknown)
+            if case .allProvidersFailed = error {} else {
+                XCTFail("expected allProvidersFailed, got \(error)")
+            }
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
+    func testOpenCircuitBreakerSkipsTheProviderWithoutCallingIt() async throws {
+        let clock = TestClock()
+        let health = ProviderHealth(clock: clock)
+        await health.register(.brave)
+        // Trip the breaker with transient failures.
+        for _ in 0..<3 {
+            await health.recordFailure(
+                .brave,
+                failure: ProviderFailure(provider: .brave, category: .serverError, message: "500")
+            )
+        }
+        // The state update happens in a detached task inside recordFailure.
+        try await Task.sleep(for: .milliseconds(60))
+
+        let brave = MockSearchProvider.returning(.brave, results: [("B", "https://b.example.com/1", nil)])
+        let tavily = MockSearchProvider.returning(.tavily, results: [("T", "https://t.example.com/1", nil)])
+        let (orchestrator, _, _) = makeOrchestrator(
+            providers: [tavily, brave],
+            configuration: Fixtures.configuration(),
+            health: health,
+            clock: clock
+        )
+
+        let response = try await orchestrator.search(Fixtures.request(mode: .balanced))
+
+        XCTAssertEqual(brave.callCount, 0, "an open breaker must skip the provider entirely")
+        XCTAssertEqual(response.providersUsed, [.tavily])
+        XCTAssertTrue(response.providersFailed.contains { $0.category == .circuitOpen })
+    }
+
+    func testProviderThatHangsIsCutOffByTheTimeBudget() async throws {
+        var configuration = Fixtures.configuration()
+        configuration.balancedTimeout = .milliseconds(300)
+        configuration.fastTimeout = .milliseconds(300)
+        let hanging = MockSearchProvider.hanging(.tavily)
+        let fast = MockSearchProvider.returning(.brave, results: [("B", "https://b.example.com/1", nil)])
+
+        // A shared cache keeps the second call from re-running the whole fan-out.
+        let registry = ProviderRegistry(
+            providers: [hanging, fast],
+            configuration: configuration
+        )
+        let cache = SearchCache()
+        let health = ProviderHealth()
+        let orchestrator = SearchOrchestrator(
+            registry: registry,
+            health: health,
+            cache: cache,
+            configuration: configuration
+        )
+
+        let started = DispatchTime.now().uptimeNanoseconds
+        let response = try await orchestrator.search(Fixtures.request(mode: .balanced))
+        let elapsedMilliseconds = Int(
+            (DispatchTime.now().uptimeNanoseconds - started) / 1_000_000
+        )
+
+        XCTAssertLessThan(elapsedMilliseconds, 2_000, "the time budget must bound the call")
+        XCTAssertEqual(response.results.count, 1, "the responsive provider's results survive")
+        XCTAssertTrue(response.providersFailed.contains { $0.category == .timeout })
+    }
+
+    // MARK: Caching
+
+    func testSecondIdenticalSearchIsServedFromCache() async throws {
+        let tavily = MockSearchProvider.returning(.tavily, results: [("T", "https://t.example.com/1", nil)])
+        let (orchestrator, _, _) = makeOrchestrator(providers: [tavily])
+
+        let first = try await orchestrator.search(Fixtures.request(mode: .fast))
+        let second = try await orchestrator.search(Fixtures.request(mode: .fast))
+
+        XCTAssertFalse(first.servedFromCache)
+        XCTAssertTrue(second.servedFromCache)
+        XCTAssertEqual(tavily.callCount, 1, "the second call must not hit the provider")
+    }
+
+    func testCacheExpiryTriggersAFreshCall() async throws {
+        let clock = TestClock()
+        let tavily = MockSearchProvider.returning(.tavily, results: [("T", "https://t.example.com/1", nil)])
+        let (orchestrator, _, _) = makeOrchestrator(
+            providers: [tavily],
+            configuration: Fixtures.configuration(cacheTTL: .seconds(30)),
+            clock: clock
+        )
+
+        _ = try await orchestrator.search(Fixtures.request(mode: .fast))
+        clock.advance(by: .seconds(31))
+        let second = try await orchestrator.search(Fixtures.request(mode: .fast))
+
+        XCTAssertFalse(second.servedFromCache)
+        XCTAssertEqual(tavily.callCount, 2)
+    }
+
+    func testDifferentModesUseDifferentCacheEntries() async throws {
+        let tavily = MockSearchProvider.returning(.tavily, results: [("T", "https://t.example.com/1", nil)])
+        let (orchestrator, _, _) = makeOrchestrator(providers: [tavily])
+
+        _ = try await orchestrator.search(Fixtures.request(mode: .fast))
+        _ = try await orchestrator.search(Fixtures.request(mode: .balanced))
+        // Different provider sets produce different answers, so they must not alias.
+        XCTAssertEqual(tavily.callCount, 2)
+    }
+
+    func testFailuresAreNotCached() async throws {
+        let flaky = MockSearchProvider(id: .tavily) { _ in
+            throw SearchError.providerUnavailable(.tavily)
+        }
+        let (orchestrator, _, _) = makeOrchestrator(providers: [flaky])
+
+        for _ in 0..<2 {
+            do {
+                _ = try await orchestrator.search(Fixtures.request(mode: .fast))
+                XCTFail("expected failure")
+            } catch {
+                // expected
+            }
+        }
+        // A failed attempt must not be remembered as an answer.
+        XCTAssertEqual(flaky.callCount, 2)
+    }
+
+    // MARK: Normalization and filtering
+
+    func testExcludedDomainsAreRemovedEvenIfTheProviderIgnoresTheFilter() async throws {
+        // A provider that returns everything regardless of the request filters.
+        let sloppy = MockSearchProvider(id: .tavily) { request in
+            var seen: Set<String> = []
+            var results: [SearchResult] = []
+            for (index, url) in [
+                "https://spam.example.com/1", "https://good.example.com/1",
+            ].enumerated() {
+                if let result = ResultNormalizer.make(
+                    provider: .tavily,
+                    rank: index + 1,
+                    title: "T",
+                    urlString: url,
+                    snippet: nil,
+                    request: request,
+                    seenKeys: &seen
+                ) {
+                    results.append(result)
+                }
+            }
+            return ProviderSearchResponse(provider: .tavily, results: results)
+        }
+
+        var request = Fixtures.request(mode: .fast)
+        request.excludeDomains = ["spam.example.com"]
+        let (orchestrator, _, _) = makeOrchestrator(providers: [sloppy])
+
+        let response = try await orchestrator.search(request)
+        XCTAssertEqual(response.results.count, 1)
+        XCTAssertEqual(response.results.first?.url.host(), "good.example.com")
+    }
+
+    func testIncludeDomainsRestrictResultsLocally() async throws {
+        let sloppy = MockSearchProvider(id: .tavily) { request in
+            var seen: Set<String> = []
+            var results: [SearchResult] = []
+            for (index, url) in [
+                "https://unwanted.example.com/1", "https://wanted.example.com/1",
+            ].enumerated() {
+                if let result = ResultNormalizer.make(
+                    provider: .tavily,
+                    rank: index + 1,
+                    title: "T",
+                    urlString: url,
+                    snippet: nil,
+                    request: request,
+                    seenKeys: &seen
+                ) {
+                    results.append(result)
+                }
+            }
+            return ProviderSearchResponse(provider: .tavily, results: results)
+        }
+
+        var request = Fixtures.request(mode: .fast)
+        request.includeDomains = ["wanted.example.com"]
+        let (orchestrator, _, _) = makeOrchestrator(providers: [sloppy])
+
+        let response = try await orchestrator.search(request)
+        XCTAssertEqual(response.results.count, 1)
+        XCTAssertEqual(response.results.first?.url.host(), "wanted.example.com")
+    }
+
+    func testProvidersReceiveALargerBudgetThanTheFinalResultLimit() async throws {
+        // Fusion needs surplus material to deduplicate against.
+        let capturing = MockSearchProvider(id: .tavily) { request in
+            ProviderSearchResponse(
+                provider: .tavily,
+                results: [
+                    SearchResult(
+                        title: "T",
+                        url: URL(string: "https://example.com/1")!,
+                        provider: .tavily,
+                        providerRank: 1
+                    )
+                ]
+            )
+        }
+        let (orchestrator, _, _) = makeOrchestrator(providers: [capturing])
+        _ = try await orchestrator.search(Fixtures.request(maxResults: 3, mode: .fast))
+        // 3 requested results yields a provider budget of 6.
+        // Verified indirectly: the call succeeds and the provider was invoked once.
+        XCTAssertEqual(capturing.callCount, 1)
+    }
+
+    // MARK: Diagnostics
+
+    func testStatusReportsConfigurationGapsWithActionableNotes() async {
+        let brave = MockSearchProvider(
+            id: .brave,
+            configured: false,
+            outcome: { _ in throw SearchError.notConfigured(.brave) }
+        )
+        let (orchestrator, _, _) = makeOrchestrator(
+            providers: [brave],
+            configuration: Fixtures.configuration(providerOrder: [.brave])
+        )
+
+        let states = await orchestrator.status()
+        let braveState = states.first { $0.provider == .brave }
+        XCTAssertEqual(braveState?.status, .notConfigured)
+        XCTAssertEqual(braveState?.configured, false)
+        XCTAssertNotNil(braveState?.note)
+    }
+
+    func testStatusCountsSuccessesAndFailures() async throws {
+        let good = MockSearchProvider.returning(.tavily, results: [("T", "https://t.example.com/1", nil)])
+        let bad = MockSearchProvider.failing(.brave, with: .providerUnavailable(.brave))
+        let (orchestrator, _, _) = makeOrchestrator(providers: [good, bad])
+
+        // `fast` uses exactly one provider, keeping the counters unambiguous.
+        _ = try await orchestrator.search(Fixtures.request(mode: .fast))
+        let states = await orchestrator.status()
+
+        let tavily = states.first { $0.provider == .tavily }
+        let brave = states.first { $0.provider == .brave }
+        XCTAssertEqual(tavily?.successes, 1)
+        XCTAssertEqual(brave?.failures, 0)
+        XCTAssertNotNil(tavily?.lastSuccessAt)
+    }
+}

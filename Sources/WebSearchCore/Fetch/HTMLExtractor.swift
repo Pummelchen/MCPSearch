@@ -1,0 +1,267 @@
+import Foundation
+import SwiftSoup
+
+/// The readable form of an HTML document.
+public struct HTMLDocument: Sendable, Hashable {
+    public var title: String?
+    public var text: String
+    /// `<link rel="canonical">`, when the page declares one.
+    public var canonicalURL: URL?
+
+    public init(title: String?, text: String, canonicalURL: URL?) {
+        self.title = title
+        self.text = text
+        self.canonicalURL = canonicalURL
+    }
+}
+
+extension HTMLDocument {
+    /// Alias used by the fetchers, which care only about the extraction result.
+    public typealias Extraction = HTMLDocument
+}
+
+/// Boilerplate-removing readable-text extraction built on SwiftSoup.
+///
+/// This is deliberately a *readability-style heuristic*, not a renderer. It removes
+/// elements that are never prose — scripts, styles, navigation, footers, cookie
+/// banners — and prefers semantic content regions, then flattens the remainder to
+/// text with light structure preserved.
+public enum HTMLExtractor {
+    /// Tags whose contents are never article prose.
+    public static let droppedTags: Set<String> = [
+        "script", "style", "noscript", "template", "svg", "canvas", "iframe",
+        "object", "embed", "form", "input", "select", "textarea", "button",
+        "nav", "footer", "header", "aside", "menu", "dialog",
+    ]
+
+    /// Class/id substrings that reliably indicate chrome rather than content.
+    public static let boilerplateMarkers: [String] = [
+        "nav", "navbar", "navigation", "menu", "sidebar", "side-bar", "footer",
+        "header", "masthead", "breadcrumb", "cookie", "consent", "gdpr", "banner",
+        "advert", "ads", "sponsor", "promo", "social", "share",
+        "comment", "disqus", "related", "recommend", "newsletter", "subscribe",
+        "signup", "login", "modal", "popup", "overlay", "skip-link", "pagination",
+        "pager", "toolbar", "widget", "meta-bar", "site-header", "site-footer",
+    ]
+
+    /// Match a class/id string against the boilerplate markers.
+    ///
+    /// Matching is token-based rather than raw substring, because a substring test
+    /// on a short marker such as `nav` or `promo` produces false positives
+    /// (`navy`, `innovate`) that would delete real content. Tokens are extracted by
+    /// splitting on anything that is not a letter or digit, and both exact matches
+    /// and marker-prefixed tokens (`advert-banner`) count.
+    static func matchesBoilerplateMarker(_ identifier: String) -> Bool {
+        let tokens = identifier
+            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .map { String($0) }
+        guard !tokens.isEmpty else { return false }
+        for marker in boilerplateMarkers {
+            let needle = marker.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
+            guard !needle.isEmpty else { continue }
+            for token in tokens
+            where token == needle
+                || (token.count > needle.count
+                    && token.hasPrefix(needle)
+                    && token.dropFirst(needle.count).first == "-")
+            {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Containers that typically hold the main content, in preference order.
+    public static let contentSelectors: [String] = [
+        "article", "main", "[role=main]", "#content", "#main", ".content",
+        ".post-content", ".entry-content", ".article-body", ".markdown-body",
+        "div.body", "section",
+    ]
+
+    /// Extract readable text.
+    ///
+    /// - Throws: `SearchError.invalidRequest` when the markup cannot be parsed.
+    public static func extract(html: String) throws -> HTMLDocument.Extraction {
+        let document: Document
+        do {
+            document = try SwiftSoup.parse(html)
+        } catch {
+            throw SearchError.invalidRequest("HTML could not be parsed")
+        }
+
+        let title = (try? document.title()).flatMap { $0.isEmpty ? nil : $0 }
+        let canonicalURL = extractCanonicalURL(from: document)
+
+        // Remove non-prose elements outright. Removing is cheaper and more reliable
+        // than trying to filter them out of the rendered text later.
+        for tag in droppedTags {
+            // `select` is the throwing call here; `remove` mutates in place.
+            try document.select(tag).remove()
+        }
+
+        // Drop boilerplate by class/id marker. This is a heuristic, which is why the
+        // marker list is explicit and testable rather than clever.
+        try? removeBoilerplate(from: document)
+
+        let root = preferredContentRoot(in: document) ?? document.body() ?? document
+
+        let text = try renderText(root)
+        return HTMLDocument.Extraction(
+            title: title.map { ResultNormalizer.cleanText($0) ?? $0 },
+            text: text,
+            canonicalURL: canonicalURL
+        )
+    }
+
+    // MARK: - Internals
+
+    static func extractCanonicalURL(from document: Document) -> URL? {
+        guard let link = try? document.select("link[rel=canonical]").first(),
+              let href = try? link.attr("href"),
+              !href.isEmpty
+        else { return nil }
+        return ResultNormalizer.normalizedURL(from: href)
+    }
+
+    static func removeBoilerplate(from document: Document) throws {
+        // Only consider a bounded set of candidates: scanning every element on a
+        // large page is needlessly slow.
+        let candidates = try document.select("div, section, aside, nav, header, footer, ul, form")
+        for element in candidates {
+            // `id()` is a plain accessor; `className()` declares `throws`.
+            let identifier = element.id() + " " + ((try? element.className()) ?? "")
+            let lowered = identifier.lowercased()
+            guard !lowered.trimmingCharacters(in: .whitespaces).isEmpty else { continue }
+            if HTMLExtractor.matchesBoilerplateMarker(lowered) {
+                // Never remove a node that holds the entire document body.
+                if element.parent() == nil { continue }
+                try element.remove()
+            }
+        }
+    }
+
+    /// Choose the densest plausible content container.
+    ///
+    /// Scores candidates by the amount of text they contain after boilerplate
+    /// removal, so a page whose `<main>` is a stub but whose `.article-body` is the
+    /// real content still extracts correctly.
+    static func preferredContentRoot(in document: Document) -> Element? {
+        let body = document.body()
+        var best: Element?
+        var bestScore = 0
+
+        for selector in contentSelectors {
+            guard let elements = try? document.select(selector) else { continue }
+            for element in elements {
+                let score = estimateTextLength(element)
+                if score > bestScore {
+                    bestScore = score
+                    best = element
+                }
+            }
+        }
+
+        // Require a meaningful amount of text before trusting a container over the
+        // whole body; otherwise a short `<section>` would discard the rest.
+        guard bestScore >= 200 else { return body }
+        return best ?? body
+    }
+
+    static func estimateTextLength(_ element: Element) -> Int {
+        let raw = (try? element.text()) ?? ""
+        return raw.count
+    }
+
+    /// Flatten an element to text, preserving paragraph and list structure with
+    /// newlines so the result stays readable for a model.
+    static func renderText(_ root: Element) throws -> String {
+        var builder = TextBuilder()
+        try walk(root, into: &builder)
+        return normalizeWhitespace(builder.finish())
+    }
+
+    private static let blockTags: Set<String> = [
+        "p", "div", "section", "article", "main", "br", "hr", "li", "tr", "td", "th",
+        "h1", "h2", "h3", "h4", "h5", "h6", "blockquote", "pre", "figcaption",
+        "dd", "dt", "table", "ul", "ol", "header", "footer", "aside", "nav",
+    ]
+
+    private static let headingTags: Set<String> = ["h1", "h2", "h3", "h4", "h5", "h6"]
+
+    static func walk(_ node: Node, into builder: inout TextBuilder) throws {
+        if let textNode = node as? TextNode {
+            let text = textNode.getWholeText()
+            if !text.isEmpty { builder.append(text) }
+            return
+        }
+
+        guard let element = node as? Element else {
+            for child in node.getChildNodes() { try walk(child, into: &builder) }
+            return
+        }
+
+        let tag = element.tagName().lowercased()
+
+        // Skip hidden elements: `display:none` content is never article prose.
+        if let style = try? element.attr("style"),
+           style.replacingOccurrences(of: " ", with: "").lowercased().contains("display:none")
+        {
+            return
+        }
+        if element.hasAttr("hidden") { return }
+
+        let isBlock = blockTags.contains(tag)
+        let isHeading = headingTags.contains(tag)
+        let isListItem = tag == "li"
+
+        if isBlock { builder.newline() }
+        if isHeading { builder.newline(); builder.newline() }
+        if isListItem { builder.newline(); builder.append("– ") }
+
+        for child in element.getChildNodes() {
+            try walk(child, into: &builder)
+        }
+
+        if isHeading || isBlock || isListItem {
+            builder.newline()
+            if isHeading { builder.newline() }
+        }
+    }
+
+    /// Collapse runs of whitespace while preserving deliberate line structure.
+    static func normalizeWhitespace(_ text: String) -> String {
+        var lines: [String] = []
+        for rawLine in text.split(separator: "\n", omittingEmptySubsequences: false) {
+            let collapsed = String(rawLine).collapsedWhitespace
+            if collapsed.isEmpty {
+                // Keep at most one blank line as a paragraph separator.
+                if lines.last?.isEmpty == false { lines.append("") }
+            } else {
+                lines.append(collapsed)
+            }
+        }
+        while lines.first?.isEmpty == true { lines.removeFirst() }
+        while lines.last?.isEmpty == true { lines.removeLast() }
+        return lines.joined(separator: "\n")
+    }
+
+    /// Accumulates text with inexpensive newline deduplication.
+    struct TextBuilder {
+        private var buffer = ""
+        private var lastWasNewline = true
+
+        mutating func append(_ text: String) {
+            guard !text.isEmpty else { return }
+            buffer += text
+            lastWasNewline = false
+        }
+
+        mutating func newline() {
+            guard !lastWasNewline else { return }
+            buffer += "\n"
+            lastWasNewline = true
+        }
+
+        mutating func finish() -> String { buffer }
+    }
+}
