@@ -67,17 +67,78 @@ let pipeline = SearchPipelineFactory.make(
 
 let handlers = ToolHandlers(pipeline: pipeline, log: log)
 
+// Parse command-line options before building the server: a bad flag should fail fast
+// and loudly rather than starting the wrong transport.
+let options: ServerOptions
+do {
+    options = try ServerOptions.parse(Array(CommandLine.arguments.dropFirst()))
+} catch {
+    log.error("Invalid arguments", metadata: ["error": "\(error)"])
+    FileHandle.standardError.write(Data((ServerOptions.usage + "\n").utf8))
+    exit(2)
+}
+
+if options.wantsHelp {
+    print(ServerOptions.usage)
+    exit(0)
+}
+
 let server = await MCPServerFactory.make(handlers: handlers, log: log)
 
-// The MCP SDK owns JSON-RPC framing; only the transport is ours to choose.
-let transport = StdioTransport(logger: Logger(label: "mcp.transport.stdio"))
+/// Stop the server cleanly, releasing the HTTP socket if one is bound.
+func shutdown(server: Server, host: HTTPMCPHost?) async {
+    await server.stop()
+    await host?.stop()
+}
 
-do {
-    try await server.start(transport: transport)
-    log.info("MCP server listening on stdio")
-    await server.waitUntilCompleted()
-    log.info("MCP server stopped")
-} catch {
-    log.error("MCP server failed to start", metadata: ["error": "\(error)"])
-    exit(1)
+switch options.transport {
+case .stdio:
+    // The MCP SDK owns JSON-RPC framing; only the transport is ours to choose.
+    let transport = StdioTransport(logger: Logger(label: "mcp.transport.stdio"))
+    do {
+        try await server.start(transport: transport)
+        log.info("MCP server listening on stdio")
+        await server.waitUntilCompleted()
+        log.info("MCP server stopped")
+    } catch {
+        log.error("MCP server failed to start", metadata: ["error": "\(error)"])
+        exit(1)
+    }
+
+case .http(let httpConfiguration):
+    // The stateful transport owns MCP sessions and streams responses as Server-Sent
+    // Events, so the `Accept` validator requires the client to accept both JSON and
+    // `text/event-stream`. That is what the Streamable HTTP transport specifies, and
+    // what OpenAI's and Anthropic's MCP clients send. Origin validation is kept: it
+    // costs nothing for server-to-server callers and stops a browser page from driving
+    // the server.
+    let transport = StatefulHTTPServerTransport(
+        validationPipeline: StandardValidationPipeline(validators: [
+            OriginValidator.localhost(port: httpConfiguration.port),
+            AcceptHeaderValidator(mode: .sseRequired),
+            ContentTypeValidator(),
+            ProtocolVersionValidator(),
+            SessionValidator(),
+        ]),
+        logger: Logger(label: "mcp.transport.http")
+    )
+
+    do {
+        try await server.start(transport: transport)
+
+        let host = HTTPMCPHost(
+            configuration: httpConfiguration,
+            transport: transport,
+            log: log
+        )
+        try await host.start()
+
+        // Serve until the process is asked to stop.
+        await server.waitUntilCompleted()
+        await shutdown(server: server, host: host)
+        log.info("MCP server stopped")
+    } catch {
+        log.error("MCP server failed to start", metadata: ["error": "\(error)"])
+        exit(1)
+    }
 }

@@ -73,10 +73,11 @@ jobs:
       # Drives the built executable through a real MCP handshake and asserts that
       # stdout carries only valid JSON-RPC. A stray print anywhere in the server would
       # corrupt the MCP stream, so it is verified here rather than left to review.
-      - name: End-to-end stdio smoke test
+      - name: End-to-end smoke test (stdio and Streamable HTTP)
         run: |
           BIN="$(swift build -c release --show-bin-path)/SwiftWebSearchMCP"
           python3 scripts/mcp_smoke.py "$BIN"
+          python3 scripts/mcp_smoke.py --http "$BIN"
 
       # Prove the hermeticity claim rather than assuming it: the suite must still pass
       # when provider credentials are present in the environment.

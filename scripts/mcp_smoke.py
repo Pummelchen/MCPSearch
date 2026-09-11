@@ -11,12 +11,12 @@ Drives the built executable through a real MCP handshake and asserts that:
   5. ``web_search`` with no provider configured fails as a *tool* error with an
      actionable message rather than crashing the process.
 
-The client follows the transport contract by keeping stdin open until all replies have
-been read. Closing stdin immediately after writing would race the server's shutdown,
-which is a property of clients, not of this server.
+It also covers the optional Streamable HTTP transport: with ``--http`` the server is
+started on a loopback port, the full stateful session is exercised (session id, SSE
+framing, tools/list, a tool call) and the negative cases are checked.
 
 Usage:
-    python3 scripts/mcp_smoke.py [path-to-SwiftWebSearchMCP]
+    python3 scripts/mcp_smoke.py [--http] [path-to-SwiftWebSearchMCP]
 
 With no argument the binary is located via ``swift build --show-bin-path``.
 """
@@ -25,8 +25,13 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import socket
 import subprocess
 import sys
+import time
+import urllib.error
+import urllib.request
 from typing import Any
 
 # Provider variables are cleared so the run is hermetic: an exported API key must not
@@ -53,8 +58,9 @@ class Failure(Exception):
 
 
 def locate_binary() -> str:
-    if len(sys.argv) > 1:
-        return sys.argv[1]
+    positional = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if positional:
+        return positional[0]
     try:
         out = subprocess.run(
             ["swift", "build", "--show-bin-path"],
@@ -222,6 +228,203 @@ def check_unconfigured_search_is_a_tool_error(server: Server) -> None:
     return text
 
 
+# ---------------------------------------------------------------------------
+# Streamable HTTP transport
+# ---------------------------------------------------------------------------
+
+
+def http_exchange(port: int, body: dict[str, Any], session: str | None = None,
+                  accept: str = "application/json, text/event-stream",
+                  path: str = "/mcp", origin: str | None = None):
+    """POST one JSON-RPC message and return (status, headers, messages).
+
+    The response is either a complete JSON body (initialize) or a chunked
+    Server-Sent Events stream (everything else), so both framings are decoded here.
+    """
+    payload = json.dumps(body).encode()
+    request = (
+        f"POST {path} HTTP/1.1\r\n"
+        f"Host: 127.0.0.1:{port}\r\n"
+        f"Content-Type: application/json\r\n"
+        f"Accept: {accept}\r\n"
+        f"Content-Length: {len(payload)}\r\n"
+    )
+    if session:
+        request += f"Mcp-Session-Id: {session}\r\n"
+    if origin:
+        request += f"Origin: {origin}\r\n"
+    request += "Connection: close\r\n\r\n"
+
+    with socket.create_connection(("127.0.0.1", port), timeout=20) as connection:
+        connection.sendall(request.encode() + payload)
+        raw = b""
+        while True:
+            try:
+                chunk = connection.recv(65536)
+            except socket.timeout:
+                break
+            if not chunk:
+                break
+            raw += chunk
+
+    text = raw.decode("utf-8", "replace")
+    head, _, rest = text.partition("\r\n\r\n")
+    status_line = head.split("\r\n")[0]
+    status = int(status_line.split()[1]) if len(status_line.split()) > 1 else 0
+
+    headers: dict[str, str] = {}
+    for line in head.split("\r\n")[1:]:
+        if ":" in line:
+            name, value = line.split(":", 1)
+            headers[name.strip().lower()] = value.strip()
+
+    # De-chunk if the body is chunked.
+    if headers.get("transfer-encoding", "").lower() == "chunked":
+        pieces, remaining = [], rest
+        while True:
+            index = remaining.find("\r\n")
+            if index < 0:
+                break
+            try:
+                size = int(remaining[:index].split(";")[0], 16)
+            except ValueError:
+                break
+            if size == 0:
+                break
+            pieces.append(remaining[index + 2:index + 2 + size])
+            remaining = remaining[index + 2 + size + 2:]
+        rest = "".join(pieces)
+
+    messages = [json.loads(m) for m in re.findall(r"^data: (\{.*\})$", rest, re.M)]
+    if not messages and rest.strip().startswith("{"):
+        messages = [json.loads(rest)]
+    return status, headers, messages
+
+
+def wait_for_health(port: int, timeout: float = 20.0) -> None:
+    """Poll /health until the HTTP transport is accepting connections."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(
+                f"http://127.0.0.1:{port}/health", timeout=2
+            ) as response:
+                if response.status == 200:
+                    return
+        except (urllib.error.URLError, ConnectionError, OSError):
+            time.sleep(0.25)
+    raise Failure(f"HTTP transport did not become healthy on port {port}")
+
+
+def run_http_smoke(binary: str) -> None:
+    """Start the server in HTTP mode and exercise the Streamable HTTP transport."""
+    port = 18077
+    environment = {
+        "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+        "SEARCH_LOG_LEVEL": "info",
+    }
+
+    process = subprocess.Popen(
+        [binary, "--transport", "http", "--port", str(port)],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=environment,
+        text=True,
+    )
+    try:
+        wait_for_health(port)
+        print(f"  /health ok on port {port}")
+
+        status, headers, messages = http_exchange(
+            port,
+            {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": {
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": {},
+                    "clientInfo": {"name": "mcp_smoke_http", "version": "1.0.0"},
+                },
+            },
+        )
+        if status != 200 or not messages:
+            raise Failure(f"HTTP initialize failed: status={status} messages={messages}")
+        session = headers.get("mcp-session-id")
+        if not session:
+            raise Failure("HTTP initialize did not return an Mcp-Session-Id header")
+        print(f"  initialize ok over HTTP (session issued, protocol "
+              f"{messages[0]['result']['protocolVersion']})")
+
+        status, _, _ = http_exchange(
+            port, {"jsonrpc": "2.0", "method": "notifications/initialized"}, session
+        )
+        if status != 202:
+            raise Failure(f"expected 202 for notifications/initialized, got {status}")
+        print("  notifications/initialized accepted (202)")
+
+        status, _, messages = http_exchange(
+            port, {"jsonrpc": "2.0", "id": 2, "method": "tools/list"}, session
+        )
+        if status != 200 or not messages:
+            raise Failure(f"HTTP tools/list failed: status={status}")
+        names = {tool["name"] for tool in messages[0]["result"]["tools"]}
+        if names != EXPECTED_TOOLS:
+            raise Failure(f"HTTP tools/list returned {sorted(names)}, expected {sorted(EXPECTED_TOOLS)}")
+        print("  tools/list ok over SSE")
+
+        status, _, messages = http_exchange(
+            port,
+            {
+                "jsonrpc": "2.0",
+                "id": 3,
+                "method": "tools/call",
+                "params": {"name": "web_search_status", "arguments": {}},
+            },
+            session,
+        )
+        if status != 200 or not messages or messages[0]["result"].get("isError"):
+            raise Failure(f"HTTP tools/call failed: status={status} messages={messages}")
+        print("  tools/call ok over SSE")
+
+        # Negative cases: these must be refused rather than silently served.
+        status, _, _ = http_exchange(
+            port, {"jsonrpc": "2.0", "id": 4, "method": "tools/list"}, None
+        )
+        if status < 400:
+            raise Failure(f"a request without a session id should be refused, got {status}")
+
+        status, _, _ = http_exchange(
+            port,
+            {"jsonrpc": "2.0", "id": 5, "method": "tools/list"},
+            session,
+            accept="application/json",
+        )
+        if status < 400:
+            raise Failure(f"a request that cannot accept SSE should be refused, got {status}")
+
+        status, _, _ = http_exchange(
+            port,
+            {"jsonrpc": "2.0", "id": 6, "method": "tools/list"},
+            session,
+            origin="https://evil.example.com",
+        )
+        if status < 400:
+            raise Failure(f"a cross-origin request should be refused, got {status}")
+        print("  negative cases refused (no session, no SSE accept, cross-origin)")
+
+        # stdout must stay empty in HTTP mode: it carries no protocol traffic.
+        process.terminate()
+        stdout, _ = process.communicate(timeout=20)
+        if stdout.strip():
+            raise Failure(f"HTTP mode wrote to stdout: {stdout[:200]!r}")
+        print("  stdout remained empty in HTTP mode")
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=10)
+
+
 def main() -> int:
     binary = locate_binary()
     if not os.path.isfile(binary):
@@ -248,6 +451,10 @@ def main() -> int:
     finally:
         if server.process.poll() is None:
             server.process.kill()
+
+    if "--http" in sys.argv:
+        print("smoke-testing the Streamable HTTP transport")
+        run_http_smoke(binary)
 
     print("SMOKE TEST PASSED")
     return 0

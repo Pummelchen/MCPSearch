@@ -23,6 +23,13 @@ let package = Package(
             url: "https://github.com/scinfu/SwiftSoup.git",
             exact: "2.13.5"
         ),
+        // Used by the optional Streamable HTTP transport. The MCP SDK already depends
+        // on swift-nio, so this adds no new download to the graph; it is declared
+        // directly because the HTTP server that fronts the SDK's transport needs it.
+        .package(
+            url: "https://github.com/apple/swift-nio.git",
+            from: "2.65.0"
+        ),
     ],
     targets: [
         // All search, fetch and reliability logic. Contains no MCP-specific code
@@ -41,6 +48,9 @@ let package = Package(
             dependencies: [
                 "WebSearchCore",
                 .product(name: "MCP", package: "swift-sdk"),
+                .product(name: "NIOCore", package: "swift-nio"),
+                .product(name: "NIOPosix", package: "swift-nio"),
+                .product(name: "NIOHTTP1", package: "swift-nio"),
             ],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),
