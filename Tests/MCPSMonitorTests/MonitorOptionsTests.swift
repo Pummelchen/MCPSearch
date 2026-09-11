@@ -45,9 +45,46 @@ final class MonitorOptionsTests: XCTestCase {
     }
 
     func testProbeAndIntervalFlags() throws {
-        let options = try Options.parse(["--probe", "--interval", "3"])
+        // An interval above the probe floor, so the cost guard does not adjust it.
+        let options = try Options.parse(["--probe", "--interval", "90"])
         XCTAssertTrue(options.probeProviders)
-        XCTAssertEqual(options.interval, .seconds(3))
+        XCTAssertEqual(options.interval, .seconds(90))
+        XCTAssertTrue(options.notes.isEmpty)
+    }
+
+    /// Continuous provider probing spends real credits, so a fast interval must not be
+    /// accepted silently. At 10s a keyed provider costs ~360 credits an hour, which
+    /// exhausts a 1000-credit month in under three hours.
+    func testFastProbeIntervalIsRaisedAndReported() throws {
+        let options = try Options.parse(["--probe", "--interval", "5"])
+        XCTAssertEqual(options.interval, Options.minimumProbeInterval)
+        XCTAssertEqual(options.notes.count, 1, "the adjustment must be reported, not silent")
+        XCTAssertTrue(
+            options.notes[0].contains("--allow-expensive-probing"),
+            "the note should say how to override: \(options.notes[0])"
+        )
+    }
+
+    /// A deliberately slow interval is left exactly as asked for.
+    func testSlowProbeIntervalIsNotAdjusted() throws {
+        let options = try Options.parse(["--probe", "--interval", "120"])
+        XCTAssertEqual(options.interval, .seconds(120))
+        XCTAssertTrue(options.notes.isEmpty)
+    }
+
+    /// Without probing, a fast refresh only costs local CPU, so it is allowed.
+    func testFastIntervalIsFineWithoutProbing() throws {
+        let options = try Options.parse(["--interval", "2"])
+        XCTAssertEqual(options.interval, .seconds(2))
+        XCTAssertTrue(options.notes.isEmpty)
+    }
+
+    func testExplicitOverridePermitsFastProbing() throws {
+        let options = try Options.parse([
+            "--probe", "--interval", "5", "--allow-expensive-probing",
+        ])
+        XCTAssertEqual(options.interval, .seconds(5))
+        XCTAssertTrue(options.notes.isEmpty, "an explicit override should not warn")
     }
 
     func testWatchIsAnAliasForProbe() throws {

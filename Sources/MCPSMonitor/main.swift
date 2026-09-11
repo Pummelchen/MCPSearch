@@ -18,6 +18,13 @@ struct Options: Sendable {
     var showEngines: Bool
     var iterations: Int?
     var probeQueries: ProbeQueries
+    /// Permits probing more often than the safe floor.
+    var allowExpensiveProbing = false
+    /// Things the user should know about how their options were interpreted.
+    var notes: [String] = []
+
+    /// Shortest probe interval allowed without an explicit override.
+    static let minimumProbeInterval = Duration.seconds(60)
 
     static let usage = """
         mcps-mon — live dashboard for MCPSearch providers and nodes.
@@ -31,8 +38,13 @@ struct Options: Sendable {
           --no-nodes             Skip node probing entirely.
           --interval <seconds>   Refresh interval. Default 10.
           --probe                Also probe providers with a real search. This spends
-                                 provider credits, so it is opt-in.
+                                 provider credits, so it is opt-in. The interval is
+                                 raised to 60s while probing, because a keyed provider
+                                 costs about one credit per probe.
           --watch                Alias for --probe.
+          --allow-expensive-probing
+                                 Permit probe intervals below 60s. A 10s interval costs
+                                 roughly 360 credits an hour per keyed provider.
           --iterations <n>       Stop after n refreshes (useful for scripting).
           --no-colour            Disable ANSI colour.
           --no-engines           Hide the per-node engine breakdown.
@@ -154,6 +166,9 @@ struct Options: Sendable {
             case argument == "--probe" || argument == "--watch":
                 options.probeProviders = true
 
+            case argument == "--allow-expensive-probing":
+                options.allowExpensiveProbing = true
+
             case argument == "--no-colour" || argument == "--no-color":
                 options.useColour = false
 
@@ -167,6 +182,21 @@ struct Options: Sendable {
         }
 
         if !customNodes.isEmpty { options.nodes = customNodes }
+
+        // Continuous provider probing spends real credits. A basic Tavily search costs
+        // one credit, so at the default 10s interval a single keyed provider would burn
+        // roughly 360 credits an hour and exhaust a 1000-credit month in under three.
+        // Rather than silently doing that, require an explicit opt-in below the floor.
+        if options.probeProviders, !options.allowExpensiveProbing {
+            let floor = Options.minimumProbeInterval
+            if options.interval < floor {
+                options.interval = floor
+                options.notes.append(
+                    "probe interval raised to \(Int(floor.seconds))s to protect provider "
+                        + "credits; pass --allow-expensive-probing to override"
+                )
+            }
+        }
         return options
     }
 
@@ -205,6 +235,7 @@ actor Monitor {
 
     private var model: MonitorModel
     private var pinnedProbe = false
+    private var refreshRequested = false
     private var cycle = 0
     /// Providers that have completed at least one probe.
     private var probedProviders: Set<ProviderID> = []
@@ -268,6 +299,22 @@ actor Monitor {
     func consumeProbeRequest() -> Bool {
         defer { pinnedProbe = false }
         return pinnedProbe
+    }
+
+    /// Ask the loop to refresh immediately instead of waiting out the interval.
+    func requestRefresh() { refreshRequested = true }
+
+    /// Sleep in short slices so a key press is noticed promptly, and return early when
+    /// the operator asks for a refresh.
+    func waitForNextCycle(_ interval: Duration) async {
+        let deadline = Date().addingTimeInterval(interval.seconds)
+        while Date() < deadline {
+            if refreshRequested {
+                refreshRequested = false
+                return
+            }
+            try? await Task.sleep(for: .milliseconds(100))
+        }
     }
 
     /// Run one refresh and return the model to draw.
@@ -414,6 +461,10 @@ do {
     exit(2)
 }
 
+for note in options.notes {
+    FileHandle.standardError.write(Data("mcps-mon: \(note)\n".utf8))
+}
+
 let monitor = Monitor(options: options)
 let interactive = Terminal.isInteractive
 
@@ -449,7 +500,7 @@ func installKeyHandler(_ reader: KeyReader, monitor: Monitor, flag: RunFlag) {
                 case "p", "P":
                     await monitor.requestProbe()
                 case "r", "R":
-                    break  // the loop refreshes on its own; this just makes it feel responsive
+                    await monitor.requestRefresh()
                 case "e", "E":
                     await monitor.toggleEngines()
                 case "c", "C":
@@ -494,11 +545,9 @@ while await runFlag.isRunning {
     if let limit = options.iterations, iteration >= limit { break }
     if !interactive && options.iterations == nil { break }
 
-    // Sleep in small slices so a key press is noticed promptly and quitting is immediate.
-    let deadline = Date().addingTimeInterval(options.interval.seconds)
-    while await runFlag.isRunning, Date() < deadline {
-        try? await Task.sleep(for: .milliseconds(100))
-    }
+    // Sleep in short slices so a key press is noticed promptly, `r` takes effect at
+    // once, and quitting is immediate.
+    await monitor.waitForNextCycle(options.interval)
 }
 
 if interactive {
