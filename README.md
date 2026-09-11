@@ -92,10 +92,14 @@ lives there.
 ## Development
 
 ```bash
-swift build          # debug
-swift test           # 179 tests, no network required
+swift build                    # debug
+swift test                     # 186 tests, no network required
+swift test --filter LiveProviderTests   # opt-in; calls real providers, needs a key
 python3 scripts/mcp_smoke.py   # end-to-end stdio handshake
 ```
+
+The default suite is hermetic and needs no credentials. Live tests skip themselves
+unless `TAVILY_API_KEY` is set in the environment or in a git-ignored `config.env`.
 
 CI runs on `macos-26` (Swift 6.3): build, test, release build, stdio smoke test, and a
 second test run with credentials present to prove the suite is hermetic.
