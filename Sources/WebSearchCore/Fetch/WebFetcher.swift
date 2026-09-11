@@ -73,6 +73,10 @@ public actor WebFetcher {
         let started = DispatchTime.now().uptimeNanoseconds
 
         let directResult: FetchResult?
+        // Retained so that when every path fails the caller sees the *real* reason
+        // (a DNS failure, a refused connection) instead of a generic
+        // "could not extract content" that hides the cause.
+        var directError: SearchError?
         do {
             directResult = try await direct.fetch(
                 request,
@@ -85,6 +89,7 @@ public actor WebFetcher {
             // path — that would defeat the SSRF boundary.
             if case .blockedURL = error { throw error }
             directResult = nil
+            directError = error
         }
 
         if let result = directResult,
@@ -101,7 +106,7 @@ public actor WebFetcher {
         // without embedding a headless browser here.
         guard let jina else {
             guard let result = directResult else {
-                throw SearchError.extractionFailed(request.url)
+                throw directError ?? SearchError.extractionFailed(request.url)
             }
             var finalized = result
             finalized.warnings.append(
@@ -133,7 +138,7 @@ public actor WebFetcher {
                 metadata: ["error": "\(type(of: error))"]
             )
             guard let result = directResult else {
-                throw SearchError.extractionFailed(request.url)
+                throw directError ?? SearchError.extractionFailed(request.url)
             }
             var finalized = result
             finalized.warnings.append(

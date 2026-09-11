@@ -114,7 +114,8 @@ public struct DuckDuckGoProvider: SearchProvider {
             snippetSelectors: DuckDuckGoProvider.snippetSelectors,
             base: "https://duckduckgo.com",
             // DDG's own hosts appear in navigation and redirect wrappers.
-            excludeHosts: ["duckduckgo.com", "duck.co"]
+            excludeHosts: ["duckduckgo.com", "duck.co"],
+            provider: .duckDuckGo
         )
 
         // A challenge page and a genuine empty result set need different handling.

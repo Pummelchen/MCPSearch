@@ -179,7 +179,8 @@ final class ScraperTests: XCTestCase {
             linkSelectors: DuckDuckGoProvider.linkSelectors,
             snippetSelectors: DuckDuckGoProvider.snippetSelectors,
             base: "https://duckduckgo.com",
-            excludeHosts: ["duckduckgo.com"]
+            excludeHosts: ["duckduckgo.com"],
+            provider: .duckDuckGo
         )
 
         XCTAssertEqual(page.results.count, 2)
@@ -209,7 +210,8 @@ final class ScraperTests: XCTestCase {
             linkSelectors: DuckDuckGoProvider.linkSelectors,
             snippetSelectors: DuckDuckGoProvider.snippetSelectors,
             base: "https://duckduckgo.com",
-            excludeHosts: ["duckduckgo.com"]
+            excludeHosts: ["duckduckgo.com"],
+            provider: .duckDuckGo
         )
         XCTAssertEqual(page.detectedBlock, .botChallenge)
         XCTAssertTrue(page.results.isEmpty)
@@ -227,7 +229,8 @@ final class ScraperTests: XCTestCase {
             linkSelectors: StartpageProvider.linkSelectors,
             snippetSelectors: StartpageProvider.snippetSelectors,
             base: "https://www.startpage.com",
-            excludeHosts: ["startpage.com"]
+            excludeHosts: ["startpage.com"],
+            provider: .startpage
         )
         XCTAssertEqual(page.detectedBlock, .botChallenge)
     }
@@ -249,7 +252,8 @@ final class ScraperTests: XCTestCase {
             linkSelectors: ["a.nonexistent"],
             snippetSelectors: ["span.nonexistent"],
             base: "https://example.com",
-            excludeHosts: []
+            excludeHosts: [],
+            provider: .duckDuckGo
         )
         XCTAssertEqual(page.results.count, 2)
         XCTAssertEqual(page.results[0].url, "https://example.com/a-genuine-result")
@@ -268,7 +272,8 @@ final class ScraperTests: XCTestCase {
             linkSelectors: [],
             snippetSelectors: [],
             base: "https://duckduckgo.com",
-            excludeHosts: ["duckduckgo.com"]
+            excludeHosts: ["duckduckgo.com"],
+            provider: .duckDuckGo
         )
         XCTAssertEqual(page.results.count, 1)
         XCTAssertEqual(page.results[0].url, "https://example.com/real")

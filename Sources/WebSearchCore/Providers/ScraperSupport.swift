@@ -92,13 +92,15 @@ enum ScraperSupport {
         linkSelectors: [String],
         snippetSelectors: [String],
         base: String,
-        excludeHosts: [String]
+        excludeHosts: [String],
+        provider: ProviderID
     ) throws -> ParsedPage {
         let document: Document
         do {
             document = try SwiftSoup.parse(html)
         } catch {
-            throw SearchError.malformedResponse(.duckDuckGo)
+            // Report the provider that actually failed rather than a hard-coded one.
+            throw SearchError.malformedResponse(provider)
         }
 
         if detectChallenge(in: html) {

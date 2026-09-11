@@ -82,9 +82,6 @@ public enum RankFusion {
         var clusters: [String: Cluster] = [:]
         var order: [String] = []
 
-        // Which providers contributed at all, needed to decide aggregator discounting.
-        let contributingProviders = Set(responses.map(\.provider))
-
         for response in responses {
             let provider = response.provider
             let family = provider.sourceFamily
@@ -123,14 +120,6 @@ public enum RankFusion {
             }
         }
 
-        // Corroboration requires *independent* families. An aggregator plus a direct
-        // provider from the same family does not count.
-        let independentFamiliesInRun = Set(
-            contributingProviders
-                .filter { !$0.isAggregator }
-                .map(\.sourceFamily)
-        )
-
         var diagnostics: [ClusterDiagnostics] = []
         var scored: [(cluster: Cluster, score: Double, corroborated: Bool)] = []
         scored.reserveCapacity(clusters.count)
@@ -139,21 +128,20 @@ public enum RankFusion {
             guard let cluster = clusters[key] else { continue }
 
             let clusterFamilies = Set(cluster.contributions.map(\.family))
-            // A cluster is independently corroborated when it is represented by two
-            // or more distinct families, at least one of which owns a real index.
+            // A cluster is independently corroborated when it is represented by two or
+            // more distinct families, at least one of which owns a real index. This is
+            // reported for diagnostics and used as a tie-breaker, not as a score
+            // multiplier.
             let independentFamilies = clusterFamilies.filter { $0.isIndependentIndex }
             let corroborated = clusterFamilies.count >= 2 && !independentFamilies.isEmpty
 
             var total = 0.0
             for contribution in cluster.contributions {
-                var weight = contribution.rawWeight
-                // Discount an aggregator vote that no independent family backs.
-                if contribution.provider.isAggregator,
-                   !independentFamiliesInRun.contains(contribution.family)
-                {
-                    weight *= configuration.aggregatorWeight
-                }
-                total += weight / (configuration.k + Double(contribution.rank))
+                // The aggregator discount is already folded into `rawWeight` by
+                // `weight(for:provider:base:configuration:)`. Applying it again here
+                // would square it (0.7 x 0.7), silently double-penalising aggregators.
+                total += contribution.rawWeight
+                    / (configuration.k + Double(contribution.rank))
             }
 
             scored.append((cluster, total, corroborated))

@@ -127,9 +127,16 @@ failure. Intended for operators; never exposes credentials.
 - **Brave signals an invalid token with `422` plus `error.code`**, not `401`.
 - **Exa answers a missing key with `402`** and an invalid one with `401`.
 - **Tavily has no `days` parameter**; unknown fields are rejected.
-- **Aggregators are discounted during fusion.** If the same URL arrives from Brave
-  and from a SearXNG instance that itself queried Brave, that is one independent
-  signal, not two.
+- **Aggregators are discounted once during fusion.** SearXNG, Open Web Search and
+  Parallel Search MCP have their fusion weight multiplied by `aggregatorWeight`
+  (0.7) exactly once, because they usually resell another engine's index rather than
+  owning one.
+- **Known limitation — same-index double counting is not yet solved.** The discount
+  reduces an aggregator's vote but does not *merge* provenance. If Brave returns a
+  URL and a SearXNG instance that queried Brave returns the same URL, that URL still
+  receives a reduced second vote rather than collapsing to a single independent
+  signal. Doing this properly requires per-result upstream-engine attribution, which
+  no current adapter carries. This is tracked as open work.
 
 ### Scrapers are opt-in and experimental
 
@@ -171,9 +178,16 @@ SEARCH_CACHE_TTL_SECONDS=120
 SEARCH_CONNECT_TIMEOUT_MS=3000
 SEARCH_REQUEST_TIMEOUT_MS=10000
 SEARCH_MAX_RETRIES=2
+SEARCH_USER_AGENT="SwiftWebSearchMCP/1.0 (+https://example.invalid/project)"
+SEARCH_ALLOW_PRIVATE_NETWORK=false
 SEARCH_LOG_LEVEL=info
 SEARCH_LOG_QUERIES=false
 ```
+
+`SEARCH_CONFIG_FILE` selects an explicit config file. `SEARCH_USER_AGENT` sets the
+outbound `User-Agent`; the default identifies the project honestly rather than
+impersonating a browser. `SEARCH_ALLOW_PRIVATE_NETWORK` is documented under
+[Security](#security).
 
 Set `SEARCH_CONFIG_FILE` to load a file explicitly. Secrets are read from the
 environment and are never written to disk or logged.
@@ -241,18 +255,22 @@ and registering it in `SearchPipelineFactory`.
 swift test
 ```
 
-170 tests, no network access required:
+178 tests. No test contacts the public internet, and the end-to-end tests run the
+server with a scrubbed environment, so they are unaffected by provider keys exported
+in your shell:
 
 - **Unit** — URL canonicalization, configuration parsing, RRF fusion, circuit-breaker
   transitions, rate limiting, caching, HTML extraction, SSRF policy.
-- **Provider contract** — every adapter is driven against a scripted transport and
-  must satisfy the same contract: normalized results, `401`/`403` → authentication,
-  `429` → rate limited, `5xx` → transient, malformed body → clean failure, and no
-  credential leakage.
+- **Provider contract** — the adapters for Tavily, Brave, Mojeek, Exa, SearXNG and
+  DuckDuckGo are driven against a scripted transport and must satisfy the same
+  contract: normalized results, `401`/`403` → authentication, `429` → rate limited,
+  `5xx` → transient, malformed body → clean failure, and no credential leakage.
+  Startpage is covered only for configuration and parsing; Open Web Search, Parallel
+  Search MCP and Jina Search have no adapter tests yet.
 - **Transport** — retry, `Retry-After`, idempotency, size limits and cancellation are
   verified against a real loopback HTTP server, not a mock.
 - **End-to-end** — the built executable is started as a subprocess and driven through
-  a real MCP stdio handshake: `initialize`, `tools/list`, tool calls, error handling,
+  a real MCP stdio handshake: `initialize`, `tools/list`, tool calls, error reporting,
   and a check that logging never contaminates stdout.
 
 `docs/provider-api-notes.md` records the API-contract research behind the adapters,

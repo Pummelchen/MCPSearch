@@ -81,20 +81,12 @@ struct ToolHandlers: Sendable {
                 request,
                 requestedProvider: provider
             )
-            // Note: `try` is required here even though the payload is already a `Value`.
-            // Swift ranks `CallTool.Result`'s generic Codable initializer ahead of the
-            // `Value`-taking one for this call shape, and that initializer throws.
-            let structured = ToolOutputFormatter.searchStructured(response)
-            return try! CallTool.Result(
-                content: [
-                    .text(
-                        text: ToolOutputFormatter.searchText(response),
-                        annotations: nil,
-                        _meta: nil
-                    )
-                ],
-                structuredContent: structured,
-                isError: false
+            // The payload is built as an explicitly typed `Value` and routed through
+            // `Self.success`; see that helper for why this cannot be spelled with the
+            // non-throwing initializer directly.
+            return try Self.success(
+                text: ToolOutputFormatter.searchText(response),
+                structured: ToolOutputFormatter.searchStructured(response)
             )
         } catch is CancellationError {
             // Cancellation is a protocol-level event, not a tool failure to explain.
@@ -108,6 +100,11 @@ struct ToolHandlers: Sendable {
                 ]
             )
             return Self.error(errorMessage(for: error))
+        } catch let error as ToolOutputError {
+            // The search itself succeeded; only the structured payload failed to
+            // encode. Report that plainly instead of blaming the search.
+            log.error("web_search structured payload could not be encoded")
+            return Self.error("Search succeeded but its result could not be encoded: \(error)")
         } catch {
             log.error("web_search failed unexpectedly")
             return Self.error("Search failed: \(error.localizedDescription)")
@@ -138,13 +135,9 @@ struct ToolHandlers: Sendable {
             let result = try await pipeline.fetcher.open(
                 FetchRequest(url: url, maxCharacters: maxCharacters)
             )
-            let structured = ToolOutputFormatter.openStructured(result, requestedURL: url)
-            return try! CallTool.Result(
-                content: [
-                    .text(text: ToolOutputFormatter.openText(result), annotations: nil, _meta: nil)
-                ],
-                structuredContent: structured,
-                isError: false
+            return try Self.success(
+                text: ToolOutputFormatter.openText(result),
+                structured: ToolOutputFormatter.openStructured(result, requestedURL: url)
             )
         } catch is CancellationError {
             return Self.error("Fetch cancelled.")
@@ -157,6 +150,9 @@ struct ToolHandlers: Sendable {
                 ]
             )
             return Self.error(errorMessage(for: error))
+        } catch let error as ToolOutputError {
+            log.error("web_open structured payload could not be encoded")
+            return Self.error("Fetch succeeded but its result could not be encoded: \(error)")
         } catch {
             return Self.error("Fetch failed: \(error.localizedDescription)")
         }
@@ -173,20 +169,47 @@ struct ToolHandlers: Sendable {
             cache: cache,
             configuration: pipeline.configuration
         )
-        return try! CallTool.Result(
-            content: [
-                .text(
-                    text: ToolOutputFormatter.statusText(states: states, cache: cache),
-                    annotations: nil,
-                    _meta: nil
-                )
-            ],
-            structuredContent: structured,
-            isError: false
-        )
+        do {
+            return try Self.success(
+                text: ToolOutputFormatter.statusText(states: states, cache: cache),
+                structured: structured
+            )
+        } catch let error as ToolOutputError {
+            log.error("web_search_status payload could not be encoded")
+            return Self.error("Status could not be encoded: \(error)")
+        } catch {
+            return Self.error("Status failed: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - Helpers
+
+    /// Build a successful tool result carrying both a compact text form and
+    /// structured content.
+    ///
+    /// - Throws: `ToolOutputError.encodingFailed` if the structured payload cannot be
+    ///   encoded. Callers translate that into an error result, so a failure here
+    ///   degrades to a tool error instead of crashing the server.
+    ///
+    /// - Note: The `try` is unavoidable. `CallTool.Result` declares both a
+    ///   `structuredContent: Value?` initializer and a generic
+    ///   `init<Output: Codable>(structuredContent: Output)`. Because `Value` itself
+    ///   conforms to `Codable`, Swift always ranks the generic (throwing) overload
+    ///   ahead of the non-generic one, so the non-throwing overload is unreachable
+    ///   from Swift for any `Value`. Routing through one documented place keeps the
+    ///   failure handling explicit rather than scattered as `try!` at each call site.
+    static func success(text: String, structured: Value) throws -> CallTool.Result {
+        do {
+            return try CallTool.Result(
+                content: [.text(text: text, annotations: nil, _meta: nil)],
+                structuredContent: structured,
+                isError: false
+            )
+        } catch {
+            // Normalize to one error type so callers have a single case to handle.
+            throw ToolOutputError.encodingFailed(String(describing: error))
+        }
+    }
 
     /// Turn a `SearchError` into an actionable tool message.
     ///
@@ -218,6 +241,10 @@ struct ToolHandlers: Sendable {
                 + "allowed."
         case .timeout(let provider):
             "\(provider.displayName) timed out."
+        case .fetchFailed(let url, let reason):
+            "Could not fetch \(url.host() ?? "that URL"): \(reason)"
+        case .extractionFailed(let url):
+            "Could not extract readable content from \(url.host() ?? "that URL")."
         default:
             error.safeDescription
         }
@@ -237,12 +264,21 @@ struct ToolHandlers: Sendable {
         }
     }
 
-    /// Build an error result with both text and a minimal structured payload.
+    /// Build an error result.
+    ///
+    /// Deliberately text-only: an error result carries no structured payload, which
+    /// avoids the `Codable`-overload problem described on `success` entirely and keeps
+    /// this path free of `try`.
     static func error(_ message: String) -> CallTool.Result {
-        try! CallTool.Result(
+        CallTool.Result(
             content: [.text(text: message, annotations: nil, _meta: nil)],
-            structuredContent: .object(["error": .string(message)]),
             isError: true
         )
     }
+}
+
+/// Failure to build a tool result payload.
+enum ToolOutputError: Error, Sendable {
+    /// The structured content could not be encoded.
+    case encodingFailed(String)
 }

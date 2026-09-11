@@ -104,12 +104,17 @@ public struct ProviderRegistry: Sendable {
     /// usually a reseller and would otherwise fill the "independent evidence" slots
     /// with duplicated upstream results.
     public func select(for request: SearchRequest, requested: ProviderID?) throws -> Selection {
-        if let requested, requested != .tavily || providers[.tavily] != nil {
+        // An explicit provider always takes the explicit path. It must never silently
+        // degrade to automatic selection: a caller that forces one provider and gets
+        // another cannot tell the difference, and a missing key would look like a
+        // successful search.
+        if let requested {
             // Explicit selection bypasses policy but not configuration.
             if requested == .jina {
                 throw SearchError.unsupportedRequest(
                     requested,
-                    "this provider only supports page fetching"
+                    "this is a fetch/extraction provider, not a search provider; "
+                        + "use the web_open tool instead"
                 )
             }
             guard providers[requested] != nil else {

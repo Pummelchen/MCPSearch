@@ -166,6 +166,53 @@ final class RankFusionTests: XCTestCase {
         XCTAssertEqual(fused.results.count, 2, "one domain must not fill the whole result set")
     }
 
+    /// The aggregator discount must be applied exactly once.
+    ///
+    /// It is folded into the per-contribution weight, and a previous version applied
+    /// it a second time in the scoring loop, which squared it (0.7 x 0.7) and made the
+    /// second application dead code because the guard was always true.
+    func testAggregatorDiscountIsAppliedExactlyOnce() {
+        let configuration = RankFusion.Configuration()
+        XCTAssertEqual(configuration.aggregatorWeight, 0.7, accuracy: 0.0001)
+
+        // A SearXNG contribution weighs its registry weight (0.9) times one discount.
+        let searxng = RankFusion.weight(
+            for: .meta,
+            provider: .searxng,
+            base: 0.9,
+            configuration: configuration
+        )
+        XCTAssertEqual(searxng, 0.9 * 0.7, accuracy: 0.0001)
+        XCTAssertNotEqual(
+            searxng,
+            0.9 * 0.7 * 0.7,
+            "the aggregator discount must not be applied twice"
+        )
+
+        // Independent indexes are not discounted.
+        let mojeek = RankFusion.weight(
+            for: .mojeek,
+            provider: .mojeek,
+            base: 1.0,
+            configuration: configuration
+        )
+        XCTAssertEqual(mojeek, 1.0, accuracy: 0.0001)
+
+        // An aggregator still ranks below an equally-ranked independent index.
+        XCTAssertLessThan(searxng, mojeek)
+    }
+
+    /// An aggregator that is the only source of a result still contributes it: the
+    /// discount reduces its weight, it does not discard the result.
+    func testAggregatorOnlyResultIsStillReturned() {
+        let fused = RankFusion.fuse(
+            responses: [response(.searxng, [("Aggregated", "https://agg.example.com/x")])],
+            limit: 5
+        )
+        XCTAssertEqual(fused.results.count, 1)
+        XCTAssertEqual(fused.results.first?.sources, [.searxng])
+    }
+
     func testDiversityCappingBackfillsFromOtherDomains() {
         let entries = [
             ("A1", "https://a.example.com/1"),

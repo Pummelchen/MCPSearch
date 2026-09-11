@@ -1,12 +1,25 @@
 import Foundation
 import XCTest
 
+import WebSearchCore
+
 /// End-to-end tests that drive the **built executable** over a real MCP stdio session.
 ///
 /// These are the only tests that exercise the whole product: framing, the tool list,
 /// argument parsing, the SSE-free JSON-RPC handshake, and the guarantee that stdout
 /// carries protocol traffic only.
 final class StdioServerTests: XCTestCase {
+
+    /// Every documented provider environment variable.
+    ///
+    /// Scrub all of these before launching the server so the tests are hermetic and
+    /// cannot be influenced by the developer's own shell.
+    static let providerEnvironmentVariables = [
+        "TAVILY_API_KEY", "BRAVE_SEARCH_API_KEY", "MOJEEK_API_KEY", "EXA_API_KEY",
+        "JINA_API_KEY", "SEARXNG_BASE_URL", "OPEN_WEB_SEARCH_URL", "PARALLEL_MCP_URL",
+        "SEARCH_ENABLE_SCRAPERS", "SEARCH_ENABLE_PARALLEL", "SEARCH_DISABLED_PROVIDERS",
+        "SEARCH_PROVIDER_ORDER", "SEARCH_CONFIG_FILE",
+    ]
 
     // MARK: - Process plumbing
 
@@ -37,7 +50,18 @@ final class StdioServerTests: XCTestCase {
             process.standardInput = stdinPipe
             process.standardOutput = stdoutPipe
             process.standardError = stderrPipe
-            var merged = ProcessInfo.processInfo.environment
+
+            // Hermetic environment: start from PATH only, then remove every documented
+            // provider variable, then apply this test's overrides. Without this, an
+            // ambient TAVILY_API_KEY/BRAVE_SEARCH_API_KEY (exactly what the README
+            // tells a user to export) would make a stub-provider test contact the live
+            // vendor and report a false failure.
+            var merged: [String: String] = [
+                "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin",
+            ]
+            for key in StdioServerTests.providerEnvironmentVariables {
+                merged.removeValue(forKey: key)
+            }
             for (key, value) in environment { merged[key] = value }
             process.environment = merged
         }
@@ -202,6 +226,45 @@ final class StdioServerTests: XCTestCase {
         let open = try XCTUnwrap(tools.first { $0["name"] as? String == "web_open" })
         let openSchema = try XCTUnwrap(open["inputSchema"] as? [String: Any])
         XCTAssertEqual(openSchema["required"] as? [String], ["url"])
+    }
+
+    /// The advertised `provider` values must exactly match the providers that can
+    /// actually serve a search.
+    ///
+    /// A schema that offers a value which always errors is worse than not offering it,
+    /// and a provider missing from the enum is unreachable. `jina` is deliberately
+    /// absent: it is a fetch/extraction provider, and asking for it as a search
+    /// provider is rejected.
+    func testProviderEnumMatchesSelectableProviders() throws {
+        let server = try startInitializedServer(environment: [:])
+        defer { server.stop() }
+
+        try server.send(["jsonrpc": "2.0", "id": 70, "method": "tools/list"])
+        let response = try server.readResponse(id: 70)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        let tools = try XCTUnwrap(result["tools"] as? [[String: Any]])
+        let search = try XCTUnwrap(tools.first { $0["name"] as? String == "web_search" })
+        let schema = try XCTUnwrap(search["inputSchema"] as? [String: Any])
+        let properties = try XCTUnwrap(schema["properties"] as? [String: Any])
+        let provider = try XCTUnwrap(properties["provider"] as? [String: Any])
+        let enumValues = try XCTUnwrap(provider["enum"] as? [String])
+
+        // Every search-capable provider must be offered, plus `auto`.
+        let expected = Set(
+            ["auto"] + ProviderID.allCases.filter(\.isSearchProvider).map(\.rawValue)
+        )
+        XCTAssertEqual(
+            Set(enumValues),
+            expected,
+            "the provider enum has drifted from the selectable providers"
+        )
+        XCTAssertTrue(enumValues.contains("auto"))
+        XCTAssertFalse(
+            enumValues.contains("jina"),
+            "`jina` cannot serve a search and must not be advertised"
+        )
+        // The default must be offered.
+        XCTAssertEqual(provider["default"] as? String, "auto")
     }
 
     // MARK: - Tool calls

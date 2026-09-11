@@ -20,6 +20,13 @@ public enum SearchError: Error, Sendable, Hashable {
     case allProvidersFailed
     case blockedURL(URL)
     case extractionFailed(URL)
+    /// A page fetch failed for a reason other than policy or extraction, such as a
+    /// connection error or a timeout.
+    ///
+    /// Deliberately *not* provider-scoped: `web_open` connects directly to the target
+    /// host, so attributing the failure to a search provider would be misleading (it
+    /// previously surfaced as "Tavily timed out" for unrelated hosts).
+    case fetchFailed(URL, reason: String)
 
     /// Coarse category used for logging and health accounting.
     public var category: ProviderFailure.FailureCategory {
@@ -36,6 +43,7 @@ public enum SearchError: Error, Sendable, Hashable {
         case .allProvidersFailed: .unknown
         case .blockedURL: .unsupportedRequest
         case .extractionFailed: .malformedResponse
+        case .fetchFailed: .network
         }
     }
 
@@ -51,7 +59,8 @@ public enum SearchError: Error, Sendable, Hashable {
              .notConfigured(let id),
              .unsupportedRequest(let id, _):
             id
-        case .invalidRequest, .allProvidersFailed, .blockedURL, .extractionFailed:
+        case .invalidRequest, .allProvidersFailed, .blockedURL, .extractionFailed,
+             .fetchFailed:
             nil
         }
     }
@@ -86,6 +95,8 @@ public enum SearchError: Error, Sendable, Hashable {
             "All eligible search providers failed."
         case .blockedURL(let url):
             "Blocked URL: \(url.host() ?? url.absoluteString)"
+        case .fetchFailed(let url, let reason):
+            "Could not fetch \(url.host() ?? url.absoluteString): \(reason)"
         case .extractionFailed(let url):
             "Could not extract readable content from \(url.host() ?? url.absoluteString)."
         }

@@ -118,7 +118,8 @@ public struct StartpageProvider: SearchProvider {
             linkSelectors: StartpageProvider.linkSelectors,
             snippetSelectors: StartpageProvider.snippetSelectors,
             base: "https://www.startpage.com",
-            excludeHosts: ["startpage.com"]
+            excludeHosts: ["startpage.com"],
+            provider: .startpage
         )
 
         if page.results.isEmpty {

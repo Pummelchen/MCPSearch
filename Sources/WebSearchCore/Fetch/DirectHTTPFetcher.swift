@@ -176,16 +176,22 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
         do {
             (data, response) = try await session.data(for: urlRequest)
         } catch let error as URLError {
+            // These are fetch failures, not search-provider failures: `web_open`
+            // connects straight to the target host, so the error is scoped to the URL
+            // rather than attributed to whichever provider happens to be first.
             switch error.code {
             case .timedOut:
-                throw SearchError.timeout(.tavily)
+                throw SearchError.fetchFailed(request.url, reason: "request timed out")
             case .cancelled:
-                throw SearchError.networkFailure(.tavily, "cancelled")
+                throw SearchError.fetchFailed(request.url, reason: "request was cancelled")
             default:
-                throw SearchError.networkFailure(.tavily, error.localizedDescription)
+                throw SearchError.fetchFailed(
+                    request.url,
+                    reason: error.localizedDescription
+                )
             }
         } catch is CancellationError {
-            throw SearchError.networkFailure(.tavily, "cancelled")
+            throw SearchError.fetchFailed(request.url, reason: "request was cancelled")
         }
 
         guard let httpResponse = response as? HTTPURLResponse else {
