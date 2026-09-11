@@ -240,6 +240,57 @@ final class SearchOrchestratorTests: XCTestCase {
         }
     }
 
+    /// A sustained run must not report a transient local rate limit as an invalid
+    /// request.
+    ///
+    /// Found by a 50-query soak: the local token bucket briefly refused *every* provider
+    /// because each search spends one request per provider it fans out to, and the
+    /// orchestrator reported "all eligible providers were skipped" as an
+    /// `invalidRequest`, implying the query was at fault. It is a retryable condition.
+    func testProvidersSkippedByLocalLimitsAreReportedAsTemporarilyUnavailable() async {
+        let clock = TestClock()
+        let health = ProviderHealth(clock: clock)
+        // Exhaust a single-token bucket so the very first search is refused locally.
+        await health.register(
+            .tavily,
+            ratePolicy: RateLimiter.Policy(burst: 1, requestsPerMinute: 0.001)
+        )
+        let provider = MockSearchProvider.returning(
+            .tavily,
+            results: [("T", "https://t.example.com/1", nil)]
+        )
+        let (orchestrator, _, _) = makeOrchestrator(
+            providers: [provider],
+            configuration: Fixtures.configuration(providerOrder: [.tavily]),
+            health: health,
+            clock: clock
+        )
+
+        // Consume the only token deterministically rather than relying on the first
+        // search having reached the provider.
+        _ = await health.authorize(.tavily)
+
+        do {
+            _ = try await orchestrator.search(Fixtures.request(mode: .fast))
+            XCTFail("expected the search to be refused locally")
+        } catch let error as SearchError {
+            guard case .temporarilyUnavailable = error else {
+                return XCTFail(
+                    "a local rate limit is transient and must not be reported as "
+                        + "\(error); invalidRequest would blame the caller"
+                )
+            }
+            XCTAssertEqual(error.category, .rateLimited)
+            let message = error.safeDescription
+            XCTAssertTrue(
+                message.lowercased().contains("retry"),
+                "the message should tell the caller to retry: \(message)"
+            )
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+    }
+
     /// A single explicitly requested provider that fails must say why, rather than
     /// reporting a generic "all providers failed".
     func testExplicitProviderFailureExplainsTheReason() async {

@@ -180,6 +180,17 @@ public struct ProviderFailure: Sendable, Hashable, Codable {
             }
         }
 
+        /// Whether the provider was excluded locally, before any request was made.
+        ///
+        /// Distinct from a provider that answered with an error: nothing was attempted,
+        /// so retrying later is the right response.
+        public var isLocalSkip: Bool {
+            switch self {
+            case .circuitOpen, .rateLimited, .notConfigured, .authentication: true
+            default: false
+            }
+        }
+
         /// Whether an operator needs to fix configuration rather than wait.
         public var isConfiguration: Bool {
             switch self {

@@ -140,12 +140,15 @@ public actor SearchOrchestrator {
         // Only a total failure is an error. Partial success returns results plus the
         // list of providers that failed.
         guard !results.isEmpty else {
-            let usableFailures = failures.filter { $0.category != .circuitOpen }
-            if usableFailures.isEmpty, !failures.isEmpty {
-                throw SearchError.invalidRequest(
-                    "all eligible providers were skipped: "
-                        + failures.map(\.message).joined(separator: " ")
-                )
+            // Distinguish "nothing was even attempted" from "everything was tried and
+            // failed". The former is a transient local condition - the breaker was open
+            // or the local rate limiter had no token - and reporting it as an invalid
+            // request told callers their query was at fault. A sustained run reaches
+            // this legitimately, because each search spends a request against every
+            // provider it fans out to, and the limiter is deliberately conservative.
+            let attempted = failures.contains { !$0.category.isLocalSkip }
+            if !attempted, !failures.isEmpty {
+                throw SearchError.temporarilyUnavailable(failures)
             }
             // Attach the per-provider reasons. With a single explicitly requested
             // provider, "all providers failed" alone tells a caller nothing.

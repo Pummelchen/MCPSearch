@@ -26,6 +26,13 @@ public enum SearchError: Error, Sendable, Hashable {
     /// included in `safeDescription` so the message is useful without a second call to
     /// `web_search_status`.
     case providersFailed([ProviderFailure])
+    /// No provider was even attempted, because every candidate was excluded by its
+    /// circuit breaker or by the local rate limiter.
+    ///
+    /// This is transient by construction: the caller should retry, and it must **not**
+    /// be reported as an invalid request. A sustained run reaches it legitimately, since
+    /// each search spends one request against every provider it fans out to.
+    case temporarilyUnavailable([ProviderFailure])
     case blockedURL(URL)
     case extractionFailed(URL)
     /// A page fetch failed for a reason other than policy or extraction, such as a
@@ -49,6 +56,7 @@ public enum SearchError: Error, Sendable, Hashable {
         case .notConfigured: .notConfigured
         case .unsupportedRequest: .unsupportedRequest
         case .allProvidersFailed, .providersFailed: .unknown
+        case .temporarilyUnavailable: .rateLimited
         case .blockedURL: .unsupportedRequest
         case .extractionFailed: .malformedResponse
         case .fetchFailed: .network
@@ -67,8 +75,8 @@ public enum SearchError: Error, Sendable, Hashable {
              .notConfigured(let id),
              .unsupportedRequest(let id, _):
             id
-        case .invalidRequest, .allProvidersFailed, .providersFailed, .blockedURL,
-             .extractionFailed, .fetchFailed:
+        case .invalidRequest, .allProvidersFailed, .providersFailed,
+             .temporarilyUnavailable, .blockedURL, .extractionFailed, .fetchFailed:
             nil
         }
     }
@@ -103,6 +111,10 @@ public enum SearchError: Error, Sendable, Hashable {
             "All eligible search providers failed."
         case .providersFailed(let failures):
             SearchError.describe(failures)
+        case .temporarilyUnavailable(let failures):
+            "No search provider was attempted: every candidate is temporarily "
+                + "unavailable. Retry shortly."
+                + (failures.isEmpty ? "" : " " + failures.map(\.message).joined(separator: " "))
         case .blockedURL(let url):
             "Blocked URL: \(url.host() ?? url.absoluteString)"
         case .fetchFailed(let url, let reason):
