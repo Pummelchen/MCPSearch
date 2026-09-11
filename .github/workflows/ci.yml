@@ -1,0 +1,56 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Only the latest run for a given ref matters.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    # The MCP Swift SDK declares macOS 13 as its minimum, and the transport tests use
+    # Darwin sockets, so macOS is the supported target.
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Show Swift version
+        run: swift --version
+
+      # Deliberately no provider credentials are configured. The suite is hermetic and
+      # must pass with no network access to any search vendor; if a test ever starts
+      # depending on a real provider this job will fail and surface it.
+      - name: Build (debug)
+        run: swift build --build-tests
+
+      - name: Test
+        run: swift test
+
+      - name: Build (release)
+        run: swift build -c release
+
+      # Drives the built executable through a real MCP handshake and asserts that
+      # stdout carries only valid JSON-RPC. A stray print anywhere in the server would
+      # corrupt the MCP stream, so it is verified here rather than left to review.
+      - name: End-to-end stdio smoke test
+        run: |
+          BIN="$(swift build -c release --show-bin-path)/SwiftWebSearchMCP"
+          python3 scripts/mcp_smoke.py "$BIN"
+
+      # Prove the hermeticity claim rather than assuming it: the suite must still pass
+      # when provider credentials are present in the environment.
+      - name: Test again with provider credentials present
+        env:
+          TAVILY_API_KEY: tvly-not-a-real-key
+          BRAVE_SEARCH_API_KEY: not-a-real-key
+          SEARXNG_BASE_URL: https://searx.invalid
+        run: swift test
