@@ -14,17 +14,49 @@ concurrency:
 
 jobs:
   build-and-test:
+    # The package declares `swift-tools-version: 6.3`, so an older toolchain cannot
+    # even parse the manifest: `macos-14` ships Swift 5.10 and fails immediately.
+    # `macos-26` provides Xcode 26.x, which carries Swift 6.3.
     # The MCP Swift SDK declares macOS 13 as its minimum, and the transport tests use
     # Darwin sockets, so macOS is the supported target.
-    runs-on: macos-14
+    runs-on: macos-26
     timeout-minutes: 30
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Show Swift version
-        run: swift --version
+      - name: Select the newest Xcode
+        run: |
+          set -euo pipefail
+          # Runner images ship several Xcode versions side by side. Prefer the highest
+          # versioned one, fall back to the image default when none are versioned, and
+          # report what was selected either way.
+          shopt -s nullglob
+          candidates=(/Applications/Xcode_*.app)
+          if [ ${#candidates[@]} -gt 0 ]; then
+            latest="$(printf '%s\n' "${candidates[@]}" | sort -V | tail -1)"
+            echo "Selecting $latest"
+            sudo xcode-select -s "$latest"
+          else
+            echo "No versioned Xcode found; keeping the image default"
+            xcode-select -p
+          fi
+
+      # Fail early and clearly if the runner's toolchain is older than the manifest
+      # requires, rather than emitting a confusing manifest parse error later.
+      - name: Verify Swift toolchain is at least 6.3
+        run: |
+          set -euo pipefail
+          swift --version
+          version="$(swift -version 2>&1 | sed -n 's/.*Swift version \([0-9]*\.[0-9]*\).*/\1/p' | head -1)"
+          echo "Detected Swift $version"
+          major="${version%%.*}"
+          minor="${version##*.}"
+          if [ "$major" -lt 6 ] || { [ "$major" -eq 6 ] && [ "$minor" -lt 3 ]; }; then
+            echo "::error::This package requires swift-tools-version 6.3 or newer; found $version"
+            exit 1
+          fi
 
       # Deliberately no provider credentials are configured. The suite is hermetic and
       # must pass with no network access to any search vendor; if a test ever starts
