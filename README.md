@@ -20,13 +20,21 @@ server that gives local AI clients reliable public-web search and page fetching.
   validation, and both stdio and Streamable HTTP are supported — see
   [Compatibility](https://github.com/Pummelchen/MCPSearch/wiki/Compatibility).
 
+## What is here
+
+| Product | What it is |
+| --- | --- |
+| `SwiftWebSearchMCP` | The MCP server. Any MCP client launches this as a subprocess. |
+| `mcps-mon` | A live terminal dashboard for providers and nodes — see [Monitor](https://github.com/Pummelchen/MCPSearch/wiki/Monitor). |
+| `WebSearchCore` | The library both are built on: search, fetching, reliability, no MCP coupling. |
+
 ## Quick start
 
 ```bash
 swift build -c release
 ```
 
-Point your MCP client at the built executable and give it at least one provider:
+Point your MCP client at the built server and give it at least one provider:
 
 ```bash
 export TAVILY_API_KEY=tvly-...       # or
@@ -73,17 +81,23 @@ Provider-specific options are deliberately not exposed.
 
 ## Providers
 
-| Provider | Kind | Credentials | Default |
-| --- | --- | --- | --- |
-| Tavily | AI-oriented index | `TAVILY_API_KEY` | preferred |
-| Brave Search | independent index | `BRAVE_SEARCH_API_KEY` | preferred |
-| Mojeek | independent index | `MOJEEK_API_KEY` | optional |
-| Exa | neural retrieval | `EXA_API_KEY` | optional |
-| SearXNG | self-hosted metasearch | `SEARXNG_BASE_URL` | preferred no-vendor path |
-| Open Web Search | aggregator | `OPEN_WEB_SEARCH_URL` | optional |
-| DuckDuckGo | HTML scraper | none | opt-in |
-| Startpage | HTML scraper | none | opt-in |
-| Parallel Search MCP | upstream MCP service | none | opt-in |
+No account is required to run this. Two of the routes below need no key at all:
+
+| Route | Needs | Notes |
+| --- | --- | --- |
+| **Self-hosted SearXNG** | Docker only | Aggregates Google and Brave with no vendor key. See [Self-Hosting](https://github.com/Pummelchen/MCPSearch/wiki/Self-Hosting). |
+| **Parallel Search MCP** | nothing | Free anonymous tier, measured at exactly 20 calls per window. Enable with `SEARCH_ENABLE_PARALLEL=true`. |
+| **DuckDuckGo** | nothing | Free scraper. Throttles to about one query per 10s. Enable with `SEARCH_ENABLE_SCRAPERS=true`. |
+| Tavily | `TAVILY_API_KEY` | Good on keyword queries; weaker on interpretive ones. 1 credit per search. |
+| Brave Search | `BRAVE_SEARCH_API_KEY` | Broad independent index. |
+| Mojeek | `MOJEEK_API_KEY` | Independent index, for diversity. Paid API. |
+| Exa | `EXA_API_KEY` | Neural retrieval and highlights. |
+| Open Web Search | `OPEN_WEB_SEARCH_URL` | Aggregation endpoint; contract unverified. |
+| Startpage | none | Currently unusable: the site serves an Anubis proof-of-work challenge. |
+
+Run at least two providers. A single provider is brittle in practice: measured on this
+deployment, DuckDuckGo alone failed 41 of 50 queries once its throttle was reached,
+while the same run with a second provider produced 241 results and one error.
 
 ## Documentation
 
@@ -104,13 +118,13 @@ lives there.
 | [Security](https://github.com/Pummelchen/MCPSearch/wiki/Security) | The SSRF boundary in `web_open` |
 | [Testing](https://github.com/Pummelchen/MCPSearch/wiki/Testing) | Test suite and CI |
 | [Troubleshooting](https://github.com/Pummelchen/MCPSearch/wiki/Troubleshooting) | Symptom → cause → fix |
-| [Project Tracker](https://github.com/Pummelchen/MCPSearch/wiki/Project-Tracker) | Done, open work, known limitations |
+| [Project Tracker](https://github.com/Pummelchen/MCPSearch/wiki/Project-Tracker) | Open issues, observations, decisions, known limitations |
 
 ## Development
 
 ```bash
 swift build                    # debug
-swift test                     # 250 tests, no network required
+swift test                     # 256 tests, no network required
 swift test --filter LiveProviderTests   # opt-in; calls real providers, needs a key
 python3 scripts/mcp_smoke.py   # end-to-end stdio handshake
 python3 scripts/mcp_smoke.py --http   # end-to-end Streamable HTTP session
@@ -128,6 +142,9 @@ and [self-hosting](https://github.com/Pummelchen/MCPSearch/wiki/Self-Hosting).
 
 The default suite is hermetic and needs no credentials. Live tests skip themselves
 unless `TAVILY_API_KEY` is set in the environment or in a git-ignored `config.env`.
+
+`docs/` holds the API research the adapters are built on, with every claim labelled
+verified or unverified — see [docs/README.md](docs/README.md).
 
 CI runs on `macos-26` (Swift 6.3): build, test, release build, smoke tests over both
 transports, and a second test run with credentials present to prove the suite is
