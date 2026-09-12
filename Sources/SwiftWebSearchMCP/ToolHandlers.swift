@@ -2,7 +2,7 @@ import Foundation
 import MCP
 import WebSearchCore
 
-/// Implements the three MCP tools.
+/// Implements the four MCP tools.
 ///
 /// This layer knows about MCP and about the neutral `WebSearchCore` request/response
 /// model. It knows nothing about any search vendor, which is what lets a provider be

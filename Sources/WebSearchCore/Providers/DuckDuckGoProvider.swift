@@ -6,11 +6,15 @@ import SwiftSoup
 /// This is an escape hatch for when no supported API or SearXNG route is available.
 /// The public HTML interface is not an API contract: selectors change, bot challenges
 /// appear, and regional behaviour differs. Enable it only with
-/// `SEARCH_ENABLE_SCRAPERS=true`, and treat any result as lower confidence than an
-/// API provider — the fusion layer already down-weights scrapers.
+/// `SEARCH_ENABLE_SCRAPERS=true`, and treat any result as lower confidence than an API
+/// provider. Ranking does not express that: every provider carries the same fusion weight
+/// on purpose, because a weight ratio wider than the reachable rank ratio lets one
+/// provider's whole list outrank another's. Scrapers are held back by being opt-in, rate
+/// limited and off by default, not by a scoring penalty.
 public struct DuckDuckGoProvider: SearchProvider {
     public let id: ProviderID = .duckDuckGo
-    /// Scrapers get a lower vote because their ordering is not a documented contract.
+    /// Registry weight for rank fusion. Deliberately the same as every other provider;
+    /// see the note above for why scrapers are not down-weighted here.
     public let fusionWeight: Double = 1.0
 
     private let http: any HTTPClient

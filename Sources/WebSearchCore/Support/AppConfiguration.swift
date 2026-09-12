@@ -240,7 +240,9 @@ extension AppConfiguration {
     /// - Parameters:
     ///   - environment: Environment dictionary (injectable for tests).
     ///   - configFileURL: Explicit config file. When nil, `SEARCH_CONFIG_FILE` is
-    ///     consulted, falling back to a `config.env` next to the executable.
+    ///     consulted; with neither, only the environment is read. There is deliberately no
+    ///     implicit `config.env` next to the executable: a second, silent configuration
+    ///     source is a surprise in a server whose credentials are meant to be explicit.
     public static func load(
         environment: [String: String] = ProcessInfo.processInfo.environment,
         configFileURL: URL? = nil

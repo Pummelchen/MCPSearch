@@ -8,7 +8,7 @@ import WebSearchCore
 /// Boot sequence:
 /// 1. Parse configuration from the optional config file plus environment variables.
 /// 2. Build the provider registry and the search/fetch pipeline.
-/// 3. Register `web_search`, `web_open` and `web_search_status`.
+/// 3. Register `web_search`, `web_open`, `web_answer` and `web_search_status`.
 /// 4. Serve MCP over stdio until the transport completes.
 ///
 /// All diagnostics go to stderr. stdout carries JSON-RPC framing only.
