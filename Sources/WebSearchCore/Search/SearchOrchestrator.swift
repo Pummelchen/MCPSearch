@@ -317,7 +317,10 @@ public actor SearchOrchestrator {
                 message: "\(id.displayName) exceeded the search time budget."
             )
             aggregate.failures.append(failure)
-            await health.recordFailure(id, failure: failure)
+            // Counted, but deliberately not sent to the breaker: the deadline is shared by
+            // the whole fan-out, so charging it to every slow provider would open breakers
+            // that no provider earned.
+            await health.recordDeadlineExceeded(id, message: failure.message)
         }
     }
 

@@ -55,8 +55,45 @@ public actor ProviderHealth {
     private var notes: [ProviderID: String] = [:]
     private let clock: any Clock
 
-    public init(clock: any Clock = SystemClock()) {
+    /// A provider's per-instance policies, applied when the health actor is created.
+    ///
+    /// Registration happens in the initializer rather than through a detached `Task`, so a
+    /// request arriving immediately after construction cannot slip past a breaker or rate
+    /// limiter that has not been installed yet.
+    public struct Registration: Sendable {
+        public let provider: ProviderID
+        public let breakerPolicy: CircuitBreaker.Policy
+        public let ratePolicy: RateLimiter.Policy
+
+        public init(
+            provider: ProviderID,
+            breakerPolicy: CircuitBreaker.Policy = .default,
+            ratePolicy: RateLimiter.Policy = .apiDefault
+        ) {
+            self.provider = provider
+            self.breakerPolicy = breakerPolicy
+            self.ratePolicy = ratePolicy
+        }
+    }
+
+    public init(
+        clock: any Clock = SystemClock(),
+        registrations: [Registration] = [],
+        notes: [ProviderID: String] = [:]
+    ) {
         self.clock = clock
+        for registration in registrations {
+            breakers[registration.provider] = CircuitBreaker(
+                policy: registration.breakerPolicy,
+                clock: clock
+            )
+            limiters[registration.provider] = RateLimiter(
+                policy: registration.ratePolicy,
+                clock: clock
+            )
+            counters[registration.provider] = Counters()
+        }
+        self.notes = notes
     }
 
     // MARK: - Registration
@@ -130,7 +167,7 @@ public actor ProviderHealth {
         _ provider: ProviderID,
         latencyMilliseconds: Int,
         resultCount: Int
-    ) {
+    ) async {
         var counter = counters[provider, default: Counters()]
         counter.successes += 1
         counter.lastLatency = latencyMilliseconds
@@ -140,11 +177,14 @@ public actor ProviderHealth {
         counters[provider] = counter
 
         if let breaker = breakers[provider] {
-            Task { await breaker.recordSuccess() }
+            // Awaited, not detached: with a detached task two concurrent searches could
+            // deliver a failure before an earlier success, so the consecutive-failure
+            // count and the open/close transitions depended on scheduling.
+            await breaker.recordSuccess()
         }
     }
 
-    public func recordFailure(_ provider: ProviderID, failure: ProviderFailure) {
+    public func recordFailure(_ provider: ProviderID, failure: ProviderFailure) async {
         var counter = counters[provider, default: Counters()]
         counter.failures += 1
         counter.lastError = failure.message
@@ -153,13 +193,29 @@ public actor ProviderHealth {
         counters[provider] = counter
 
         if let breaker = breakers[provider] {
-            Task {
-                await breaker.recordFailure(
-                    category: failure.category,
-                    message: failure.message
-                )
-            }
+            // Awaited for the same reason as `recordSuccess`: the breaker must observe
+            // outcomes in the order the searches produced them.
+            await breaker.recordFailure(
+                category: failure.category,
+                message: failure.message
+            )
         }
+    }
+
+    /// Record that a provider was still running when the whole-search deadline expired.
+    ///
+    /// Counted as a failure so `web_search_status` keeps reporting it, but it deliberately
+    /// never reaches the breaker. The deadline covers the whole fan-out, so one slow
+    /// search would otherwise mark every provider unhealthy at once and open breakers that
+    /// no provider earned. A provider that is genuinely too slow fails its own request
+    /// timeout first, and that does count.
+    public func recordDeadlineExceeded(_ provider: ProviderID, message: String) {
+        var counter = counters[provider, default: Counters()]
+        counter.failures += 1
+        counter.lastError = message
+        counter.lastErrorCategory = .timeout
+        counter.lastFailureAt = clock.now()
+        counters[provider] = counter
     }
 
     /// Reset a provider's breaker, for the operator-facing status path.

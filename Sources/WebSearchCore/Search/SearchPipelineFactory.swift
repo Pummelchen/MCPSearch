@@ -27,17 +27,25 @@ public enum SearchPipelineFactory {
         log: Log = .disabled,
         clock: any Clock = SystemClock()
     ) -> Pipeline {
-        let health = ProviderHealth(clock: clock)
         var providers: [any SearchProvider] = []
+        var registrations: [ProviderHealth.Registration] = []
+        var notes: [ProviderID: String] = [:]
 
         // Each provider gets a rate policy appropriate to how tolerant the upstream is
         // of bursts. Opt-in scrapers are throttled hard on purpose.
+        //
+        // Registration is collected here and applied when the health actor is created
+        // rather than through a detached `Task`. The previous form returned a pipeline
+        // whose breakers and limiters might not exist yet, so a request arriving in that
+        // window bypassed both.
         func register(
             _ provider: any SearchProvider,
             rate: RateLimiter.Policy = .apiDefault
         ) {
             providers.append(provider)
-            Task { await health.register(provider.id, ratePolicy: rate) }
+            registrations.append(
+                ProviderHealth.Registration(provider: provider.id, ratePolicy: rate)
+            )
         }
 
         if let key = configuration.tavilyAPIKey, !key.isEmpty {
@@ -50,7 +58,7 @@ public enum SearchPipelineFactory {
                 )
             )
         } else {
-            Task { await health.setNote("Set TAVILY_API_KEY to enable.", for: .tavily) }
+            notes[.tavily] = "Set TAVILY_API_KEY to enable."
         }
 
         if let key = configuration.braveAPIKey, !key.isEmpty {
@@ -63,7 +71,7 @@ public enum SearchPipelineFactory {
                 )
             )
         } else {
-            Task { await health.setNote("Set BRAVE_SEARCH_API_KEY to enable.", for: .brave) }
+            notes[.brave] = "Set BRAVE_SEARCH_API_KEY to enable."
         }
 
         if let key = configuration.mojeekAPIKey, !key.isEmpty {
@@ -76,7 +84,7 @@ public enum SearchPipelineFactory {
                 )
             )
         } else {
-            Task { await health.setNote("Set MOJEEK_API_KEY to enable.", for: .mojeek) }
+            notes[.mojeek] = "Set MOJEEK_API_KEY to enable."
         }
 
         if let key = configuration.exaAPIKey, !key.isEmpty {
@@ -89,7 +97,7 @@ public enum SearchPipelineFactory {
                 )
             )
         } else {
-            Task { await health.setNote("Set EXA_API_KEY to enable.", for: .exa) }
+            notes[.exa] = "Set EXA_API_KEY to enable."
         }
 
         if let baseURL = configuration.searxngBaseURL {
@@ -103,12 +111,7 @@ public enum SearchPipelineFactory {
                 rate: .selfHosted
             )
         } else {
-            Task {
-                await health.setNote(
-                    "Set SEARXNG_BASE_URL to a self-hosted instance with JSON enabled.",
-                    for: .searxng
-                )
-            }
+            notes[.searxng] = "Set SEARXNG_BASE_URL to a self-hosted instance with JSON enabled."
         }
 
         if let endpoint = configuration.openWebSearchURL {
@@ -121,12 +124,7 @@ public enum SearchPipelineFactory {
                 )
             )
         } else {
-            Task {
-                await health.setNote(
-                    "Set OPEN_WEB_SEARCH_URL to an aggregation endpoint to enable.",
-                    for: .openWebSearch
-                )
-            }
+            notes[.openWebSearch] = "Set OPEN_WEB_SEARCH_URL to an aggregation endpoint to enable."
         }
 
         // Scrapers are constructed regardless of the flag so that the status tool can
@@ -174,6 +172,12 @@ public enum SearchPipelineFactory {
                 rate: .apiDefault
             )
         }
+
+        let health = ProviderHealth(
+            clock: clock,
+            registrations: registrations,
+            notes: notes
+        )
 
         let registry = ProviderRegistry(
             providers: providers,
