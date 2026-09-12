@@ -103,7 +103,7 @@ export DEEPSEEK_API_KEY=sk-...   # optional; adds web_answer
 
 ## Providers
 
-No account is required to run this. Two of the routes below need no key at all:
+No account is required to run this. Four of the routes below need no vendor key at all:
 
 | Route | Needs | Notes |
 | --- | --- | --- |
@@ -146,7 +146,7 @@ lives there.
 
 ```bash
 swift build                    # debug
-swift test                     # 287 tests, no network required
+swift test                     # 309 tests, no network required
 swift test --filter LiveProviderTests   # opt-in; calls real providers, needs a key
 python3 scripts/mcp_smoke.py   # end-to-end stdio handshake
 python3 scripts/mcp_smoke.py --http   # end-to-end Streamable HTTP session

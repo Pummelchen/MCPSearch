@@ -71,7 +71,7 @@ From the API reference (`Mcp object { server_label, type, allowed_callers, 9 mor
   { "structuredContent": { "results": [...] },
     "content": [ { "type": "text", "text": "{\"results\":[...]}" } ] }
   ```
-- **Actionable:** a Swift MCP server should emit **both** `structuredContent` and a JSON-encoded `content[0].text`. Never rely on `structuredContent` alone for an OpenAI client. Declaring `outputSchema` is good practice (and required for ChatGPT app/plugin review) but OpenAI's Responses MCP client will not use it.
+- **Actionable, with one deliberate departure from the example above.** Emit **both** `structuredContent` and a text content block, because the Responses MCP client flattens `mcp_call.output` to a string and never reads `structuredContent`. But the text block should be the **human-readable** rendering, not a JSON-encoded duplicate of `structuredContent`. The text block is what actually reaches the model, and a JSON copy spends context on syntax the model does not use: this server renders `"[1] Title"`, `"URL: …"` and `"Sources: …"` for a search, and a titled text body for a fetched page. `StdioServerTests` asserts that the text block does **not** contain a raw `"results"` payload, so dumping the structured object as JSON is a regression, not a requirement. Never rely on `structuredContent` alone for an OpenAI client. Declaring `outputSchema` is good practice (and required for ChatGPT app/plugin review) but OpenAI's Responses MCP client will not use it.
 
 ---
 
@@ -268,7 +268,7 @@ Rules that are safe on both paths:
 12. **`$schema`/`$id`:** optional, accepted by OpenAI. Harmless to include, harmless to omit.
 13. **Budgets:** ≤5000 object properties, ≤10 nesting levels, ≤1000 enum values total, ≤120,000 chars total across names/enum/const, ≤64 chars per tool name.
 14. **Tool count:** aim ≤20 exposed tools for accuracy; keep under ~128 per request (observed ceiling, unofficial).
-15. **Results:** return `structuredContent` **and** a JSON-encoded duplication in `content[0].text`. Declare `outputSchema` for validation and for ChatGPT app review, but do not depend on an OpenAI client reading it.
+15. **Results:** return `structuredContent` **and** a text block for clients that only surface text. Declare `outputSchema` for validation and for ChatGPT app review, but do not depend on an OpenAI client reading it. Prefer a compact **human-readable** rendering over a JSON-encoded copy of `structuredContent` — the text block is what reaches the model (§1.4).
 
 ### 4.2 Should union `type` arrays be avoided?
 
@@ -288,7 +288,7 @@ What **should** be avoided:
 - Implement `initialize` (return negotiated `protocolVersion`; accept 2025-06-18 and 2025-03-26), `tools/list`, `tools/call` as JSON-RPC 2.0. Honor `Mcp-Session-Id`; accept `Accept: application/json, text/event-stream`.
 - Emit `ToolAnnotations` with accurate `readOnlyHint` / `destructiveHint` / `openWorldHint` — OpenAI's `allowed_tools.read_only` and `require_approval.*.read_only` filters match on `readOnlyHint`.
 - Advertise **closed** schemas: `additionalProperties: false`, explicit `properties` (even `{}`), every key in `required`, no `format: "uri"`, no `default`, no `allOf`/`oneOf`.
-- Return both `structuredContent` and a JSON-encoded text mirror in `content`.
+- Return both `structuredContent` and a **human-readable** text block in `content` — not a JSON mirror of the structured object (§1.4).
 - Add a schema-lint step in Swift that walks the generated `inputSchema` and asserts the rules in §4.1 before serving `tools/list`.
 
 ---
