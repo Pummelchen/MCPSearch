@@ -4,7 +4,9 @@
 Drives the built executable through a real MCP handshake and asserts that:
 
   1. ``initialize`` succeeds and reports the expected server identity;
-  2. ``tools/list`` exposes exactly the three documented tools;
+  2. ``tools/list`` advertises every documented tool with a usable object schema —
+     see ``REQUIRED_TOOLS`` for why this is a presence check rather than an exact
+     inventory;
   3. every line written to stdout is valid JSON-RPC (a stray ``print`` anywhere in the
      server would corrupt the MCP stream, so this is checked on every reply);
   4. diagnostics are written to stderr, never stdout;
@@ -50,7 +52,14 @@ SCRUBBED_VARIABLES = (
     "SEARCH_CONFIG_FILE",
 )
 
-EXPECTED_TOOLS = {"web_search", "web_open", "web_search_status"}
+# The documented tool surface. Deliberately a *presence* check rather than an exact
+# inventory: which tools exist, and the schema rules each must satisfy, are asserted in
+# Swift (``StdioServerTests`` names and counts them, ``SchemaCompatibilityTests`` lints
+# every schema) and that suite runs in the same CI job. Keeping a second exhaustive list
+# here is what let a fourth tool ship while this script still demanded three, which turned
+# CI red for a release that was otherwise correct. Adding a tool must not require editing
+# two languages in lockstep.
+REQUIRED_TOOLS = ("web_answer", "web_open", "web_search", "web_search_status")
 
 
 class Failure(Exception):
@@ -179,8 +188,14 @@ def check_tools(server: Server) -> None:
     if not isinstance(tools, list):
         raise Failure(f"tools/list returned no tools: {response}")
     names = {tool.get("name") for tool in tools}
-    if names != EXPECTED_TOOLS:
-        raise Failure(f"expected tools {sorted(EXPECTED_TOOLS)}, got {sorted(names)}")
+    missing = set(REQUIRED_TOOLS) - names
+    if missing:
+        raise Failure(f"tools/list is missing {sorted(missing)}; advertised {sorted(names)}")
+    undocumented = names - set(REQUIRED_TOOLS)
+    if undocumented:
+        # Not a failure: the Swift suite owns the exact inventory. Printed so a new tool
+        # is visible in the smoke log instead of silently accepted.
+        print(f"  note: {sorted(undocumented)} advertised but not listed in this script")
 
     for tool in tools:
         schema = tool.get("inputSchema")
@@ -380,8 +395,11 @@ def run_http_smoke(binary: str) -> None:
         if status != 200 or not messages:
             raise Failure(f"HTTP tools/list failed: status={status}")
         names = {tool["name"] for tool in messages[0]["result"]["tools"]}
-        if names != EXPECTED_TOOLS:
-            raise Failure(f"HTTP tools/list returned {sorted(names)}, expected {sorted(EXPECTED_TOOLS)}")
+        missing = set(REQUIRED_TOOLS) - names
+        if missing:
+            raise Failure(
+                f"HTTP tools/list is missing {sorted(missing)}; advertised {sorted(names)}"
+            )
         print("  tools/list ok over SSE")
 
         status, _, messages = http_exchange(
