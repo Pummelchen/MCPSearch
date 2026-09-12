@@ -103,6 +103,14 @@ public struct OpenWebSearchProvider: SearchProvider {
             throw SearchError.malformedResponse(.openWebSearch)
         }
 
+        /// The engines one result came from, deduplicated and stably ordered.
+        func engines(of item: OpenWebSearchResponse.Item) -> [String]? {
+            var names = Set<String>()
+            if let engine = item.engine { names.insert(engine) }
+            for engine in item.engines ?? [] { names.insert(engine) }
+            return names.isEmpty ? nil : names.sorted()
+        }
+
         var seen: Set<String> = []
         var results: [SearchResult] = []
         var upstreamEngines: Set<String> = []
@@ -120,6 +128,9 @@ public struct OpenWebSearchProvider: SearchProvider {
                 publishedAt: (item.publishedAt ?? item.published).flatMap(JSONCoding.date(from:)),
                 score: item.score,
                 content: nil,
+                // Per-result provenance, so fusion discounts the page that resold an owned
+                // index rather than the whole response.
+                upstreamEngines: engines(of: item),
                 request: request,
                 seenKeys: &seen
             ) else { continue }
@@ -164,9 +175,40 @@ public struct OpenWebSearchProvider: SearchProvider {
         let success: Bool?
         let status: String?
         let query: String?
+        /// Set only when the whole body was a bare array instead of an envelope.
+        private let bareArray: [Item]?
+
+        enum CodingKeys: String, CodingKey {
+            case results, data, items, success, status, query
+        }
+
+        /// Accept an envelope (`results`/`data`/`items`) or a bare top-level array.
+        ///
+        /// The adapter documents both shapes, but a synthesised `Decodable` could only read
+        /// the envelope, so an array body failed as a malformed response.
+        init(from decoder: any Decoder) throws {
+            if let container = try? decoder.container(keyedBy: CodingKeys.self) {
+                results = try container.decodeIfPresent([Item].self, forKey: .results)
+                data = try container.decodeIfPresent([Item].self, forKey: .data)
+                items = try container.decodeIfPresent([Item].self, forKey: .items)
+                success = try container.decodeIfPresent(Bool.self, forKey: .success)
+                status = try container.decodeIfPresent(String.self, forKey: .status)
+                query = try container.decodeIfPresent(String.self, forKey: .query)
+                bareArray = nil
+                return
+            }
+            let single = try decoder.singleValueContainer()
+            bareArray = try single.decode([Item].self)
+            results = nil
+            data = nil
+            items = nil
+            success = nil
+            status = nil
+            query = nil
+        }
 
         var aggregatedItems: [Item] {
-            results ?? data ?? items ?? []
+            results ?? data ?? items ?? bareArray ?? []
         }
 
         /// Some deployments answer `200 {"results":[]}` for a genuinely empty query,
@@ -174,7 +216,7 @@ public struct OpenWebSearchProvider: SearchProvider {
         var indicatesSuccess: Bool {
             if success == true { return true }
             if let status, status.lowercased() == "ok" { return true }
-            return results != nil || data != nil || items != nil
+            return results != nil || data != nil || items != nil || bareArray != nil
         }
 
         struct Item: Decodable {

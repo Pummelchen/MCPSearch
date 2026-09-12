@@ -147,6 +147,14 @@ public struct NodeProbe: Sendable {
         let results: [Item]
         let unresponsiveEngines: [[String]]?
 
+        /// SearXNG writes `unresponsive_engines`. Without this mapping the monitor's
+        /// unavailable-engine column was always empty against a live instance, even though
+        /// `SearXNGProvider` maps the same key explicitly.
+        enum CodingKeys: String, CodingKey {
+            case results
+            case unresponsiveEngines = "unresponsive_engines"
+        }
+
         struct Item: Decodable {
             let engine: String?
             let engines: [String]?
