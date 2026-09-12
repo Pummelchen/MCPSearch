@@ -10,10 +10,13 @@ import XCTest
 /// and an aggregator must not double-count a source it merely resells.
 final class RankFusionTests: XCTestCase {
 
+    /// - Parameter resultEngines: per-result provenance, as an adapter that reports the
+    ///   engine behind each individual result supplies it.
     private func response(
         _ provider: ProviderID,
         _ entries: [(String, String)],
-        upstream: [String] = []
+        upstream: [String] = [],
+        resultEngines: [String]? = nil
     ) -> ProviderSearchResponse {
         var seen: Set<String> = []
         var results: [SearchResult] = []
@@ -24,6 +27,7 @@ final class RankFusionTests: XCTestCase {
                 title: entry.0,
                 urlString: entry.1,
                 snippet: nil,
+                upstreamEngines: resultEngines,
                 request: Fixtures.request(),
                 seenKeys: &seen
             ) {
@@ -109,7 +113,8 @@ final class RankFusionTests: XCTestCase {
                 response(
                     .searxng,
                     [("BraveOnly", "https://a.example.com/1")],
-                    upstream: ["brave"]
+                    upstream: ["brave"],
+                    resultEngines: ["brave"]
                 ),
             ],
             limit: 10,
@@ -117,9 +122,12 @@ final class RankFusionTests: XCTestCase {
         )
         let diagnostics = fused.diagnostics.first { $0.canonicalURL.path == "/1" }
         XCTAssertNotNil(diagnostics)
-        // One independent family (brave) plus the meta family: corroboration requires
-        // two families, so this must not be flagged as independent corroboration.
+        // The same URL from an independent index and from an aggregator that resold it is one
+        // source, not two, so it must not count as independently corroborated. Folding needs
+        // per-result engines; with only a response-level list the vote is discounted but the
+        // family cannot be folded, which is recorded on the tracker.
         XCTAssertEqual(Set(diagnostics!.providers), Set([.brave, .searxng]))
+        XCTAssertFalse(diagnostics!.hasIndependentCorroboration)
     }
 
     func testTwoIndependentProvidersBothRankAboveAggregatorOnlyResult() {

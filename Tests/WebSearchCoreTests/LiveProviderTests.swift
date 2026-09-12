@@ -12,9 +12,13 @@ import XCTest
 ///
 /// ## Running
 ///
+/// Live tests are an **explicit** opt-in: a usable key alone is not enough, because a
+/// developer machine or CI runner may carry a real key that nobody intended this run to
+/// spend.
+///
 /// ```bash
 /// # Uses TAVILY_API_KEY from the environment, or from ./config.env
-/// swift test --filter LiveProviderTests
+/// SEARCH_LIVE_TESTS=1 swift test --filter LiveProviderTests
 /// ```
 ///
 /// ## Credit discipline
@@ -24,8 +28,8 @@ import XCTest
 /// counts, no `thorough` runs except where advanced depth is the thing under test, and
 /// the majority of assertions are on a *single* live response.
 ///
-/// The file skips itself entirely when no key is available, so it is safe to leave
-/// enabled in a normal `swift test` run.
+/// The file skips itself unless `SEARCH_LIVE_TESTS` is set **and** a usable key is
+/// available, so it is safe to leave enabled in a normal `swift test` run.
 final class LiveProviderTests: XCTestCase {
 
     // MARK: - Key discovery
@@ -33,6 +37,25 @@ final class LiveProviderTests: XCTestCase {
     /// Live tests are skipped unless a key is present.
     private struct MissingKey: Error, CustomStringConvertible {
         var description: String { "no live provider credentials available" }
+    }
+
+    /// The environment variable that explicitly opts in to spending real credits.
+    static let optInVariable = "SEARCH_LIVE_TESTS"
+
+    /// Whether live tests were explicitly asked for.
+    ///
+    /// A key-shaped `TAVILY_API_KEY` is deliberately **not** sufficient: on a machine
+    /// where one is routinely exported, that would make a plain `swift test` spend real
+    /// credits. The opt-in has to be stated.
+    static func liveTestsEnabled(
+        _ environment: [String: String] = ProcessInfo.processInfo.environment
+    ) -> Bool {
+        guard let raw = environment[optInVariable]?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+            !raw.isEmpty
+        else { return false }
+        return ["1", "true", "yes", "on", "enabled"].contains(raw)
     }
 
     /// Credential values that look like placeholders rather than real keys.
@@ -80,14 +103,29 @@ final class LiveProviderTests: XCTestCase {
         return nil
     }
 
-    /// Build a live Tavily provider, or skip when no key is configured.
-    private func liveTavily() throws -> (TavilyProvider, AppConfiguration) {
-        guard let key = LiveProviderTests.liveKey("TAVILY_API_KEY") else {
+    /// The explicit opt-in **and** a usable key, with a skip that says what is missing.
+    ///
+    /// Requiring both is the point: a machine that routinely exports a real key would
+    /// otherwise make a plain `swift test` spend credits.
+    private static func requireLiveCredentials() throws -> String {
+        guard liveTestsEnabled() else {
+            throw XCTSkip(
+                "Live tests skipped: set \(optInVariable)=1 to run tests that spend real "
+                    + "provider credits."
+            )
+        }
+        guard let key = liveKey("TAVILY_API_KEY") else {
             throw XCTSkip(
                 "Live tests skipped: set TAVILY_API_KEY or add it to config.env. "
                     + "These tests call a real provider and are never part of the default suite."
             )
         }
+        return key
+    }
+
+    /// Build a live Tavily provider, or skip when the opt-in or a key is missing.
+    private func liveTavily() throws -> (TavilyProvider, AppConfiguration) {
+        let key = try LiveProviderTests.requireLiveCredentials()
 
         var configuration = AppConfiguration()
         configuration.tavilyAPIKey = key
@@ -125,6 +163,23 @@ final class LiveProviderTests: XCTestCase {
     }
 
     // MARK: - Credential validity
+
+    /// The opt-in must be explicit: a key alone must never enable live spending.
+    func testLiveTestsRequireAnExplicitOptIn() {
+        XCTAssertFalse(LiveProviderTests.liveTestsEnabled([:]))
+        for value in ["", "0", "false", "no", "off", "maybe"] {
+            XCTAssertFalse(
+                LiveProviderTests.liveTestsEnabled(["SEARCH_LIVE_TESTS": value]),
+                "'\(value)' must not enable live tests"
+            )
+        }
+        for value in ["1", "true", "TRUE", "yes", "on", "enabled"] {
+            XCTAssertTrue(
+                LiveProviderTests.liveTestsEnabled(["SEARCH_LIVE_TESTS": value]),
+                "'\(value)' must enable live tests"
+            )
+        }
+    }
 
     /// The placeholder guard must reject the values CI uses to prove hermeticity.
     ///
@@ -166,9 +221,7 @@ final class LiveProviderTests: XCTestCase {
     /// This spends no credits and is the cheapest possible live check that the adapter's
     /// error classification is correct against the real service rather than a stub.
     func testInvalidKeyIsClassifiedAsAuthenticationFailure() async throws {
-        guard LiveProviderTests.liveKey("TAVILY_API_KEY") != nil else {
-            throw XCTSkip("Live tests skipped: no TAVILY_API_KEY configured.")
-        }
+        _ = try LiveProviderTests.requireLiveCredentials()
 
         var configuration = AppConfiguration()
         configuration.providerOrder = [.tavily]
@@ -281,9 +334,7 @@ final class LiveProviderTests: XCTestCase {
     /// This costs 2 credits and exists to confirm the depth mapping reaches the live
     /// service, since that mapping is the difference between 1 and 2 credits per call.
     func testLiveThoroughModeUsesAdvancedDepth() async throws {
-        guard let key = LiveProviderTests.liveKey("TAVILY_API_KEY") else {
-            throw XCTSkip("Live tests skipped: no TAVILY_API_KEY configured.")
-        }
+        let key = try LiveProviderTests.requireLiveCredentials()
 
         var configuration = AppConfiguration()
         configuration.providerOrder = [.tavily]

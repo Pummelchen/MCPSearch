@@ -12,6 +12,14 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
+# Deliberately no scheduled live-provider job is defined here. Such a job would need
+# repository secrets (TAVILY_API_KEY and friends), and none are configured for this
+# repository: a workflow that referenced missing secrets would either fail on every
+# schedule or silently no-op, and a failing scheduled job is worse than an honest
+# absence. The live tests in `Tests/WebSearchCoreTests/LiveProviderTests.swift` are
+# instead an explicit local opt-in (`SEARCH_LIVE_TESTS=1` plus a real key). Add a
+# scheduled job only once the secrets actually exist.
+
 jobs:
   build-and-test:
     # The package declares `swift-tools-version: 6.3`, so an older toolchain cannot
@@ -23,8 +31,11 @@ jobs:
     timeout-minutes: 30
 
     steps:
+      # Actions are pinned to a full commit SHA (with the human-readable version in a
+      # trailing comment) so a retagged or compromised major-version branch cannot
+      # change what runs here.
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
 
       - name: Select the newest Xcode
         run: |
@@ -57,6 +68,20 @@ jobs:
             echo "::error::This package requires swift-tools-version 6.3 or newer; found $version"
             exit 1
           fi
+
+      # Cache the resolved dependency graph and its build products. A cold graph
+      # (swift-sdk, swift-nio, SwiftSoup) plus a debug *and* a release build is the
+      # difference between a few minutes and the 30-minute budget, and the lockfile
+      # makes the key stable until dependencies actually change.
+      - name: Cache SwiftPM dependencies and build products
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684  # v4.2.3
+        with:
+          path: |
+            .build
+            ~/.swiftpm
+          key: ${{ runner.os }}-swiftpm-${{ hashFiles('Package.resolved') }}
+          restore-keys: |
+            ${{ runner.os }}-swiftpm-
 
       # Deliberately no provider credentials are configured. The suite is hermetic and
       # must pass with no network access to any search vendor; if a test ever starts

@@ -85,12 +85,7 @@ final class SchemaCompatibilityTests: XCTestCase {
 
     /// Fetch `tools/list` from a freshly started server.
     private func advertisedTools() throws -> [[String: Any]] {
-        let bundleDirectory = Bundle(for: SchemaCompatibilityTests.self).bundleURL
-            .deletingLastPathComponent()
-        let binary = bundleDirectory.appendingPathComponent("SwiftWebSearchMCP")
-        guard FileManager.default.isExecutableFile(atPath: binary.path) else {
-            throw XCTSkip("Server executable not found; run `swift build` first.")
-        }
+        let binary = try ServerTestSupport.binaryURL()
 
         let server = Server(binary: binary)
         try server.start()

@@ -11,13 +11,8 @@ import XCTest
 /// exported for normal use must not be able to change the outcome.
 final class ErrorReportingTests: XCTestCase {
 
-    /// Provider credentials that must never leak into a test's environment.
-    private static let providerVariables = [
-        "TAVILY_API_KEY", "BRAVE_SEARCH_API_KEY", "MOJEEK_API_KEY", "EXA_API_KEY",
-        "JINA_API_KEY", "SEARXNG_BASE_URL", "OPEN_WEB_SEARCH_URL", "PARALLEL_MCP_URL",
-        "SEARCH_ENABLE_SCRAPERS", "SEARCH_ENABLE_PARALLEL", "SEARCH_DISABLED_PROVIDERS",
-        "SEARCH_PROVIDER_ORDER",
-    ]
+    /// The scrub list is shared with `StdioServerTests` and mirrored by
+    /// `scripts/mcp_smoke.py`; see `ServerTestSupport.providerEnvironmentVariables`.
 
     // MARK: - Server harness
 
@@ -37,6 +32,9 @@ final class ErrorReportingTests: XCTestCase {
             var env: [String: String] = [
                 "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin",
             ]
+            for key in ServerTestSupport.providerEnvironmentVariables {
+                env.removeValue(forKey: key)
+            }
             for (key, value) in environment { env[key] = value }
             process.environment = env
         }
@@ -106,12 +104,7 @@ final class ErrorReportingTests: XCTestCase {
     }
 
     private func startServer(environment: [String: String] = [:]) throws -> Server {
-        let bundleDirectory = Bundle(for: ErrorReportingTests.self).bundleURL
-            .deletingLastPathComponent()
-        let binary = bundleDirectory.appendingPathComponent("SwiftWebSearchMCP")
-        guard FileManager.default.isExecutableFile(atPath: binary.path) else {
-            throw XCTSkip("Server executable not found; run `swift build` first.")
-        }
+        let binary = try ServerTestSupport.binaryURL()
 
         let server = Server(binary: binary, environment: environment)
         try server.start()

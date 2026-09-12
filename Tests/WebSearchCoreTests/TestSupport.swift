@@ -3,6 +3,70 @@ import XCTest
 
 @testable import WebSearchCore
 
+// MARK: - Server under test
+
+/// Shared support for tests that launch the built `SwiftWebSearchMCP` executable.
+///
+/// The provider environment scrub list lives here so the two Swift server harnesses
+/// cannot drift from each other *or* from `scripts/mcp_smoke.py`, which mirrors it.
+enum ServerTestSupport {
+    /// Every documented provider and synthesis environment variable.
+    ///
+    /// Mirrored verbatim by `SCRUBBED_VARIABLES` in `scripts/mcp_smoke.py`. When this
+    /// list changes, update the Python tuple in the same commit.
+    static let providerEnvironmentVariables = [
+        "TAVILY_API_KEY", "BRAVE_SEARCH_API_KEY", "MOJEEK_API_KEY", "EXA_API_KEY",
+        "JINA_API_KEY", "SEARXNG_BASE_URL", "OPEN_WEB_SEARCH_URL", "PARALLEL_MCP_URL",
+        "SEARCH_ENABLE_SCRAPERS", "SEARCH_ENABLE_PARALLEL", "SEARCH_DISABLED_PROVIDERS",
+        "SEARCH_PROVIDER_ORDER", "SEARCH_CONFIG_FILE",
+        // Synthesis credentials belong here for the same reason as the search keys: a
+        // developer with DEEPSEEK_API_KEY exported would otherwise make the
+        // "synthesis is unconfigured" test perform a live, billed request.
+        "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "DEEPSEEK_MODEL",
+        "SEARCH_SYNTHESIS_TIMEOUT_MS", "SEARCH_SYNTHESIS_REASONING",
+    ]
+
+    /// Whether this run is CI, where missing end-to-end coverage must be a failure.
+    static var isCI: Bool {
+        ProcessInfo.processInfo.environment["CI"] != nil
+    }
+
+    /// Locate the executable `swift build` produced next to the test bundle.
+    ///
+    /// A missing binary means the end-to-end coverage did not run at all. Locally that
+    /// stays a skip so a partial checkout still builds, but in CI it is a failure: a
+    /// green run with no end-to-end coverage is exactly the silent-skip failure mode
+    /// this helper exists to prevent.
+    static func binaryURL() throws -> URL {
+        let bundleDirectory = Bundle(for: ServerTestSupportAnchor.self).bundleURL
+            .deletingLastPathComponent()
+        let candidate = bundleDirectory.appendingPathComponent("SwiftWebSearchMCP")
+        guard FileManager.default.isExecutableFile(atPath: candidate.path) else {
+            if isCI {
+                throw MissingServerBinary(path: candidate.path)
+            }
+            throw XCTSkip(
+                "Server executable not found at \(candidate.path); run `swift build` first."
+            )
+        }
+        return candidate
+    }
+
+    /// Thrown (rather than skipped) in CI so the run is red.
+    struct MissingServerBinary: Error, CustomStringConvertible {
+        let path: String
+
+        var description: String {
+            "Server executable not found at \(path); run `swift build` first. "
+                + "This is a failure rather than a skip because CI is set: missing "
+                + "end-to-end coverage must not be reported as a green run."
+        }
+    }
+}
+
+/// Anchor so `Bundle(for:)` resolves to the test bundle from a static helper.
+private final class ServerTestSupportAnchor {}
+
 // MARK: - Mock transport
 
 /// A scripted `HTTPClient` so provider contract tests never touch the network.
@@ -243,12 +307,4 @@ enum Fixtures {
     ) -> SearchRequest {
         SearchRequest(query: query, maxResults: maxResults, mode: mode)
     }
-}
-
-/// A `Clock` whose sleep behaviour is instantaneous, for timeout tests that must not
-/// actually wait.
-struct ImmediateClock: Clock {
-    private let base = Date(timeIntervalSince1970: 1_700_000_000)
-    func now() -> Date { base }
-    func uptimeNanoseconds() -> UInt64 { 0 }
 }

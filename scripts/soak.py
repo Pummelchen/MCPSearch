@@ -97,6 +97,49 @@ QUERIES: list[str] = [
 ]
 
 
+# Every provider the server can register. A `--providers` request is enforced by
+# disabling everything else explicitly: any provider with ambient credentials would
+# otherwise stay active while the header printed a different expected set.
+ALL_PROVIDERS = (
+    "tavily",
+    "brave",
+    "mojeek",
+    "exa",
+    "searxng",
+    "open_web_search",
+    "duckduckgo",
+    "startpage",
+    "parallel",
+)
+
+# Credential variables whose values and shapes must never reach the server's
+# diagnostics.
+SECRET_VARIABLES = (
+    "TAVILY_API_KEY",
+    "BRAVE_SEARCH_API_KEY",
+    "MOJEEK_API_KEY",
+    "EXA_API_KEY",
+    "JINA_API_KEY",
+    "DEEPSEEK_API_KEY",
+)
+
+# Substrings that indicate credential material regardless of the exact value. The
+# original scan looked for only two hard-coded strings; a leak of any other provider's
+# key (or a key read from `config.env`) went unnoticed.
+LEAK_MARKERS = (
+    "tvly-",
+    "Bearer ",
+    "X-Subscription-Token",
+    "x-api-key",
+    "api_key=",
+    "BRAVE_SEARCH_API_KEY=",
+    "MOJEEK_API_KEY=",
+    "EXA_API_KEY=",
+    "JINA_API_KEY=",
+    "DEEPSEEK_API_KEY=",
+)
+
+
 class Server:
     """A running server driven over stdio with newline-delimited JSON-RPC."""
 
@@ -159,19 +202,97 @@ class Server:
 
 
 def build_environment(providers: set[str]) -> dict[str, str]:
-    """Environment with only the requested providers left enabled."""
+    """Environment with only the requested providers left enabled.
+
+    ``--providers`` is authoritative: everything not requested is switched off via
+    ``SEARCH_DISABLED_PROVIDERS``. Without this, an ambient ``TAVILY_API_KEY`` (or any
+    other configured provider) stayed active while the run header claimed it was
+    excluded, so the reported expected set did not describe the run.
+    """
     environment = dict(os.environ)
 
     # Anything not explicitly requested is switched off, so the run is unambiguous.
-    if "duckduckgo" not in providers and "startpage" not in providers:
-        environment["SEARCH_ENABLE_SCRAPERS"] = "false"
-    else:
-        environment["SEARCH_ENABLE_SCRAPERS"] = "true"
+    disabled = sorted(set(ALL_PROVIDERS) - providers)
+    if disabled:
+        already = [p.strip() for p in environment.get("SEARCH_DISABLED_PROVIDERS", "").split(",") if p.strip()]
+        for provider in disabled:
+            if provider not in already:
+                already.append(provider)
+        environment["SEARCH_DISABLED_PROVIDERS"] = ",".join(already)
+
+    # Scrapers and Parallel are also opt-in flags, not just registry entries.
+    environment["SEARCH_ENABLE_SCRAPERS"] = (
+        "true" if providers & {"duckduckgo", "startpage"} else "false"
+    )
     environment["SEARCH_ENABLE_PARALLEL"] = "true" if "parallel" in providers else "false"
 
     # Keep the run quiet but retain warnings, which is where provider trouble shows.
     environment.setdefault("SEARCH_LOG_LEVEL", "warning")
     return environment
+
+
+def parse_dotenv(contents: str) -> dict[str, str]:
+    """Minimal ``KEY=VALUE`` parser, mirroring the server's own ``config.env`` handling."""
+    result: dict[str, str] = {}
+    for raw_line in contents.splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#"):
+            continue
+        if line.startswith("export "):
+            line = line[len("export "):]
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in "\"'":
+            value = value[1:-1]
+        if key and value:
+            result[key] = value
+    return result
+
+
+def load_secret_values() -> dict[str, str]:
+    """Credential name -> value, from the environment and any config file the server reads.
+
+    The server resolves credentials from the environment and from ``SEARCH_CONFIG_FILE``,
+    so both are scanned; the repository-root ``config.env`` is included as a fallback so
+    a key that only lives there is still checked for leaks.
+    """
+    values: dict[str, str] = {}
+    for name in SECRET_VARIABLES:
+        value = os.environ.get(name, "").strip()
+        if value:
+            values[name] = value
+
+    candidates: list[str] = []
+    configured = os.environ.get("SEARCH_CONFIG_FILE", "").strip()
+    if configured:
+        candidates.append(configured)
+    repository_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    candidates.append(os.path.join(repository_root, "config.env"))
+
+    for path in candidates:
+        try:
+            with open(path, encoding="utf-8") as handle:
+                parsed = parse_dotenv(handle.read())
+        except OSError:
+            continue
+        for name in SECRET_VARIABLES:
+            value = parsed.get(name, "").strip()
+            if value:
+                values.setdefault(name, value)
+    return values
+
+
+def find_credential_leaks(text: str, secrets: dict[str, str]) -> list[str]:
+    """Names and markers describing any credential material present in ``text``."""
+    found = {marker for marker in LEAK_MARKERS if marker in text}
+    for name, value in secrets.items():
+        # Short values produce false positives; real keys are far longer than this.
+        if len(value) >= 8 and value in text:
+            found.add(f"{name} value")
+    return sorted(found)
 
 
 def main() -> int:
@@ -182,7 +303,8 @@ def main() -> int:
     parser.add_argument("--pause", type=float, default=1.0,
                         help="seconds between queries, to imitate real usage")
     parser.add_argument("--providers", default="tavily,duckduckgo,parallel",
-                        help="comma-separated providers expected to be active")
+                        help="comma-separated providers to run; every other provider "
+                             "is explicitly disabled so the run matches this set")
     parser.add_argument("--max-results", type=int, default=5)
     args = parser.parse_args()
 
@@ -206,7 +328,13 @@ def main() -> int:
 
     print(f"soak: {len(queries)} queries, mode={args.mode}, pause={args.pause}s")
     print(f"binary: {binary}")
-    print(f"providers expected: {', '.join(sorted(providers))}\n")
+    print(f"providers expected: {', '.join(sorted(providers))}")
+    disabled = sorted(set(ALL_PROVIDERS) - providers)
+    if disabled:
+        # Printed so the header describes the run that actually happens: unlisted
+        # providers are switched off in build_environment, not merely unmentioned.
+        print(f"providers disabled: {', '.join(disabled)}")
+    print()
 
     server = Server(binary, build_environment(providers))
     try:
@@ -334,8 +462,13 @@ def main() -> int:
                 )
 
         stderr = server.close()
-        leaked = [key for key in ("tvly-dev-", "BRAVE_SEARCH_API_KEY=") if key in stderr]
+        leaked = find_credential_leaks(stderr, load_secret_values())
         print(f"\n  credential leak in stderr: {leaked if leaked else 'none'}")
+
+        if leaked:
+            # A credential in a diagnostic is a defect, not an observation to interpret.
+            print(f"\nSOAK FAILED: credential material appeared in stderr: {leaked}")
+            return 1
 
         # A soak that produced errors everywhere, or where the primary provider never
         # contributed, is a failure of the run rather than a result to interpret.

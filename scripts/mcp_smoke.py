@@ -36,8 +36,12 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-# Provider variables are cleared so the run is hermetic: an exported API key must not
-# change the outcome of this test.
+# Provider and synthesis variables are cleared so the run is hermetic: an exported API
+# key must not change the outcome of this test.
+#
+# Kept in lockstep with ``ServerTestSupport.providerEnvironmentVariables`` in
+# ``Tests/WebSearchCoreTests/TestSupport.swift``. The Swift suite is the source of
+# truth; when it changes, change this tuple in the same commit so the two cannot drift.
 SCRUBBED_VARIABLES = (
     "TAVILY_API_KEY",
     "BRAVE_SEARCH_API_KEY",
@@ -49,7 +53,14 @@ SCRUBBED_VARIABLES = (
     "PARALLEL_MCP_URL",
     "SEARCH_ENABLE_SCRAPERS",
     "SEARCH_ENABLE_PARALLEL",
+    "SEARCH_DISABLED_PROVIDERS",
+    "SEARCH_PROVIDER_ORDER",
     "SEARCH_CONFIG_FILE",
+    "DEEPSEEK_API_KEY",
+    "DEEPSEEK_BASE_URL",
+    "DEEPSEEK_MODEL",
+    "SEARCH_SYNTHESIS_TIMEOUT_MS",
+    "SEARCH_SYNTHESIS_REASONING",
 )
 
 # The documented tool surface. Deliberately a *presence* check rather than an exact

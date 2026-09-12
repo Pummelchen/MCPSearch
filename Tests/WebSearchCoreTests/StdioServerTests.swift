@@ -10,36 +10,18 @@ import WebSearchCore
 /// carries protocol traffic only.
 final class StdioServerTests: XCTestCase {
 
-    /// Every documented provider environment variable.
-    ///
-    /// Scrub all of these before launching the server so the tests are hermetic and
-    /// cannot be influenced by the developer's own shell.
-    static let providerEnvironmentVariables = [
-        "TAVILY_API_KEY", "BRAVE_SEARCH_API_KEY", "MOJEEK_API_KEY", "EXA_API_KEY",
-        "JINA_API_KEY", "SEARXNG_BASE_URL", "OPEN_WEB_SEARCH_URL", "PARALLEL_MCP_URL",
-        "SEARCH_ENABLE_SCRAPERS", "SEARCH_ENABLE_PARALLEL", "SEARCH_DISABLED_PROVIDERS",
-        "SEARCH_PROVIDER_ORDER", "SEARCH_CONFIG_FILE",
-        // Synthesis credentials belong here for the same reason as the search keys: a
-        // developer with DEEPSEEK_API_KEY exported would otherwise make the
-        // "synthesis is unconfigured" test perform a live, billed request.
-        "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "DEEPSEEK_MODEL",
-        "SEARCH_SYNTHESIS_TIMEOUT_MS", "SEARCH_SYNTHESIS_REASONING",
-    ]
+    /// The scrub list is shared with `ErrorReportingTests` and mirrored by
+    /// `scripts/mcp_smoke.py`; see `ServerTestSupport.providerEnvironmentVariables`.
+    /// Referencing it directly is what stops the three copies from drifting.
 
     // MARK: - Process plumbing
 
     /// Locate the binary that `swift build` produced next to the test bundle.
+    ///
+    /// Delegates to the shared helper so a missing binary fails in CI instead of
+    /// silently skipping the only end-to-end coverage in the package.
     private func binaryURL() throws -> URL {
-        // The test bundle lives in `.build/<triple>/debug/`, alongside the executable.
-        let bundleDirectory = Bundle(for: StdioServerTests.self).bundleURL
-            .deletingLastPathComponent()
-        let candidate = bundleDirectory.appendingPathComponent("SwiftWebSearchMCP")
-        guard FileManager.default.isExecutableFile(atPath: candidate.path) else {
-            throw XCTSkip(
-                "Server executable not found at \(candidate.path); run `swift build` first."
-            )
-        }
-        return candidate
+        try ServerTestSupport.binaryURL()
     }
 
     /// A running server process with newline-delimited JSON-RPC framing.
@@ -64,7 +46,7 @@ final class StdioServerTests: XCTestCase {
             var merged: [String: String] = [
                 "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin",
             ]
-            for key in StdioServerTests.providerEnvironmentVariables {
+            for key in ServerTestSupport.providerEnvironmentVariables {
                 merged.removeValue(forKey: key)
             }
             for (key, value) in environment { merged[key] = value }
@@ -151,27 +133,45 @@ final class StdioServerTests: XCTestCase {
         }
     }
 
-    /// Start a server, perform the initialize handshake, and return the process.
-    private func startInitializedServer(
-        environment: [String: String]
-    ) throws -> ServerProcess {
+    /// The protocol revisions this server build understands.
+    ///
+    /// Deliberately a local list rather than a value a test sends: the assertion below
+    /// is about what the *server* answers, independent of what the client asked for.
+    private static let knownProtocolRevisions = [
+        "2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25",
+    ]
+
+    /// Start a server and send one `initialize` with an explicit requested revision.
+    private func startServer(
+        requestingProtocolVersion version: String,
+        environment: [String: String] = [:]
+    ) throws -> (server: ServerProcess, initializeResult: [String: Any]) {
         let binary = try binaryURL()
         let server = ServerProcess(binary: binary, environment: environment)
         try server.start()
-
         try server.send([
             "jsonrpc": "2.0",
             "id": 1,
             "method": "initialize",
             "params": [
-                "protocolVersion": "2025-06-18",
+                "protocolVersion": version,
                 "capabilities": [String: Any](),
                 "clientInfo": ["name": "StdioServerTests", "version": "1.0.0"],
             ],
         ])
-
         let response = try server.readResponse(id: 1)
         let result = try XCTUnwrap(response["result"] as? [String: Any])
+        return (server, result)
+    }
+
+    /// Start a server, perform the initialize handshake, and return the process.
+    private func startInitializedServer(
+        environment: [String: String]
+    ) throws -> ServerProcess {
+        let (server, result) = try startServer(
+            requestingProtocolVersion: "2025-06-18",
+            environment: environment
+        )
         let serverInfo = try XCTUnwrap(result["serverInfo"] as? [String: Any])
         XCTAssertEqual(serverInfo["name"] as? String, "SwiftWebSearchMCP")
 
@@ -192,6 +192,35 @@ final class StdioServerTests: XCTestCase {
         // `defer`, which the compiler notes would execute immediately.
         let server = try startInitializedServer(environment: [:])
         server.stop()
+    }
+
+    /// The negotiated revision must be the server's answer, not just an echo of whatever
+    /// the test happened to send.
+    ///
+    /// Nothing previously checked this: most tests send `2025-06-18` and
+    /// `SchemaCompatibilityTests` sends `2025-11-25`, so a dependency bump that changed
+    /// the negotiated revision would have gone unnoticed.
+    func testInitializeNegotiatesTheProtocolRevisionTheServerSupports() throws {
+        // A revision the server knows is honoured exactly, so a client is never
+        // silently moved to a different revision than it asked for.
+        let (echoing, echoed) = try startServer(requestingProtocolVersion: "2025-06-18")
+        defer { echoing.stop() }
+        XCTAssertEqual(echoed["protocolVersion"] as? String, "2025-06-18")
+
+        // An unrecognised revision falls back to the newest revision this build
+        // supports, which is what a model client relying on `initialize` must see.
+        let (fallingBack, fallback) = try startServer(requestingProtocolVersion: "1999-01-01")
+        defer { fallingBack.stop() }
+        let negotiated = try XCTUnwrap(fallback["protocolVersion"] as? String)
+        XCTAssertTrue(
+            Self.knownProtocolRevisions.contains(negotiated),
+            "the server answered with an unknown revision: \(negotiated)"
+        )
+        XCTAssertEqual(
+            negotiated,
+            Self.knownProtocolRevisions.max(),
+            "an unrecognised request must fall back to the newest supported revision"
+        )
     }
 
     func testToolsListExposesTheDocumentedToolsWithValidSchemas() throws {
@@ -656,7 +685,8 @@ final class StdioServerTests: XCTestCase {
         XCTAssertTrue(text.contains("provider"))
     }
 
-    func testWebOpenRejectsDangerousSchemesAndInternalHosts() throws {        let server = try startInitializedServer(environment: [:])
+    func testWebOpenRejectsDangerousSchemesAndInternalHosts() throws {
+        let server = try startInitializedServer(environment: [:])
         defer { server.stop() }
 
         let cases: [(id: Int, url: String, expected: String)] = [
