@@ -146,8 +146,8 @@ lives there.
 
 ```bash
 swift build                    # debug
-swift test                     # 309 tests, no network required
-swift test --filter LiveProviderTests   # opt-in; calls real providers, needs a key
+swift test                     # 368 tests, no network required
+SEARCH_LIVE_TESTS=1 swift test --filter LiveProviderTests   # opt-in; calls real providers, also needs a key
 python3 scripts/mcp_smoke.py   # end-to-end stdio handshake
 python3 scripts/mcp_smoke.py --http   # end-to-end Streamable HTTP session
 ```
@@ -162,8 +162,10 @@ swift run mcps-mon --probe    # also measure provider latency and errors
 See the wiki for the [monitor](https://github.com/Pummelchen/MCPSearch/wiki/Monitor)
 and [self-hosting](https://github.com/Pummelchen/MCPSearch/wiki/Self-Hosting).
 
-The default suite is hermetic and needs no credentials. Live tests skip themselves
-unless `TAVILY_API_KEY` is set in the environment or in a git-ignored `config.env`.
+The default suite is hermetic and needs no credentials. Live tests are an explicit
+opt-in: they run only with `SEARCH_LIVE_TESTS=1` **and** a usable `TAVILY_API_KEY` (from the
+environment or a git-ignored `config.env`). A key alone does not activate them, so a plain
+`swift test` cannot spend credits by accident.
 
 `docs/` holds the API research the adapters are built on, with every claim labelled
 verified or unverified — see [docs/README.md](docs/README.md).
