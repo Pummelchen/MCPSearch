@@ -93,6 +93,7 @@ public actor SearchOrchestrator {
         accumulated.append(contentsOf: primary.responses)
         failures.append(contentsOf: primary.failures)
         attemptedRequests += primary.attempted
+        var skippedLocally = primary.skippedLocally
 
         var usedIDs = selectedIDs
 
@@ -125,6 +126,7 @@ public actor SearchOrchestrator {
                 accumulated.append(contentsOf: refill.responses)
                 failures.append(contentsOf: refill.failures)
                 attemptedRequests += refill.attempted
+                skippedLocally.append(contentsOf: refill.skippedLocally)
                 usedIDs.append(contentsOf: refills)
             }
         }
@@ -162,6 +164,33 @@ public actor SearchOrchestrator {
                     }
                 }
             }
+        }
+
+        // Last resort: when the only reason there is nothing to return is a local throttle,
+        // wait it out. Nobody is delayed by this unless the alternative is an empty result,
+        // which is why the wait lives here rather than in the first pass. This is the
+        // single-provider case the tracker measured: DuckDuckGo alone failed 41 of 50
+        // queries once its own throttle was reached.
+        if accumulated.isEmpty, !skippedLocally.isEmpty,
+            let remaining = remainingBudget(deadline: budget, started: started)
+        {
+            log.debug(
+                "Nothing returned and only local skips to blame; retrying with waiting",
+                metadata: ["providers": skippedLocally.map(\.rawValue).joined(separator: ",")]
+            )
+            let retry = await runProviders(
+                skippedLocally,
+                request: scopedRequest,
+                deadline: remaining,
+                allowWaiting: true
+            )
+            accumulated.append(contentsOf: retry.responses)
+            // Replace the earlier skip records instead of adding to them, so a provider is
+            // reported once whichever pass finally decided its fate.
+            failures.removeAll { skippedLocally.contains($0.provider) }
+            failures.append(contentsOf: retry.failures)
+            attemptedRequests += retry.attempted
+            usedIDs.append(contentsOf: retry.responses.map(\.provider))
         }
 
         let results = fuse(accumulated, request: request)
@@ -263,7 +292,8 @@ public actor SearchOrchestrator {
     private func runProviders(
         _ ids: [ProviderID],
         request: SearchRequest,
-        deadline: Duration
+        deadline: Duration,
+        allowWaiting: Bool = false
     ) async -> FanOutResult {
         guard !ids.isEmpty else { return FanOutResult() }
 
@@ -272,7 +302,12 @@ public actor SearchOrchestrator {
                 guard let provider = registry.provider(id) else { continue }
                 group.addTask { [weak self] in
                     guard let self else { return FanOutResult() }
-                    return await self.runSingle(provider, request: request)
+                    return await self.runSingle(
+                        provider,
+                        request: request,
+                        budget: deadline,
+                        allowWaiting: allowWaiting
+                    )
                 }
             }
 
@@ -362,18 +397,69 @@ public actor SearchOrchestrator {
         }
     }
 
+    /// The longest wait worth spending a budget on when the alternative is no result at all,
+    /// and the share of the remaining budget one wait may claim.
+    static let maximumLocalWait = Duration.seconds(6)
+    static let localWaitBudgetShare = 0.5
+
+    /// Authorise one request, optionally waiting out a local throttle.
+    ///
+    /// A token bucket denies rather than waits, which is right on the first pass: waiting
+    /// there would delay a search that another provider can already answer. It is wrong when
+    /// waiting is the only alternative to an empty result, which is why the orchestrator only
+    /// sets `allowWaiting` on its last-resort pass. Measured on the tracker: DuckDuckGo alone
+    /// failed 41 of 50 queries once its throttle was reached, while the same run with a
+    /// second provider produced 241 results.
+    ///
+    /// The wait is bounded twice — an absolute cap and a share of what is left of the budget —
+    /// so a large estimate cannot eat the search.
+    private func authorizationAfterBoundedWait(
+        _ id: ProviderID,
+        budget: Duration,
+        allowWaiting: Bool
+    ) async -> ProviderFailure? {
+        guard let denial = await health.authorize(id) else { return nil }
+        guard allowWaiting, denial.category == .rateLimited,
+            let wait = await health.localWait(for: id),
+            wait <= SearchOrchestrator.maximumLocalWait,
+            wait.milliseconds
+                <= Int(Double(budget.milliseconds) * SearchOrchestrator.localWaitBudgetShare)
+        else {
+            return denial
+        }
+
+        log.debug(
+            "Waiting out a local throttle instead of returning nothing",
+            metadata: ["provider": id.rawValue, "wait_ms": "\(wait.milliseconds)"]
+        )
+        do {
+            try await Task.sleep(for: wait)
+        } catch {
+            // Cancelled while waiting: report the skip rather than the cancellation, so the
+            // caller sees the provider's local condition.
+            return denial
+        }
+        return await health.authorize(id)
+    }
+
     /// Run one provider, translating every failure mode into a failure record rather
     /// than an exception, so one bad provider never aborts the fan-out.
     private func runSingle(
         _ provider: any SearchProvider,
-        request: SearchRequest
+        request: SearchRequest,
+        budget: Duration,
+        allowWaiting: Bool
     ) async -> FanOutResult {
         let id = provider.id
         var result = FanOutResult()
 
         // Health gate: skip a provider whose breaker is open or whose local bucket is
         // empty, instead of spending latency discovering it again.
-        if let denial = await health.authorize(id) {
+        if let denial = await authorizationAfterBoundedWait(
+            id,
+            budget: budget,
+            allowWaiting: allowWaiting
+        ) {
             result.failures.append(denial)
             result.skippedLocally.append(id)
             log.debug(

@@ -161,6 +161,14 @@ public actor ProviderHealth {
         return nil
     }
 
+    /// How long until this provider's local bucket can serve a request.
+    ///
+    /// Used by the orchestrator to decide whether waiting is cheaper than failing. `nil`
+    /// means a token is available now (or no limiter is registered).
+    public func localWait(for provider: ProviderID) async -> Duration? {
+        await limiters[provider]?.timeUntilAvailable()
+    }
+
     // MARK: - Outcomes
 
     public func recordSuccess(

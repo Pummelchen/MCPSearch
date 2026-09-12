@@ -374,6 +374,82 @@ final class SearchOrchestratorTests: XCTestCase {
         XCTAssertEqual(response.providersFailed.map(\.provider), [.tavily])
     }
 
+    /// A brief local throttle must not become a hard failure.
+    ///
+    /// The token bucket denies rather than waits, which is right when another provider can
+    /// answer. Measured on the tracker: DuckDuckGo alone failed 41 of 50 queries once its
+    /// throttle was reached, while the same run with a second provider produced 241 results.
+    func testAShortLocalThrottleIsWaitedOutRatherThanFailing() async throws {
+        // A real clock on purpose: the wait has to actually refill the bucket, which a
+        // frozen test clock would never do.
+        let health = ProviderHealth()
+        // One token and a 100 ms refill: a real throttle, and obviously cheaper to wait out
+        // than to return nothing.
+        await health.register(
+            .tavily,
+            ratePolicy: RateLimiter.Policy(burst: 1, requestsPerMinute: 600)
+        )
+        // Spend the burst token so the next request has to wait out the refill.
+        _ = await health.authorize(.tavily)
+
+        let tavily = MockSearchProvider.returning(
+            .tavily,
+            results: [("T", "https://t.example.com/1", nil)]
+        )
+        let (orchestrator, _, _) = makeOrchestrator(
+            providers: [tavily],
+            configuration: Fixtures.configuration(providerOrder: [.tavily]),
+            health: health
+        )
+
+        let response = try await orchestrator.search(Fixtures.request(mode: .fast))
+
+        XCTAssertEqual(tavily.callCount, 1, "the provider must be consulted after the wait")
+        XCTAssertEqual(response.results.count, 1)
+        XCTAssertTrue(response.providersFailed.isEmpty)
+    }
+
+    /// A throttle the budget cannot afford is reported, not waited out.
+    func testALongLocalThrottleIsReportedRatherThanWaitedOut() async {
+        let clock = TestClock()
+        let health = ProviderHealth(clock: clock)
+        await health.register(
+            .tavily,
+            ratePolicy: RateLimiter.Policy(
+                burst: 1,
+                requestsPerMinute: 0.001,
+                minimumInterval: .seconds(30)
+            )
+        )
+        _ = await health.authorize(.tavily)
+
+        let tavily = MockSearchProvider.returning(
+            .tavily,
+            results: [("T", "https://t.example.com/1", nil)]
+        )
+        let (orchestrator, _, _) = makeOrchestrator(
+            providers: [tavily],
+            configuration: Fixtures.configuration(
+                providerOrder: [.tavily],
+                fastTimeout: .seconds(2)
+            ),
+            health: health,
+            clock: clock
+        )
+
+        do {
+            _ = try await orchestrator.search(Fixtures.request(mode: .fast))
+            XCTFail("expected the search to be refused locally")
+        } catch let error as SearchError {
+            guard case .temporarilyUnavailable = error else {
+                return XCTFail("expected temporarilyUnavailable, got \(error)")
+            }
+        } catch {
+            XCTFail("unexpected error: \(error)")
+        }
+        XCTAssertEqual(tavily.callCount, 0, "a 30 s wait is not worth the search budget")
+    }
+
     /// A single explicitly requested provider that fails must say why, rather than
     /// reporting a generic "all providers failed".
     func testExplicitProviderFailureExplainsTheReason() async {
