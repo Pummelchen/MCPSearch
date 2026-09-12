@@ -240,6 +240,40 @@ final class SearchOrchestratorTests: XCTestCase {
         }
     }
 
+    /// An upstream throttle or rejection is the provider's answer, not a local refusal.
+    ///
+    /// `rateLimited` and `authenticationRequired` are produced by purely local conditions
+    /// as well as by upstream responses, so the orchestrator must not read the category to
+    /// decide whether anything was attempted. It did: an all-429 search was reported as
+    /// "nothing was attempted" and the providers' real answers were hidden.
+    func testUpstreamErrorsAreNeverReportedAsNothingAttempted() async {
+        let makeFailures: [(ProviderID) -> SearchError] = [
+            { .rateLimited($0, retryAfter: .seconds(5)) },
+            { .authenticationRequired($0) },
+        ]
+
+        for makeFailure in makeFailures {
+            let a = MockSearchProvider.failing(.tavily, with: makeFailure(.tavily))
+            let b = MockSearchProvider.failing(.brave, with: makeFailure(.brave))
+            let (orchestrator, _, _) = makeOrchestrator(providers: [a, b])
+
+            do {
+                _ = try await orchestrator.search(Fixtures.request(mode: .balanced))
+                XCTFail("expected a failure for \(makeFailure(.tavily))")
+            } catch let error as SearchError {
+                guard case .providersFailed(let failures) = error else {
+                    return XCTFail(
+                        "an upstream error must surface as providersFailed, got \(error)"
+                    )
+                }
+                XCTAssertEqual(failures.count, 2)
+                XCTAssertEqual(Set(failures.map(\.provider)), Set([.tavily, .brave]))
+            } catch {
+                XCTFail("unexpected error: \(error)")
+            }
+        }
+    }
+
     /// A sustained run must not report a transient local rate limit as an invalid
     /// request.
     ///

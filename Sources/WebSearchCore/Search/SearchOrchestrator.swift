@@ -78,6 +78,10 @@ public actor SearchOrchestrator {
         var accumulated: [ProviderSearchResponse] = []
         var failures: [ProviderFailure] = []
         var warnings: [String] = []
+        /// How many providers actually reached the network. Counted rather than inferred
+        /// from failure categories, because a local token-bucket denial and an upstream
+        /// HTTP 429 share the `rateLimited` category.
+        var attemptedRequests = 0
 
         let primary = await runProviders(
             selectedIDs,
@@ -88,6 +92,7 @@ public actor SearchOrchestrator {
         if Task.isCancelled, callerCancelledBefore { throw CancellationError() }
         accumulated.append(contentsOf: primary.responses)
         failures.append(contentsOf: primary.failures)
+        attemptedRequests += primary.attempted
 
         // In thorough mode, if the direct providers produced a thin evidence set,
         // spend one more call on an aggregator for extra coverage.
@@ -118,6 +123,7 @@ public actor SearchOrchestrator {
                         )
                         accumulated.append(contentsOf: extra.responses)
                         failures.append(contentsOf: extra.failures)
+                        attemptedRequests += extra.attempted
                         usedIDs.append(contentsOf: extras)
                     }
                 }
@@ -146,8 +152,11 @@ public actor SearchOrchestrator {
             // request told callers their query was at fault. A sustained run reaches
             // this legitimately, because each search spends a request against every
             // provider it fans out to, and the limiter is deliberately conservative.
-            let attempted = failures.contains { !$0.category.isLocalSkip }
-            if !attempted, !failures.isEmpty {
+            //
+            // Decided by the count of authorised requests, not by the failure categories:
+            // an upstream 429 reaches the caller as `rateLimited` too, and reporting that
+            // as "nothing was attempted" hid the provider's real answer.
+            if attemptedRequests == 0, !failures.isEmpty {
                 throw SearchError.temporarilyUnavailable(failures)
             }
             // Attach the per-provider reasons. With a single explicitly requested
@@ -201,6 +210,13 @@ public actor SearchOrchestrator {
     struct FanOutResult: Sendable {
         var responses: [ProviderSearchResponse] = []
         var failures: [ProviderFailure] = []
+        /// How many providers were authorised to issue a request.
+        ///
+        /// This is counted rather than inferred from the failure categories on purpose: a
+        /// local token-bucket denial and an upstream HTTP 429 share the `rateLimited`
+        /// category, so categories alone cannot tell "the limiter refused everyone" from
+        /// "every provider answered with an error".
+        var attempted = 0
     }
 
     /// Query a set of providers concurrently within one overall deadline.
@@ -258,6 +274,7 @@ public actor SearchOrchestrator {
                 }
                 aggregate.responses.append(contentsOf: partial.responses)
                 aggregate.failures.append(contentsOf: partial.failures)
+                aggregate.attempted += partial.attempted
                 // Every real provider has reported; the budget is no longer relevant.
                 if aggregate.responses.count + aggregate.failures.count >= providerTaskCount {
                     group.cancelAll()
@@ -266,6 +283,12 @@ public actor SearchOrchestrator {
             }
 
             if budgetExpired {
+                // Providers still running when the deadline fired were authorised, so a
+                // request really was made: a budget expiry means "we tried", not "nothing
+                // was attempted".
+                let reported = Set(aggregate.responses.map(\.provider))
+                    .union(aggregate.failures.map(\.provider))
+                aggregate.attempted += ids.filter { !reported.contains($0) }.count
                 await self.recordBudgetExceeded(
                     ids: ids,
                     answered: aggregate,
@@ -320,6 +343,10 @@ public actor SearchOrchestrator {
             )
             return result
         }
+
+        // Past the health gate, so a request is really about to be made. Recorded before
+        // the call because a failure or a timeout still counts as an attempt.
+        result.attempted = 1
 
         do {
             try Task.checkCancellation()
