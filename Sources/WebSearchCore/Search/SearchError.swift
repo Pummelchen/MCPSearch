@@ -172,7 +172,9 @@ extension ProviderFailure {
             self.init(
                 provider: provider,
                 category: category,
-                message: urlError.localizedDescription
+                // Curated from the code, never the platform description: that string can
+                // carry the failing URL and Mojeek's key travels in a query parameter.
+                message: HTTPError.reason(for: urlError.code)
             )
         } else {
             self.init(

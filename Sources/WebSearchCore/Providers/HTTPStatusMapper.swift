@@ -65,6 +65,11 @@ public enum HTTPStatusMapper {
                 return .unsupportedRequest(provider, detail)
             }
         }
+        if let urlError = error as? URLError {
+            // A URL must never reach a diagnostic: Mojeek authenticates through the query
+            // string, so a platform description that echoes the request echoes a key.
+            return .networkFailure(provider, HTTPError.reason(for: urlError.code))
+        }
         return .networkFailure(provider, error.localizedDescription)
     }
 }

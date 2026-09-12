@@ -1,6 +1,8 @@
 import Foundation
 import XCTest
 
+@testable import WebSearchCore
+
 /// Regression tests for error-reporting defects.
 ///
 /// These run the real executable over stdio so they exercise the whole path from a
@@ -288,5 +290,56 @@ final class ErrorReportingTests: XCTestCase {
         let result = try XCTUnwrap(listing["result"] as? [String: Any])
         let tools = try XCTUnwrap(result["tools"] as? [[String: Any]])
         XCTAssertEqual(tools.count, 4)
+    }
+
+    // MARK: - Error text hygiene (no server needed)
+
+    /// A transport error must never echo the request URL.
+    ///
+    /// A `URLError` carries the failing URL in its `userInfo`, and some platforms build a
+    /// description from it. Mojeek's credential travels as a query parameter, so echoing
+    /// the request would put a live key into `providers_failed` and `web_search_status`.
+    func testTransportErrorTextNeverEchoesTheRequestURL() {
+        let request = URL(
+            string: "https://api.mojeek.com/search?q=swift&api_key=tvly-not-a-real-key-000000"
+        )!
+        let transportError = URLError(
+            .cannotConnectToHost,
+            userInfo: [NSURLErrorFailingURLErrorKey: request]
+        )
+
+        let failure = ProviderFailure(provider: .mojeek, error: transportError)
+        XCTAssertEqual(failure.category, .network)
+        XCTAssertFalse(failure.message.contains("api_key"), failure.message)
+        XCTAssertFalse(failure.message.contains("tvly-"), failure.message)
+        XCTAssertFalse(failure.message.contains("mojeek.com"), failure.message)
+        XCTAssertFalse(failure.message.isEmpty)
+
+        // The same guarantee holds for the provider-scoped mapping and the HTTP error.
+        let mapped = HTTPStatusMapper.map(transportError, provider: .mojeek)
+        XCTAssertFalse(mapped.safeDescription.contains("api_key"), mapped.safeDescription)
+
+        guard case .connectionFailed(_, let reason) = HTTPError.from(
+            urlError: transportError,
+            label: "mojeek"
+        ) else {
+            return XCTFail("expected a connection failure")
+        }
+        XCTAssertFalse(reason.contains("api_key"), reason)
+        XCTAssertFalse(reason.contains("mojeek.com"), reason)
+    }
+
+    /// The curated reason stays specific enough to diagnose, and identifies an unmapped
+    /// code by number rather than by a platform string.
+    func testTransportReasonsAreCuratedAndSpecific() {
+        XCTAssertEqual(HTTPError.reason(for: .cannotFindHost), "the host could not be resolved")
+        XCTAssertEqual(
+            HTTPError.reason(for: .networkConnectionLost),
+            "the network connection was lost"
+        )
+        XCTAssertEqual(
+            HTTPError.reason(for: URLError.Code(rawValue: -12_345)),
+            "the transport reported error -12345"
+        )
     }
 }

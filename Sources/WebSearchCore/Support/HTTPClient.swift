@@ -353,9 +353,41 @@ extension HTTPError {
         case .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed,
              .networkConnectionLost, .notConnectedToInternet, .secureConnectionFailed,
              .serverCertificateUntrusted, .serverCertificateHasBadDate:
-            .connectionFailed(label: label, reason: urlError.localizedDescription)
+            .connectionFailed(label: label, reason: reason(for: urlError.code))
         default:
-            .transportFailure(label: label, reason: urlError.localizedDescription)
+            .transportFailure(label: label, reason: reason(for: urlError.code))
+        }
+    }
+
+    /// A stable, credential-free description of a transport failure.
+    ///
+    /// Deliberately not `URLError.localizedDescription`. That string is platform-supplied,
+    /// it can carry the failing URL, and Mojeek authenticates through a query parameter —
+    /// so a URL in a diagnostic is a credential in a diagnostic. The numeric code stays
+    /// available for an operator who needs to look the failure up.
+    public static func reason(for code: URLError.Code) -> String {
+        switch code {
+        case .timedOut: "the request timed out"
+        case .cancelled: "the request was cancelled"
+        case .cannotConnectToHost: "could not connect to the host"
+        case .cannotFindHost, .dnsLookupFailed: "the host could not be resolved"
+        case .networkConnectionLost: "the network connection was lost"
+        case .notConnectedToInternet: "no network connection is available"
+        case .secureConnectionFailed: "the TLS handshake failed"
+        case .serverCertificateUntrusted: "the server certificate is not trusted"
+        case .serverCertificateHasBadDate: "the server certificate is expired or not yet valid"
+        case .serverCertificateHasUnknownRoot: "the server certificate has an unknown root"
+        case .serverCertificateNotYetValid: "the server certificate is not yet valid"
+        case .clientCertificateRejected: "the client certificate was rejected"
+        case .clientCertificateRequired: "the server required a client certificate"
+        case .badURL, .unsupportedURL: "the transport rejected the request URL"
+        case .userAuthenticationRequired, .userCancelledAuthentication:
+            "the transport required authentication"
+        case .dataNotAllowed: "the transport is not permitted to make this request"
+        case .cannotLoadFromNetwork: "the resource could not be loaded from the network"
+        case .redirectToNonExistentLocation: "the server redirected to a missing location"
+        case .httpTooManyRedirects: "the server redirected too many times"
+        default: "the transport reported error \(code.rawValue)"
         }
     }
 }

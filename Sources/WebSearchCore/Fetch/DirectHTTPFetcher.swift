@@ -189,7 +189,7 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
             default:
                 throw SearchError.fetchFailed(
                     request.url,
-                    reason: error.localizedDescription
+                    reason: HTTPError.reason(for: error.code)
                 )
             }
         } catch is CancellationError {
