@@ -122,9 +122,43 @@ final class MonitorOptionsTests: XCTestCase {
     }
 
     func testUsageDocumentsEveryFlag() {
-        for flag in ["--node", "--no-nodes", "--interval", "--probe", "--iterations",
-                     "--no-colour", "--no-engines", "--help"] {
+        for flag in ["--node", "--no-nodes", "--interval", "--probe", "--watch",
+                     "--allow-expensive-probing", "--iterations", "--no-colour",
+                     "--no-color", "--no-engines", "--help"] {
             XCTAssertTrue(Options.usage.contains(flag), "usage is missing \(flag)")
         }
+    }
+
+    /// Free mode must cost nothing: a refresh nobody asked for must not probe providers.
+    ///
+    /// The refresh loop used to carry an unconditional `cycle % 6 == 0` term, so an
+    /// unattended dashboard issued a real search roughly once a minute per keyed provider
+    /// while the README, the wiki and this tool's own option text all described that mode
+    /// as free. The decision now lives here so a regression fails a test.
+    func testProvidersAreOnlyProbedWhenAsked() {
+        XCTAssertFalse(
+            Options.shouldProbeProviders(
+                probeRequested: false, forced: false, hasProbedBefore: true
+            ),
+            "an unattended refresh must not spend provider credits"
+        )
+        XCTAssertTrue(
+            Options.shouldProbeProviders(
+                probeRequested: false, forced: false, hasProbedBefore: false
+            ),
+            "the first pass populates the dashboard"
+        )
+        XCTAssertTrue(
+            Options.shouldProbeProviders(
+                probeRequested: true, forced: false, hasProbedBefore: true
+            ),
+            "--probe asks for continuous probing"
+        )
+        XCTAssertTrue(
+            Options.shouldProbeProviders(
+                probeRequested: false, forced: true, hasProbedBefore: true
+            ),
+            "the p key asks for one probe"
+        )
     }
 }

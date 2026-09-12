@@ -26,6 +26,22 @@ struct Options: Sendable {
     /// Shortest probe interval allowed without an explicit override.
     static let minimumProbeInterval = Duration.seconds(60)
 
+    /// Whether a refresh should probe providers.
+    ///
+    /// Probed on the first pass so the dashboard is populated immediately, then only when
+    /// the operator presses `p` or runs with `--probe`. There is deliberately **no**
+    /// periodic term: free mode is documented as costing nothing, and a keyed provider is
+    /// billed for every probe, so an unattended dashboard must not spend credits. Extracted
+    /// from the refresh loop so that guarantee is asserted by a test instead of being
+    /// re-derived by reading the loop.
+    static func shouldProbeProviders(
+        probeRequested: Bool,
+        forced: Bool,
+        hasProbedBefore: Bool
+    ) -> Bool {
+        forced || probeRequested || !hasProbedBefore
+    }
+
     static let usage = """
         mcps-mon — live dashboard for MCPSearch providers and nodes.
 
@@ -46,7 +62,7 @@ struct Options: Sendable {
                                  Permit probe intervals below 60s. A 10s interval costs
                                  roughly 360 credits an hour per keyed provider.
           --iterations <n>       Stop after n refreshes (useful for scripting).
-          --no-colour            Disable ANSI colour.
+          --no-colour            Disable ANSI colour (--no-color is accepted too).
           --no-engines           Hide the per-node engine breakdown.
           --help                 Show this message.
 
@@ -236,7 +252,6 @@ actor Monitor {
     private var model: MonitorModel
     private var pinnedProbe = false
     private var refreshRequested = false
-    private var cycle = 0
     /// Providers that have completed at least one probe.
     private var probedProviders: Set<ProviderID> = []
 
@@ -323,15 +338,12 @@ actor Monitor {
     /// node column, and vice versa.
     func refresh(forceProbeProviders: Bool) async -> MonitorModel {
         let started = DispatchTime.now().uptimeNanoseconds
-        cycle += 1
 
-        // Probe providers on the first pass so the dashboard is populated immediately,
-        // then only when asked or when the caller enables continuous probing.
-        let shouldProbeProviders =
-            !probedProviders.isEmpty == false
-            || options.probeProviders
-            || forceProbeProviders
-            || cycle % 6 == 0
+        let shouldProbeProviders = Options.shouldProbeProviders(
+            probeRequested: options.probeProviders,
+            forced: forceProbeProviders,
+            hasProbedBefore: !probedProviders.isEmpty
+        )
 
         let query = options.probeQueries.next()
         let nodeTargets = options.nodes
