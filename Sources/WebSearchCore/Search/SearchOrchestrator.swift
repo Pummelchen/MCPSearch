@@ -94,9 +94,43 @@ public actor SearchOrchestrator {
         failures.append(contentsOf: primary.failures)
         attemptedRequests += primary.attempted
 
+        var usedIDs = selectedIDs
+
+        // Refill a slot that a local skip wasted. Selection happens once, before any
+        // request, so an open breaker or an empty local token bucket otherwise costs the
+        // search a slot even though the next candidate in the same preference order was
+        // free. Only providers that were never contacted are replaced: an upstream failure
+        // was a real attempt and must not spend a second provider's quota.
+        if requestedProvider == nil, !primary.skippedLocally.isEmpty {
+            let alreadyTried = Set(usedIDs).union(failures.map(\.provider))
+            let refills = registry.refillCandidates(
+                excluding: alreadyTried,
+                limit: primary.skippedLocally.count
+            )
+            if !refills.isEmpty,
+                let remaining = remainingBudget(deadline: budget, started: started)
+            {
+                log.debug(
+                    "Refilling fan-out slots wasted by local skips",
+                    metadata: [
+                        "skipped": primary.skippedLocally.map(\.rawValue).joined(separator: ","),
+                        "refills": refills.map(\.rawValue).joined(separator: ","),
+                    ]
+                )
+                let refill = await runProviders(
+                    refills,
+                    request: scopedRequest,
+                    deadline: remaining
+                )
+                accumulated.append(contentsOf: refill.responses)
+                failures.append(contentsOf: refill.failures)
+                attemptedRequests += refill.attempted
+                usedIDs.append(contentsOf: refills)
+            }
+        }
+
         // In thorough mode, if the direct providers produced a thin evidence set,
         // spend one more call on an aggregator for extra coverage.
-        var usedIDs = selectedIDs
         if request.mode.allowsAggregatorCoverage, requestedProvider == nil {
             let fused = fuse(accumulated, request: request)
             // Require a genuinely thin result set, and only ever consider aggregators
@@ -217,6 +251,9 @@ public actor SearchOrchestrator {
         /// category, so categories alone cannot tell "the limiter refused everyone" from
         /// "every provider answered with an error".
         var attempted = 0
+        /// Providers that were never contacted because a local condition excluded them.
+        /// Each one wasted the selection slot it was given and can be refilled.
+        var skippedLocally: [ProviderID] = []
     }
 
     /// Query a set of providers concurrently within one overall deadline.
@@ -275,6 +312,7 @@ public actor SearchOrchestrator {
                 aggregate.responses.append(contentsOf: partial.responses)
                 aggregate.failures.append(contentsOf: partial.failures)
                 aggregate.attempted += partial.attempted
+                aggregate.skippedLocally.append(contentsOf: partial.skippedLocally)
                 // Every real provider has reported; the budget is no longer relevant.
                 if aggregate.responses.count + aggregate.failures.count >= providerTaskCount {
                     group.cancelAll()
@@ -337,6 +375,7 @@ public actor SearchOrchestrator {
         // empty, instead of spending latency discovering it again.
         if let denial = await health.authorize(id) {
             result.failures.append(denial)
+            result.skippedLocally.append(id)
             log.debug(
                 "Provider skipped",
                 metadata: [

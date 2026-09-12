@@ -141,12 +141,18 @@ public struct ProviderRegistry: Sendable {
             return .selected([requested])
         }
 
-        let eligible = eligibleProviders()
-        guard !eligible.isEmpty else { return .none }
+        let ordered = preferenceOrderedEligible()
+        guard !ordered.isEmpty else { return .none }
+        return .selected(Array(ordered.prefix(request.mode.maxDirectProviders)))
+    }
 
-        // Tiers, most preferred first. Within a tier the configured order decides.
-        // Scrapers are last because their markup is not a contract, and aggregators
-        // sit below real indexes because they usually resell one.
+    /// Every eligible provider in selection preference order.
+    ///
+    /// Tiers, most preferred first. Within a tier the configured order decides. Scrapers
+    /// are last because their markup is not a contract, and aggregators sit below real
+    /// indexes because they usually resell one.
+    func preferenceOrderedEligible() -> [ProviderID] {
+        let eligible = eligibleProviders()
         let independent = eligible.filter {
             !$0.id.isAggregator && !$0.id.isExperimentalScraper
                 && $0.id.sourceFamily.isIndependentIndex
@@ -157,17 +163,19 @@ public struct ProviderRegistry: Sendable {
         }
         let aggregators = eligible.filter { $0.id.isAggregator }
         let scrapers = eligible.filter { $0.id.isExperimentalScraper }
+        return (independent + otherDirect + aggregators + scrapers).map(\.id)
+    }
 
-        let budget = request.mode.maxDirectProviders
-        var chosen: [ProviderID] = []
-
-        for tier in [independent, otherDirect, aggregators, scrapers] {
-            for provider in tier where chosen.count < budget {
-                chosen.append(provider.id)
-            }
-        }
-
-        return chosen.isEmpty ? .none : .selected(chosen)
+    /// Providers that can take a fan-out slot another provider wasted by being skipped
+    /// locally, in the same preference order `select` uses.
+    ///
+    /// Selection happens once, before any request is made, so a provider skipped by an open
+    /// breaker or an empty local token bucket otherwise costs the search a slot even though
+    /// the next candidate was free. Measured: DuckDuckGo contributed 0 of 50 queries in a
+    /// balanced soak because Tavily and Parallel outranked it.
+    public func refillCandidates(excluding excluded: Set<ProviderID>, limit: Int) -> [ProviderID] {
+        guard limit > 0 else { return [] }
+        return Array(preferenceOrderedEligible().filter { !excluded.contains($0) }.prefix(limit))
     }
 
     /// Aggregators eligible to supply extra coverage in `thorough` mode.

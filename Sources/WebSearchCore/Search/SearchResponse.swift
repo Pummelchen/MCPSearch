@@ -181,4 +181,35 @@ public struct FetchResult: Sendable, Hashable, Codable {
         /// Jina Reader fallback for JS-heavy or extraction-resistant pages.
         case jinaReader = "jina_reader"
     }
+
+    /// Whether the readable text already opens with the document title.
+    ///
+    /// A rendered result used to print a synthesised `# Title` heading above a body that
+    /// almost always begins with that same title, so the title appeared twice on nearly
+    /// every page. Callers use this to decide whether the heading adds anything.
+    ///
+    /// The comparison ignores case, diacritics and surrounding whitespace, and tolerates a
+    /// leading Markdown or plain heading marker on either side.
+    public var textAlreadyOpensWithTitle: Bool {
+        guard let title, !title.isEmpty else { return false }
+        let firstLine =
+            text.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+            .first.map(String.init) ?? ""
+        let normalizedLine = FetchResult.strippingHeadingMarkers(firstLine)
+        let normalizedTitle = FetchResult.strippingHeadingMarkers(title)
+        guard !normalizedLine.isEmpty, !normalizedTitle.isEmpty else { return false }
+        return normalizedLine.compare(
+            normalizedTitle,
+            options: [.caseInsensitive, .diacriticInsensitive]
+        ) == .orderedSame
+    }
+
+    /// Trim whitespace and any leading `#` characters from a single line.
+    private static func strippingHeadingMarkers(_ line: String) -> String {
+        var trimmed = line.trimmingCharacters(in: .whitespaces)
+        while trimmed.hasPrefix("#") {
+            trimmed.removeFirst()
+        }
+        return trimmed.trimmingCharacters(in: .whitespaces)
+    }
 }

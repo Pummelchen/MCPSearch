@@ -325,6 +325,55 @@ final class SearchOrchestratorTests: XCTestCase {
         }
     }
 
+    /// A provider skipped locally must not cost the search its fan-out slot.
+    ///
+    /// Selection happens before any request is made, so an open breaker or an empty local
+    /// bucket used to waste the slot even though the next candidate in the same preference
+    /// order was free. Measured: DuckDuckGo contributed 0 of 50 queries in a balanced soak
+    /// because Tavily and Parallel outranked it, and one of them was skipped.
+    func testALocallySkippedProviderIsReplacedByTheNextCandidate() async throws {
+        let clock = TestClock()
+        let health = ProviderHealth(clock: clock)
+        // Exhaust Tavily's bucket so it is skipped without a request being made.
+        await health.register(
+            .tavily,
+            ratePolicy: RateLimiter.Policy(burst: 1, requestsPerMinute: 0.001)
+        )
+        _ = await health.authorize(.tavily)
+
+        let tavily = MockSearchProvider.returning(
+            .tavily,
+            results: [("T", "https://t.example.com/1", nil)]
+        )
+        let brave = MockSearchProvider.returning(
+            .brave,
+            results: [("B", "https://b.example.com/1", nil)]
+        )
+        let mojeek = MockSearchProvider.returning(
+            .mojeek,
+            results: [("M", "https://m.example.com/1", nil)]
+        )
+
+        let (orchestrator, _, _) = makeOrchestrator(
+            providers: [tavily, brave, mojeek],
+            configuration: Fixtures.configuration(providerOrder: [.tavily, .brave, .mojeek]),
+            health: health,
+            clock: clock
+        )
+
+        let response = try await orchestrator.search(Fixtures.request(mode: .balanced))
+
+        XCTAssertEqual(tavily.callCount, 0, "a locally skipped provider must not be called")
+        XCTAssertEqual(brave.callCount, 1)
+        XCTAssertEqual(
+            mojeek.callCount,
+            1,
+            "the wasted slot must be refilled from the next candidate"
+        )
+        XCTAssertTrue(response.providersUsed.contains(.mojeek))
+        XCTAssertEqual(response.providersFailed.map(\.provider), [.tavily])
+    }
+
     /// A single explicitly requested provider that fails must say why, rather than
     /// reporting a generic "all providers failed".
     func testExplicitProviderFailureExplainsTheReason() async {

@@ -91,4 +91,41 @@ final class FetchBehaviorTests: XCTestCase {
         XCTAssertFalse(result.text.contains("menu"), "navigation must be removed")
         XCTAssertFalse(result.truncated)
     }
+
+    /// The renderer uses this to decide whether a synthesised `# Title` heading would just
+    /// repeat the first line of the body, which it did on nearly every page.
+    func testTextAlreadyOpeningWithTheTitleIsDetected() {
+        func result(title: String?, text: String) -> FetchResult {
+            FetchResult(
+                finalURL: URL(string: "https://example.com/")!,
+                statusCode: 200,
+                contentType: "text/html",
+                title: title,
+                text: text,
+                method: .htmlExtraction,
+                truncated: false
+            )
+        }
+
+        XCTAssertTrue(
+            result(title: "Swift Concurrency", text: "Swift Concurrency\nBody text")
+                .textAlreadyOpensWithTitle
+        )
+        XCTAssertTrue(
+            result(title: "Swift Concurrency", text: "# swift concurrency\nBody text")
+                .textAlreadyOpensWithTitle,
+            "a heading marker and different casing are still the same title"
+        )
+        XCTAssertFalse(
+            result(title: "Swift Concurrency", text: "Introduction\nBody text")
+                .textAlreadyOpensWithTitle,
+            "a body that opens with something else still wants the heading"
+        )
+        XCTAssertFalse(
+            result(title: nil, text: "Swift Concurrency\nBody text").textAlreadyOpensWithTitle
+        )
+        XCTAssertFalse(
+            result(title: "Swift Concurrency", text: "").textAlreadyOpensWithTitle
+        )
+    }
 }

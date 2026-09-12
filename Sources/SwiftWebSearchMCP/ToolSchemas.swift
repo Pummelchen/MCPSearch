@@ -737,7 +737,9 @@ public enum ToolOutputFormatter {
 
     public static func openText(_ result: FetchResult) -> String {
         var header: [String] = []
-        if let title = result.title, !title.isEmpty {
+        // The extracted body almost always opens with the page title, so synthesising a
+        // heading for it printed the title twice on nearly every page.
+        if let title = result.title, !title.isEmpty, !result.textAlreadyOpensWithTitle {
             header.append("# \(title)")
         }
         header.append("URL: \(result.finalURL.absoluteString)")
