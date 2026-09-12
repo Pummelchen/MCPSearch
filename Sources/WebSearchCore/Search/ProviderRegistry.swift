@@ -75,11 +75,6 @@ public struct ProviderRegistry: Sendable {
         return reasons
     }
 
-    /// Fusion weight for a provider, used as the RRF input.
-    public func fusionWeight(_ id: ProviderID) -> Double {
-        providers[id]?.fusionWeight ?? 1.0
-    }
-
     /// All registry fusion weights, as the fusion function expects.
     public var fusionWeights: [ProviderID: Double] {
         var weights: [ProviderID: Double] = [:]

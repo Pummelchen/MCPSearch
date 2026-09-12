@@ -5,13 +5,10 @@ import SwiftSoup
 public struct HTMLDocument: Sendable, Hashable {
     public var title: String?
     public var text: String
-    /// `<link rel="canonical">`, when the page declares one.
-    public var canonicalURL: URL?
 
-    public init(title: String?, text: String, canonicalURL: URL?) {
+    public init(title: String?, text: String) {
         self.title = title
         self.text = text
-        self.canonicalURL = canonicalURL
     }
 }
 
@@ -90,7 +87,6 @@ public enum HTMLExtractor {
         }
 
         let title = (try? document.title()).flatMap { $0.isEmpty ? nil : $0 }
-        let canonicalURL = extractCanonicalURL(from: document)
 
         // Remove non-prose elements outright. Removing is cheaper and more reliable
         // than trying to filter them out of the rendered text later.
@@ -108,20 +104,11 @@ public enum HTMLExtractor {
         let text = try renderText(root)
         return HTMLDocument.Extraction(
             title: title.map { ResultNormalizer.cleanText($0) ?? $0 },
-            text: text,
-            canonicalURL: canonicalURL
+            text: text
         )
     }
 
     // MARK: - Internals
-
-    static func extractCanonicalURL(from document: Document) -> URL? {
-        guard let link = try? document.select("link[rel=canonical]").first(),
-              let href = try? link.attr("href"),
-              !href.isEmpty
-        else { return nil }
-        return ResultNormalizer.normalizedURL(from: href)
-    }
 
     static func removeBoilerplate(from document: Document) throws {
         // Only consider a bounded set of candidates: scanning every element on a

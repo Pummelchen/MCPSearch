@@ -37,10 +37,9 @@ final class HTMLExtractorTests: XCTestCase {
         </html>
         """
 
-    func testExtractsTitleAndCanonicalURL() throws {
+    func testExtractsTitle() throws {
         let extraction = try HTMLExtractor.extract(html: articlePage)
         XCTAssertEqual(extraction.title, "Swift 6.3 Concurrency Changes")
-        XCTAssertEqual(extraction.canonicalURL?.absoluteString, "https://example.com/articles/swift-63")
     }
 
     func testKeepsArticleProse() throws {

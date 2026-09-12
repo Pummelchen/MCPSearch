@@ -136,8 +136,7 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
                     ?? ""
                 extraction = HTMLDocument.Extraction(
                     title: nil,
-                    text: text,
-                    canonicalURL: nil
+                    text: text
                 )
             }
 

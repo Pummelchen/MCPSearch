@@ -226,12 +226,6 @@ public actor ProviderHealth {
         counters[provider] = counter
     }
 
-    /// Reset a provider's breaker, for the operator-facing status path.
-    public func reset(_ provider: ProviderID) async {
-        await breakers[provider]?.reset()
-        counters[provider] = Counters()
-    }
-
     // MARK: - Reporting
 
     public func state(

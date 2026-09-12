@@ -34,9 +34,6 @@ public struct BraveProvider: SearchProvider {
 
     /// Brave's documented maximum for `count`.
     public static let maxCount = 20
-    /// Brave's documented maximum for `offset`, which is expressed in **pages of
-    /// `count`**, not in individual results.
-    public static let maxOffsetPages = 9
 
     public init(
         apiKey: String,
@@ -230,11 +227,9 @@ public struct BraveProvider: SearchProvider {
         struct Query: Decodable {
             let original: String?
             let altered: String?
-            let moreResultsAvailable: Bool?
 
             enum CodingKeys: String, CodingKey {
                 case original, altered
-                case moreResultsAvailable = "more_results_available"
             }
         }
 
@@ -245,17 +240,15 @@ public struct BraveProvider: SearchProvider {
                 let title: String?
                 let url: String?
                 let description: String?
-                let age: String?
                 /// ISO 8601 without a timezone suffix, e.g. `2025-04-12T14:22:41`.
                 let pageAge: String?
-                let language: String?
                 let extraSnippets: [String]?
 
                 /// Brave writes snake_case, and the decoder is configured for default
                 /// keys, so every multi-word field needs an explicit mapping. Without
                 /// this the property decodes to nil silently.
                 enum CodingKeys: String, CodingKey {
-                    case title, url, description, age, language
+                    case title, url, description
                     case pageAge = "page_age"
                     case extraSnippets = "extra_snippets"
                 }

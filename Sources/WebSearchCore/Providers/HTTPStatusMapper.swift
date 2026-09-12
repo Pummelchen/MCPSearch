@@ -9,14 +9,11 @@ public enum HTTPStatusMapper {
     /// - Parameters:
     ///   - authenticationStatusCodes: Statuses this vendor uses for bad credentials.
     ///   - rateLimitStatusCodes: Statuses this vendor uses for throttling.
-    ///   - notFoundIsEmpty: When true, a 404 is treated as "no results" rather than
-    ///     an error. Some endpoints do this for an empty result set.
     public static func validate(
         _ response: HTTPResponse,
         provider: ProviderID,
         authenticationStatusCodes: Set<Int> = [401, 403],
-        rateLimitStatusCodes: Set<Int> = [429],
-        notFoundIsEmpty: Bool = false
+        rateLimitStatusCodes: Set<Int> = [429]
     ) throws {
         guard !response.isSuccess else { return }
 
@@ -28,9 +25,6 @@ public enum HTTPStatusMapper {
                 provider,
                 retryAfter: RetryAfter.parse(response.header("Retry-After"))
             )
-        }
-        if notFoundIsEmpty, response.statusCode == 404 {
-            return
         }
         switch response.statusCode {
         case 400, 422:

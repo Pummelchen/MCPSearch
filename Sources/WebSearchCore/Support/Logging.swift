@@ -81,11 +81,6 @@ public struct Log: Sendable {
         sink(line)
     }
 
-    /// A logger derived with extra fixed context.
-    public func withLevel(_ level: LogLevel) -> Log {
-        Log(level: level, logQueries: logQueries, sink: sink)
-    }
-
     // MARK: - Helpers
 
     /// Render a query for logging: stable hash unless explicitly opted in.

@@ -32,11 +32,6 @@ public enum JSONCoding {
         return decoder
     }
 
-    /// Decoder for provider payloads written in `snake_case`.
-    public static var snakeCaseDecoder: JSONDecoder {
-        decoder(keyDecodingStrategy: .convertFromSnakeCase)
-    }
-
     /// A configured encoder for outbound request bodies.
     public static func encoder(
         keyEncodingStrategy: JSONEncoder.KeyEncodingStrategy = .useDefaultKeys,
@@ -111,13 +106,5 @@ extension Data {
         } catch {
             throw SearchError.malformedResponse(provider)
         }
-    }
-
-    /// First `maxBytes` of a body rendered as text, for warning messages that must
-    /// never include credentials or large payloads.
-    func truncatedPreview(maxBytes: Int = 512) -> String {
-        let slice = prefix(maxBytes)
-        let text = String(data: slice, encoding: .utf8) ?? ""
-        return text.collapsedWhitespace
     }
 }

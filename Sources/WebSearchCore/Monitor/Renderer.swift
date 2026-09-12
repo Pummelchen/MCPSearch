@@ -238,7 +238,7 @@ public struct Renderer: Sendable {
 
         for node in model.nodes {
             let name = Terminal.pad(
-                "  " + glyph(node.state) + " " + node.name + (node.endpoint.contains("127.0.0.1") ? "" : ""),
+                "  " + glyph(node.state) + " " + node.name,
                 to: 16
             )
             let state = stateText(node.state)

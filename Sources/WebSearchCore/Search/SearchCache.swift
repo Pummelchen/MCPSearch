@@ -87,10 +87,6 @@ public actor SearchCache {
         }
     }
 
-    public func clear() {
-        storage.removeAll()
-    }
-
     public struct Stats: Sendable, Hashable {
         public let entries: Int
         public let hits: Int

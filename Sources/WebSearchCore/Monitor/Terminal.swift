@@ -75,16 +75,6 @@ public enum Terminal {
         return "\u{1B}[1m\(text)\u{1B}[0m"
     }
 
-    /// Colour text green, yellow or red according to how good a value is, so the eye
-    /// finds problems without reading every number.
-    public static func health(_ text: String, fraction: Double, enabled: Bool) -> String {
-        switch fraction {
-        case 0.99...: return colour(text, .brightGreen, enabled: enabled)
-        case 0.6..<0.99: return colour(text, .brightYellow, enabled: enabled)
-        default: return colour(text, .brightRed, enabled: enabled)
-        }
-    }
-
     // MARK: - Width-safe text
 
     /// Pad to a width, truncating when necessary. Keeps columns aligned even when a

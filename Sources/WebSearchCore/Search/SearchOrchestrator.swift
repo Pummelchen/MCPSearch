@@ -88,7 +88,6 @@ public actor SearchOrchestrator {
             request: scopedRequest,
             deadline: budget
         )
-        if Task.isCancelled, !callerCancelledBefore { /* budget expired, not the caller */ }
         if Task.isCancelled, callerCancelledBefore { throw CancellationError() }
         accumulated.append(contentsOf: primary.responses)
         failures.append(contentsOf: primary.failures)
