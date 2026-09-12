@@ -184,6 +184,17 @@ public struct URLPolicy: Sendable {
         if address.isReserved {
             return .deny("Host \(host) resolves to a reserved address")
         }
+        // An IPv6 literal can carry an IPv4 destination — IPv4-mapped, IPv4-compatible,
+        // NAT64, 6to4 or Teredo. Judge what it actually reaches, otherwise the outer form
+        // walks straight past the policy: `::ffff:127.0.0.1` reaches IPv4 loopback.
+        // The native checks above run first, so `::1`, `::` and `fe80::` are already
+        // classified and never reach this unwrapping.
+        if let embedded = address.embeddedIPv4 {
+            let decision = validate(address: embedded, host: host)
+            if !decision.allowed {
+                return .deny("Host \(host) embeds a non-public address (\(embedded))")
+            }
+        }
         return .allow
     }
 
@@ -268,6 +279,58 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
         case .v4(let value): (value >> 24) == 127
         case .v6(let bytes): bytes.dropLast().allSatisfy { $0 == 0 } && bytes[15] == 1
         }
+    }
+
+    /// The IPv4 address this IPv6 literal carries, when it carries one.
+    ///
+    /// Several IPv6 forms transport an IPv4 destination, and a classifier that ignores
+    /// them can be walked straight past: on Darwin `http://[::ffff:127.0.0.1]/` reaches
+    /// the IPv4 loopback interface, and the same trick hides RFC 1918 and cloud metadata
+    /// addresses (`::ffff:169.254.169.254`). The policy therefore classifies the address
+    /// actually reached rather than the outer form.
+    ///
+    /// Recognised: IPv4-mapped (`::ffff:0:0/96`), the deprecated IPv4-compatible `::/96`,
+    /// NAT64 (`64:ff9b::/96`), 6to4 (`2002::/16`), and Teredo (`2001:0::/32`, whose
+    /// client address is stored inverted).
+    public var embeddedIPv4: IPAddress? {
+        guard case .v6(let bytes) = self else { return nil }
+
+        func address(at offset: Int) -> IPAddress {
+            .v4(
+                (UInt32(bytes[offset]) << 24) | (UInt32(bytes[offset + 1]) << 16)
+                    | (UInt32(bytes[offset + 2]) << 8) | UInt32(bytes[offset + 3])
+            )
+        }
+
+        // ::ffff:a.b.c.d — IPv4-mapped, the form a dual-stack host actually routes.
+        if bytes[0..<10].allSatisfy({ $0 == 0 }), bytes[10] == 0xFF, bytes[11] == 0xFF {
+            return address(at: 12)
+        }
+        // ::a.b.c.d — IPv4-compatible. Deprecated, but some resolvers still accept it.
+        // `::` and `::1` are the unspecified and loopback addresses and embed nothing.
+        if bytes[0..<12].allSatisfy({ $0 == 0 }) {
+            let candidate = address(at: 12)
+            if case .v4(let value) = candidate, value != 0, value != 1 {
+                return candidate
+            }
+        }
+        // 64:ff9b::/96 — the NAT64 well-known prefix.
+        if bytes[0] == 0x00, bytes[1] == 0x64, bytes[2] == 0xFF, bytes[3] == 0x9B,
+            bytes[4..<12].allSatisfy({ $0 == 0 })
+        {
+            return address(at: 12)
+        }
+        // 2002::/16 — 6to4 carries the IPv4 address in the following 32 bits.
+        if bytes[0] == 0x20, bytes[1] == 0x02 {
+            return address(at: 2)
+        }
+        // 2001:0::/32 — Teredo stores the client address inverted.
+        if bytes[0] == 0x20, bytes[1] == 0x01, bytes[2] == 0x00, bytes[3] == 0x00,
+            case .v4(let client) = address(at: 12)
+        {
+            return .v4(~client)
+        }
+        return nil
     }
 
     /// 169.254.0.0/16, fe80::/10
@@ -359,6 +422,7 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
             let a = (value >> 24) & 0xFF
             let b = (value >> 16) & 0xFF
             if a >= 240 { return true }  // 240.0.0.0/4 reserved
+            if a == 0 { return true }  // 0.0.0.0/8 "this network"; only 0.0.0.0 was caught
             if a == 192, b == 0 { return true }  // 192.0.0.0/24
             if a == 198, (18...19).contains(b) { return true }  // benchmarking
             return false

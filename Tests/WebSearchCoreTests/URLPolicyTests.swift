@@ -108,6 +108,7 @@ final class URLPolicyTests: XCTestCase {
             "http://192.168.1.1/",
             "http://169.254.169.254/latest/meta-data/",
             "http://0.0.0.0/",
+            "http://0.0.0.1/",
             "http://255.255.255.255/",
             "http://100.100.100.200/",
             "http://224.0.0.1/",
@@ -139,6 +140,77 @@ final class URLPolicyTests: XCTestCase {
         let subject = policy()
         XCTAssertTrue(subject.validateLexically(URL(string: "http://93.184.216.34/")!).allowed)
         XCTAssertTrue(subject.validateLexically(URL(string: "http://[2606:2800:220:1::1]/")!).allowed)
+    }
+
+    func testRejectsIPv6LiteralsThatEmbedANonPublicIPv4Address() {
+        let subject = policy()
+        // Every one of these carries an IPv4 destination inside an IPv6 literal. Judging
+        // only the outer form walks straight past the policy: `::ffff:127.0.0.1` reaches
+        // the IPv4 loopback interface on Darwin, and the mapped form hides metadata and
+        // RFC 1918 addresses just as well.
+        for raw in [
+            "http://[::ffff:127.0.0.1]/",
+            "http://[::ffff:127.0.0.1]:9200/",
+            "http://[::ffff:10.0.0.5]/",
+            "http://[::ffff:172.16.4.4]/",
+            "http://[::ffff:192.168.1.1]/",
+            "http://[::ffff:169.254.169.254]/latest/meta-data/",
+            "http://[::ffff:100.100.100.200]/",
+            "http://[::ffff:100.64.0.1]/",
+            "http://[::ffff:0.0.0.0]/",
+            "http://[::ffff:224.0.0.1]/",
+            "http://[::127.0.0.1]/",  // deprecated IPv4-compatible form
+            "http://[64:ff9b::7f00:1]/",  // NAT64 -> 127.0.0.1
+            "http://[64:ff9b::a00:5]/",  // NAT64 -> 10.0.0.5
+            "http://[2002:7f00:1::]/",  // 6to4 -> 127.0.0.1
+            "http://[2002:a00:5::]/",  // 6to4 -> 10.0.0.5
+            "http://[2001:0:0:0:0:0:80ff:fffe]/",  // Teredo -> 127.0.0.1, inverted
+        ] {
+            XCTAssertFalse(
+                subject.validateLexically(URL(string: raw)!).allowed,
+                "\(raw) embeds a non-public IPv4 address and must be rejected"
+            )
+        }
+    }
+
+    func testAcceptsPublicIPv4MappedLiterals() {
+        let subject = policy()
+        // The fix must not over-block: an embedded address that is genuinely public stays
+        // fetchable, whatever transport form carries it.
+        for raw in [
+            "http://[::ffff:93.184.216.34]/",
+            "http://[64:ff9b::5db8:d822]/",  // NAT64 -> 93.184.216.34
+            "http://[2002:5db8:d822::]/",  // 6to4 -> 93.184.216.34
+        ] {
+            XCTAssertTrue(
+                subject.validateLexically(URL(string: raw)!).allowed,
+                "\(raw) embeds a public IPv4 address and must remain fetchable"
+            )
+        }
+    }
+
+    func testEmbeddedIPv4UnwrapsEveryTransportForm() {
+        XCTAssertEqual(IPAddress("::ffff:127.0.0.1")?.embeddedIPv4?.description, "127.0.0.1")
+        XCTAssertEqual(IPAddress("::ffff:10.0.0.5")?.embeddedIPv4?.description, "10.0.0.5")
+        XCTAssertEqual(IPAddress("::127.0.0.1")?.embeddedIPv4?.description, "127.0.0.1")
+        XCTAssertEqual(IPAddress("64:ff9b::7f00:1")?.embeddedIPv4?.description, "127.0.0.1")
+        XCTAssertEqual(IPAddress("2002:7f00:1::")?.embeddedIPv4?.description, "127.0.0.1")
+        XCTAssertEqual(
+            IPAddress("2001:0:0:0:0:0:80ff:fffe")?.embeddedIPv4?.description,
+            "127.0.0.1"
+        )
+        // Nothing is embedded in these, so nothing may be unwrapped.
+        XCTAssertNil(IPAddress("2606:2800:220:1::1")?.embeddedIPv4)
+        XCTAssertNil(IPAddress("::1")?.embeddedIPv4)
+        XCTAssertNil(IPAddress("::")?.embeddedIPv4)
+        XCTAssertNil(IPAddress("93.184.216.34")?.embeddedIPv4)
+    }
+
+    func testRejectsHostnameResolvingToAnEmbeddedNonPublicIPv4Address() async {
+        let subject = policy(resolving: ["mapped.example.com": ["::ffff:127.0.0.1"]])
+        let decision = await subject.validate(URL(string: "https://mapped.example.com/")!)
+        XCTAssertFalse(decision.allowed)
+        XCTAssertTrue(decision.reason?.contains("embeds") ?? false, "\(decision.reason ?? "nil")")
     }
 
     // MARK: Resolution
