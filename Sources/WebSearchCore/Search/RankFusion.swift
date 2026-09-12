@@ -137,21 +137,27 @@ public enum RankFusion {
                     return fresh
                 }()
 
+                // A resold page belongs to the index it came from, not to the aggregator
+                // that relayed it. Without this the same index counts as two families and
+                // the cluster looks independently corroborated when it is not.
+                let resoldFamily = RankFusion.resoldFamily(
+                    result: result,
+                    provider: provider,
+                    ownedFamilies: ownedFamilies
+                )
+                let contributionFamily = resoldFamily ?? family
+
                 cluster.add(
                     result: result,
                     provider: provider,
-                    family: family,
+                    family: contributionFamily,
                     rank: rank,
                     rawWeight: weight(
-                        for: family,
+                        for: contributionFamily,
                         provider: provider,
                         base: base,
                         duplicatedOwnedIndex: responseResellsOwnedIndex
-                            || RankFusion.resultResellsOwnedIndex(
-                                result: result,
-                                provider: provider,
-                                ownedFamilies: ownedFamilies
-                            ),
+                            || resoldFamily != nil,
                         configuration: configuration
                     )
                 )
@@ -280,29 +286,31 @@ public enum RankFusion {
         return false
     }
 
-    /// Whether one result names an upstream engine whose index another provider in the same
-    /// run already owns.
+    /// The index family this result resells, when it demonstrably resells one that another
+    /// provider in the same run already owns.
     ///
-    /// SearXNG reports `engine` and `engines` per result, which is finer than the response
-    /// level list the discount used before: a single instance can serve one page from Brave
-    /// and another from Google, and only the resold one should lose the aggregator vote.
-    static func resultResellsOwnedIndex(
+    /// SearXNG reports `engine` and `engines` per result, which is finer than the
+    /// response-level list: a single instance can serve one page from Brave and another from
+    /// Google, and only the resold one is affected. Naming the family rather than returning a
+    /// flag lets the contribution be attributed to the index it actually came from, so one
+    /// index cannot look like two independent confirmations.
+    static func resoldFamily(
         result: SearchResult,
         provider: ProviderID,
         ownedFamilies: Set<SourceFamily>
-    ) -> Bool {
+    ) -> SourceFamily? {
         guard provider.isAggregator, !ownedFamilies.isEmpty,
             let engines = result.upstreamEngines
-        else { return false }
+        else { return nil }
         for engine in engines {
             if let family = RankFusion.family(forUpstreamEngine: engine),
                 family.isIndependentIndex,
                 ownedFamilies.contains(family)
             {
-                return true
+                return family
             }
         }
-        return false
+        return nil
     }
 
     /// Map an upstream engine name, as reported by an aggregator, onto its source family.
