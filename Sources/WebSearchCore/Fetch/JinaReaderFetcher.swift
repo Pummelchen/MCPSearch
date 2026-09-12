@@ -48,7 +48,12 @@ public struct JinaReaderFetcher: Sendable {
             "Accept": "text/plain, text/markdown;q=0.9, */*;q=0.1",
             // Reader's default cache is fine for a fetch tool; no need to force a
             // fresh render on every call.
-            "X-Timeout": "15",
+            //
+            // The advertised budget must fit inside our own. This was a hardcoded 15 while
+            // the shared client aborts at `requestTimeout` (10 by default), so the reader's
+            // deadline could never apply and the header only misled. One second is left for
+            // the response to reach us.
+            "X-Timeout": "\(max(1, Int(configuration.requestTimeout.seconds) - 1))",
         ]
         if let apiKey, !apiKey.isEmpty {
             headers["Authorization"] = "Bearer \(apiKey)"
