@@ -25,6 +25,12 @@ public struct SearchResult: Sendable, Hashable, Codable {
     public var canonicalURL: URL
     /// Every provider that returned this result, best-ranked first.
     public var sources: [ProviderID]
+    /// The upstream engines this particular result came from, when the provider can say.
+    ///
+    /// Only aggregators populate it: SearXNG reports `engine`/`engines` per result, which
+    /// lets fusion discount a specific resold page instead of the whole response. It is
+    /// deliberately not part of the `web_search` output schema.
+    public var upstreamEngines: [String]?
 
     public init(
         title: String,
@@ -36,7 +42,8 @@ public struct SearchResult: Sendable, Hashable, Codable {
         providerScore: Double? = nil,
         content: String? = nil,
         canonicalURL: URL? = nil,
-        sources: [ProviderID]? = nil
+        sources: [ProviderID]? = nil,
+        upstreamEngines: [String]? = nil
     ) {
         self.title = title
         self.url = url
@@ -48,6 +55,7 @@ public struct SearchResult: Sendable, Hashable, Codable {
         self.content = content
         self.canonicalURL = canonicalURL ?? URLCanonicalizer.canonicalize(url)
         self.sources = sources ?? [provider]
+        self.upstreamEngines = upstreamEngines
     }
 
     public static func == (lhs: SearchResult, rhs: SearchResult) -> Bool {

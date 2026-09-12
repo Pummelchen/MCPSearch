@@ -288,6 +288,92 @@ final class RankFusionTests: XCTestCase {
         XCTAssertEqual(mojeek, 1.0, accuracy: 0.0001)
     }
 
+    /// Aggregator discounting is per result, not per response.
+    ///
+    /// SearXNG reports the engine behind each result, and one instance can serve one page
+    /// from Brave while another came from an engine nobody else covers. Discounting the
+    /// whole response punished the second page for the first page's provenance.
+    func testAggregatorDiscountUsesPerResultEngines() {
+        func aggregatorResult(url: String, rank: Int, engines: [String]?) -> SearchResult {
+            SearchResult(
+                title: "T",
+                url: URL(string: url)!,
+                provider: .searxng,
+                providerRank: rank,
+                upstreamEngines: engines
+            )
+        }
+
+        let brave = ProviderSearchResponse(
+            provider: .brave,
+            results: [
+                SearchResult(
+                    title: "Resold",
+                    url: URL(string: "https://resold.example.com/")!,
+                    provider: .brave,
+                    providerRank: 1
+                )
+            ]
+        )
+
+        // The response-level list names an engine nobody else owns, so the response-level
+        // check cannot be the thing that discounts anything here.
+        let attributed = ProviderSearchResponse(
+            provider: .searxng,
+            results: [
+                aggregatorResult(url: "https://resold.example.com/", rank: 1, engines: ["brave"]),
+                aggregatorResult(
+                    url: "https://fresh.example.com/",
+                    rank: 2,
+                    engines: ["wikipedia"]
+                ),
+            ],
+            upstreamEngines: ["wikipedia"]
+        )
+        let unattributed = ProviderSearchResponse(
+            provider: .searxng,
+            results: [
+                aggregatorResult(url: "https://resold.example.com/", rank: 1, engines: nil),
+                aggregatorResult(url: "https://fresh.example.com/", rank: 2, engines: nil),
+            ],
+            upstreamEngines: ["wikipedia"]
+        )
+
+        func scores(_ aggregator: ProviderSearchResponse) -> [String: Double] {
+            let fused = RankFusion.fuse(
+                responses: [brave, aggregator],
+                limit: 10,
+                configuration: RankFusion.Configuration(maxResultsPerDomain: 0)
+            )
+            return Dictionary(
+                uniqueKeysWithValues: fused.diagnostics.map {
+                    ($0.canonicalURL.absoluteString, $0.score)
+                }
+            )
+        }
+
+        let control = scores(unattributed)
+        let result = scores(attributed)
+        let resoldControl = control["https://resold.example.com/"] ?? 0
+        let resoldScore = result["https://resold.example.com/"] ?? 0
+
+        // Only the page that resold Brave loses part of the aggregator's vote.
+        XCTAssertEqual(
+            result["https://fresh.example.com/"] ?? 0,
+            control["https://fresh.example.com/"] ?? 0,
+            accuracy: 0.0001,
+            "a page from an engine nobody else owns must keep the full vote"
+        )
+        XCTAssertLessThan(resoldScore, resoldControl)
+        // And exactly the aggregator's share was reduced, by the configured factor.
+        XCTAssertEqual(
+            resoldControl - resoldScore,
+            (1.0 / 61.0) * (1 - 0.7),
+            accuracy: 0.0001,
+            "only the duplicated contribution may be discounted"
+        )
+    }
+
     /// Duplication is detected from the upstream engines an aggregator reports.
     func testUpstreamEngineMappingDetectsDuplication() {
         XCTAssertEqual(RankFusion.family(forUpstreamEngine: "brave"), .brave)

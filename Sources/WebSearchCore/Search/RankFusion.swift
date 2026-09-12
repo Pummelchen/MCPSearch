@@ -111,15 +111,13 @@ public enum RankFusion {
         for response in responses {
             let provider = response.provider
             let family = provider.sourceFamily
-            let familyWeight = weight(
-                for: family,
-                provider: provider,
-                base: providerWeights[provider] ?? 1.0,
-                duplicatedOwnedIndex: RankFusion.resellsIndexAlreadyOwned(
-                    response: response,
-                    ownedFamilies: ownedFamilies
-                ),
-                configuration: configuration
+            let base = providerWeights[provider] ?? 1.0
+            // Reservations are decided per result as well as per response: an instance can
+            // serve one page from Brave and another from Google, and only the resold one
+            // should lose the aggregator vote.
+            let responseResellsOwnedIndex = RankFusion.resellsIndexAlreadyOwned(
+                response: response,
+                ownedFamilies: ownedFamilies
             )
 
             // Guard against a provider listing the same URL twice: only its best
@@ -144,7 +142,18 @@ public enum RankFusion {
                     provider: provider,
                     family: family,
                     rank: rank,
-                    rawWeight: familyWeight
+                    rawWeight: weight(
+                        for: family,
+                        provider: provider,
+                        base: base,
+                        duplicatedOwnedIndex: responseResellsOwnedIndex
+                            || RankFusion.resultResellsOwnedIndex(
+                                result: result,
+                                provider: provider,
+                                ownedFamilies: ownedFamilies
+                            ),
+                        configuration: configuration
+                    )
                 )
                 clusters[key] = cluster
             }
@@ -264,6 +273,31 @@ public enum RankFusion {
         for engine in response.upstreamEngines {
             if let family = RankFusion.family(forUpstreamEngine: engine),
                ownedFamilies.contains(family)
+            {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// Whether one result names an upstream engine whose index another provider in the same
+    /// run already owns.
+    ///
+    /// SearXNG reports `engine` and `engines` per result, which is finer than the response
+    /// level list the discount used before: a single instance can serve one page from Brave
+    /// and another from Google, and only the resold one should lose the aggregator vote.
+    static func resultResellsOwnedIndex(
+        result: SearchResult,
+        provider: ProviderID,
+        ownedFamilies: Set<SourceFamily>
+    ) -> Bool {
+        guard provider.isAggregator, !ownedFamilies.isEmpty,
+            let engines = result.upstreamEngines
+        else { return false }
+        for engine in engines {
+            if let family = RankFusion.family(forUpstreamEngine: engine),
+                family.isIndependentIndex,
+                ownedFamilies.contains(family)
             {
                 return true
             }

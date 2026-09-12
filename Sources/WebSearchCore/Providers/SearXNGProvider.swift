@@ -129,6 +129,9 @@ public struct SearXNGProvider: SearchProvider {
                 publishedAt: item.publishedDate.flatMap(JSONCoding.date(from:)),
                 score: item.score,
                 content: nil,
+                // Per-result provenance: fusion discounts a resold index exactly rather
+                // than treating the whole response as resold.
+                upstreamEngines: Self.engines(of: item),
                 request: request,
                 seenKeys: &seen
             ) else { continue }
@@ -163,6 +166,17 @@ public struct SearXNGProvider: SearchProvider {
     }
 
     // MARK: - Wire types
+
+    /// The upstream engines one result came from, deduplicated and stably ordered.
+    ///
+    /// SearXNG reports `engine` for the primary engine and `engines` for a set upstream.
+    /// Fusion uses this to discount a specific resold page rather than a whole response.
+    static func engines(of item: SearXNGResponse.Item) -> [String]? {
+        var names = Set<String>()
+        if let engine = item.engine { names.insert(engine) }
+        for engine in item.engines ?? [] { names.insert(engine) }
+        return names.isEmpty ? nil : names.sorted()
+    }
 
     /// Current SearXNG master returns exactly these keys. `number_of_results` is
     /// deliberately absent: it is not produced by current releases.

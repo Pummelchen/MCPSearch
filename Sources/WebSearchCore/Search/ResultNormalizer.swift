@@ -21,6 +21,7 @@ public enum ResultNormalizer {
         publishedAt: Date? = nil,
         score: Double? = nil,
         content: String? = nil,
+        upstreamEngines: [String]? = nil,
         request: SearchRequest,
         seenKeys: inout Set<String>
     ) -> SearchResult? {
@@ -55,7 +56,8 @@ public enum ResultNormalizer {
             providerRank: rank,
             providerScore: score,
             content: cleanContent,
-            canonicalURL: canonical
+            canonicalURL: canonical,
+            upstreamEngines: upstreamEngines
         )
     }
 
