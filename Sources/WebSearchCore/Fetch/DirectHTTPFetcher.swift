@@ -105,9 +105,11 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
                 if response.statusCode == 404 {
                     throw SearchError.extractionFailed(currentURL)
                 }
-                throw SearchError.networkFailure(
-                    .tavily,
-                    "upstream returned HTTP \(response.statusCode)"
+                // Never blame a search provider here: `web_open` connects to the target
+                // itself, so naming a provider in this message is simply wrong.
+                throw SearchError.fetchFailed(
+                    currentURL,
+                    reason: "upstream returned HTTP \(response.statusCode)"
                 )
             }
 
