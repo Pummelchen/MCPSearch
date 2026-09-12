@@ -287,6 +287,6 @@ final class ErrorReportingTests: XCTestCase {
         let listing = try server.readResponse(id: 11)
         let result = try XCTUnwrap(listing["result"] as? [String: Any])
         let tools = try XCTUnwrap(result["tools"] as? [[String: Any]])
-        XCTAssertEqual(tools.count, 3)
+        XCTAssertEqual(tools.count, 4)
     }
 }

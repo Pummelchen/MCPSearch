@@ -17,6 +17,30 @@ public struct AppConfiguration: Sendable, Hashable {
     public var openWebSearchURL: URL?
     public var parallelMCPURL: URL?
 
+    /// Optional credential for grounded answer synthesis.
+    ///
+    /// This is **not** a search provider. It never sees the user's query on its own:
+    /// it only ever receives results that real providers already returned, and is
+    /// instructed to answer from those alone. Without it, search works unchanged and
+    /// the synthesis tool reports itself unconfigured.
+    public var deepSeekAPIKey: String?
+    /// OpenAI-compatible base for synthesis. `/chat/completions` is appended.
+    public var deepSeekBaseURL: URL?
+    /// Model used for synthesis. `deepseek-flash` is DeepSeek-V4.1-Flash.
+    public var deepSeekModel: String
+    /// Wall-clock budget for one synthesis call. Generous on purpose: this is a
+    /// generative request, not a search request.
+    public var synthesisTimeout: Duration
+    /// Whether synthesis may use the model's thinking mode.
+    ///
+    /// Off by default: with thinking on, the reasoning pass shares the output-token
+    /// budget and can consume all of it, returning `finish_reason: length` with
+    /// **empty** content. Measured on `deepseek-flash`, high effort returned
+    /// `completion=4000, reasoning=4000, content=""`. Grounded synthesis needs no
+    /// chain of thought, so the default trades a little reasoning for a response
+    /// that actually arrives.
+    public var enableSynthesisReasoning: Bool
+
     // MARK: Policy
 
     /// Provider preference order for `provider = auto`.
@@ -64,6 +88,11 @@ public struct AppConfiguration: Sendable, Hashable {
         searxngBaseURL: URL? = nil,
         openWebSearchURL: URL? = nil,
         parallelMCPURL: URL? = URL(string: "https://search.parallel.ai/mcp"),
+        deepSeekAPIKey: String? = nil,
+        deepSeekBaseURL: URL? = URL(string: "https://api.deepseek.com/v1"),
+        deepSeekModel: String = "deepseek-flash",
+        synthesisTimeout: Duration = .seconds(45),
+        enableSynthesisReasoning: Bool = false,
         providerOrder: [ProviderID] = AppConfiguration.defaultProviderOrder,
         providerEnabled: [ProviderID: Bool] = [:],
         defaultMaxResults: Int = 8,
@@ -93,6 +122,11 @@ public struct AppConfiguration: Sendable, Hashable {
         self.searxngBaseURL = searxngBaseURL
         self.openWebSearchURL = openWebSearchURL
         self.parallelMCPURL = parallelMCPURL
+        self.deepSeekAPIKey = deepSeekAPIKey
+        self.deepSeekBaseURL = deepSeekBaseURL
+        self.deepSeekModel = deepSeekModel
+        self.synthesisTimeout = synthesisTimeout
+        self.enableSynthesisReasoning = enableSynthesisReasoning
         self.providerOrder = providerOrder
         self.providerEnabled = providerEnabled
         self.defaultMaxResults = defaultMaxResults
@@ -176,6 +210,11 @@ extension AppConfiguration {
         case searxngBaseURL = "SEARXNG_BASE_URL"
         case openWebSearchURL = "OPEN_WEB_SEARCH_URL"
         case parallelMCPURL = "PARALLEL_MCP_URL"
+        case deepSeekAPIKey = "DEEPSEEK_API_KEY"
+        case deepSeekBaseURL = "DEEPSEEK_BASE_URL"
+        case deepSeekModel = "DEEPSEEK_MODEL"
+        case synthesisTimeout = "SEARCH_SYNTHESIS_TIMEOUT_MS"
+        case enableReasoning = "SEARCH_SYNTHESIS_REASONING"
         case providerOrder = "SEARCH_PROVIDER_ORDER"
         case disabledProviders = "SEARCH_DISABLED_PROVIDERS"
         case maxResults = "SEARCH_MAX_RESULTS"
@@ -267,6 +306,22 @@ extension AppConfiguration {
         configuration.jinaAPIKey = string(.jinaAPIKey)
         configuration.searxngBaseURL = url(.searxngBaseURL)
         configuration.openWebSearchURL = url(.openWebSearchURL)
+
+        // Answer synthesis is opt-in and entirely separate from provider selection:
+        // setting a key must not change which providers search.
+        configuration.deepSeekAPIKey = string(.deepSeekAPIKey)
+        if let base = url(.deepSeekBaseURL) {
+            configuration.deepSeekBaseURL = base
+        }
+        if let model = string(.deepSeekModel) {
+            configuration.deepSeekModel = model
+        }
+        if let timeout = int(.synthesisTimeout), timeout > 0 {
+            configuration.synthesisTimeout = .milliseconds(timeout)
+        }
+        if let reasoning = bool(.enableReasoning) {
+            configuration.enableSynthesisReasoning = reasoning
+        }
 
         if let parallel = url(.parallelMCPURL) {
             configuration.parallelMCPURL = parallel

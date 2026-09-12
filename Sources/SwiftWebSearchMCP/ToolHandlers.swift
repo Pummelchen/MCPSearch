@@ -158,8 +158,149 @@ struct ToolHandlers: Sendable {
         }
     }
 
-    // MARK: - web_search_status
+    // MARK: - web_answer
 
+    /// Search, then answer from what was found.
+    ///
+    /// The search half is the ordinary pipeline, so provider failover, fusion,
+    /// caching and rate limiting all behave exactly as they do for `web_search`.
+    /// Synthesis is layered strictly *after* results exist, which is what keeps a
+    /// model with no web access from inventing them.
+    ///
+    /// A synthesis failure does **not** discard the search: the results are still
+    /// returned, marked as unanswerable, because a caller can act on documents even
+    /// when no prose summary could be produced.
+    func webAnswer(_ arguments: [String: Value]?) async -> CallTool.Result {
+        let args = ToolArguments(arguments)
+
+        let query: String
+        let maxResults: Int
+        let recency: Recency
+        let includeDomains: [String]
+        let excludeDomains: [String]
+        let locale: LocaleHint?
+        let provider: ProviderID?
+        let mode: SearchMode
+
+        do {
+            query = try args.requiredString("query")
+            maxResults = min(max(1, try args.int("max_results") ?? pipeline.configuration.defaultMaxResults), 20)
+            recency = try args.enumValue("recency", default: .any)
+            includeDomains = try args.stringArray("include_domains", maxItems: 20)
+            excludeDomains = try args.stringArray("exclude_domains", maxItems: 20)
+            mode = try args.enumValue("mode", default: .balanced)
+
+            if let rawLocale = try args.string("locale") {
+                guard let parsed = LocaleHint(rawLocale) else {
+                    return Self.error("`locale` must look like en-US or de-DE")
+                }
+                locale = parsed
+            } else {
+                locale = nil
+            }
+
+            let rawProvider = try args.string("provider") ?? "auto"
+            if rawProvider.lowercased() == "auto" {
+                provider = nil
+            } else if let parsed = ProviderID(rawValue: rawProvider.lowercased()) {
+                provider = parsed
+            } else {
+                return Self.error(
+                    "`provider` must be one of: auto, "
+                        + ProviderID.allCases.map(\.rawValue).joined(separator: ", ")
+                )
+            }
+        } catch let error as ToolArguments.ArgumentError {
+            return Self.error(error.message)
+        } catch {
+            return Self.error("Invalid arguments.")
+        }
+
+        let started = DispatchTime.now().uptimeNanoseconds
+        let request = SearchRequest(
+            query: query,
+            maxResults: maxResults,
+            recency: recency,
+            includeDomains: includeDomains,
+            excludeDomains: excludeDomains,
+            locale: locale,
+            mode: mode
+        )
+
+        // Search first. Failures here are ordinary search failures.
+        let response: SearchResponse
+        do {
+            response = try await pipeline.orchestrator.search(
+                request,
+                requestedProvider: provider
+            )
+        } catch is CancellationError {
+            return Self.error("Search cancelled.")
+        } catch let error as SearchError {
+            log.warning(
+                "web_answer search phase failed",
+                metadata: [
+                    "query": log.queryDescription(query),
+                    "category": error.category.rawValue,
+                ]
+            )
+            return Self.error(errorMessage(for: error))
+        } catch {
+            return Self.error("Search failed: \(error.localizedDescription)")
+        }
+
+        // Then answer from exactly those results.
+        var synthesisWarning: String?
+        var answer: SynthesizedAnswer?
+        if pipeline.synthesizer.isConfigured {
+            do {
+                answer = try await pipeline.synthesizer.synthesize(
+                    query: query,
+                    results: response.results,
+                    locale: locale?.identifier
+                )
+            } catch is CancellationError {
+                return Self.error("Answer synthesis cancelled.")
+            } catch let error as SearchError {
+                log.warning(
+                    "web_answer synthesis failed",
+                    metadata: ["query": log.queryDescription(query)]
+                )
+                // Keep the search results; only the prose is missing.
+                synthesisWarning = error.safeDescription
+            } catch {
+                synthesisWarning = "Answer synthesis failed."
+            }
+        } else {
+            synthesisWarning = "No synthesis model is configured (set DEEPSEEK_API_KEY); "
+                + "returning search results only."
+        }
+
+        let elapsed = Int((DispatchTime.now().uptimeNanoseconds - started) / 1_000_000)
+
+        do {
+            return try Self.success(
+                text: ToolOutputFormatter.answerText(
+                    response,
+                    answer: answer,
+                    warning: synthesisWarning
+                ),
+                structured: ToolOutputFormatter.answerStructured(
+                    response,
+                    answer: answer,
+                    warning: synthesisWarning,
+                    elapsedMilliseconds: elapsed
+                )
+            )
+        } catch let error as ToolOutputError {
+            log.error("web_answer structured payload could not be encoded")
+            return Self.error("Answer succeeded but its result could not be encoded: \(error)")
+        } catch {
+            return Self.error("Answer failed: \(error.localizedDescription)")
+        }
+    }
+
+    // MARK: - web_search_status
     func status(_ arguments: [String: Value]?) async -> CallTool.Result {
         let states = await pipeline.orchestrator.status()
         let cache = await pipeline.orchestrator.cacheStats()

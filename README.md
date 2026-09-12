@@ -9,6 +9,8 @@ server that gives local AI clients reliable public-web search and page fetching.
 
 - **No mandatory paid infrastructure.** Every credential is optional; the server runs
   with zero API keys and reports exactly what is missing.
+- **Grounded, not generated.** The optional answer layer may only use results that real
+  providers already fetched, so it abstains rather than inventing facts or URLs.
 - **API-first.** Supported JSON APIs and self-hosted SearXNG are preferred. HTML
   scrapers exist but are opt-in and rate limited.
 - **One vendor outage never fails a search.** Providers fail over; only total failure
@@ -73,11 +75,31 @@ default stdio mode.
 | --- | --- |
 | `web_search` | Search the public web; returns ranked, deduplicated, source-attributed results |
 | `web_open` | Fetch one public URL and return readable text |
+| `web_answer` | Search, then answer the question in prose using **only** those results, with citations |
 | `web_search_status` | Per-provider diagnostics for operators |
 
 `web_search` takes `query` (required), `max_results`, `recency`, `include_domains`,
 `exclude_domains`, `locale`, `provider` and `mode` (`fast` / `balanced` / `thorough`).
 Provider-specific options are deliberately not exposed.
+
+### Answers that cannot invent their sources
+
+`web_answer` runs an ordinary search first, then has a language model answer the question
+from the results that were actually fetched. It is opt-in (`DEEPSEEK_API_KEY`) and is
+**not** a search provider: nothing about it participates in provider selection, fusion or
+ranking.
+
+This matters because the model has **no web access of its own**. Asked about a current
+price unaided, it will answer from a stale training snapshot — confidently and wrongly.
+Given real results and told to use nothing else, the failure mode becomes abstention
+instead of invention: it says the sources do not answer the question rather than filling
+the gap. Every claim carries a `[n]` marker, markers that do not match a supplied result
+are stripped and disclosed, and only cited sources are returned. If the search succeeds
+but synthesis fails, the results are still returned.
+
+```bash
+export DEEPSEEK_API_KEY=sk-...   # optional; adds web_answer
+```
 
 ## Providers
 
@@ -124,7 +146,7 @@ lives there.
 
 ```bash
 swift build                    # debug
-swift test                     # 256 tests, no network required
+swift test                     # 287 tests, no network required
 swift test --filter LiveProviderTests   # opt-in; calls real providers, needs a key
 python3 scripts/mcp_smoke.py   # end-to-end stdio handshake
 python3 scripts/mcp_smoke.py --http   # end-to-end Streamable HTTP session

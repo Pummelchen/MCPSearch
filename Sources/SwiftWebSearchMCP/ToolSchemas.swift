@@ -38,6 +38,7 @@ public enum ToolSchemas {
     public static let searchToolName = "web_search"
     public static let openToolName = "web_open"
     public static let statusToolName = "web_search_status"
+    public static let answerToolName = "web_answer"
 
     // MARK: - web_search
 
@@ -218,6 +219,127 @@ public enum ToolSchemas {
             "required": [
                 "url", "final_url", "status", "title", "content_type",
                 "extraction_method", "truncated", "text_characters", "warnings",
+            ],
+            "additionalProperties": false,
+        ]
+    }
+
+    // MARK: - web_answer
+
+    /// Input schema for `web_answer`.
+    ///
+    /// Deliberately mirrors `web_search`'s discovery arguments: the tool performs a
+    /// real search first, then has a model answer from those results. It accepts no
+    /// model-selection or prompt arguments, so a caller cannot turn it into a
+    /// general-purpose LLM endpoint.
+    public static var webAnswerInput: Value {
+        [
+            "type": "object",
+            "properties": [
+                "query": [
+                    "type": "string",
+                    "description": "Question to answer from live web search results",
+                ],
+                "max_results": [
+                    "type": ["integer", "null"],
+                    "minimum": 1,
+                    "maximum": 20,
+                    "description": "Maximum search results to ground the answer in; 1-20, default 8",
+                ],
+                "recency": [
+                    "type": ["string", "null"],
+                    "enum": ["any", "day", "week", "month", "year"],
+                    "description": "Publication time window; default \"any\"",
+                ],
+                "include_domains": [
+                    "type": ["array", "null"],
+                    "items": ["type": "string"],
+                    "maxItems": 20,
+                    "description": "Only ground the answer in these domains; at most 20",
+                ],
+                "exclude_domains": [
+                    "type": ["array", "null"],
+                    "items": ["type": "string"],
+                    "maxItems": 20,
+                    "description": "Never ground the answer in these domains; at most 20",
+                ],
+                "locale": [
+                    "type": ["string", "null"],
+                    "description": "Optional locale such as en-US or de-DE",
+                ],
+                "mode": [
+                    "type": ["string", "null"],
+                    "enum": ["fast", "balanced", "thorough"],
+                    "description": "Search depth before answering; default \"balanced\"",
+                ],
+                "provider": [
+                    "type": ["string", "null"],
+                    "description": Value.string(
+                        "Force one search provider by id, or \"auto\" (default) to "
+                            + "select automatically"
+                    ),
+                ],
+            ],
+            "required": [
+                "query", "max_results", "recency", "include_domains", "exclude_domains",
+                "locale", "mode", "provider",
+            ],
+            "additionalProperties": false,
+        ]
+    }
+
+    /// Output schema for `web_answer`.
+    ///
+    /// The prose lives in the text content block, so it is sent once; here only the
+    /// citation sources the answer actually used are carried, plus the search
+    /// provenance that produced them.
+    public static var webAnswerOutput: Value {
+        [
+            "type": "object",
+            "properties": [
+                "query": ["type": "string"],
+                "status": ["type": "string"],
+                "model": ["type": ["string", "null"]],
+                "citations": [
+                    "type": "array",
+                    "items": [
+                        "type": "object",
+                        "properties": [
+                            "index": ["type": "integer"],
+                            "title": ["type": "string"],
+                            "url": ["type": "string"],
+                            "sources": ["type": "array", "items": ["type": "string"]],
+                        ],
+                        "required": ["index", "title", "url", "sources"],
+                        "additionalProperties": false,
+                    ],
+                ],
+                "answer_characters": ["type": "integer"],
+                "results_considered": ["type": "integer"],
+                "providers_used": ["type": "array", "items": ["type": "string"]],
+                "providers_failed": [
+                    "type": "array",
+                    "items": [
+                        "type": "object",
+                        "properties": [
+                            "provider": ["type": "string"],
+                            "category": ["type": "string"],
+                            "message": ["type": "string"],
+                        ],
+                        "required": ["provider", "category", "message"],
+                        "additionalProperties": false,
+                    ],
+                ],
+                "warnings": ["type": "array", "items": ["type": "string"]],
+                "retrieved_at": ["type": "string"],
+                "elapsed_ms": ["type": "integer"],
+                "synthesis_ms": ["type": ["integer", "null"]],
+                "served_from_cache": ["type": "boolean"],
+            ],
+            "required": [
+                "query", "status", "model", "citations", "answer_characters",
+                "results_considered", "providers_used", "providers_failed", "warnings",
+                "retrieved_at", "elapsed_ms", "synthesis_ms", "served_from_cache",
             ],
             "additionalProperties": false,
         ]
@@ -479,6 +601,134 @@ public enum ToolOutputFormatter {
             "warnings": .array(response.warnings.map { Value.string($0) }),
             "retrieved_at": .string(timestamp(response.retrievedAt)),
             "elapsed_ms": .int(response.elapsedMilliseconds),
+            "served_from_cache": .bool(response.servedFromCache),
+        ])
+    }
+
+    // MARK: web_answer
+
+    /// Text rendering for `web_answer`.
+    ///
+    /// The answer comes first because that is what a caller asked for; sources follow
+    /// so every `[n]` marker is resolvable without a second call.
+    public static func answerText(
+        _ response: SearchResponse,
+        answer: SynthesizedAnswer?,
+        warning: String?
+    ) -> String {
+        var lines: [String] = []
+
+        if let answer {
+            if answer.isInsufficient {
+                lines.append("INSUFFICIENT — the search results do not answer this question.")
+                lines.append("")
+            }
+            lines.append(answer.text)
+            lines.append("")
+
+            if answer.citations.isEmpty {
+                lines.append("Sources: none cited.")
+            } else {
+                lines.append("Sources:")
+                for citation in answer.citations {
+                    lines.append("[\(citation.index)] \(citation.title)")
+                    lines.append("    \(citation.url.absoluteString)")
+                }
+            }
+            lines.append("")
+            lines.append(
+                "Answered by \(answer.model) from \(response.results.count) search "
+                    + "result(s); the model has no web access and saw only these."
+            )
+        }
+
+        if let warning, !warning.isEmpty {
+            lines.append("")
+            lines.append("Note: \(warning)")
+        }
+
+        if answer == nil {
+            // No prose: fall back to the ordinary result listing so the call is still
+            // useful rather than empty.
+            lines.append(searchText(response))
+        } else if !response.providersFailed.isEmpty {
+            lines.append(
+                "Unavailable providers: "
+                    + response.providersFailed
+                        .map { "\($0.provider.rawValue) (\($0.category.rawValue))" }
+                        .joined(separator: ", ")
+            )
+        }
+
+        for note in response.warnings where !note.isEmpty {
+            lines.append("Note: \(note)")
+        }
+        if response.servedFromCache {
+            lines.append("Note: search results served from local cache.")
+        }
+
+        return lines.joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    public static func answerStructured(
+        _ response: SearchResponse,
+        answer: SynthesizedAnswer?,
+        warning: String?,
+        elapsedMilliseconds: Int
+    ) -> Value {
+        var citations: [Value] = []
+        if let answer {
+            citations.reserveCapacity(answer.citations.count)
+            for citation in answer.citations {
+                citations.append(
+                    .object([
+                        "index": .int(citation.index),
+                        "title": .string(citation.title),
+                        "url": .string(citation.url.absoluteString),
+                        "sources": .array(citation.sources.map { Value.string($0.rawValue) }),
+                    ])
+                )
+            }
+        }
+
+        var failures: [Value] = []
+        failures.reserveCapacity(response.providersFailed.count)
+        for failure in response.providersFailed {
+            failures.append(
+                .object([
+                    "provider": .string(failure.provider.rawValue),
+                    "category": .string(failure.category.rawValue),
+                    "message": .string(failure.message),
+                ])
+            )
+        }
+
+        var warnings = response.warnings
+        if let warning, !warning.isEmpty { warnings.append(warning) }
+
+        // "answered" / "insufficient" / "results_only" — the last meaning the search
+        // worked but no model produced prose, which a caller must not mistake for an
+        // empty answer.
+        let status: String
+        if let answer {
+            status = answer.isInsufficient ? "insufficient" : "answered"
+        } else {
+            status = "results_only"
+        }
+
+        return .object([
+            "query": .string(response.query),
+            "status": .string(status),
+            "model": answer.map { Value.string($0.model) } ?? .null,
+            "citations": .array(citations),
+            "answer_characters": .int(answer?.text.count ?? 0),
+            "results_considered": .int(response.results.count),
+            "providers_used": .array(response.providersUsed.map { Value.string($0.rawValue) }),
+            "providers_failed": .array(failures),
+            "warnings": .array(warnings.map { Value.string($0) }),
+            "retrieved_at": .string(timestamp(response.retrievedAt)),
+            "elapsed_ms": .int(elapsedMilliseconds),
+            "synthesis_ms": answer.map { Value.int($0.elapsedMilliseconds) } ?? .null,
             "served_from_cache": .bool(response.servedFromCache),
         ])
     }

@@ -42,6 +42,9 @@ public enum SearchError: Error, Sendable, Hashable {
     /// host, so attributing the failure to a search provider would be misleading (it
     /// previously surfaced as "Tavily timed out" for unrelated hosts).
     case fetchFailed(URL, reason: String)
+    /// Grounded answer synthesis failed. Distinct from a search failure: the search
+    /// itself succeeded, and its results are still returned alongside this error.
+    case synthesisFailed(String)
 
     /// Coarse category used for logging and health accounting.
     public var category: ProviderFailure.FailureCategory {
@@ -60,6 +63,7 @@ public enum SearchError: Error, Sendable, Hashable {
         case .blockedURL: .unsupportedRequest
         case .extractionFailed: .malformedResponse
         case .fetchFailed: .network
+        case .synthesisFailed: .unknown
         }
     }
 
@@ -76,7 +80,8 @@ public enum SearchError: Error, Sendable, Hashable {
              .unsupportedRequest(let id, _):
             id
         case .invalidRequest, .allProvidersFailed, .providersFailed,
-             .temporarilyUnavailable, .blockedURL, .extractionFailed, .fetchFailed:
+             .temporarilyUnavailable, .blockedURL, .extractionFailed, .fetchFailed,
+             .synthesisFailed:
             nil
         }
     }
@@ -119,6 +124,8 @@ public enum SearchError: Error, Sendable, Hashable {
             "Blocked URL: \(url.host() ?? url.absoluteString)"
         case .fetchFailed(let url, let reason):
             "Could not fetch \(url.host() ?? url.absoluteString): \(reason)"
+        case .synthesisFailed(let reason):
+            "Answer synthesis failed: \(reason)"
         case .extractionFailed(let url):
             "Could not extract readable content from \(url.host() ?? url.absoluteString)."
         }

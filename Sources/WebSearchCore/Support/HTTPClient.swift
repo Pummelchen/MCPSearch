@@ -15,36 +15,54 @@ public struct HTTPRequest: Sendable, Hashable {
     public var body: Data?
     /// Stable label used in logs, e.g. `tavily.search`.
     public var label: String
+    /// Overrides the shared request timeout for this call only.
+    ///
+    /// Search endpoints answer in a second or two, so the default is deliberately
+    /// short. A generative model is a different traffic class: it can legitimately
+    /// take tens of seconds, and clipping it at the search timeout would turn a
+    /// slow success into a spurious failure.
+    public var timeout: Duration?
 
     public init(
         method: String,
         url: URL,
         headers: [String: String] = [:],
         body: Data? = nil,
-        label: String = "http"
+        label: String = "http",
+        timeout: Duration? = nil
     ) {
         self.method = method
         self.url = url
         self.headers = headers
         self.body = body
         self.label = label
+        self.timeout = timeout
     }
 
     public static func get(
         _ url: URL,
         headers: [String: String] = [:],
-        label: String = "http"
+        label: String = "http",
+        timeout: Duration? = nil
     ) -> HTTPRequest {
-        HTTPRequest(method: "GET", url: url, headers: headers, label: label)
+        HTTPRequest(method: "GET", url: url, headers: headers, label: label, timeout: timeout)
     }
 
     public static func post(
         _ url: URL,
         headers: [String: String] = [:],
         body: Data? = nil,
-        label: String = "http"
+        label: String = "http",
+        timeout: Duration? = nil
     ) -> HTTPRequest {
-        HTTPRequest(method: "POST", url: url, headers: headers, body: body, label: label)
+        HTTPRequest(
+            method: "POST",
+            url: url,
+            headers: headers,
+            body: body,
+            label: label,
+            timeout: timeout
+        )
     }
 
     /// Whether this request may safely be retried.
@@ -274,7 +292,7 @@ public final class URLSessionHTTPClient: HTTPClient, @unchecked Sendable {
         var urlRequest = URLRequest(url: request.url)
         urlRequest.httpMethod = request.method
         urlRequest.httpBody = request.body
-        urlRequest.timeoutInterval = policy.requestTimeout.seconds
+        urlRequest.timeoutInterval = (request.timeout ?? policy.requestTimeout).seconds
         if urlRequest.value(forHTTPHeaderField: "User-Agent") == nil {
             urlRequest.setValue(userAgent, forHTTPHeaderField: "User-Agent")
         }

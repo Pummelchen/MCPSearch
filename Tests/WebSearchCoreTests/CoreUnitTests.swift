@@ -136,6 +136,54 @@ final class ConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.fastTimeout, .milliseconds(12_000))
         XCTAssertEqual(configuration.balancedTimeout, .milliseconds(15_000))
         XCTAssertEqual(configuration.thoroughTimeout, .milliseconds(20_000))
+        // Synthesis is opt-in and must not be reachable without an explicit key.
+        XCTAssertNil(configuration.deepSeekAPIKey)
+    }
+
+    /// Synthesis defaults exist so the tool works once a key is supplied, but they
+    /// must never make it *configured*.
+    func testSynthesisDefaultsAreInertWithoutAKey() {
+        let configuration = AppConfiguration.parse([:])
+        XCTAssertEqual(configuration.deepSeekModel, "deepseek-flash")
+        XCTAssertEqual(
+            configuration.deepSeekBaseURL?.absoluteString,
+            "https://api.deepseek.com/v1"
+        )
+        XCTAssertEqual(configuration.synthesisTimeout, .seconds(45))
+        // Off by default: with thinking on, the reasoning pass can consume the whole
+        // output budget and return empty content.
+        XCTAssertFalse(configuration.enableSynthesisReasoning)
+    }
+
+    func testReadsSynthesisEnvironmentVariables() {
+        let configuration = AppConfiguration.parse([
+            "DEEPSEEK_API_KEY": "sk-abc",
+            "DEEPSEEK_BASE_URL": "https://api.example.com/v1",
+            "DEEPSEEK_MODEL": "deepseek-v4-pro",
+            "SEARCH_SYNTHESIS_TIMEOUT_MS": "90000",
+            "SEARCH_SYNTHESIS_REASONING": "true",
+        ])
+
+        XCTAssertEqual(configuration.deepSeekAPIKey, "sk-abc")
+        XCTAssertEqual(
+            configuration.deepSeekBaseURL?.absoluteString,
+            "https://api.example.com/v1"
+        )
+        XCTAssertEqual(configuration.deepSeekModel, "deepseek-v4-pro")
+        XCTAssertEqual(configuration.synthesisTimeout, .seconds(90))
+        XCTAssertTrue(configuration.enableSynthesisReasoning)
+    }
+
+    /// A key alone must not change which providers search: synthesis is layered on
+    /// top of the provider pipeline, never part of it.
+    func testSynthesisKeyDoesNotAlterProviderSelection() {
+        let without = AppConfiguration.parse([:])
+        let with = AppConfiguration.parse(["DEEPSEEK_API_KEY": "sk-abc"])
+
+        XCTAssertEqual(without.providerOrder, with.providerOrder)
+        XCTAssertEqual(without.providerEnabled, with.providerEnabled)
+        XCTAssertEqual(without.defaultMaxResults, with.defaultMaxResults)
+        XCTAssertFalse(with.providerOrder.contains { $0.rawValue.contains("deepseek") })
     }
 
     func testReadsAllDocumentedEnvironmentVariables() {
@@ -147,6 +195,7 @@ final class ConfigurationTests: XCTestCase {
             "JINA_API_KEY": "jina-abc",
             "SEARXNG_BASE_URL": "https://searx.example.com",
             "OPEN_WEB_SEARCH_URL": "https://aggregate.example.com/search",
+            "DEEPSEEK_API_KEY": "sk-deepseek-abc",
             "SEARCH_MAX_RESULTS": "5",
             "SEARCH_ENABLE_SCRAPERS": "true",
             "SEARCH_ENABLE_PARALLEL": "1",
@@ -164,6 +213,7 @@ final class ConfigurationTests: XCTestCase {
             configuration.openWebSearchURL?.absoluteString,
             "https://aggregate.example.com/search"
         )
+        XCTAssertEqual(configuration.deepSeekAPIKey, "sk-deepseek-abc")
         XCTAssertEqual(configuration.defaultMaxResults, 5)
         XCTAssertTrue(configuration.enableScrapers)
         XCTAssertTrue(configuration.enableParallel)

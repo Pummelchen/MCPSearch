@@ -19,6 +19,11 @@ final class StdioServerTests: XCTestCase {
         "JINA_API_KEY", "SEARXNG_BASE_URL", "OPEN_WEB_SEARCH_URL", "PARALLEL_MCP_URL",
         "SEARCH_ENABLE_SCRAPERS", "SEARCH_ENABLE_PARALLEL", "SEARCH_DISABLED_PROVIDERS",
         "SEARCH_PROVIDER_ORDER", "SEARCH_CONFIG_FILE",
+        // Synthesis credentials belong here for the same reason as the search keys: a
+        // developer with DEEPSEEK_API_KEY exported would otherwise make the
+        // "synthesis is unconfigured" test perform a live, billed request.
+        "DEEPSEEK_API_KEY", "DEEPSEEK_BASE_URL", "DEEPSEEK_MODEL",
+        "SEARCH_SYNTHESIS_TIMEOUT_MS", "SEARCH_SYNTHESIS_REASONING",
     ]
 
     // MARK: - Process plumbing
@@ -189,7 +194,7 @@ final class StdioServerTests: XCTestCase {
         server.stop()
     }
 
-    func testToolsListExposesTheThreeDocumentedToolsWithValidSchemas() throws {
+    func testToolsListExposesTheDocumentedToolsWithValidSchemas() throws {
         let server = try startInitializedServer(environment: [:])
         defer { server.stop() }
 
@@ -199,7 +204,10 @@ final class StdioServerTests: XCTestCase {
         let tools = try XCTUnwrap(result["tools"] as? [[String: Any]])
 
         let names = tools.compactMap { $0["name"] as? String }
-        XCTAssertEqual(Set(names), Set(["web_search", "web_open", "web_search_status"]))
+        XCTAssertEqual(
+            Set(names),
+            Set(["web_search", "web_open", "web_answer", "web_search_status"])
+        )
 
         // Every tool must advertise a valid JSON Schema object.
         for tool in tools {
@@ -238,6 +246,29 @@ final class StdioServerTests: XCTestCase {
             Set(openSchema["required"] as? [String] ?? []),
             Set(openProperties.keys)
         )
+
+        // `web_answer` mirrors the search discovery arguments and must not expose any
+        // model-selection knob: it is a grounded search tool, not an LLM passthrough.
+        let answer = try XCTUnwrap(tools.first { $0["name"] as? String == "web_answer" })
+        let answerSchema = try XCTUnwrap(answer["inputSchema"] as? [String: Any])
+        let answerProperties = try XCTUnwrap(answerSchema["properties"] as? [String: Any])
+        XCTAssertEqual(
+            Set(answerProperties.keys),
+            Set([
+                "query", "max_results", "recency", "include_domains", "exclude_domains",
+                "locale", "mode", "provider",
+            ])
+        )
+        XCTAssertEqual(
+            Set(answerSchema["required"] as? [String] ?? []),
+            Set(answerProperties.keys)
+        )
+        for forbidden in ["model", "temperature", "max_tokens", "prompt", "system"] {
+            XCTAssertNil(
+                answerProperties[forbidden],
+                "`\(forbidden)` must not be exposed: it would make this an LLM endpoint"
+            )
+        }
     }
 
     /// The advertised `provider` values must exactly match the providers that can
@@ -372,8 +403,260 @@ final class StdioServerTests: XCTestCase {
         XCTAssertGreaterThan(stub.requestCount, 0)
     }
 
-    func testWebOpenRejectsDangerousSchemesAndInternalHosts() throws {
+    // MARK: - web_answer
+
+    /// Shared search-results body used by the synthesis tests.
+    private static let answerSearchBody = """
+        {"query":"why unix failed","results":[
+          {"url":"https://example.com/linux","title":"Linux dominates the TOP500",
+           "content":"Virtually every system runs Linux.","engine":"brave"},
+          {"url":"https://example.com/unix","title":"The slow death of commercial Unix",
+           "content":"Vendors shipped their own Unix on custom RISC silicon.","engine":"brave"}
+        ],"answers":[],"corrections":[],"infoboxes":[],"suggestions":[],
+        "unresponsive_engines":[]}
+        """
+
+    /// The full path: a real search through a stub provider, then a grounded answer
+    /// from a stub model, with citations mapped back to the fetched URLs.
+    func testWebAnswerReturnsGroundedAnswerWithCitations() throws {
+        let completion = """
+            {"choices":[{"message":{"content":"Linux runs the list [1]; commercial Unix declined [2]."},"finish_reason":"stop"}],"usage":{"prompt_tokens":120,"completion_tokens":18}}
+            """
+        let stub = try LoopbackServer(responses: [
+            .init(status: 200, body: Self.answerSearchBody),
+            .init(status: 200, body: completion),
+        ])
+
+        let server = try startInitializedServer(environment: [
+            "SEARXNG_BASE_URL": stub.baseURL.absoluteString,
+            "DEEPSEEK_API_KEY": "sk-test-key-0123456789abcdef",
+            "DEEPSEEK_BASE_URL": stub.baseURL.absoluteString,
+        ])
+        defer { server.stop() }
+
+        try server.send([
+            "jsonrpc": "2.0",
+            "id": 20,
+            "method": "tools/call",
+            "params": [
+                "name": "web_answer",
+                "arguments": ["query": "why unix failed", "max_results": 5, "mode": "fast"],
+            ],
+        ])
+        let response = try server.readResponse(id: 20)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        XCTAssertNotEqual(result["isError"] as? Bool, true)
+
+        let structured = try XCTUnwrap(result["structuredContent"] as? [String: Any])
+        XCTAssertEqual(structured["status"] as? String, "answered")
+        XCTAssertEqual(structured["model"] as? String, "deepseek-flash")
+        XCTAssertEqual(structured["results_considered"] as? Int, 2)
+
+        let citations = try XCTUnwrap(structured["citations"] as? [[String: Any]])
+        XCTAssertEqual(citations.count, 2)
+        XCTAssertEqual(citations[0]["index"] as? Int, 1)
+        XCTAssertEqual(citations[0]["url"] as? String, "https://example.com/linux")
+        XCTAssertEqual(citations[0]["sources"] as? [String], ["searxng"])
+        XCTAssertEqual(citations[1]["url"] as? String, "https://example.com/unix")
+
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        let text = content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        XCTAssertTrue(text.contains("Linux runs the list [1]"))
+        XCTAssertTrue(text.contains("https://example.com/linux"))
+        XCTAssertTrue(text.contains("no web access"))
+
+        // Both hops must actually have happened.
+        XCTAssertTrue(
+            stub.requestPaths.contains { $0.contains("/search") },
+            "the search endpoint must have been called"
+        )
+        XCTAssertTrue(
+            stub.requestPaths.contains { $0.contains("/chat/completions") },
+            "the synthesis endpoint must have been called"
+        )
+    }
+
+    /// A refusal is a successful result, not an error, and must be distinguishable
+    /// from an answer.
+    func testWebAnswerReportsInsufficientResultsAsAStatusNotAnError() throws {
+        let completion = """
+            {"choices":[{"message":{"content":"INSUFFICIENT: the results never explain why."},
+            "finish_reason":"stop"}]}
+            """
+        let stub = try LoopbackServer(responses: [
+            .init(status: 200, body: Self.answerSearchBody),
+            .init(status: 200, body: completion),
+        ])
+
+        let server = try startInitializedServer(environment: [
+            "SEARXNG_BASE_URL": stub.baseURL.absoluteString,
+            "DEEPSEEK_API_KEY": "sk-test-key-0123456789abcdef",
+            "DEEPSEEK_BASE_URL": stub.baseURL.absoluteString,
+        ])
+        defer { server.stop() }
+
+        try server.send([
+            "jsonrpc": "2.0",
+            "id": 21,
+            "method": "tools/call",
+            "params": [
+                "name": "web_answer",
+                "arguments": ["query": "why unix failed", "mode": "fast"],
+            ],
+        ])
+        let response = try server.readResponse(id: 21)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        XCTAssertNotEqual(result["isError"] as? Bool, true, "a refusal is not a failure")
+
+        let structured = try XCTUnwrap(result["structuredContent"] as? [String: Any])
+        XCTAssertEqual(structured["status"] as? String, "insufficient")
+
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        let text = content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        XCTAssertTrue(text.contains("INSUFFICIENT"))
+        XCTAssertTrue(text.contains("never explain why"))
+    }
+
+    /// Without a model credential the tool still returns the search results rather
+    /// than failing, and says plainly why there is no prose.
+    func testWebAnswerWithoutASynthesisKeyReturnsResultsOnly() throws {
+        let stub = try LoopbackServer(responses: [
+            .init(status: 200, body: Self.answerSearchBody)
+        ])
+
+        let server = try startInitializedServer(environment: [
+            "SEARXNG_BASE_URL": stub.baseURL.absoluteString
+        ])
+        defer { server.stop() }
+
+        try server.send([
+            "jsonrpc": "2.0",
+            "id": 22,
+            "method": "tools/call",
+            "params": [
+                "name": "web_answer",
+                "arguments": ["query": "why unix failed", "mode": "fast"],
+            ],
+        ])
+        let response = try server.readResponse(id: 22)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        XCTAssertNotEqual(result["isError"] as? Bool, true)
+
+        let structured = try XCTUnwrap(result["structuredContent"] as? [String: Any])
+        XCTAssertEqual(structured["status"] as? String, "results_only")
+        XCTAssertEqual(structured["model"] as? NSObject, NSNull(), "no model ran")
+        XCTAssertEqual((structured["citations"] as? [Any])?.count, 0)
+
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        let text = content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        XCTAssertTrue(text.contains("DEEPSEEK_API_KEY"), "the fix must be stated")
+        // The search results still reach the caller.
+        XCTAssertTrue(text.contains("Linux dominates the TOP500"))
+
+        // Only the search may have been attempted.
+        XCTAssertFalse(stub.requestPaths.contains { $0.contains("chat/completions") })
+    }
+
+    /// If the model fails, the search results must survive: losing prose is not a
+    /// reason to lose the documents.
+    func testWebAnswerKeepsResultsWhenSynthesisFails() throws {
+        let stub = try LoopbackServer(responses: [
+            .init(status: 200, body: Self.answerSearchBody),
+            .init(status: 500, body: #"{"error":{"message":"overloaded"}}"#),
+        ])
+
+        let server = try startInitializedServer(environment: [
+            "SEARXNG_BASE_URL": stub.baseURL.absoluteString,
+            "DEEPSEEK_API_KEY": "sk-test-key-0123456789abcdef",
+            "DEEPSEEK_BASE_URL": stub.baseURL.absoluteString,
+        ])
+        defer { server.stop() }
+
+        try server.send([
+            "jsonrpc": "2.0",
+            "id": 23,
+            "method": "tools/call",
+            "params": [
+                "name": "web_answer",
+                "arguments": ["query": "why unix failed", "mode": "fast"],
+            ],
+        ])
+        let response = try server.readResponse(id: 23)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        XCTAssertNotEqual(result["isError"] as? Bool, true)
+
+        let structured = try XCTUnwrap(result["structuredContent"] as? [String: Any])
+        XCTAssertEqual(structured["status"] as? String, "results_only")
+        XCTAssertEqual(structured["results_considered"] as? Int, 2)
+
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        let text = content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        XCTAssertTrue(text.contains("Linux dominates the TOP500"))
+        XCTAssertTrue(text.contains("HTTP 500"), "the synthesis failure must be reported")
+    }
+
+    /// A model that cites a source it was never given must not have that citation
+    /// reach the caller.
+    func testWebAnswerStripsCitationsToResultsThatWereNeverFetched() throws {
+        let completion = """
+            {"choices":[{"message":{"content":"Grounded [1] but invented [7]."},
+            "finish_reason":"stop"}]}
+            """
+        let stub = try LoopbackServer(responses: [
+            .init(status: 200, body: Self.answerSearchBody),
+            .init(status: 200, body: completion),
+        ])
+
+        let server = try startInitializedServer(environment: [
+            "SEARXNG_BASE_URL": stub.baseURL.absoluteString,
+            "DEEPSEEK_API_KEY": "sk-test-key-0123456789abcdef",
+            "DEEPSEEK_BASE_URL": stub.baseURL.absoluteString,
+        ])
+        defer { server.stop() }
+
+        try server.send([
+            "jsonrpc": "2.0",
+            "id": 24,
+            "method": "tools/call",
+            "params": [
+                "name": "web_answer",
+                "arguments": ["query": "why unix failed", "mode": "fast"],
+            ],
+        ])
+        let response = try server.readResponse(id: 24)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+
+        let structured = try XCTUnwrap(result["structuredContent"] as? [String: Any])
+        let citations = try XCTUnwrap(structured["citations"] as? [[String: Any]])
+        XCTAssertEqual(citations.count, 1, "only the real source may be returned")
+
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        let text = content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        XCTAssertFalse(text.contains("[7]"), "a fabricated citation must not survive")
+    }
+
+    func testWebAnswerRejectsAnUnknownProviderArgument() throws {
         let server = try startInitializedServer(environment: [:])
+        defer { server.stop() }
+
+        try server.send([
+            "jsonrpc": "2.0",
+            "id": 25,
+            "method": "tools/call",
+            "params": [
+                "name": "web_answer",
+                "arguments": ["query": "q", "provider": "not-a-provider"],
+            ],
+        ])
+        let response = try server.readResponse(id: 25)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        XCTAssertEqual(result["isError"] as? Bool, true)
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        let text = content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        XCTAssertTrue(text.contains("provider"))
+    }
+
+    func testWebOpenRejectsDangerousSchemesAndInternalHosts() throws {        let server = try startInitializedServer(environment: [:])
         defer { server.stop() }
 
         let cases: [(id: Int, url: String, expected: String)] = [

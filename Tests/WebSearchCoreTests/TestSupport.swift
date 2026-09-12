@@ -16,6 +16,9 @@ final class MockHTTPClient: HTTPClient, @unchecked Sendable {
         let headers: [String: String]
         let body: Data?
         let label: String
+        /// Per-request timeout override, so tests can assert that generative traffic
+        /// is not clipped by the short search timeout.
+        let timeout: Duration?
     }
 
     private let lock = NSLock()
@@ -76,7 +79,8 @@ final class MockHTTPClient: HTTPClient, @unchecked Sendable {
             url: request.url,
             headers: request.headers,
             body: request.body,
-            label: request.label
+            label: request.label,
+            timeout: request.timeout
         )
         let handler = lock.withLock {
             _requests.append(recorded)

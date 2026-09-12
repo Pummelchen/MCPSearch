@@ -14,6 +14,9 @@ public enum SearchPipelineFactory {
         public let cache: SearchCache
         public let orchestrator: SearchOrchestrator
         public let fetcher: WebFetcher
+        /// Grounded answer synthesis. Always present; check `isConfigured` before use.
+        /// It is not a search provider and never takes part in provider selection.
+        public let synthesizer: AnswerSynthesizer
         public let configuration: AppConfiguration
     }
 
@@ -210,12 +213,22 @@ public enum SearchPipelineFactory {
 
         let fetcher = WebFetcher(direct: direct, jina: jina, log: log)
 
+        // Synthesis shares the fetched-results contract but not the provider path: it is
+        // wired from configuration only, so adding a key can never change which
+        // providers search or how results are fused.
+        let synthesizer = AnswerSynthesizer(
+            configuration: configuration,
+            http: http,
+            log: log
+        )
+
         return Pipeline(
             registry: registry,
             health: health,
             cache: cache,
             orchestrator: orchestrator,
             fetcher: fetcher,
+            synthesizer: synthesizer,
             configuration: configuration
         )
     }
