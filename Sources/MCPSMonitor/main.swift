@@ -286,7 +286,6 @@ actor Monitor {
         // from the registry, not from the provider merely being listed: a provider with
         // no credentials must read as such rather than as ready to probe.
         let providers = configuration.providerOrder
-            .filter { $0.isSearchProvider }
             .map { id in
                 ProviderStatus.pending(
                     provider: id,

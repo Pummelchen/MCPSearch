@@ -20,15 +20,6 @@ import Foundation
 ///   rest of the pipeline is unaffected.
 public struct OpenWebSearchProvider: SearchProvider {
     public let id: ProviderID = .openWebSearch
-    public let capabilities = ProviderCapabilities(
-        supportsIncludeDomains: false,
-        supportsExcludeDomains: false,
-        supportsRecency: true,
-        supportsLocale: true,
-        supportsAnswer: false,
-        supportsInlineContent: false,
-        supportsPagination: false
-    )
     /// Below a direct index: an aggregator is usually a reseller.
     /// Registry weight for rank fusion.
     ///

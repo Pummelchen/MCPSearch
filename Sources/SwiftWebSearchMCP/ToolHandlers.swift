@@ -405,7 +405,6 @@ struct ToolHandlers: Sendable {
         case .openWebSearch: "Set OPEN_WEB_SEARCH_URL."
         case .duckDuckGo, .startpage: "Set SEARCH_ENABLE_SCRAPERS=true to enable scrapers."
         case .parallel: "Set SEARCH_ENABLE_PARALLEL=true to enable the upstream MCP provider."
-        case .jina: "Set JINA_API_KEY."
         }
     }
 

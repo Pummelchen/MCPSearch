@@ -37,7 +37,7 @@ public struct ProviderProbe: Sendable {
 
     /// Providers in display order: usable first, then unconfigured ones.
     public func probeTargets() -> [ProviderID] {
-        configuration.providerOrder.filter { $0.isSearchProvider }
+        configuration.providerOrder
     }
 
     /// Whether a provider has what it needs to run.
@@ -57,7 +57,6 @@ public struct ProviderProbe: Sendable {
         case .openWebSearch: "OPEN_WEB_SEARCH_URL"
         case .duckDuckGo, .startpage: "SEARCH_ENABLE_SCRAPERS=true"
         case .parallel: "SEARCH_ENABLE_PARALLEL=true"
-        case .jina: "JINA_API_KEY"
         }
     }
 

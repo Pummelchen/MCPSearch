@@ -16,7 +16,6 @@ public enum ProviderID: String, Codable, Sendable, Hashable, CaseIterable {
     case duckDuckGo = "duckduckgo"
     case startpage
     case parallel
-    case jina
 
     /// Human-readable name, used in diagnostics only.
     public var displayName: String {
@@ -30,7 +29,6 @@ public enum ProviderID: String, Codable, Sendable, Hashable, CaseIterable {
         case .duckDuckGo: "DuckDuckGo"
         case .startpage: "Startpage"
         case .parallel: "Parallel Search MCP"
-        case .jina: "Jina Search"
         }
     }
 }
@@ -60,15 +58,12 @@ public enum SourceFamily: String, Codable, Sendable, Hashable, CaseIterable {
     case meta
     /// A third-party aggregation/MCP service.
     case aggregator
-    /// Content-extraction service that also offers search.
-    case jina
-
     /// Whether results from this family come from an independent crawl rather
     /// than a reseller of somebody else's index.
     public var isIndependentIndex: Bool {
         switch self {
         case .brave, .mojeek, .tavily: true
-        case .exa, .google, .duckDuckGo, .meta, .aggregator, .jina: false
+        case .exa, .google, .duckDuckGo, .meta, .aggregator: false
         }
     }
 }
@@ -86,7 +81,6 @@ extension ProviderID {
         case .duckDuckGo: .duckDuckGo
         case .startpage: .google
         case .parallel: .aggregator
-        case .jina: .jina
         }
     }
 
@@ -105,57 +99,6 @@ extension ProviderID {
         default: false
         }
     }
-
-    /// Whether the provider serves direct web search results.
-    /// (`jina` is fetch-oriented; `parallel` is an upstream MCP service.)
-    public var isSearchProvider: Bool {
-        self != .jina
-    }
-}
-
-// MARK: - Capabilities
-
-/// Declares which parts of the common request model a provider can honour.
-///
-/// The orchestrator uses this to avoid passing filters a provider would silently
-/// ignore (for example, Mojeek has no domain allow-list), and to decide whether a
-/// provider can serve a request at all.
-public struct ProviderCapabilities: Sendable, Hashable, Codable {
-    /// Provider can restrict/expand results by domain.
-    public var supportsIncludeDomains: Bool
-    /// Provider can exclude results by domain.
-    public var supportsExcludeDomains: Bool
-    /// Provider can filter by publication recency.
-    public var supportsRecency: Bool
-    /// Provider can honour a locale / market hint.
-    public var supportsLocale: Bool
-    /// Provider returns an AI-generated answer alongside results.
-    public var supportsAnswer: Bool
-    /// Provider returns page content or highlights inline.
-    public var supportsInlineContent: Bool
-    /// Provider can return more than one page of results.
-    public var supportsPagination: Bool
-
-    public init(
-        supportsIncludeDomains: Bool = false,
-        supportsExcludeDomains: Bool = false,
-        supportsRecency: Bool = false,
-        supportsLocale: Bool = false,
-        supportsAnswer: Bool = false,
-        supportsInlineContent: Bool = false,
-        supportsPagination: Bool = false
-    ) {
-        self.supportsIncludeDomains = supportsIncludeDomains
-        self.supportsExcludeDomains = supportsExcludeDomains
-        self.supportsRecency = supportsRecency
-        self.supportsLocale = supportsLocale
-        self.supportsAnswer = supportsAnswer
-        self.supportsInlineContent = supportsInlineContent
-        self.supportsPagination = supportsPagination
-    }
-
-    /// A provider with no optional filters — always usable for a bare query.
-    public static let minimal = ProviderCapabilities()
 }
 
 // MARK: - The provider protocol
@@ -172,9 +115,6 @@ public protocol SearchProvider: Sendable {
     /// Human-readable name for diagnostics.
     var displayName: String { get }
 
-    /// What this provider can do with the common request model.
-    var capabilities: ProviderCapabilities { get }
-
     /// Whether the provider has the credentials/endpoint it needs to run.
     var isConfigured: Bool { get }
 
@@ -190,5 +130,4 @@ extension SearchProvider {
     public var displayName: String { id.displayName }
     public var isConfigured: Bool { true }
     public var fusionWeight: Double { 1.0 }
-    public var capabilities: ProviderCapabilities { .minimal }
 }

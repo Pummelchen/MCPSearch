@@ -13,15 +13,6 @@ import SwiftSoup
 /// this adapter is best-effort by design.
 public struct StartpageProvider: SearchProvider {
     public let id: ProviderID = .startpage
-    public let capabilities = ProviderCapabilities(
-        supportsIncludeDomains: false,
-        supportsExcludeDomains: false,
-        supportsRecency: true,
-        supportsLocale: true,
-        supportsAnswer: false,
-        supportsInlineContent: false,
-        supportsPagination: false
-    )
     public let fusionWeight: Double = 1.0
 
     private let http: any HTTPClient

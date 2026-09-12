@@ -181,7 +181,7 @@ final class RendererTests: XCTestCase {
     func testNeverExceedsTerminalHeight() {
         let full = model(
             nodes: (1...5).map { node("node\($0)", state: $0 == 2 ? .down : .up) },
-            providers: ProviderID.allCases.filter(\.isSearchProvider).map {
+            providers: ProviderID.allCases.map {
                 provider($0, state: .healthy)
             }
         )

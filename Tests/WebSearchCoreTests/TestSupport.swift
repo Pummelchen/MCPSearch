@@ -131,7 +131,6 @@ final class MockHTTPClient: HTTPClient, @unchecked Sendable {
 /// A provider whose behaviour is scripted per test.
 final class MockSearchProvider: SearchProvider, @unchecked Sendable {
     let id: ProviderID
-    let capabilities: ProviderCapabilities
     let fusionWeight: Double
     let configured: Bool
 
@@ -141,13 +140,11 @@ final class MockSearchProvider: SearchProvider, @unchecked Sendable {
 
     init(
         id: ProviderID,
-        capabilities: ProviderCapabilities = .minimal,
         fusionWeight: Double = 1.0,
         configured: Bool = true,
         outcome: @escaping @Sendable (SearchRequest) async throws -> ProviderSearchResponse
     ) {
         self.id = id
-        self.capabilities = capabilities
         self.fusionWeight = fusionWeight
         self.configured = configured
         self.outcome = outcome

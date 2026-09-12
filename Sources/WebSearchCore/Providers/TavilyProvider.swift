@@ -6,15 +6,6 @@ import Foundation
 /// is rank-based; the score is never compared against another vendor's.
 public struct TavilyProvider: SearchProvider {
     public let id: ProviderID = .tavily
-    public let capabilities = ProviderCapabilities(
-        supportsIncludeDomains: true,
-        supportsExcludeDomains: true,
-        supportsRecency: true,
-        supportsLocale: false,
-        supportsAnswer: true,
-        supportsInlineContent: true,
-        supportsPagination: false
-    )
     /// Registry weight for rank fusion.
     ///
     /// Deliberately 1.0. The fusion score is `weight / (k + rank)`, so a weight ratio

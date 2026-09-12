@@ -6,15 +6,6 @@ import Foundation
 /// somebody else's results, which is why its fusion weight is high.
 public struct BraveProvider: SearchProvider {
     public let id: ProviderID = .brave
-    public let capabilities = ProviderCapabilities(
-        supportsIncludeDomains: false,
-        supportsExcludeDomains: false,
-        supportsRecency: true,
-        supportsLocale: true,
-        supportsAnswer: false,
-        supportsInlineContent: true,
-        supportsPagination: true
-    )
     /// Registry weight for rank fusion.
     ///
     /// Deliberately 1.0. The fusion score is `weight / (k + rank)`, so a weight ratio

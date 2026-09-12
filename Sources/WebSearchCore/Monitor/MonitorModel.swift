@@ -194,7 +194,6 @@ public struct ProviderStatus: Sendable, Identifiable {
     public static func kind(of provider: ProviderID) -> String {
         if provider.isExperimentalScraper { return "scraper" }
         if provider.isAggregator { return "aggregator" }
-        if provider == .jina { return "fetch" }
         return provider.sourceFamily.isIndependentIndex ? "index" : "search"
     }
 

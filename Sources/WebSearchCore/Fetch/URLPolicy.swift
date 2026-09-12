@@ -129,6 +129,15 @@ public struct URLPolicy: Sendable {
     ///   connection attempt rather than denied, because a transient resolver failure
     ///   should surface as a network error. Only a *successful* resolution that
     ///   yields a forbidden address is a denial.
+    ///
+    /// - Important: The connection is **not** pinned to the address validated here.
+    ///   `URLSession` resolves the host again when it connects, so a name whose answer
+    ///   changes between the two lookups — a DNS-rebinding attack — can still land on a
+    ///   private address. Closing that window needs the validated address bound to the
+    ///   connection, which `URLSession` does not expose and which would also break TLS
+    ///   certificate validation for the original hostname. The window is one DNS TTL, every
+    ///   redirect hop is re-validated, and the residual risk is recorded on the tracker as
+    ///   an accepted limitation rather than left implicit.
     public func validate(_ url: URL) async -> Decision {
         let lexical = validateLexically(url)
         guard lexical.allowed else { return lexical }

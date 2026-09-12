@@ -161,18 +161,6 @@ public enum SearchPipelineFactory {
             )
         }
 
-        if let key = configuration.jinaAPIKey, !key.isEmpty {
-            register(
-                JinaSearchProvider(
-                    apiKey: key,
-                    http: http,
-                    configuration: configuration,
-                    log: log
-                ),
-                rate: .apiDefault
-            )
-        }
-
         let health = ProviderHealth(
             clock: clock,
             registrations: registrations,

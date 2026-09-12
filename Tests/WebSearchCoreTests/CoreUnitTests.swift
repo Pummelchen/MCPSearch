@@ -266,13 +266,9 @@ final class ConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.providerOrder.first, .brave)
         XCTAssertEqual(configuration.providerOrder.dropFirst().first, .tavily)
         // Every search provider must still be present so an operator cannot
-        // accidentally make one unreachable. `jina` is excluded because it is a
-        // fetch/extraction provider that never serves search results.
-        XCTAssertEqual(
-            Set(configuration.providerOrder),
-            Set(ProviderID.allCases.filter(\.isSearchProvider))
-        )
-        XCTAssertFalse(configuration.providerOrder.contains(.jina))
+        // accidentally make one unreachable, and none may appear twice.
+        XCTAssertEqual(Set(configuration.providerOrder), Set(ProviderID.allCases))
+        XCTAssertEqual(configuration.providerOrder.count, ProviderID.allCases.count)
     }
 
     func testDisabledProvidersAreParsed() {

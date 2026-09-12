@@ -10,15 +10,6 @@ import SwiftSoup
 /// API provider — the fusion layer already down-weights scrapers.
 public struct DuckDuckGoProvider: SearchProvider {
     public let id: ProviderID = .duckDuckGo
-    public let capabilities = ProviderCapabilities(
-        supportsIncludeDomains: false,
-        supportsExcludeDomains: false,
-        supportsRecency: true,
-        supportsLocale: false,
-        supportsAnswer: false,
-        supportsInlineContent: false,
-        supportsPagination: false
-    )
     /// Scrapers get a lower vote because their ordering is not a documented contract.
     public let fusionWeight: Double = 1.0
 

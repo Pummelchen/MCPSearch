@@ -12,15 +12,6 @@ import Foundation
 ///   `response.status`, so status alone is not enough to detect failure.
 public struct MojeekProvider: SearchProvider {
     public let id: ProviderID = .mojeek
-    public let capabilities = ProviderCapabilities(
-        supportsIncludeDomains: true,
-        supportsExcludeDomains: true,
-        supportsRecency: true,
-        supportsLocale: false,
-        supportsAnswer: false,
-        supportsInlineContent: false,
-        supportsPagination: true
-    )
     public let fusionWeight: Double = 1.0
 
     private let apiKey: String

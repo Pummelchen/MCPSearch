@@ -342,7 +342,7 @@ extension AppConfiguration {
                 // accidentally make one unreachable. `jina` is deliberately excluded:
                 // it is a fetch/extraction provider and never participates in search.
                 for provider in defaultProviderOrder
-                where !seen.contains(provider) && provider.isSearchProvider {
+                where !seen.contains(provider) {
                     full.append(provider)
                     seen.insert(provider)
                 }

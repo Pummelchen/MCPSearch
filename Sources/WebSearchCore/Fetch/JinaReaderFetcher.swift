@@ -66,13 +66,20 @@ public struct JinaReaderFetcher: Sendable {
             // Reader reports the wait in the JSON body as `retryAfter` (seconds) and
             // also in the `Retry-After` header; the body is authoritative when present.
             let bodyDelay = JinaReaderFetcher.retryAfterFromBody(response.body)
-            throw SearchError.rateLimited(
-                .jina,
-                retryAfter: bodyDelay ?? RetryAfter.parse(response.header("Retry-After"))
+            let wait = bodyDelay ?? RetryAfter.parse(response.header("Retry-After"))
+            let detail = wait.map { " Retry in about \($0.milliseconds) ms." } ?? ""
+            throw SearchError.fetchFailed(
+                request.url,
+                reason: "the reader is rate limited.\(detail)"
             )
         }
         if response.statusCode == 401 || response.statusCode == 403 {
-            throw SearchError.authenticationRequired(.jina)
+            // Scoped to the fetch, not to a search provider: this is a page-extraction
+            // fallback, and naming a provider here would be wrong.
+            throw SearchError.fetchFailed(
+                request.url,
+                reason: "the reader rejected the request (HTTP \(response.statusCode))"
+            )
         }
         guard response.isSuccess else {
             throw SearchError.extractionFailed(request.url)

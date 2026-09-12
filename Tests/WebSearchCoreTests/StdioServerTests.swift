@@ -294,7 +294,7 @@ final class StdioServerTests: XCTestCase {
 
         // Every search-capable provider must be offered, plus `auto`.
         let expected = Set(
-            ["auto"] + ProviderID.allCases.filter(\.isSearchProvider).map(\.rawValue)
+            ["auto"] + ProviderID.allCases.map(\.rawValue)
         )
         XCTAssertEqual(
             Set(enumValues),

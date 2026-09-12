@@ -14,16 +14,23 @@ final class MonitorOptionsTests: XCTestCase {
         XCTAssertEqual(options.nodes.count, 5, "this machine plus four nodes")
     }
 
-    func testDefaultNodesUseTailscaleAddresses() throws {
+    /// The defaults are this deployment's Tailscale addresses, pinned exactly.
+    ///
+    /// The previous assertion only checked `contains(":8888")`, so a stale or mistyped node
+    /// address would have gone unnoticed while the dashboard quietly reported a missing
+    /// node. These are the addresses the wiki documents; change both together.
+    func testDefaultNodesAreTheDocumentedAddresses() throws {
         let options = try Options.parse([])
-        let addresses = options.nodes.map(\.baseURL.absoluteString)
-        XCTAssertTrue(addresses.contains("http://127.0.0.1:8888"))
-        for address in addresses.dropFirst() {
-            XCTAssertTrue(
-                address.contains(":8888"),
-                "cluster nodes are reached over Tailscale on the SearXNG port: \(address)"
-            )
-        }
+        XCTAssertEqual(
+            options.nodes.map { "\($0.name)=\($0.baseURL.absoluteString)" },
+            [
+                "this-mac=http://127.0.0.1:8888",
+                "node1=http://100.66.125.48:8888",
+                "node2=http://100.97.158.87:8888",
+                "node3=http://100.114.69.128:8888",
+                "node4=http://100.80.144.76:8888",
+            ]
+        )
     }
 
     func testNoNodesDisablesNodeProbing() throws {

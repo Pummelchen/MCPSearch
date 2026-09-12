@@ -25,17 +25,20 @@ log.info(
 )
 
 // Report which providers came up, without ever echoing a credential.
+//
+// Jina is absent on purpose: its key only raises the page-extraction rate limit, and it is
+// not a search provider. Parallel needs the flag *and* an endpoint, because an emptied
+// PARALLEL_MCP_URL registers no adapter while the flag still reads as on.
 let configuredProviders = [
     configuration.tavilyAPIKey != nil ? "tavily" : nil,
     configuration.braveAPIKey != nil ? "brave" : nil,
     configuration.mojeekAPIKey != nil ? "mojeek" : nil,
     configuration.exaAPIKey != nil ? "exa" : nil,
-    configuration.jinaAPIKey != nil ? "jina" : nil,
     configuration.searxngBaseURL != nil ? "searxng" : nil,
     configuration.openWebSearchURL != nil ? "open_web_search" : nil,
     configuration.enableScrapers ? "duckduckgo" : nil,
     configuration.enableScrapers ? "startpage" : nil,
-    configuration.enableParallel ? "parallel" : nil,
+    configuration.enableParallel && configuration.parallelMCPURL != nil ? "parallel" : nil,
 ].compactMap { $0 }
 
 log.info(

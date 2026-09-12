@@ -13,6 +13,10 @@ services:
       # Bound to loopback: this instance has no authentication and is meant for the local
       # MCP server. Point SEARXNG_BASE_URL at a node instead of widening this binding if
       # the instance ever needs to be reachable from elsewhere.
+      #
+      # Published on 8888 because SearXNG listens on 8080 *inside* the container and 8080 is
+      # also the MCP HTTP transport's default on the host. Keeping them apart means a machine
+      # that serves both never has one silently shadow the other.
       - "127.0.0.1:8888:8080"
     volumes:
       - ./searxng/settings.yml:/etc/searxng/settings.yml:ro

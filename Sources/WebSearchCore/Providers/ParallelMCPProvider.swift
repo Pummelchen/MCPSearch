@@ -18,15 +18,6 @@ import Foundation
 ///   this project controls.
 public actor ParallelMCPProvider: SearchProvider {
     public nonisolated let id: ProviderID = .parallel
-    public nonisolated let capabilities = ProviderCapabilities(
-        supportsIncludeDomains: false,
-        supportsExcludeDomains: false,
-        supportsRecency: false,
-        supportsLocale: false,
-        supportsAnswer: false,
-        supportsInlineContent: true,
-        supportsPagination: false
-    )
     /// Registry weight for rank fusion.
     ///
     /// Deliberately 1.0. The fusion score is `weight / (k + rank)`, so a weight ratio

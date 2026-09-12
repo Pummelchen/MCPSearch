@@ -42,8 +42,7 @@ public struct ProviderRegistry: Sendable {
         // Scrapers are opt-in because their markup is not a contract.
         if id.isExperimentalScraper, !configuration.enableScrapers { return false }
         if id == .parallel, !configuration.enableParallel { return false }
-        if id == .jina { return false }  // fetch-only; never selected for search
-        return id.isSearchProvider
+        return true
     }
 
     /// Eligible providers in preference order.
@@ -68,8 +67,6 @@ public struct ProviderRegistry: Sendable {
                 reasons[id] = "scraper disabled; set SEARCH_ENABLE_SCRAPERS=true to enable"
             } else if id == .parallel, !configuration.enableParallel {
                 reasons[id] = "disabled; set SEARCH_ENABLE_PARALLEL=true to enable"
-            } else if id == .jina {
-                reasons[id] = "fetch-only provider, not used for search"
             }
         }
         return reasons
@@ -105,13 +102,6 @@ public struct ProviderRegistry: Sendable {
         // successful search.
         if let requested {
             // Explicit selection bypasses policy but not configuration.
-            if requested == .jina {
-                throw SearchError.unsupportedRequest(
-                    requested,
-                    "this is a fetch/extraction provider, not a search provider; "
-                        + "use the web_open tool instead"
-                )
-            }
             guard providers[requested] != nil else {
                 throw SearchError.notConfigured(requested)
             }

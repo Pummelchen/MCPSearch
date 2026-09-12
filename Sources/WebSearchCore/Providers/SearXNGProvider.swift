@@ -13,15 +13,6 @@ import Foundation
 /// transient failure, and it is reported as such rather than retried.
 public struct SearXNGProvider: SearchProvider {
     public let id: ProviderID = .searxng
-    public let capabilities = ProviderCapabilities(
-        supportsIncludeDomains: false,
-        supportsExcludeDomains: false,
-        supportsRecency: true,
-        supportsLocale: true,
-        supportsAnswer: false,
-        supportsInlineContent: true,
-        supportsPagination: true
-    )
     /// Registry weight for rank fusion.
     ///
     /// Deliberately 1.0. The fusion score is `weight / (k + rank)`, so a weight ratio

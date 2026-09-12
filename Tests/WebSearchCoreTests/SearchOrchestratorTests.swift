@@ -46,7 +46,7 @@ final class SearchOrchestratorTests: XCTestCase {
     }
 
     func testBalancedModeFansOutToTwoProviders() async throws {
-        let providers = ProviderID.allCases.filter { $0 != .jina }.prefix(3).map {
+        let providers = ProviderID.allCases.prefix(3).map {
             MockSearchProvider.returning($0, results: [("R", "https://\($0.rawValue).example.com/1", nil)])
         }
         let (orchestrator, _, _) = makeOrchestrator(providers: Array(providers))
@@ -57,7 +57,7 @@ final class SearchOrchestratorTests: XCTestCase {
     }
 
     func testThoroughModeFansOutToThreeProviders() async throws {
-        let providers = ProviderID.allCases.filter { $0 != .jina }.prefix(4).map {
+        let providers = ProviderID.allCases.prefix(4).map {
             MockSearchProvider.returning($0, results: [("R", "https://\($0.rawValue).example.com/1", nil)])
         }
         let (orchestrator, _, _) = makeOrchestrator(providers: Array(providers))

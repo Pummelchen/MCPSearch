@@ -7,15 +7,6 @@ import Foundation
 /// are materially more token-efficient than full page text.
 public struct ExaProvider: SearchProvider {
     public let id: ProviderID = .exa
-    public let capabilities = ProviderCapabilities(
-        supportsIncludeDomains: true,
-        supportsExcludeDomains: true,
-        supportsRecency: true,
-        supportsLocale: true,
-        supportsAnswer: false,
-        supportsInlineContent: true,
-        supportsPagination: false
-    )
     public let fusionWeight: Double = 1.0
 
     private let apiKey: String
@@ -81,7 +72,6 @@ public struct ExaProvider: SearchProvider {
                 snippet: ExaProvider.snippet(from: item),
                 publishedAt: item.publishedDate.flatMap(JSONCoding.date(from:)),
                 score: nil,
-                content: item.text,
                 request: request,
                 seenKeys: &seen
             ) else { continue }
@@ -101,17 +91,14 @@ public struct ExaProvider: SearchProvider {
         )
     }
 
-    /// Prefer the first highlight; fall back to a truncated `text` body so a result
-    /// without highlights still carries some evidence.
+    /// The first usable highlight.
+    ///
+    /// `contents.text` is deliberately not requested: full page text is billed per page and
+    /// would inflate every search response, while `web_answer` already grounds itself in
+    /// summaries. Asking for it later is a deliberate, priced decision rather than a
+    /// fallback to a field that is not requested.
     static func snippet(from item: ExaResponse.Item) -> String? {
-        if let highlight = item.highlights?.first(where: { !$0.isEmpty }) {
-            return highlight
-        }
-        guard let text = item.text, !text.isEmpty else { return nil }
-        let limit = 320
-        guard text.count > limit else { return text }
-        let end = text.index(text.startIndex, offsetBy: limit)
-        return String(text[text.startIndex..<end])
+        item.highlights?.first { !$0.isEmpty }
     }
 
     /// Exa answers a **missing** key with `402` and an invalid key with `401`, and
@@ -194,7 +181,6 @@ public struct ExaProvider: SearchProvider {
             let url: String?
             let publishedDate: String?
             let author: String?
-            let text: String?
             let highlights: [String]?
             let summary: String?
         }
