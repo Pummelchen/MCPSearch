@@ -19,6 +19,18 @@ COLIMA_CPU="${COLIMA_CPU:-2}"
 COLIMA_MEMORY="${COLIMA_MEMORY:-2}"
 COLIMA_DISK="${COLIMA_DISK:-20}"
 SEARXNG_PORT="${SEARXNG_PORT:-8888}"
+# Bound to the spare port while a new image is validated.
+SEARXNG_CANARY_PORT="${SEARXNG_CANARY_PORT:-8899}"
+# Pinned by digest rather than by tag: SearXNG changes engine definitions frequently, and
+# that decides which engines contribute. This is the linux/arm64 image validated on this
+# cluster (Apple Silicon nodes). To update: pull the new tag, exercise it, then replace the
+# digest here and in deploy/docker-compose.yml.
+SEARXNG_IMAGE="${SEARXNG_IMAGE:-searxng/searxng@sha256:e084201aa606fafce2151c8dc2844c9c3309025e90fbe7163b4f5e5183e474f0}"
+
+# Used below. Failing here is clearer than failing half way through provisioning.
+for tool in curl python3 openssl; do
+    command -v "$tool" >/dev/null 2>&1 || fail "$tool is required but not installed"
+done
 
 # ---------------------------------------------------------------------------
 # 0. sudo
@@ -155,11 +167,36 @@ done
 docker info >/dev/null 2>&1 || fail "docker daemon not reachable after colima start"
 say "docker daemon ready: $(docker version --format '{{.Server.Version}}' 2>/dev/null)"
 
+# Poll a SearXNG instance until it answers JSON, or give up. Used for the canary and for
+# the instance that replaces it.
+wait_for_json() {
+    local port="$1" code=000
+    for _ in $(seq 1 30); do
+        code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
+            "http://127.0.0.1:${port}/search?q=health&format=json" 2>/dev/null)"
+        [ "$code" = "200" ] && return 0
+        sleep 2
+    done
+    say "last HTTP response on port ${port}: ${code}"
+    return 1
+}
+
 # ---------------------------------------------------------------------------
 # 4. SearXNG
 # ---------------------------------------------------------------------------
 INSTALL_DIR="${HOME}/mcps-searxng"
 mkdir -p "${INSTALL_DIR}/searxng"
+
+# A per-node key, generated once and reused, so the tracked placeholder is never the key
+# that signs a running instance's data.
+SECRET_KEY_FILE="${INSTALL_DIR}/searxng/secret_key"
+if [ ! -s "$SECRET_KEY_FILE" ]; then
+    openssl rand -hex 32 > "$SECRET_KEY_FILE" 2>/dev/null \
+        || fail "could not generate a SearXNG secret key in ${SECRET_KEY_FILE}"
+    chmod 600 "$SECRET_KEY_FILE"
+    say "generated a per-node SearXNG secret key"
+fi
+SECRET_KEY="$(cat "$SECRET_KEY_FILE")"
 
 # Written here rather than copied so the node is self-contained and re-provisioning
 # needs nothing but this script.
@@ -176,7 +213,7 @@ server:
   # No Redis/Valkey here; the instance is private to the LAN.
   limiter: false
   public_instance: false
-  secret_key: "node-local-only-not-a-credential"
+  secret_key: "__SECRET_KEY__"
   image_proxy: false
 
 search:
@@ -194,9 +231,12 @@ outgoing:
   pool_maxsize: 20
 SETTINGS
 
+# The heredoc is quoted, so the key is substituted afterwards rather than expanded inline.
+sed -i '' "s|__SECRET_KEY__|${SECRET_KEY}|" "${INSTALL_DIR}/searxng/settings.yml"
+
 # Prefer a locally-loaded image (transferred over the LAN) so each node does not
 # re-download ~200 MB from the internet.
-if docker image inspect searxng/searxng:latest >/dev/null 2>&1; then
+if docker image inspect "${SEARXNG_IMAGE}" >/dev/null 2>&1; then
     say "searxng image already present"
 elif [ -f /tmp/searxng-image.tar ]; then
     say "loading searxng image from /tmp/searxng-image.tar"
@@ -204,9 +244,28 @@ elif [ -f /tmp/searxng-image.tar ]; then
         || fail "docker load failed; see /tmp/docker-load.log"
 else
     say "pulling searxng image from the internet"
-    docker pull searxng/searxng:latest >/tmp/docker-pull.log 2>&1 \
+    docker pull "${SEARXNG_IMAGE}" >/tmp/docker-pull.log 2>&1 \
         || fail "docker pull failed; see /tmp/docker-pull.log"
 fi
+
+# Validate the image before touching the running instance. The previous behaviour removed
+# the working container first, so a bad pull or an incompatible image left the node serving
+# nothing with no way back. The canary takes a spare loopback port, answers JSON, and is
+# discarded; only then is the real container replaced.
+docker rm -f mcps-searxng-canary >/dev/null 2>&1
+say "validating ${SEARXNG_IMAGE} in a canary container"
+docker run -d \
+    --name mcps-searxng-canary \
+    -p "127.0.0.1:${SEARXNG_CANARY_PORT}:8080" \
+    -v "${INSTALL_DIR}/searxng/settings.yml:/etc/searxng/settings.yml:ro" \
+    "${SEARXNG_IMAGE}" >/tmp/docker-canary.log 2>&1 \
+    || fail "canary container failed to start; see /tmp/docker-canary.log"
+if ! wait_for_json "${SEARXNG_CANARY_PORT}"; then
+    docker rm -f mcps-searxng-canary >/dev/null 2>&1
+    fail "the new image does not answer JSON; the running instance was left untouched"
+fi
+docker rm -f mcps-searxng-canary >/dev/null 2>&1
+say "canary answered JSON; replacing the running instance"
 
 docker rm -f mcps-searxng >/dev/null 2>&1
 
@@ -218,18 +277,11 @@ docker run -d \
     --restart unless-stopped \
     -p "${SEARXNG_PORT}:8080" \
     -v "${INSTALL_DIR}/searxng/settings.yml:/etc/searxng/settings.yml:ro" \
-    searxng/searxng:latest >/tmp/docker-run.log 2>&1 \
+    "${SEARXNG_IMAGE}" >/tmp/docker-run.log 2>&1 \
     || fail "docker run failed; see /tmp/docker-run.log"
 
 say "waiting for searxng to answer JSON"
-READY=no
-for i in $(seq 1 30); do
-    code="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 \
-        "http://127.0.0.1:${SEARXNG_PORT}/search?q=health&format=json" 2>/dev/null)"
-    if [ "$code" = "200" ]; then READY=yes; break; fi
-    sleep 2
-done
-[ "$READY" = "yes" ] || fail "searxng did not answer JSON on port ${SEARXNG_PORT} (last HTTP $code)"
+wait_for_json "${SEARXNG_PORT}" || fail "searxng did not answer JSON on port ${SEARXNG_PORT}"
 
 # Survive a reboot. The container has `--restart unless-stopped`, but that only helps
 # once the Docker daemon is running, and the Colima VM does not start itself.
@@ -239,10 +291,22 @@ if brew services list 2>/dev/null | grep -q '^colima'; then
         || say "could not register colima as a service (see /tmp/brew-services.log)"
 fi
 
+# Report an address that exists. Printing a hostname as if it were a URL sent operators
+# hunting for a network fault that was really a missing Tailscale install.
 TAILSCALE_IP="$(/usr/local/bin/tailscale ip -4 2>/dev/null | head -1)"
 [ -n "$TAILSCALE_IP" ] || TAILSCALE_IP="$(/Applications/Tailscale.app/Contents/MacOS/Tailscale ip -4 2>/dev/null | head -1)"
-[ -n "$TAILSCALE_IP" ] || TAILSCALE_IP="$(ipconfig getifaddr en0 2>/dev/null)"
-[ -n "$TAILSCALE_IP" ] || TAILSCALE_IP="$(hostname)"
 
-say "READY  searxng http://${TAILSCALE_IP}:${SEARXNG_PORT}"
+if [ -n "$TAILSCALE_IP" ]; then
+    say "READY  searxng http://${TAILSCALE_IP}:${SEARXNG_PORT} (Tailscale)"
+else
+    LAN_IP="$(ipconfig getifaddr en0 2>/dev/null)"
+    if [ -n "$LAN_IP" ]; then
+        say "READY  searxng http://${LAN_IP}:${SEARXNG_PORT} (LAN fallback)"
+        say "       tailscale was not found, so this address may change and is not how the"
+        say "       monitor expects to reach the node"
+    else
+        say "searxng is listening on port ${SEARXNG_PORT}, but neither tailscale nor a LAN"
+        say "address could be determined; set SEARXNG_BASE_URL to http://<node>:${SEARXNG_PORT}"
+    fi
+fi
 say "container: $(docker ps --filter name=mcps-searxng --format '{{.Status}}')"

@@ -1,18 +1,29 @@
 services:
   searxng:
-    image: searxng/searxng:latest
+    # Pinned by digest, not by tag. SearXNG changes engine definitions frequently and that
+    # is exactly what decides which engines contribute, so `latest` meant a rebuild could
+    # silently change search behaviour. This digest is the linux/arm64 image that was
+    # validated on this cluster (Apple Silicon nodes), so the file is arm64-only on
+    # purpose. To update: pull the new tag, exercise it, then replace the digest here and
+    # in deploy/provision-node.sh.
+    image: searxng/searxng@sha256:e084201aa606fafce2151c8dc2844c9c3309025e90fbe7163b4f5e5183e474f0
     container_name: mcps-searxng
     restart: unless-stopped
     ports:
-      # Bound to loopback: this instance has no authentication and is meant for the
-      # local MCP server. Change to "127.0.0.1:8888:8080" explicitly, or put a reverse
-      # proxy in front, if the port ever needs to be reachable from elsewhere.
+      # Bound to loopback: this instance has no authentication and is meant for the local
+      # MCP server. Point SEARXNG_BASE_URL at a node instead of widening this binding if
+      # the instance ever needs to be reachable from elsewhere.
       - "127.0.0.1:8888:8080"
     volumes:
       - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
     environment:
       # Keeps SearXNG's own logs out of the way; the MCP server never reads them.
       - SEARXNG_BASE_URL=http://localhost:8080/
+      # Overrides the placeholder in the mounted settings.yml. SearXNG maps SEARXNG_*
+      # variables onto its settings, so a deployment that cares can export a real key
+      # without editing the tracked file. The placeholder only signs local session data on
+      # an instance that has no accounts, no limiter and no public exposure.
+      - SEARXNG_SECRET_KEY=${SEARXNG_SECRET_KEY:-change-me-local-only-not-a-credential}
     healthcheck:
       # A JSON request is the right probe: it fails when `search.formats` lacks `json`,
       # which is the failure that otherwise shows up as a mysterious 403 in the server.
