@@ -137,6 +137,12 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
 
     private var requestHead: HTTPRequestHead?
     private var bodyBuffer: ByteBuffer = ByteBuffer()
+    /// Set once a response has been written for the request in flight.
+    ///
+    /// An oversized body keeps streaming after it is rejected, and each further part used
+    /// to trip the cap again and write a second response, which violates HTTP framing even
+    /// though the connection closes afterwards.
+    private var didRespond = false
 
     init(
         configuration: HTTPTransportConfiguration,
@@ -156,12 +162,15 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
         case .head(let head):
             requestHead = head
             bodyBuffer.clear()
+            didRespond = false
             // Bound the body so a single request cannot exhaust memory.
             bodyBuffer.reserveCapacity(min(head.headers.first(name: "content-length").flatMap(Int.init) ?? 4096, 1 << 20))
 
         case .body(var buffer):
+            guard !didRespond else { return }
             bodyBuffer.writeBuffer(&buffer)
             if bodyBuffer.readableBytes > HTTPMCPHandler.maximumBodyBytes {
+                didRespond = true
                 requestHead = nil
                 bodyBuffer.clear()
                 respond(

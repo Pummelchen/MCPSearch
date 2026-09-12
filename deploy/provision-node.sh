@@ -160,7 +160,7 @@ if ! grep -q 'DOCKER_HOST' "${HOME}/.zshrc" 2>/dev/null; then
     printf '\nexport DOCKER_HOST="%s"\n' "$DOCKER_SOCK" >> "${HOME}/.zshrc"
 fi
 
-for i in $(seq 1 30); do
+for _ in $(seq 1 30); do
     docker info >/dev/null 2>&1 && break
     sleep 2
 done
