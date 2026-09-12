@@ -132,7 +132,6 @@ public struct HTTPPolicy: Sendable, Hashable {
     /// or the credentials are wrong and retrying only wastes quota.
     public static let retryableStatusCodes: Set<Int> = [408, 425, 429, 500, 502, 503, 504]
 
-    public var connectTimeout: Duration
     public var requestTimeout: Duration
     public var maxAttempts: Int
     /// Base delays between attempts; jitter is added on top.
@@ -142,13 +141,11 @@ public struct HTTPPolicy: Sendable, Hashable {
     public var maxRetryAfter: Duration
 
     public init(
-        connectTimeout: Duration = .seconds(3),
         requestTimeout: Duration = .seconds(10),
         maxAttempts: Int = 3,
         backoffSchedule: [Duration] = [.milliseconds(200), .milliseconds(500)],
         maxRetryAfter: Duration = .seconds(5)
     ) {
-        self.connectTimeout = connectTimeout
         self.requestTimeout = requestTimeout
         self.maxAttempts = max(1, maxAttempts)
         self.backoffSchedule = backoffSchedule
@@ -158,7 +155,6 @@ public struct HTTPPolicy: Sendable, Hashable {
     /// Attempts = 1 initial try + configured retries.
     public static func standard(_ configuration: AppConfiguration) -> HTTPPolicy {
         HTTPPolicy(
-            connectTimeout: configuration.connectTimeout,
             requestTimeout: configuration.requestTimeout,
             maxAttempts: configuration.maxRetryAttempts + 1
         )

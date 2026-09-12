@@ -89,6 +89,39 @@ final class TransportConfigurationTests: XCTestCase {
         XCTAssertTrue(options.httpConfiguration?.isLoopback ?? false)
     }
 
+    /// The transport must not depend on where the flags appear.
+    ///
+    /// Each HTTP flag used to select the HTTP transport as it was parsed, so
+    /// `--transport stdio --port 9000` served HTTP while `--port 9000 --transport stdio`
+    /// served stdio. Same flags, different server.
+    func testTransportChoiceDoesNotDependOnArgumentOrder() throws {
+        let before = try ServerOptions.parse(["--transport", "http", "--port", "9300"])
+        let after = try ServerOptions.parse(["--port", "9300", "--transport", "http"])
+        XCTAssertEqual(before.transport, after.transport)
+        XCTAssertEqual(before.httpConfiguration?.port, 9300)
+        XCTAssertEqual(after.httpConfiguration?.port, 9300)
+    }
+
+    /// An explicit stdio request combined with HTTP-only options is a contradiction, not
+    /// something to resolve silently in either direction.
+    func testExplicitStdioWithHTTPOptionsIsRejected() {
+        for arguments in [
+            ["--transport", "stdio", "--port", "9000"],
+            ["--port", "9000", "--transport", "stdio"],
+            ["--transport=stdio", "--host", "0.0.0.0"],
+            ["--http-path", "/x", "--transport", "stdio"],
+        ] {
+            XCTAssertThrowsError(
+                try ServerOptions.parse(arguments),
+                "\(arguments) asks for two different transports"
+            ) { error in
+                guard case ServerOptions.OptionError.conflictingArguments = error else {
+                    return XCTFail("expected conflictingArguments, got \(error)")
+                }
+            }
+        }
+    }
+
     /// A path without a leading slash is normalized rather than producing a route that
     /// could never match.
     func testPathIsNormalizedWithLeadingSlash() throws {

@@ -58,7 +58,10 @@ public struct AppConfiguration: Sendable, Hashable {
 
     // MARK: HTTP
 
-    public var connectTimeout: Duration
+    /// Bound on one request attempt. It covers connection establishment as well as the
+    /// wait for data, which is why there is no separate connect-timeout setting: the
+    /// transport does not expose a connect-only deadline, and a knob that nothing reads
+    /// is worse than no knob.
     public var requestTimeout: Duration
     public var maxSearchResponseBytes: Int
     public var maxFetchedPageBytes: Int
@@ -103,7 +106,6 @@ public struct AppConfiguration: Sendable, Hashable {
         enableParallel: Bool = false,
         enableJinaReaderFallback: Bool = true,
         cacheTTL: Duration = .seconds(120),
-        connectTimeout: Duration = .seconds(3),
         requestTimeout: Duration = .seconds(10),
         maxSearchResponseBytes: Int = 4 * 1024 * 1024,
         maxFetchedPageBytes: Int = 10 * 1024 * 1024,
@@ -137,7 +139,6 @@ public struct AppConfiguration: Sendable, Hashable {
         self.enableParallel = enableParallel
         self.enableJinaReaderFallback = enableJinaReaderFallback
         self.cacheTTL = cacheTTL
-        self.connectTimeout = connectTimeout
         self.requestTimeout = requestTimeout
         self.maxSearchResponseBytes = maxSearchResponseBytes
         self.maxFetchedPageBytes = maxFetchedPageBytes
@@ -225,7 +226,6 @@ extension AppConfiguration {
         case enableParallel = "SEARCH_ENABLE_PARALLEL"
         case enableJinaReader = "SEARCH_ENABLE_JINA_READER"
         case cacheTTL = "SEARCH_CACHE_TTL_SECONDS"
-        case connectTimeout = "SEARCH_CONNECT_TIMEOUT_MS"
         case requestTimeout = "SEARCH_REQUEST_TIMEOUT_MS"
         case maxRetries = "SEARCH_MAX_RETRIES"
         case allowPrivateNetwork = "SEARCH_ALLOW_PRIVATE_NETWORK"
@@ -374,9 +374,6 @@ extension AppConfiguration {
         if let enabled = bool(.enableJinaReader) { configuration.enableJinaReaderFallback = enabled }
         if let seconds = int(.cacheTTL) {
             configuration.cacheTTL = .seconds(max(0, seconds))
-        }
-        if let ms = int(.connectTimeout) {
-            configuration.connectTimeout = .milliseconds(max(100, ms))
         }
         if let ms = int(.requestTimeout) {
             configuration.requestTimeout = .milliseconds(max(100, ms))

@@ -195,12 +195,22 @@ final class ConfigurationTests: XCTestCase {
             "JINA_API_KEY": "jina-abc",
             "SEARXNG_BASE_URL": "https://searx.example.com",
             "OPEN_WEB_SEARCH_URL": "https://aggregate.example.com/search",
+            "PARALLEL_MCP_URL": "https://parallel.example.com/mcp",
             "DEEPSEEK_API_KEY": "sk-deepseek-abc",
             "SEARCH_MAX_RESULTS": "5",
             "SEARCH_ENABLE_SCRAPERS": "true",
             "SEARCH_ENABLE_PARALLEL": "1",
+            "SEARCH_ENABLE_JINA_READER": "false",
             "SEARCH_CACHE_TTL_SECONDS": "30",
+            "SEARCH_FAST_TIMEOUT_MS": "4000",
+            "SEARCH_BALANCED_TIMEOUT_MS": "5000",
+            "SEARCH_THOROUGH_TIMEOUT_MS": "6000",
+            "SEARCH_REQUEST_TIMEOUT_MS": "7000",
+            "SEARCH_MAX_RETRIES": "4",
+            "SEARCH_USER_AGENT": "TestAgent/9",
+            "SEARCH_ALLOW_PRIVATE_NETWORK": "true",
             "SEARCH_LOG_LEVEL": "debug",
+            "SEARCH_LOG_QUERIES": "true",
         ])
 
         XCTAssertEqual(configuration.tavilyAPIKey, "tvly-abc")
@@ -213,12 +223,40 @@ final class ConfigurationTests: XCTestCase {
             configuration.openWebSearchURL?.absoluteString,
             "https://aggregate.example.com/search"
         )
+        XCTAssertEqual(
+            configuration.parallelMCPURL?.absoluteString,
+            "https://parallel.example.com/mcp"
+        )
         XCTAssertEqual(configuration.deepSeekAPIKey, "sk-deepseek-abc")
         XCTAssertEqual(configuration.defaultMaxResults, 5)
         XCTAssertTrue(configuration.enableScrapers)
         XCTAssertTrue(configuration.enableParallel)
+        XCTAssertFalse(configuration.enableJinaReaderFallback)
         XCTAssertEqual(configuration.cacheTTL, .seconds(30))
+        XCTAssertEqual(configuration.fastTimeout, .milliseconds(4_000))
+        XCTAssertEqual(configuration.balancedTimeout, .milliseconds(5_000))
+        XCTAssertEqual(configuration.thoroughTimeout, .milliseconds(6_000))
+        XCTAssertEqual(configuration.requestTimeout, .milliseconds(7_000))
+        XCTAssertEqual(configuration.maxRetryAttempts, 4)
+        XCTAssertEqual(configuration.userAgent, "TestAgent/9")
+        XCTAssertTrue(configuration.allowPrivateNetworkFetch)
         XCTAssertEqual(configuration.logLevel, .debug)
+        XCTAssertTrue(configuration.logQueries)
+    }
+
+    /// There is deliberately no connect-timeout setting.
+    ///
+    /// The transport exposes no connect-only deadline, so the knob that used to exist was
+    /// read by nothing and promised behaviour the client could not deliver. Pinned here so
+    /// it cannot reappear without a way to honour it.
+    func testThereIsNoConnectTimeoutSetting() {
+        XCTAssertFalse(
+            AppConfiguration.Key.allCases.contains { $0.rawValue == "SEARCH_CONNECT_TIMEOUT_MS" },
+            "an inert setting must not be documented"
+        )
+        // An unknown key is ignored rather than fatal, and cannot change the timeout.
+        let configuration = AppConfiguration.parse(["SEARCH_CONNECT_TIMEOUT_MS": "250"])
+        XCTAssertEqual(configuration.requestTimeout, .seconds(10))
     }
 
     func testProviderOrderIsConfigurableAndKeepsAllProvidersReachable() {

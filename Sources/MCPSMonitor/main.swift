@@ -263,7 +263,6 @@ actor Monitor {
         // timeout keeps a dead provider from stalling the whole refresh.
         var probeConfiguration = configuration
         probeConfiguration.requestTimeout = .seconds(8)
-        probeConfiguration.connectTimeout = .seconds(4)
         let http = URLSessionHTTPClient(configuration: probeConfiguration, log: log)
         self.http = http
         self.nodeProbe = NodeProbe(http: http)

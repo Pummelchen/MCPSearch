@@ -60,6 +60,10 @@ public struct ServerOptions: Sendable {
           --host <addr>              HTTP bind address. Default: \(HTTPTransportConfiguration.defaultHost)
           --http-path <path>         MCP endpoint path. Default: \(HTTPTransportConfiguration.defaultPath)
 
+        Setting any of --port, --host or --http-path selects the HTTP transport, so
+        --transport http is optional. Combining one with an explicit --transport stdio is
+        rejected rather than silently resolved.
+
         EXAMPLES
           # Local clients (Claude Desktop, Claude Code, Cursor, VS Code)
           SwiftWebSearchMCP
@@ -79,6 +83,15 @@ public struct ServerOptions: Sendable {
     public static func parse(_ arguments: [String]) throws -> ServerOptions {
         var options = ServerOptions(transport: .stdio)
         var index = 0
+
+        /// Which transport the user named, if any.
+        enum Named { case stdio, http }
+
+        /// HTTP-only settings are collected separately from the transport choice, so the
+        /// order of arguments cannot decide which transport is served.
+        var httpConfiguration = HTTPTransportConfiguration()
+        var httpSettingsGiven = false
+        var named: Named?
 
         /// Read the value for a flag, supporting both `--flag value` and `--flag=value`.
         func value(for flag: String) throws -> String {
@@ -104,16 +117,9 @@ public struct ServerOptions: Sendable {
                 let raw = try value(for: "--transport").lowercased()
                 switch raw {
                 case "stdio":
-                    options.transport = .stdio
+                    named = .stdio
                 case "http", "streamable-http", "streamable_http":
-                    // Keep any host/port already supplied on the command line.
-                    let existing: HTTPTransportConfiguration
-                    if case .http(let configuration) = options.transport {
-                        existing = configuration
-                    } else {
-                        existing = HTTPTransportConfiguration()
-                    }
-                    options.transport = .http(existing)
+                    named = .http
                 default:
                     throw OptionError.invalidValue(
                         flag: "--transport",
@@ -131,9 +137,8 @@ public struct ServerOptions: Sendable {
                         expected: "an integer between 1 and 65535"
                     )
                 }
-                var configuration = options.httpConfiguration ?? HTTPTransportConfiguration()
-                configuration.port = port
-                options.transport = .http(configuration)
+                httpConfiguration.port = port
+                httpSettingsGiven = true
 
             case argument == "--host" || argument.hasPrefix("--host="):
                 let raw = try value(for: "--host")
@@ -144,22 +149,38 @@ public struct ServerOptions: Sendable {
                         expected: "an interface address such as 127.0.0.1"
                     )
                 }
-                var configuration = options.httpConfiguration ?? HTTPTransportConfiguration()
-                configuration.host = raw
-                options.transport = .http(configuration)
+                httpConfiguration.host = raw
+                httpSettingsGiven = true
 
             case argument == "--http-path" || argument.hasPrefix("--http-path="):
                 var raw = try value(for: "--http-path")
                 if !raw.hasPrefix("/") { raw = "/" + raw }
-                var configuration = options.httpConfiguration ?? HTTPTransportConfiguration()
-                configuration.path = raw
-                options.transport = .http(configuration)
+                httpConfiguration.path = raw
+                httpSettingsGiven = true
 
             default:
                 throw OptionError.unknownArgument(argument)
             }
 
             index += 1
+        }
+
+        switch named {
+        case .stdio where httpSettingsGiven:
+            // Contradictory rather than merely redundant: stdio has no host, port or path,
+            // so one of the two requests is a mistake the user needs to see.
+            throw OptionError.conflictingArguments(
+                "HTTP options (--port/--host/--http-path) were given together with "
+                    + "--transport stdio; drop one or ask for --transport http"
+            )
+        case .stdio:
+            options.transport = .stdio
+        case .http:
+            options.transport = .http(httpConfiguration)
+        case nil:
+            // Documented convenience: HTTP-only flags select the HTTP transport, so
+            // `--transport http` does not have to be repeated.
+            options.transport = httpSettingsGiven ? .http(httpConfiguration) : .stdio
         }
 
         return options
@@ -177,6 +198,7 @@ extension ServerOptions {
         case unknownArgument(String)
         case missingValue(String)
         case invalidValue(flag: String, value: String, expected: String)
+        case conflictingArguments(String)
 
         public var description: String {
             switch self {
@@ -186,6 +208,8 @@ extension ServerOptions {
                 "Missing value for \(flag)"
             case .invalidValue(let flag, let value, let expected):
                 "Invalid value for \(flag): '\(value)' (expected \(expected))"
+            case .conflictingArguments(let detail):
+                "Conflicting arguments: \(detail)"
             }
         }
     }
