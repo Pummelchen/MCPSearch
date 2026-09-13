@@ -16,7 +16,10 @@ What it checks:
   5. ``r`` refreshes immediately instead of waiting out the interval;
   6. ``p`` probes providers now, and a reachable instance turns from ready to OK;
   7. ``q`` exits cleanly, restores the cursor, clears to the end of the screen and
-     prints the final summary.
+     prints the final summary;
+  8. a SearXNG instance cannot make the terminal execute anything: escape sequences in the
+     engine names and ``unresponsive_engines`` reasons it returns are replaced with a visible
+     placeholder, so the only escapes in the transcript are the display's own.
 
 A SearXNG-shaped stub is served on loopback, so the run is hermetic: no vendor key, no
 external network, no credits. Provider variables are scrubbed from the child's
@@ -67,6 +70,14 @@ READ_CHUNK = int(os.environ.get("MONITOR_SMOKE_READ_CHUNK", "65536"))
 # An SGR sequence: the colour attributes the renderer wraps text in.
 SGR = re.compile(r"\x1b\[[0-9;]*m")
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+# Terminal.move(row:column:), which the frame uses to home the cursor.
+CURSOR_MOVE = re.compile(r"\x1b\[[0-9]+;[0-9]+H")
+
+# What a hostile instance returns instead of an ordinary engine name and reason. The OSC 52
+# payload writes the clipboard on terminals that allow it; ESC[2J clears the screen; the bare
+# C1 control is a CSI without the ESC that many terminals still act on.
+HOSTILE_ENGINE = "brave\x1b]52;c;cGF3bmVk\x07"
+HOSTILE_REASON = "HTTP connection error\x1b[2JSPOOF\x9b1;2H"
 
 # Provider credentials and toggles must not leak in: an ambient key would make the probe
 # spend real credits, which is exactly what this test must never do.
@@ -111,7 +122,15 @@ def locate_binary() -> str:
 class StubSearXNG:
     """A SearXNG-shaped JSON endpoint, on loopback only."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, hostile: bool = False) -> None:
+        """Serve a SearXNG-shaped answer; `hostile` puts escape sequences in the fields an
+        instance controls, which is the payload ledger B25 is about."""
+        engine = HOSTILE_ENGINE if hostile else "brave"
+        unresponsive = (
+            [["duckduckgo", HOSTILE_REASON]]
+            if hostile
+            else [["duckduckgo", "HTTP connection error"]]
+        )
         payload = json.dumps(
             {
                 "query": "swift concurrency",
@@ -120,11 +139,11 @@ class StubSearXNG:
                         "title": "Stub result",
                         "url": "https://example.com/stub",
                         "content": "A stub result for the monitor smoke test.",
-                        "engine": "brave",
-                        "engines": ["brave"],
+                        "engine": engine,
+                        "engines": [engine],
                     }
                 ],
-                "unresponsive_engines": [["duckduckgo", "HTTP connection error"]],
+                "unresponsive_engines": unresponsive,
             }
         ).encode()
         handler = self._handler(payload)
@@ -261,6 +280,95 @@ class Session:
 def require(condition: bool, message: str) -> None:
     if not condition:
         raise Failure(message)
+
+
+def escape_sequences(text: str) -> list[str]:
+    """Every ESC-introduced sequence in `text`, OSC included.
+
+    ``ANSI`` only knows CSI, which is why the check needs its own scanner: an OSC 52 clipboard
+    write starts with ``ESC ]`` and ends with BEL or ST, and it is the sequence that matters most
+    here.
+    """
+    found: list[str] = []
+    index = 0
+    while True:
+        start = text.find("\x1b", index)
+        if start == -1:
+            return found
+        if start + 1 >= len(text):
+            found.append("\x1b")
+            return found
+        following = text[start + 1]
+        if following == "[":
+            end = start + 2
+            while end < len(text) and not text[end].isalpha():
+                end += 1
+            end = min(end + 1, len(text))
+        elif following == "]":
+            end = start + 2
+            while end < len(text):
+                if text[end] == "\x07":
+                    end += 1
+                    break
+                if text[end] == "\x1b" and end + 1 < len(text) and text[end + 1] == "\\":
+                    end += 2
+                    break
+                end += 1
+        else:
+            end = start + 2
+        found.append(text[start:end])
+        index = end
+
+
+def is_renderer_escape(sequence: str) -> bool:
+    """Whether `sequence` is one the display emits itself (kept in step with Terminal.swift)."""
+    if SGR.fullmatch(sequence) or CURSOR_MOVE.fullmatch(sequence):
+        return True
+    return sequence in (
+        HIDE_CURSOR,
+        SHOW_CURSOR,
+        CLEAR_SCREEN,
+        CLEAR_TO_END_OF_LINE,
+        CLEAR_TO_END_OF_SCREEN,
+        CURSOR_HOME,
+    )
+
+
+def check_escape_injection(binary: str) -> None:
+    """A probed instance must not be able to make the terminal execute anything.
+
+    Engine names and ``unresponsive_engines`` reasons are whatever the instance sent, and a
+    terminal executes the bytes it is handed rather than displaying them. The frame may
+    therefore contain no escape sequence other than the ones the renderer generates itself
+    (ledger B25).
+    """
+    stub = StubSearXNG(hostile=True)
+    session = Session(binary, stub.url)
+    try:
+        session.wait_for(
+            lambda s: "unavailable:" in s.frame_text(),
+            "the hostile engine data to be rendered",
+        )
+        session.drain(0.5)
+        unexpected = [
+            sequence
+            for sequence in escape_sequences(session.transcript)
+            if not is_renderer_escape(sequence)
+        ]
+        require(
+            not unexpected,
+            "an instance's escape sequence reached the terminal: "
+            + ", ".join(repr(sequence) for sequence in unexpected[:3]),
+        )
+        require(
+            "\ufffd" in session.frame_text(),
+            "the payload must be replaced with a visible placeholder, not dropped silently",
+        )
+        require("brave" in session.frame_text(), "the engine name itself must still render")
+        print("  hostile engine text was replaced, not executed")
+    finally:
+        session.close()
+        stub.stop()
 
 
 def run(binary: str) -> None:
@@ -439,6 +547,7 @@ def main() -> int:
     print(f"smoke-testing the interactive display of {binary}")
     try:
         run(binary)
+        check_escape_injection(binary)
         check_ctrl_c_quits_cleanly(binary)
     except Failure as error:
         print(f"MONITOR TTY SMOKE FAILED: {error}", file=sys.stderr)

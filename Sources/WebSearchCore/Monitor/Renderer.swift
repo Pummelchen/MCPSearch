@@ -4,6 +4,11 @@ import Foundation
 ///
 /// Rendering is pure: it takes a model and returns the lines to display. That keeps the
 /// layout testable and means the refresh loop has no drawing logic of its own.
+///
+/// Everything a probe or an error body contributed — node names, engine names, error strings,
+/// warnings — is passed through `Terminal.sanitize` before it is styled or padded. Styling is
+/// applied afterwards, so the dashboard's own escape sequences survive. This is the single
+/// boundary that turns untrusted text into terminal output (ledger B25).
 public struct Renderer: Sendable {
     public var useColour: Bool
     public var showEngines: Bool
@@ -240,7 +245,7 @@ public struct Renderer: Sendable {
         // otherwise the reason a provider is inactive.
         let note: String
         if let error = status.lastError {
-            note = Terminal.colour(error, .brightRed, enabled: useColour)
+            note = Terminal.colour(Terminal.sanitize(error), .brightRed, enabled: useColour)
         } else if status.state == .notConfigured {
             note = Terminal.colour("set \(status.setupHint)", .grey, enabled: useColour)
         } else if status.state == .configuredButIdle {
@@ -284,7 +289,7 @@ public struct Renderer: Sendable {
 
         for node in model.nodes {
             let name = Self.leadingColumn(
-                "  " + glyph(node.state) + " " + node.name,
+                "  " + glyph(node.state) + " " + Terminal.sanitize(node.name),
                 width: 16
             )
             let state = stateText(node.state)
@@ -306,12 +311,12 @@ public struct Renderer: Sendable {
 
             var detail = ""
             if let error = node.error {
-                detail = Terminal.colour(error, .brightRed, enabled: useColour)
+                detail = Terminal.colour(Terminal.sanitize(error), .brightRed, enabled: useColour)
             } else if showEngines {
-                let healthy = node.engines.joined(separator: ", ")
+                let healthy = Terminal.sanitize(node.engines.joined(separator: ", "))
                 detail = Terminal.colour(healthy, .grey, enabled: useColour)
                 if !node.unavailableEngines.isEmpty {
-                    let missing = node.unavailableEngines.joined(separator: ", ")
+                    let missing = Terminal.sanitize(node.unavailableEngines.joined(separator: ", "))
                     detail += "  " + Terminal.colour("unavailable: \(missing)", .brightYellow, enabled: useColour)
                 }
             }
@@ -332,7 +337,9 @@ public struct Renderer: Sendable {
         var lines = [rule]
 
         for warning in model.warnings.prefix(2) {
-            lines.append("  " + Terminal.colour("⚠ " + warning, .brightYellow, enabled: useColour))
+            lines.append(
+                "  " + Terminal.colour("⚠ " + Terminal.sanitize(warning), .brightYellow, enabled: useColour)
+            )
         }
 
         let keys = [

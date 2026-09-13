@@ -55,6 +55,29 @@ final class TerminalLayoutTests: XCTestCase {
         XCTAssertEqual(Terminal.colour("x", .green, enabled: false), "x")
         XCTAssertTrue(Terminal.colour("x", .green, enabled: true).contains("\u{1B}[32m"))
     }
+
+    /// Control characters are replaced, never passed to the terminal.
+    ///
+    /// A terminal executes these bytes: `ESC[2J` clears the screen, `ESC]52;c;…` writes the
+    /// clipboard on terminals that allow it. The probe data that reaches the renderer comes
+    /// from a SearXNG instance, so it is not text this program authored (ledger B25).
+    func testSanitizeReplacesControlCharactersWithAVisiblePlaceholder() {
+        let hostile = "brave\u{1B}]52;c;cGF3bmVk\u{07}google\u{9B}31m\n"
+        let safe = Terminal.sanitize(hostile)
+        XCTAssertFalse(safe.unicodeScalars.contains { $0.value == 0x1B || $0.value == 0x07 })
+        XCTAssertFalse(safe.unicodeScalars.contains { (0x80...0x9F).contains($0.value) })
+        XCTAssertEqual(safe, "brave\u{FFFD}]52;c;cGF3bmVk\u{FFFD}google\u{FFFD}31m\u{FFFD}")
+    }
+
+    /// Format characters are replaced too: they reorder or hide text without taking a column.
+    func testSanitizeStripsFormatCharactersAndLeavesOrdinaryTextAlone() {
+        XCTAssertEqual(Terminal.sanitize("google cse"), "google cse")
+        XCTAssertEqual(Terminal.sanitize("日本語 ✓ — dash"), "日本語 ✓ — dash")
+        XCTAssertEqual(
+            Terminal.sanitize("a\u{200B}b\u{202E}c\u{FEFF}d"),
+            "a\u{FFFD}b\u{FFFD}c\u{FFFD}d"
+        )
+    }
 }
 
 /// Dashboard rendering.
@@ -372,6 +395,73 @@ final class RendererTests: XCTestCase {
         XCTAssertEqual(Renderer.milliseconds(.milliseconds(750)), "750ms")
         XCTAssertEqual(Renderer.milliseconds(.milliseconds(1500)), "1.5s")
     }
+
+    /// Text a probed instance controls must not be able to drive the operator's terminal.
+    ///
+    /// Engine names, `unresponsive_engines` reasons and error bodies arrive from SearXNG and are
+    /// rendered straight into the frame. A terminal executes what it is handed, so an instance
+    /// could clear the screen, move the cursor, or write the clipboard through OSC 52 using
+    /// nothing but an engine name. The frame may therefore contain no escape sequence other than
+    /// the colouring the renderer itself generates (ledger B25).
+    func testHostileInstanceTextCannotDriveTheTerminal() {
+        var injecting = node("node1", state: .up)
+        injecting.engines = ["brave\u{1B}]52;c;cGF3bmVk\u{07}", "google cse"]
+        injecting.unavailableEngines = ["duckduckgo\u{1B}[2JSPOOF: CAPTCHA"]
+        var failing = node("node2", state: .degraded)
+        failing.error = "connection refused\u{1B}[31m\u{9B}1;2H"
+        failing.name = "node2\u{1B}]0;spoofed title\u{07}"
+
+        var model = self.model(
+            nodes: [injecting, failing],
+            providers: [provider(.tavily, state: .healthy, error: "boom\u{1B}[2J")]
+        )
+        model.warnings = ["engine 'duckduckgo\u{1B}[2J' unavailable on 4 node(s)"]
+
+        let rendered = Renderer(useColour: true)
+            .render(model, columns: 200, rows: 40)
+            .joined(separator: "\n")
+
+        for sequence in escapeSequences(in: rendered) {
+            XCTAssertTrue(
+                Self.isOwnColouring(sequence),
+                "the dashboard may only emit its own colouring, found \(sequence.debugDescription)"
+            )
+        }
+        XCTAssertFalse(
+            rendered.unicodeScalars.contains { (0x80...0x9F).contains($0.value) },
+            "a bare C1 control character reached the frame"
+        )
+        XCTAssertTrue(
+            rendered.contains("\u{FFFD}"),
+            "the payload must be replaced with a visible placeholder, not dropped silently"
+        )
+        XCTAssertTrue(rendered.contains("google cse"), "legitimate engine names still render")
+    }
+
+    /// The escape sequences in `text`, terminated the same way `Terminal.displayWidth` does.
+    private func escapeSequences(in text: String) -> [String] {
+        var found: [String] = []
+        var index = text.startIndex
+        while let start = text[index...].firstIndex(of: "\u{1B}") {
+            var cursor = text.index(after: start)
+            while cursor < text.endIndex, !text[cursor].isLetter {
+                cursor = text.index(after: cursor)
+            }
+            guard cursor < text.endIndex else {
+                found.append(String(text[start...]))
+                break
+            }
+            found.append(String(text[start...cursor]))
+            index = text.index(after: cursor)
+        }
+        return found
+    }
+
+    /// Whether a sequence is one the renderer generates itself: `ESC [ <digits and ;> m`.
+    private static func isOwnColouring(_ sequence: String) -> Bool {
+        guard sequence.hasPrefix("\u{1B}["), sequence.hasSuffix("m") else { return false }
+        return sequence.dropFirst(2).dropLast().allSatisfy { $0.isNumber || $0 == ";" }
+    }
 }
 
 /// Metric accumulation.
@@ -456,4 +546,5 @@ final class ProbeQueriesTests: XCTestCase {
         // And the rotation is stable and finite.
         XCTAssertEqual(queries.next(), first)
     }
+
 }

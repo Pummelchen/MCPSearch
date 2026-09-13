@@ -75,6 +75,46 @@ public enum Terminal {
         return "\u{1B}[1m\(text)\u{1B}[0m"
     }
 
+    // MARK: - Untrusted text
+
+    /// Replace every terminal-interpreted or invisible scalar with a visible placeholder.
+    ///
+    /// The dashboard prints strings that no part of this program authored: a SearXNG instance
+    /// decides what appears in an engine name, in `unresponsive_engines` and in an error body.
+    /// A terminal *executes* control characters rather than showing them — `ESC[2J` clears the
+    /// screen, `ESC]52;…` writes the clipboard on terminals that allow it, CSI can move the
+    /// cursor, hide it or spoof the window title — so text from a probed instance must never
+    /// reach the tty unfiltered (ledger B25).
+    ///
+    /// Both `Cc` (C0/C1 control) and `Cf` (format: bidirectional overrides, zero-width
+    /// joiners, BOM) are replaced, because `Cf` scalars reorder or hide what the operator
+    /// sees without occupying a column. The renderer's own escapes are unaffected: it styles
+    /// and pads *after* sanitising, so nothing this function returns contains an escape.
+    public static func sanitize(_ text: String) -> String {
+        guard text.unicodeScalars.contains(where: isTerminalControl) else { return text }
+        var sanitised = String()
+        sanitised.reserveCapacity(text.count)
+        for scalar in text.unicodeScalars {
+            if isTerminalControl(scalar) {
+                sanitised.unicodeScalars.append("\u{FFFD}")
+            } else {
+                sanitised.unicodeScalars.append(scalar)
+            }
+        }
+        return sanitised
+    }
+
+    /// Whether a scalar is one the terminal interprets, or one that exists only to reorder
+    /// or join text invisibly (`generalCategory` `Cc` and `Cf`).
+    private static func isTerminalControl(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.properties.generalCategory {
+        case .control, .format:
+            return true
+        default:
+            return false
+        }
+    }
+
     // MARK: - Width-safe text
 
     /// Pad to a width, truncating when necessary. Keeps columns aligned even when a
