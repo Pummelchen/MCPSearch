@@ -968,6 +968,129 @@ final class StdioServerTests: XCTestCase {
         XCTAssertEqual(thirdResult["isError"] as? Bool, true)
     }
 
+    /// Send one `tools/call` and return what the caller would see.
+    private func callTool(
+        _ server: ServerProcess,
+        id: Int,
+        name: String,
+        arguments: [String: Any]
+    ) throws -> (isError: Bool, text: String, structured: [String: Any]?) {
+        try server.send([
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "tools/call",
+            "params": ["name": name, "arguments": arguments],
+        ])
+        let response = try server.readResponse(id: id)
+        XCTAssertNil(
+            response["error"],
+            "\(name) with \(arguments) must not be a protocol error"
+        )
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        let text = content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        return (result["isError"] as? Bool == true, text, result["structuredContent"] as? [String: Any])
+    }
+
+    /// A search response with `resultCount` distinct-domain results.
+    private static func searchBody(resultCount: Int) -> String {
+        let results = (1...resultCount).map { index in
+            """
+            {"url":"https://result\(index).example/doc","title":"Result \(index)",\
+            "content":"Body text for result \(index).","engine":"brave"}
+            """
+        }.joined(separator: ",")
+        return "{\"query\":\"q\",\"results\":[\(results)]}"
+    }
+
+    /// Every argument guard must name the argument it rejected.
+    ///
+    /// Only three malformed shapes were covered — a missing `query`, a `max_results` of the wrong
+    /// type and an unknown tool — so the array, enum and required-string guards could each regress
+    /// into a generic failure, or into a protocol error, without the suite noticing (ledger B32).
+    func testToolArgumentGuardsNameTheArgumentTheyReject() throws {
+        let server = try startInitializedServer(environment: [:])
+        defer { server.stop() }
+
+        let cases: [(id: Int, name: String, arguments: [String: Any], expected: String)] = [
+            (
+                40, "web_search",
+                ["query": "ok", "include_domains": (0..<21).map { "d\($0).example" }],
+                "include_domains"
+            ),
+            (41, "web_search", ["query": "ok", "exclude_domains": [1, 2]], "exclude_domains"),
+            (42, "web_search", ["query": "ok", "recency": "yesterday"], "recency"),
+            (43, "web_search", ["query": "ok", "mode": "quick"], "mode"),
+            (44, "web_search", ["query": "   "], "query"),
+            (45, "web_open", ["url": "   "], "url"),
+        ]
+        for testCase in cases {
+            let outcome = try callTool(
+                server,
+                id: testCase.id,
+                name: testCase.name,
+                arguments: testCase.arguments
+            )
+            XCTAssertTrue(outcome.isError, "\(testCase.arguments) must be refused")
+            XCTAssertTrue(
+                outcome.text.contains(testCase.expected),
+                "the message must name \(testCase.expected), got: \(outcome.text)"
+            )
+        }
+    }
+
+    /// The documented clamps are part of the tool contract.
+    ///
+    /// `max_results` is capped at 20 and floored at 1, and `max_characters` is floored at 1 000.
+    /// A clamp that disappeared would silently change what a caller can ask for — or let a model
+    /// ask for a fifty-megabyte page — and nothing tested any of them (ledger B32).
+    func testToolArgumentClampsAreEnforced() throws {
+        let page =
+            "<html><body><p>"
+            + String(repeating: "long page text ", count: 500)
+            + "</p></body></html>"
+        let stub = try LoopbackServer(responses: [
+            .init(status: 200, body: Self.searchBody(resultCount: 25)),
+            .init(status: 200, body: Self.searchBody(resultCount: 25)),
+            .init(status: 200, body: page),
+        ])
+        let server = try startInitializedServer(environment: [
+            "SEARXNG_BASE_URL": stub.baseURL.absoluteString,
+            // `web_open` fetches the loopback stub, which the SSRF policy refuses by default.
+            "SEARCH_ALLOW_PRIVATE_NETWORK": "1",
+        ])
+        defer { server.stop() }
+
+        let capped = try callTool(
+            server,
+            id: 50,
+            name: "web_search",
+            arguments: ["query": "clamp", "max_results": 50]
+        )
+        let cappedResults = try XCTUnwrap(capped.structured?["results"] as? [[String: Any]])
+        XCTAssertEqual(cappedResults.count, 20, "max_results is capped at the documented 20")
+
+        let floored = try callTool(
+            server,
+            id: 51,
+            name: "web_search",
+            arguments: ["query": "clamp", "max_results": 0]
+        )
+        let flooredResults = try XCTUnwrap(floored.structured?["results"] as? [[String: Any]])
+        XCTAssertEqual(flooredResults.count, 1, "max_results is floored at 1")
+
+        let pageResult = try callTool(
+            server,
+            id: 52,
+            name: "web_open",
+            arguments: ["url": stub.baseURL.absoluteString, "max_characters": 10]
+        )
+        let characters = try XCTUnwrap(pageResult.structured?["text_characters"] as? Int)
+        XCTAssertGreaterThan(characters, 10, "max_characters is floored at 1 000, not honoured at 10")
+        XCTAssertLessThanOrEqual(characters, 1_000, "the floored budget is still the cap")
+        XCTAssertEqual(pageResult.structured?["truncated"] as? Bool, true)
+    }
+
     func testServerStaysResponsiveAfterAFailedToolCall() throws {
         // A failure must not poison the session or deadlock the message loop.
         let server = try startInitializedServer(environment: [:])

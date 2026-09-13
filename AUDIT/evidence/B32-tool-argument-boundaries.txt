@@ -1,0 +1,78 @@
+# B32 — the tool-argument guards were only three shapes deep
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+`testMalformedArgumentsProduceAnErrorResultNotAProtocolFailure` covered exactly a missing
+`query`, a `max_results` of the wrong type and an unknown tool name. Everything else the
+argument reader enforces was untested:
+
+```swift
+// Sources/SwiftWebSearchMCP/ToolSchemas.swift
+guard elements.count <= maxItems else { throw ArgumentError("`\(name)` accepts at most ...") }
+guard let text = element.stringValue else { throw ArgumentError("`\(name)` must contain only strings") }
+guard let parsed = T(rawValue: text.lowercased()) else { throw ArgumentError("`\(name)` must be one of ...") }
+requiredString: "`\(name)` is required and must be a non-empty string"
+```
+
+and neither clamp was asserted anywhere:
+
+```swift
+// Sources/SwiftWebSearchMCP/ToolHandlers.swift
+maxResults = min(max(1, try args.int("max_results") ?? default), 20)      // web_search, web_answer
+maxCharacters = min(max(1_000, try args.int("max_characters") ?? 12_000), 50_000)   // web_open
+```
+
+## Fails-before evidence
+
+Two guards removed at once, then the new tests run:
+
+```swift
+// ToolSchemas.stringArray
+- guard elements.count <= maxItems else { throw ArgumentError("`\(name)` accepts at most ...") }
+// ToolHandlers (both web_search and web_answer)
+- maxResults = min(max(1, try args.int("max_results") ?? default), 20)
++ maxResults = try args.int("max_results") ?? default
+```
+
+```
+$ swift test --filter testToolArgument
+error: ... XCTAssertEqual failed: ("25") is not equal to ("20") - max_results is capped at the documented 20
+error: ... XCTUnwrap failed: expected non-nil value of type "Array<Dictionary<String, Any>>"   # max_results: 0
+error: ... XCTAssertTrue failed - the message must name include_domains, got:
+  no search provider is configured; set an API key such as TAVILY_API_KEY or configure SEARXNG_BASE_URL
+Test Case ... failed
+```
+
+The third line is the point: without the guard the over-long array is accepted and the request
+travels on, so the caller is told to configure a provider instead of which argument was wrong.
+The old three shapes stayed green under both mutations.
+
+## The fix
+
+Two table-driven tests, plus a `callTool` helper that returns `(isError, text, structuredContent)`
+so a case can assert the message *and* the payload:
+
+* `testToolArgumentGuardsNameTheArgumentTheyReject` — 21 `include_domains`, a non-string
+  `exclude_domains` element, an unknown `recency`, an unknown `mode`, a whitespace-only `query`,
+  and a whitespace-only `url`. Each must be an error result (not a protocol error) whose message
+  names the offending argument.
+* `testToolArgumentClampsAreEnforced` — a stub returning 25 distinct-domain results: `max_results:
+  50` must yield exactly 20 and `max_results: 0` exactly 1; `web_open` with `max_characters: 10`
+  must return more than 10 characters (the 1 000 floor) but no more than 1 000, marked truncated.
+
+## Verification
+
+```
+$ swift test --filter testToolArgument
+Executed 2 tests, with 0 failures (0 unexpected) in 0.817 seconds
+
+$ swift test
+Executed 444 tests, with 6 skipped and 0 failures (0 unexpected) in 18.666 seconds
+
+$ swift build --scratch-path $SCRATCH -Xswiftc -warnings-as-errors                  0 warnings, 0 errors
+$ swift build -c release --scratch-path $SCRATCH -Xswiftc -warnings-as-errors      0 warnings, 0 errors
+$ swift-format lint --recursive --strict Sources Tests                             0 diagnostics
+$ swiftlint lint --strict                                                          0 violations in 79 files
+```
