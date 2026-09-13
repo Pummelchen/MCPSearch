@@ -212,12 +212,17 @@ public final class KeyReader: @unchecked Sendable {
         raw.c_cc.0 = 0  // VMIN: return immediately
         raw.c_cc.1 = 0  // VTIME: no inter-byte timeout
         guard tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == 0 else { return nil }
+        // The terminal is ours now, so make sure a supervisor's SIGINT/SIGTERM gives it back:
+        // `deinit` and the normal exit path cannot run when the process is signalled (ledger
+        // B107).
+        SignalRestore.install(restoring: original)
     }
 
     /// Restore the original terminal settings.
     public func restore() {
         var restore = original
         _ = tcsetattr(STDIN_FILENO, TCSAFLUSH, &restore)
+        SignalRestore.remove()
     }
 
     /// Return one pending byte, or nil when nothing has been typed.

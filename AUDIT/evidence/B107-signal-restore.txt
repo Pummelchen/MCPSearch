@@ -1,0 +1,77 @@
+# B107 — an external SIGINT/SIGTERM left the terminal raw (and closes B10)
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+`KeyReader` clears `ICANON`, `ECHO` and `ISIG` for the dashboard (B10's fix). Nothing restored
+them when the process was *terminated* rather than quit: a supervisor's `kill`, `docker stop`, a
+terminal teardown or a Ctrl-C delivered as a signal kills the process before `deinit`, the
+monitor's `restore()` call or the `q` branch can run, so the operator's shell is left in raw mode
+with the cursor hidden. The previous attempt — a `DispatchSource.makeSignalSource` pair — is
+recorded in the ledger as a dead end: it installed fine but segfaulted before the first frame in
+a clean build.
+
+## Fails-before evidence
+
+With `SignalRestore` absent and `Terminal.swift` at `HEAD` (so the Ctrl-C-byte fix is still in
+place), the harness's new external-signal cases fail:
+
+```
+$ python3 scripts/monitor_tty_smoke.py <mcps-mon built from HEAD>
+  `q` exited 0, restored the cursor and printed the summary
+  Ctrl-C byte exited 0 and restored the terminal
+MONITOR TTY SMOKE FAILED: SIGINT: expected exit 0, got -2
+```
+
+`-2` is death by `SIGINT` with the default disposition, and the terminal was never put back. The
+Ctrl-C *byte* case passed before and after, which is the distinction B10/B107 is about.
+
+## The fix
+
+`sigaction(2)` plus a `@convention(c)` handler that does only what POSIX allows inside a signal
+handler (`Sources/WebSearchCore/Monitor/SignalRestore.swift`):
+
+```swift
+private func handleTermination(_ signalNumber: Int32) {
+    var settings = SignalRestore.savedTerminal          // local copy: no exclusivity machinery
+    _ = tcsetattr(STDIN_FILENO, TCSAFLUSH, &settings)   // async-signal-safe
+    SignalRestore.recoveryBytes.withUnsafeBufferPointer { bytes in
+        _ = write(STDOUT_FILENO, bytes.baseAddress, bytes.count)   // show cursor, clear screen
+    }
+    _exit(0)                                            // no atexit, no locks, no flushing
+}
+```
+
+* The saved settings live in a file-scope `termios` written once, before the handlers are
+  installed: a signal handler has no safe channel to receive them otherwise.
+* The bytes to write are a file-scope `[UInt8]`, because bridging a `String` can allocate.
+* `sigaction` rather than `signal`, and rather than the dispatch-source route that segfaulted.
+* `KeyReader.init` installs it right after switching the terminal to raw mode; `restore()` hands
+  the signals back to `SIG_DFL` on the normal path.
+* Exit code 0: a supervisor asking us to stop is a clean shutdown, and the terminal is already
+  usable by the time the process leaves.
+
+## Verification
+
+The PTY harness now covers all three ways out, and asserts the *line discipline* — not just the
+cursor sequence — is back: `tcgetattr(3)` on the pty must show `ICANON`, `ECHO` and `ISIG` set
+after the process exits.
+
+```
+$ python3 scripts/monitor_tty_smoke.py <mcps-mon>
+  hostile engine text was replaced, not executed
+  Ctrl-C byte exited 0 and restored the terminal
+  SIGINT exited 0 and restored the terminal
+  SIGTERM exited 0 and restored the terminal
+MONITOR TTY SMOKE PASSED
+
+$ swift test
+Executed 441 tests, with 6 skipped and 0 failures (0 unexpected) in 17.807 seconds
+
+$ swift build --scratch-path $SCRATCH -Xswiftc -warnings-as-errors                  0 warnings, 0 errors
+$ swift build -c release --scratch-path $SCRATCH -Xswiftc -warnings-as-errors      0 warnings, 0 errors
+$ swift-format lint --recursive --strict Sources Tests                             0 diagnostics
+$ swiftlint lint --strict                                                          0 violations in 79 files
+$ ruff check / pyright scripts/monitor_tty_smoke.py                                0 findings / 0 errors
+```

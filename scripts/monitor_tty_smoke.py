@@ -16,7 +16,8 @@ What it checks:
   5. ``r`` refreshes immediately instead of waiting out the interval;
   6. ``p`` probes providers now, and a reachable instance turns from ready to OK;
   7. ``q`` exits cleanly, restores the cursor, clears to the end of the screen and
-     prints the final summary;
+     prints the final summary; an external ``SIGINT``/``SIGTERM`` does the same, because a
+     supervisor's ``kill`` must not leave the operator's shell in raw mode;
   8. a SearXNG instance cannot make the terminal execute anything: escape sequences in the
      engine names and ``unresponsive_engines`` reasons it returns are replaced with a visible
      placeholder, so the only escapes in the transcript are the display's own.
@@ -42,6 +43,7 @@ import os
 import pty
 import re
 import select
+import signal
 import struct
 import subprocess
 import sys
@@ -240,6 +242,20 @@ class Session:
                 break
             self.transcript += chunk.decode("utf-8", "replace")
         return self.transcript
+
+    def terminal_is_restored(self) -> bool:
+        """Whether the pty's line discipline is back to canonical, echoing mode.
+
+        The cursor sequence proves the display tidied up; this proves the *shell* is usable again.
+        A process that dies while the terminal is raw leaves ICANON and ECHO clear, and the next
+        command the operator types is neither echoed nor line-buffered.
+        """
+        flags = termios.tcgetattr(self.master)[3]
+        return (
+            bool(flags & termios.ICANON)
+            and bool(flags & termios.ECHO)
+            and bool(flags & termios.ISIG)
+        )
 
     def send(self, key: str) -> None:
         os.write(self.master, key.encode())
@@ -506,12 +522,17 @@ def check_ctrl_c_quits_cleanly(binary: str) -> None:
     shell was left in raw mode. `ISIG` is now cleared, so the byte arrives and the branch runs
     (ledger B10).
 
-    An *externally* delivered `SIGINT`/`SIGTERM` still leaves the terminal raw: the handler
-    installation for those is tracked as B107, and its cases are recorded in the ledger rather than
-    committed red here.
+    An *externally* delivered `SIGINT`/`SIGTERM` is the case that bites in the field: supervisors,
+    `kill` and terminal teardown all send it, and the process dies before any Swift cleanup runs.
+    `SignalRestore` installs an async-signal-safe `sigaction(2)` handler that puts the terminal
+    back and shows the cursor (ledger B107).
     """
     stub = StubSearXNG()
-    cases = (("Ctrl-C byte", None),)
+    cases = (
+        ("Ctrl-C byte", None),
+        ("SIGINT", signal.SIGINT),
+        ("SIGTERM", signal.SIGTERM),
+    )
     for label, number in cases:
         session = Session(binary, stub.url)
         try:
@@ -532,7 +553,11 @@ def check_ctrl_c_quits_cleanly(binary: str) -> None:
                 SHOW_CURSOR in session.transcript,
                 f"{label}: the terminal's cursor must be restored",
             )
-            print(f"  {label} exited 0 and restored the cursor")
+            require(
+                session.terminal_is_restored(),
+                f"{label}: the terminal must be left in canonical, echoing mode, not raw",
+            )
+            print(f"  {label} exited 0 and restored the terminal")
         finally:
             session.close()
     stub.stop()
