@@ -18,8 +18,8 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 120 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 77 |
-| START (reproduced, expected behaviour written) | 43 |
+| DONE | 78 |
+| START (reproduced, expected behaviour written) | 42 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
@@ -121,7 +121,7 @@ waived in writing.
 | B70 | S3 | `Tests/WebSearchCoreTests/StdioServerTests.swift` (same pattern in `ErrorReportingTests.swift`, `SchemaCompati | `Tests/WebSearchCoreTests/StdioServerTests.swift:85` (loop `:70-93`) | Subprocess harnesses advertise a timeout that a blocking read cannot enforce | test | START | this Mac (arm64) | Phase B L3-21 |
 | B71 | S3 | `Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift` | `Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift:30` | Three copies of the same subprocess harness, already diverged | test | START | this Mac (arm64) | Phase B L3-22 |
 | B72 | S3 | `Tests/WebSearchCoreTests/TestSupport.swift` | `Tests/WebSearchCoreTests/TestSupport.swift:178` (body `:170-189`) | `assertNoCredentialLeak` documents a check it does not perform and passes vacuously | test | DONE | this Mac (arm64) | Phase B L3-23 |
-| B73 | S3 | `scripts/soak.py` | `scripts/soak.py:446` | Soak report attributes every failure category to every provider | bug | START | this Mac (arm64) | Phase B L3-24 |
+| B73 | S3 | `scripts/soak.py` | `scripts/soak.py:446` | Soak report attributes every failure category to every provider | bug | DONE | this Mac (arm64) | Phase B L3-24 |
 | B74 | S3 | `MCPSMonitor` (option parsing) | `Sources/MCPSMonitor/main.swift:200` (`--no-nodes` at `:143`, custom nodes at `:160`) | `--no-nodes` is silently ignored whenever a `--node` is also present | logic | DONE | this Mac (arm64) | Phase B L3-29 |
 | B75 | S3 | `MCPSMonitor` (option parsing); same helper copied in `WebSearchCore/Support/TransportConfiguration.swift` | `Sources/MCPSMonitor/main.swift:155` (helper `:127-135`); `Sources/WebSearchCore/Support/TransportConfiguration.swift:97` | `--node` accepts a relative URL and can swallow the next flag as its value | logic | DONE | this Mac (arm64) | Phase B L3-30 |
 | B76 | S3 | `MCPSMonitor` (provider selection); `WebSearchCore/Search/ProviderRegistry.swift` | `Sources/MCPSMonitor/main.swift:348` (and `:292`), `Sources/WebSearchCore/Search/ProviderRegistry.swift:34` | `mcps-mon` ignores `SEARCH_DISABLED_PROVIDERS`, labels disabled providers "ready", and probes them | logic | START | this Mac (arm64) | Phase B L3-31 |

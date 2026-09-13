@@ -29,7 +29,7 @@ import os
 import subprocess
 import sys
 import time
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import Any
 
 # 50 queries spread across the kinds of work a coding agent actually does: library
@@ -394,6 +394,9 @@ def main() -> int:
         latencies: list[int] = []
         failures_by_provider: Counter[str] = Counter()
         failures_by_category: Counter[str] = Counter()
+        # Per provider as well as overall: printing the global counter on every provider's line
+        # attributed every category in the run to every provider that failed at all (ledger B73).
+        categories_by_provider: defaultdict[str, Counter[str]] = defaultdict(Counter)
         usage_by_provider: Counter[str] = Counter()
         errors = 0
         results_total = 0
@@ -431,6 +434,7 @@ def main() -> int:
                 for failure in failed:
                     failures_by_provider[failure["provider"]] += 1
                     failures_by_category[failure["category"]] += 1
+                    categories_by_provider[failure["provider"]][failure["category"]] += 1
                 mark = (
                     ""
                     if not failed
@@ -472,7 +476,7 @@ def main() -> int:
         for name, count in failures_by_provider.most_common():
             print(
                 f"    {name:16} {count:>3}  (categories: "
-                f"{', '.join(sorted({c for c, _ in failures_by_category.items()}))})"
+                f"{', '.join(sorted(categories_by_provider[name]))})"
             )
         if failures_by_category:
             print(
