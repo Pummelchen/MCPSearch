@@ -27,7 +27,6 @@ public struct Renderer: Sendable {
         case .degraded: Terminal.colour("◐", .brightYellow, enabled: useColour)
         case .down: Terminal.colour("○", .brightRed, enabled: useColour)
         case .checking: Terminal.colour("·", .grey, enabled: useColour)
-        case .skipped: Terminal.colour("–", .grey, enabled: useColour)
         }
     }
 
@@ -62,7 +61,7 @@ public struct Renderer: Sendable {
         case .up: return Terminal.colour(label, .brightGreen, enabled: useColour)
         case .degraded: return Terminal.colour(label, .brightYellow, enabled: useColour)
         case .down: return Terminal.colour(label, .brightRed, enabled: useColour)
-        case .checking, .skipped: return Terminal.colour(label, .grey, enabled: useColour)
+        case .checking: return Terminal.colour(label, .grey, enabled: useColour)
         }
     }
 

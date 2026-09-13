@@ -46,8 +46,6 @@ public struct NodeStatus: Sendable, Identifiable {
         /// Answered but returned nothing usable, or refused.
         case degraded
         case down
-        /// Deliberately not probed, e.g. the monitor was told to skip it.
-        case skipped
 
         public var label: String {
             switch self {
@@ -55,7 +53,6 @@ public struct NodeStatus: Sendable, Identifiable {
             case .up: "UP"
             case .degraded: "DEGRADED"
             case .down: "DOWN"
-            case .skipped: "SKIP"
             }
         }
     }
