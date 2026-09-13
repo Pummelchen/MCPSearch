@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 132 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 110 |
-| START (reproduced, expected behaviour written) | 22 |
+| DONE | 111 |
+| START (reproduced, expected behaviour written) | 21 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 87** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 65 are DONE and 22 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 66 are DONE and 21 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -141,7 +141,7 @@ waived in writing.
 | B85 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:93` | Query hashing for logs is a fast unsalted FNV-1a, but is documented as non-reversible | docs | DONE | this Mac (arm64) | Phase B L4-10 |
 | B86 | S3 | `deploy` (`provision-node.sh`) | `deploy/provision-node.sh:71` | Provisioning writes through fixed, predictable `/tmp` paths and loads a container image from one | unsafe | DONE | this Mac (arm64) | Phase B L4-12 |
 | B87 | S3 | `WebSearchCore` / `Fetch` (`JinaReaderFetcher`) + `WebSearchCore` / `Search` (`SearchPipelineFactory`) | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:65` | The Jina Reader fallback discloses the target URL to a third party by default, with no warning that it did | docs | DONE | this Mac (arm64) | Phase B L4-13 |
-| B88 | S3 | `WebSearchCore` / `Fetch` (`URLPolicy` + `DirectHTTPFetcher`) | `Sources/WebSearchCore/Fetch/URLPolicy.swift:57` | The declared per-host DNS cache does not exist, and every redirect hop resolves twice | perf | START | this Mac (arm64) | Phase B L5-3 |
+| B88 | S3 | `WebSearchCore` / `Fetch` (`URLPolicy` + `DirectHTTPFetcher`) | `Sources/WebSearchCore/Fetch/URLPolicy.swift:57` | The declared per-host DNS cache does not exist, and every redirect hop resolves twice | perf | DONE | this Mac (arm64) | Phase B L5-3 |
 | B89 | S3 | `WebSearchCore` / `Search` (`SearchCache`) | `Sources/WebSearchCore/Search/SearchCache.swift:103` | `SearchCache.pruneExpired` rebuilds the whole dictionary on every read, write and stats call | perf | START | this Mac (arm64) | Phase B L5-4 |
 | B90 | S3 | `SwiftWebSearchMCP` (`HTTPMCPHost`) | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:61` | The HTTP listener bounds the request body but nothing else, so idle or slow connections are unbounded | perf | START | this Mac (arm64) | Phase B L5-5 |
 | B91 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:42` | Log emission performs a synchronous blocking write to fd 2 from whatever task is logging | perf | START | this Mac (arm64) | Phase B L5-6 |
@@ -218,6 +218,43 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B88 — the declared per-host DNS cache did not exist, and a redirect hop resolved twice
+
+**Severity S3** · **category** perf · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** `URLPolicy` carried `/// Per-host cached DNS results, so a redirect chain does
+not re-resolve.` above `private let resolver: any DNSResolver`. There was no cache: `resolver` is a
+plain stored property and `SystemDNSResolver.resolve` calls `getaddrinfo` every time. The duplicate
+work was real too — `DirectHTTPFetcher` validates each hop pre-emptively against the `Location`
+target and again at the top of the loop, so a one-hop redirect paid three lookups for two hosts.
+
+**The fix.** `validate(_:)` keeps its public signature and delegates to a new internal
+`validate(_:cache:)`; the cache holds the *address list* per host for one fetch. `DirectHTTPFetcher`
+creates one `DNSAnswerCache` per `fetch` and passes it to both validations of every hop. No public
+signature changed.
+
+**The invariant.** Re-validation is unchanged: the cache stores addresses, never decisions, so
+every validation still runs the full address classification and a host that answers with private
+space is denied every time; a host not in the memo is resolved before it is judged; and the memo
+is dropped when `fetch` returns, so it can never answer for a later request. A process-lifetime
+cache was the option to avoid: it would let a stale public answer be re-validated while
+`URLSession` connects to whatever DNS says now. Only successful lookups are stored, because a
+resolver failure is deliberately allowed through to become a real network error. The pre-emptive
+hop check is kept alongside the loop-top re-check: the cache removes a duplicate *resolution*,
+not a policy decision.
+
+**Verification.** Four new tests in `URLPolicyTests` with a `CountingDNSResolver`: one lookup for
+two validations of one host, a second host still resolved exactly once, a cached `10.0.0.5` still
+denied with the private reason, and the uncached public path resolving on every call. Mutating
+`validate(_:cache:)` back to always resolving reddens the three cache tests with the duplicate
+host lists verbatim; the file was restored and verified byte-identical (`diff` empty, SHA-256
+`7f9aad79…b19854c`).
+
+**Not pinned.** The fetch-level lookup count cannot be observed end to end: the loopback fixture
+is an IP literal and the private-network opt-in that makes it reachable short-circuits resolution,
+so the memo is pinned against the exact policy object the redirect loop calls, as the existing
+address-level hop check is.
 
 ## B119 — the PTY harness polled the monitor once, so a late startup crash was a timeout
 

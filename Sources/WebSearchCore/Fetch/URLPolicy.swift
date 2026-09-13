@@ -60,7 +60,11 @@ public struct URLPolicy: Sendable {
     /// When true, private/loopback destinations are permitted. Only for a
     /// deliberately internal deployment (e.g. fetching from a company wiki).
     public let allowPrivateNetwork: Bool
-    /// Per-host cached DNS results, so a redirect chain does not re-resolve.
+    /// Resolves a hostname to every address it answers with.
+    ///
+    /// Answers are not remembered here. `DirectHTTPFetcher` hands `validate(_:cache:)` one
+    /// short-lived cache per fetch, so a redirect chain does not ask twice for a host it has
+    /// already checked while a later request still resolves afresh (ledger B88).
     private let resolver: any DNSResolver
 
     public init(
@@ -146,6 +150,19 @@ public struct URLPolicy: Sendable {
     ///   redirect hop is re-validated, and the residual risk is recorded on the tracker as
     ///   an accepted limitation rather than left implicit.
     public func validate(_ url: URL) async -> Decision {
+        // No cache: a caller outside a fetch loop gets a fresh answer every time, which is
+        // the behaviour `DirectHTTPFetcher` relies on across requests (ledger B88).
+        await validate(url, cache: nil)
+    }
+
+    /// Validate the URL, reusing address lookups `cache` already holds.
+    ///
+    /// The cache stores the *address list*, never the decision: every call still classifies
+    /// each address, so a host that answered with private space is denied on every validation
+    /// that uses the cache, and a host the cache has not seen is resolved before it is judged
+    /// (ledger B88). `DirectHTTPFetcher` creates one cache per fetch and discards it, so the
+    /// re-resolution that bounds DNS rebinding survives between requests.
+    func validate(_ url: URL, cache: DNSAnswerCache?) async -> Decision {
         let lexical = validateLexically(url)
         guard lexical.allowed else { return lexical }
 
@@ -154,12 +171,17 @@ public struct URLPolicy: Sendable {
         guard let host = url.host(), !URLPolicy.isIPLiteral(host) else { return .allow }
 
         let addresses: [IPAddress]
-        do {
-            addresses = try await resolver.resolve(host: host)
-        } catch {
-            // Resolution failure is not an SSRF signal; let the fetch try and fail
-            // naturally so the caller sees a real network error.
-            return .allow
+        if let cached = cache?.addresses(for: host) {
+            addresses = cached
+        } else {
+            do {
+                addresses = try await resolver.resolve(host: host)
+            } catch {
+                // Resolution failure is not an SSRF signal; let the fetch try and fail
+                // naturally so the caller sees a real network error.
+                return .allow
+            }
+            cache?.store(addresses, for: host)
         }
 
         for address in addresses {
@@ -477,6 +499,43 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
 }
 
 // MARK: - DNS
+
+/// DNS answers remembered for the length of one fetch.
+///
+/// `URLPolicy` used to declare a per-host cache it did not have, and `DirectHTTPFetcher`
+/// validated a redirect target once for the hop and again at the top of the loop, so a
+/// two-hop chain paid for the same lookup three times. Handing this object to
+/// `validate(_:cache:)` turns the repeat calls into memo hits without changing what is
+/// decided, because the address list is cached and the classification is not (ledger B88).
+///
+/// Scope is the whole point. One instance is created per `DirectHTTPFetcher.fetch` and
+/// dropped when it returns, so the next request resolves again. A cache that outlived the
+/// request would weaken the policy's DNS-rebinding bound in the one direction that matters:
+/// a name that resolved to public space a moment ago would be re-validated against that
+/// stale answer while `URLSession` connects to whatever it resolves to now.
+final class DNSAnswerCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var answers: [String: [IPAddress]] = [:]
+
+    /// The addresses an earlier lookup in this fetch produced, or nil when it has none.
+    func addresses(for host: String) -> [IPAddress]? {
+        lock.lock()
+        defer { lock.unlock() }
+        // Host names are case-insensitive (RFC 4343), so the memo is too.
+        return answers[host.lowercased()]
+    }
+
+    /// Remember a successful lookup.
+    ///
+    /// A resolution *failure* is deliberately not stored. The policy lets a failing lookup
+    /// through so the fetch fails with a real network error, and remembering that as "no
+    /// addresses" would pin a transient resolver failure for the rest of the fetch.
+    func store(_ addresses: [IPAddress], for host: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        answers[host.lowercased()] = addresses
+    }
+}
 
 /// Resolves hostnames to addresses. Injectable so SSRF tests never touch DNS.
 public protocol DNSResolver: Sendable {

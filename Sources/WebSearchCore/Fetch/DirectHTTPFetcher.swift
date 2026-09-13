@@ -56,12 +56,16 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
         var currentURL = request.url
         var redirectsFollowed = 0
         var redirectNotes: [String] = []
+        // One DNS memo per fetch. The hop pre-check below and the re-check at the top of the
+        // loop are two policy decisions, but they are one lookup, and the next fetch starts
+        // with an empty memo (ledger B88).
+        let resolutions = DNSAnswerCache()
 
         while true {
             try Task.checkCancellation()
 
             // Layer 2 validation: resolves DNS and rejects private destinations.
-            let decision = await policy.validate(currentURL)
+            let decision = await policy.validate(currentURL, cache: resolutions)
             guard decision.allowed else {
                 throw SearchError.blockedURL(currentURL)
             }
@@ -89,9 +93,10 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
                 else {
                     throw SearchError.extractionFailed(request.url)
                 }
-                // Re-validate before continuing; the loop re-checks at the top too,
-                // but failing fast gives a clearer decision point.
-                let hopDecision = await policy.validate(nextURL)
+                // Re-validate before continuing; the loop re-checks at the top too, but
+                // failing fast gives a clearer decision point. Both calls are one DNS lookup
+                // for this host, because they share the fetch's memo (ledger B88).
+                let hopDecision = await policy.validate(nextURL, cache: resolutions)
                 guard hopDecision.allowed else {
                     throw SearchError.blockedURL(nextURL)
                 }

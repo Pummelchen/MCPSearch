@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import os
 
 @testable import WebSearchCore
 
@@ -281,6 +282,95 @@ final class URLPolicyTests: XCTestCase {
         XCTAssertTrue(decision.allowed)
         // Even with the opt-in, non-web schemes stay blocked.
         XCTAssertFalse(subject.validateLexically(URL(string: "file:///etc/passwd")!).allowed)
+    }
+
+    // MARK: Per-fetch resolution memo (ledger B88)
+
+    /// Resolves from a table and counts every lookup, so a test can assert memoisation as a
+    /// contract rather than measuring wall-clock time.
+    final class CountingDNSResolver: DNSResolver, @unchecked Sendable {
+        private let table: [String: [String]]
+        private let lookups = OSAllocatedUnfairLock<[String]>(initialState: [])
+
+        init(table: [String: [String]]) {
+            self.table = table
+        }
+
+        var resolvedHosts: [String] { lookups.withLock { $0 } }
+
+        func resolve(host: String) async throws -> [IPAddress] {
+            lookups.withLock { $0.append(host) }
+            return (table[host.lowercased()] ?? []).compactMap(IPAddress.init)
+        }
+    }
+
+    func testOneFetchAsksForAHostOnceHoweverManyHopsAreValidated() async {
+        let resolver = CountingDNSResolver(table: ["good.example.com": ["93.184.216.34"]])
+        let subject = URLPolicy(resolver: resolver)
+        // `DirectHTTPFetcher` passes the same cache to the hop pre-check and to the re-check
+        // at the top of its loop, which is two validations of one host.
+        let cache = DNSAnswerCache()
+
+        let first = await subject.validate(URL(string: "https://good.example.com/a")!, cache: cache)
+        let second = await subject.validate(URL(string: "https://good.example.com/b")!, cache: cache)
+
+        XCTAssertTrue(first.allowed, first.reason ?? "")
+        XCTAssertTrue(second.allowed, second.reason ?? "")
+        XCTAssertEqual(
+            resolver.resolvedHosts,
+            ["good.example.com"],
+            "a redirect chain must not re-resolve a host it has already checked"
+        )
+    }
+
+    /// A host the memo has not seen is still resolved before it is judged, so the cache can
+    /// never become a way to skip validating a host that was never checked.
+    func testAnUnseenHostIsStillResolvedThroughTheCache() async {
+        let resolver = CountingDNSResolver(table: [
+            "first.example.com": ["93.184.216.34"],
+            "second.example.com": ["93.184.216.35"],
+        ])
+        let subject = URLPolicy(resolver: resolver)
+        let cache = DNSAnswerCache()
+
+        _ = await subject.validate(URL(string: "https://first.example.com/")!, cache: cache)
+        _ = await subject.validate(URL(string: "https://second.example.com/")!, cache: cache)
+        // A repeat of the first host must not add a third lookup.
+        _ = await subject.validate(URL(string: "https://first.example.com/again")!, cache: cache)
+
+        XCTAssertEqual(
+            resolver.resolvedHosts,
+            ["first.example.com", "second.example.com"],
+            "each unseen host must be resolved exactly once, in the order it is first seen"
+        )
+    }
+
+    /// What the memo stores is the address list, not the decision, so a name that answers with
+    /// private space is denied on every validation that reads the cached answer.
+    func testACachedPrivateAnswerIsDeniedOnEveryValidation() async {
+        let resolver = CountingDNSResolver(table: ["evil.example.com": ["10.0.0.5"]])
+        let subject = URLPolicy(resolver: resolver)
+        let cache = DNSAnswerCache()
+
+        let first = await subject.validate(URL(string: "https://evil.example.com/")!, cache: cache)
+        let second = await subject.validate(URL(string: "https://evil.example.com/other")!, cache: cache)
+
+        XCTAssertFalse(first.allowed)
+        XCTAssertFalse(second.allowed, "a cached answer must still be classified, not trusted")
+        XCTAssertTrue(second.reason?.contains("private") ?? false, second.reason ?? "no reason")
+        XCTAssertEqual(resolver.resolvedHosts.count, 1, "the second validation is a memo hit")
+    }
+
+    /// The memo is per fetch: a caller that validates outside a fetch gets a fresh resolution
+    /// every time, which is the re-lookup that bounds a DNS-rebinding window.
+    func testAValidationWithoutAFetchCacheResolvesEveryTime() async {
+        let resolver = CountingDNSResolver(table: ["good.example.com": ["93.184.216.34"]])
+        let subject = URLPolicy(resolver: resolver)
+
+        _ = await subject.validate(URL(string: "https://good.example.com/")!)
+        _ = await subject.validate(URL(string: "https://good.example.com/")!)
+
+        XCTAssertEqual(resolver.resolvedHosts.count, 2, "two requests must resolve twice")
     }
 
     // MARK: IP classification
