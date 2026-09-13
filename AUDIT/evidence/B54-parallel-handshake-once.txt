@@ -1,0 +1,143 @@
+# B54 — concurrent first use of the Parallel provider ran the MCP handshake more than once
+
+Host: node1 (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## What was wrong
+
+`ParallelMCPProvider` is an actor. `ensureInitialized` guarded only on `sessionID != nil`, and
+`sessionID` is assigned at the very end of the handshake, after three suspension points:
+
+```swift
+// ParallelMCPProvider.swift, before
+private func ensureInitialized() async throws {
+    if sessionID != nil { return }
+    ...
+    let response = try await send(initialize)          // await
+    await sendInitializedNotification()                // await
+    await discoverToolName()                           // await
+    if sessionID == nil { sessionID = "" }             // assigned only here
+}
+```
+
+Actors are re-entrant across `await`, so a second `search` arriving while the first handshake is
+suspended re-enters `callSearchTool` → `ensureInitialized`, still sees `sessionID == nil`, and runs
+its own `initialize` + `notifications/initialized` + `tools/list`. The class deliberately reuses one
+stable `sessionIdentifier` because the free tier meters per `session_id`; the extra handshake spends
+metered quota, and the two in-flight calls can end up using whichever `MCP-Session-Id` the server
+assigned last.
+
+## The fix
+
+The handshake now runs inside a task cached on the actor. The first caller creates it; every later
+caller that arrives before it completes awaits the same task, so the whole handshake happens once. A
+failed handshake is not cached, so a later caller retries it — the behaviour the un-cached version
+had. The handshake body is unchanged and only moved into `performHandshake`.
+
+```swift
+// ParallelMCPProvider.swift, after
+private var handshake: Task<Void, Error>?
+
+private func ensureInitialized() async throws {
+    if sessionID != nil { return }
+
+    if let handshake {
+        try await handshake.value
+        return
+    }
+
+    let handshake = Task { try await performHandshake() }
+    self.handshake = handshake
+    do {
+        try await handshake.value
+    } catch {
+        self.handshake = nil
+        throw error
+    }
+}
+```
+
+No public API changed: `handshake` is private, `performHandshake` is private, and the public
+`search`/`isConfigured`/`fusionWeight` surface, the wire messages and the error taxonomy are
+untouched. Cancellation of a waiting caller does not cancel the shared handshake, which is what
+lets the other callers sharing it still complete.
+
+## The test, and why it is deterministic rather than probabilistic
+
+`Tests/WebSearchCoreTests/ParallelHandshakeTests.swift` (new file; `ProviderContractTests.swift` was
+already at SwiftLint's 1 458-line ceiling, the same reason B116 put its race test in its own file).
+
+`GatedInitializeHTTPClient` is an actor transport that parks the first `initialize` response on a
+checked continuation until the test releases it, and answers any later `initialize` immediately
+while recording every JSON-RPC method. The provider's handshake window only exists while it is
+suspended, so parking that response holds the window open for as long as the test needs instead of
+hoping a real transport's latency exposes it:
+
+1. start the first `search` and wait until its `initialize` is parked;
+2. start the second `search` (signalling from inside its task before it enters the actor);
+3. let it reach `ensureInitialized` — the defective code sends its own `initialize` immediately,
+   the fixed code parks on the shared task and sends nothing;
+4. assert exactly one `initialize` has reached the transport **while the first is still parked**;
+5. release, await both, and assert the full sequence: one `initialize`, one
+   `notifications/initialized`, one `tools/list`, two `tools/call`.
+
+The interleaving is forced by step 1, not left to chance: the second caller cannot observe a
+completed handshake because the first can never complete before step 5. The bounded `Task.yield`
+loop in step 3 is only a scheduling grace for the already-enqueued second task; no wall-clock race
+window is involved. The transport also records the total method counts, so the final assertion
+catches a second handshake even if it arrived late.
+
+## Proof the test can fail (mutation, not assertion)
+
+The production fix was replaced with the pre-fix control flow — `ensureInitialized` gated only on
+`sessionID`, calling the handshake body directly — and the new test was run:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter "ParallelHandshakeTests"
+Test Case '-[WebSearchCoreTests.ParallelHandshakeTests testParallelMCPHandshakesOnceWhenTwoSearchesRaceOnFirstUse]' started.
+.../Tests/WebSearchCoreTests/ParallelHandshakeTests.swift:58: error: ... : XCTAssertEqual failed: ("2") is not equal to ("1") - concurrent first use must perform the MCP handshake exactly once
+.../Tests/WebSearchCoreTests/ParallelHandshakeTests.swift:75: error: ... : XCTAssertEqual failed: ("2") is not equal to ("1")
+.../Tests/WebSearchCoreTests/ParallelHandshakeTests.swift:76: error: ... : XCTAssertEqual failed: ("2") is not equal to ("1")
+.../Tests/WebSearchCoreTests/ParallelHandshakeTests.swift:77: error: ... : XCTAssertEqual failed: ("2") is not equal to ("1")
+Test Case '-[WebSearchCoreTests.ParallelHandshakeTests testParallelMCPHandshakesOnceWhenTwoSearchesRaceOnFirstUse]' failed (0.098 seconds).
+	 Executed 1 test, with 4 failures (0 unexpected) in 0.098 (0.099) seconds
+```
+
+Two `initialize`, two `notifications/initialized`, two `tools/list` — exactly the defect. The
+mutated file was then replaced from a saved copy and verified byte-identical (`diff` empty; SHA-256
+of the restored file equals the backup's, `7a0d74c7…4de752`). The test is green again:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter "ParallelHandshakeTests"
+Test Case '-[WebSearchCoreTests.ParallelHandshakeTests testParallelMCPHandshakesOnceWhenTwoSearchesRaceOnFirstUse]' passed (0.003 seconds).
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+```
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete!                                                             0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+	 Executed 505 tests, with 6 tests skipped and 0 failures (0 unexpected) in 20.335 (20.393) seconds
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete!                                                             0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+0 diagnostics                                                               exit=0
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 85 files.                    exit=0
+
+$ python3 scripts/third_party_notices.py
+exit=0
+```
+
+505 = the 504-test baseline plus this one new test. The 6 skips are the pre-existing
+environment-gated ones.
+
+## Noted, not changed
+
+`callSearchTool` still falls back to `preferredToolNames[0]` when discovery found no tool name.
+That is unrelated to the handshake count and is left as it was.

@@ -40,6 +40,15 @@ public actor ParallelMCPProvider: SearchProvider {
     private let log: Log
 
     private var sessionID: String?
+    /// The in-flight handshake, shared by every caller that arrives before it completes.
+    ///
+    /// `sessionID` alone cannot stand in for "already initialised": an actor is re-entrant
+    /// across `await`, so a second `search` arriving while the first handshake is suspended
+    /// still sees `sessionID == nil` and runs a second `initialize` +
+    /// `notifications/initialized` + `tools/list`. The free tier meters by `session_id`, and
+    /// the two in-flight calls can end up using whichever `MCP-Session-Id` the server
+    /// assigned last (ledger B54). Caching the task makes the handshake happen once.
+    private var handshake: Task<Void, Error>?
     private var resolvedToolName: String?
     private var resolvedToolSupportsMaxResults = false
     private var requestCounter = 0
@@ -161,9 +170,30 @@ public actor ParallelMCPProvider: SearchProvider {
     }
 
     /// Perform the MCP initialize handshake once, and discover the search tool name.
+    ///
+    /// The handshake runs inside a task cached on the actor, so concurrent first use joins
+    /// the one handshake instead of starting another (ledger B54). A failed handshake is not
+    /// cached, so the next caller retries it exactly as the un-cached implementation did.
     private func ensureInitialized() async throws {
         if sessionID != nil { return }
 
+        if let handshake {
+            try await handshake.value
+            return
+        }
+
+        let handshake = Task { try await performHandshake() }
+        self.handshake = handshake
+        do {
+            try await handshake.value
+        } catch {
+            self.handshake = nil
+            throw error
+        }
+    }
+
+    /// The one handshake body: `initialize`, `notifications/initialized`, then tool discovery.
+    private func performHandshake() async throws {
         let initialize = JSONRPCRequest(
             id: nextRequestID(),
             method: "initialize",

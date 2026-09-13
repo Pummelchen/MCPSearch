@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 131 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 105 |
-| START (reproduced, expected behaviour written) | 26 |
+| DONE | 106 |
+| START (reproduced, expected behaviour written) | 25 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 86** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 86 S3 tasks 60 are DONE and 26 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 86 S3 tasks 61 are DONE and 25 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -107,7 +107,7 @@ waived in writing.
 | B51 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:119` | `Log.escape` leaves every control character except `\n`, `\r` and `\t`, so a query can inject terminal escapes into stderr | unsafe | DONE | this Mac (arm64) | Phase B L4-8 |
 | B52 | S3 | WebSearchCore (Search) | `Sources/WebSearchCore/Search/SearchOrchestrator.swift:501` | A claimed half-open probe is never released when a request ends in a bare `CancellationError` | bug | DONE | this Mac (arm64) | Phase B L2-2 |
 | B53 | S3 | WebSearchCore (Monitor) | `Sources/WebSearchCore/Monitor/Terminal.swift:96` | `Terminal.truncate` counts ANSI escape characters as display width, so truncating styled text can drop the SGR reset | bug | DONE | this Mac (arm64) | Phase B L2-9 |
-| B54 | S3 | WebSearchCore (Providers) | `Sources/WebSearchCore/Providers/ParallelMCPProvider.swift:162` | Concurrent first use of the Parallel provider performs the MCP handshake more than once | bug | START | this Mac (arm64) | Phase B L2-10 |
+| B54 | S3 | WebSearchCore (Providers) | `Sources/WebSearchCore/Providers/ParallelMCPProvider.swift:162` | Concurrent first use of the Parallel provider performs the MCP handshake more than once | bug | DONE | this Mac (arm64) | Phase B L2-10 |
 | B55 | S3 | WebSearchCore (Search) | `Sources/WebSearchCore/Search/ProviderHealth.swift:119` | `ProviderHealth.setNote` is dead public API | dead | DONE | this Mac (arm64) | Phase B L2-11 |
 | B56 | S3 | WebSearchCore (Providers) | `Sources/WebSearchCore/Providers/ScraperSupport.swift:24` | `ScraperSupport.BlockKind.noResults` is never produced, so an empty result page is reported as unparseable | dead | DONE | this Mac (arm64) | Phase B L2-12 |
 | B57 | S3 | SwiftWebSearchMCP (with WebSearchCore) | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:407` | The per-provider "which variable enables me" contract is triplicated across units and already wrong for `parallel` | logic | START | this Mac (arm64) | Phase B L1-1 |
@@ -217,6 +217,52 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B54 — concurrent first use of the Parallel provider performed the MCP handshake more than once
+
+**Severity S3** · **category** bug · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** `ParallelMCPProvider` is an actor and `ensureInitialized` guarded only on
+`sessionID != nil`, but `sessionID` is assigned at the very end of the handshake — after
+`send(initialize)`, `sendInitializedNotification()` and `discoverToolName()`, each an `await`.
+Actors are re-entrant across `await`, so a second `search` arriving while the first handshake was
+suspended re-entered `ensureInitialized`, still saw `sessionID == nil`, and ran a full second
+handshake. The class deliberately reuses one stable `sessionIdentifier` because the free tier
+meters per `session_id`, so the duplicate spent metered quota and left the two in-flight calls able
+to use whichever `MCP-Session-Id` the server assigned last.
+
+**The fix.** The handshake now runs inside a `Task` cached on the actor. The first caller creates
+it; later callers that arrive before it completes await `handshake.value` and then return. A failed
+handshake clears the cache so the next caller retries it, which is exactly the un-cached behaviour.
+The handshake body is unchanged and merely moved into `performHandshake`. Cancelling a waiting
+caller does not cancel the shared handshake, so the other callers sharing it still complete. No
+public API changed: the new state and method are private, and the public surface, wire messages,
+JSON-RPC sequence and error taxonomy are untouched.
+
+**Verification, and why the race is deterministic.** The test lives in the new
+`Tests/WebSearchCoreTests/ParallelHandshakeTests.swift` because `ProviderContractTests.swift` is
+already at SwiftLint's 1 458-line ceiling — the same reason B116 put its race test in
+`LocalThrottleRaceTests.swift`. `GatedInitializeHTTPClient`, an actor transport, parks the first
+`initialize` response on a checked continuation until the test releases it and answers later
+`initialize` requests immediately while recording every method. The handshake window only exists
+while the provider is suspended, so parking that response holds the window open deliberately. The
+test starts the first search, waits until its `initialize` is parked, starts the second, lets it
+reach `ensureInitialized`, and asserts one `initialize` has reached the transport **while the
+first is still parked**; it then releases and asserts the full sequence (one `initialize`, one
+`notifications/initialized`, one `tools/list`, two `tools/call`). The second caller cannot observe
+a completed handshake because the first cannot complete before the release, so the interleaving is
+forced rather than hoped for; the bounded `Task.yield` spin only lets the already-enqueued second
+task run and no wall-clock window is involved.
+
+**Falsification.** Replacing the fix with the pre-fix control flow (guard on `sessionID` only, call
+the handshake body directly) reddens the new test: two `initialize`, two
+`notifications/initialized`, two `tools/list` — 4 failures. The mutated file was restored from a
+saved copy and verified byte-identical (`diff` empty, SHA-256 `7a0d74c7…4de752` matches the
+backup). The new test is then green in 0.003 s.
+
+**Gates.** debug and release builds 0 warnings under `-warnings-as-errors`; 505 tests, 6 skipped,
+0 failures (the 504-test baseline plus this one); `swift-format --strict` 0; `swiftlint --strict` 0
+in 85 files; `third_party_notices.py` clean. Evidence: `AUDIT/evidence/B54-parallel-handshake-once.txt`.
 
 ## B118 — the invalid `--transport` error named two of the four accepted spellings
 
