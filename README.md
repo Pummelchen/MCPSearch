@@ -96,6 +96,16 @@ refused with `421 Misdirected Request` before any MCP handling.
 `exclude_domains`, `locale`, `provider` and `mode` (`fast` / `balanced` / `thorough`).
 Provider-specific options are deliberately not exposed.
 
+### Third-party rendering for `web_open`
+
+`web_open` fetches a URL directly first. If the page needs JavaScript, or its native
+extraction is too thin, it falls back to **Jina Reader** (`r.jina.ai`): the full target URL
+— including any credentials, token or signed query parameter in it — is sent to that
+third-party service, which fetches the page on this server's behalf. The fallback is on by
+default; `SEARCH_ENABLE_JINA_READER=false` disables it and `JINA_API_KEY` raises its rate
+limit. The SSRF policy runs before the fallback, so a URL it blocks is never laundered
+through the reader.
+
 ### Answers that cannot invent their sources
 
 `web_answer` runs an ordinary search first, then has a language model answer the question

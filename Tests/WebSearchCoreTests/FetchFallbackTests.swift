@@ -117,6 +117,14 @@ final class FetchFallbackTests: XCTestCase {
             result.warnings.contains { $0.contains("Native extraction produced only") },
             "\(result.warnings)"
         )
+        // The URL left the machine, so the caller must be told which third party fetched it
+        // (ledger B87). `reader.invalid` stands in for `r.jina.ai` here.
+        XCTAssertTrue(
+            result.warnings.contains {
+                $0.contains("third-party") && $0.contains("reader.invalid")
+            },
+            "the reader result must disclose the third-party remote fetch: \(result.warnings)"
+        )
         let request = try XCTUnwrap(jinaHTTP.requests.first)
         XCTAssertEqual(request.label, "jina.reader")
         XCTAssertTrue(request.url.absoluteString.contains("reader.invalid"))
@@ -180,6 +188,38 @@ final class FetchFallbackTests: XCTestCase {
             XCTAssertEqual(url, server.baseURL)
             XCTAssertTrue(reason.contains("503"), reason)
         }
+    }
+
+    /// The reader is consulted even when the direct fetch failed outright. That path returned
+    /// the reader's text with no warning at all, so the caller was never told which third party
+    /// had fetched the URL (ledger B87).
+    func testAReaderSuccessAfterADirectFailureStillDisclosesTheThirdParty() async throws {
+        let server = try LoopbackServer(responses: [.init(status: 503, body: "unavailable")])
+        let jinaHTTP = MockHTTPClient()
+        let rendered = renderedText()
+        jinaHTTP.on("jina.reader") { request in
+            HTTPResponse(
+                statusCode: 200,
+                headers: ["content-type": "text/plain; charset=utf-8"],
+                body: Data(rendered.utf8),
+                url: request.url
+            )
+        }
+        let fetcher = WebFetcher(
+            direct: directFetcher(allowPrivateNetwork: true),
+            jina: jinaFetcher(jinaHTTP),
+            log: .disabled
+        )
+
+        let result = try await fetcher.open(FetchRequest(url: server.baseURL))
+
+        XCTAssertEqual(result.method, .jinaReader)
+        XCTAssertTrue(
+            result.warnings.contains {
+                $0.contains("third-party") && $0.contains("reader.invalid")
+            },
+            "a reader fetch must disclose the third party on every path: \(result.warnings)"
+        )
     }
 
     /// A PDF is not text. It used to be on the allow-list, so the body was decoded as UTF-8 or

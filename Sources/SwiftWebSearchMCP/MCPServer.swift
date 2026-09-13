@@ -56,8 +56,9 @@ enum MCPServerFactory {
                         title: "Open URL",
                         description: """
                             Fetch one public URL and return its readable text. HTML is \
-                            reduced to prose; JS-heavy pages may fall back to a rendering \
-                            service. Only public http/https URLs are permitted.
+                            reduced to prose. A JS-heavy or unreadable page may be sent to \
+                            Jina Reader (r.jina.ai), a third-party service that fetches the \
+                            URL remotely. Only public http/https URLs are permitted.
                             """,
                         inputSchema: ToolSchemas.webOpenInput,
                         annotations: Tool.Annotations(

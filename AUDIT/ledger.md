@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 130 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 102 |
-| START (reproduced, expected behaviour written) | 28 |
+| DONE | 103 |
+| START (reproduced, expected behaviour written) | 27 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 85** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 85 S3 tasks 57 are DONE and 28 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 85 S3 tasks 58 are DONE and 27 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -140,7 +140,7 @@ waived in writing.
 | B84 | S3 | `WebSearchCore` / `Fetch` (`URLPolicy`) | `Sources/WebSearchCore/Fetch/URLPolicy.swift:289` | `IPAddress.v6` is a public case that accepts any byte count, and its accessors index 16 bytes unconditionally | unsafe | START | this Mac (arm64) | Phase B L4-9 |
 | B85 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:93` | Query hashing for logs is a fast unsalted FNV-1a, but is documented as non-reversible | docs | DONE | this Mac (arm64) | Phase B L4-10 |
 | B86 | S3 | `deploy` (`provision-node.sh`) | `deploy/provision-node.sh:71` | Provisioning writes through fixed, predictable `/tmp` paths and loads a container image from one | unsafe | DONE | this Mac (arm64) | Phase B L4-12 |
-| B87 | S3 | `WebSearchCore` / `Fetch` (`JinaReaderFetcher`) + `WebSearchCore` / `Search` (`SearchPipelineFactory`) | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:65` | The Jina Reader fallback discloses the target URL to a third party by default, with no warning that it did | docs | START | this Mac (arm64) | Phase B L4-13 |
+| B87 | S3 | `WebSearchCore` / `Fetch` (`JinaReaderFetcher`) + `WebSearchCore` / `Search` (`SearchPipelineFactory`) | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:65` | The Jina Reader fallback discloses the target URL to a third party by default, with no warning that it did | docs | DONE | this Mac (arm64) | Phase B L4-13 |
 | B88 | S3 | `WebSearchCore` / `Fetch` (`URLPolicy` + `DirectHTTPFetcher`) | `Sources/WebSearchCore/Fetch/URLPolicy.swift:57` | The declared per-host DNS cache does not exist, and every redirect hop resolves twice | perf | START | this Mac (arm64) | Phase B L5-3 |
 | B89 | S3 | `WebSearchCore` / `Search` (`SearchCache`) | `Sources/WebSearchCore/Search/SearchCache.swift:103` | `SearchCache.pruneExpired` rebuilds the whole dictionary on every read, write and stats call | perf | START | this Mac (arm64) | Phase B L5-4 |
 | B90 | S3 | `SwiftWebSearchMCP` (`HTTPMCPHost`) | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:61` | The HTTP listener bounds the request body but nothing else, so idle or slow connections are unbounded | perf | START | this Mac (arm64) | Phase B L5-5 |
@@ -216,6 +216,46 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B87 — the Jina Reader fallback hid the third-party disclosure
+
+**Severity S3** (recorded) · **category** docs · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** `enableJinaReaderFallback` defaults to `true`, so by default every
+`web_open` whose native extraction is thin sends the full target URL to `r.jina.ai`, which fetches
+the page on this server's behalf — and `web_open` accepts authorisation-bearing URLs. Nothing told
+the caller: the tool description said only "JS-heavy pages may fall back to a rendering service",
+the README never mentioned the reader, and the result warning said only "used Jina Reader instead".
+Worse, when the native fetch failed outright and the reader succeeded, no warning was emitted at
+all, because it was appended only inside `if let directResult`. The behaviour is an accepted,
+toggleable design decision guarded by the SSRF policy, so this is a disclosure gap, not a control
+failure.
+
+**The fix.** The fact is disclosed in all three channels the finding names rather than softened:
+the `web_open` description now names Jina Reader and `r.jina.ai` and says the URL is fetched
+remotely; the README gains a `### Third-party rendering for web_open` section stating that the full
+URL (credentials, tokens, signed query parameters included) goes to the third party, naming
+`SEARCH_ENABLE_JINA_READER=false` and `JINA_API_KEY`, and recording that the SSRF policy runs
+first; and `JinaReaderFetcher.fetch` attaches `"Used Jina Reader (<host>), a third-party service
+that fetched this URL remotely."` to every successful reader result. The host comes from the
+configured `baseURL`, so a non-default reader endpoint is named correctly, and putting the warning
+in the reader closes the direct-failure gap that emitted nothing. The fallback stays on by default,
+the URL policy is untouched, and no public signature changed. Userinfo/query redaction is marked a
+"consider" in the finding: it changes which resource the reader fetches and needs a new operator
+opt-in, so it is recorded as left open for an operator decision rather than done silently here.
+
+**Verification.** `StdioServerTests.testWebOpenDescriptionDisclosesTheThirdPartyReader` reads
+`tools/list` from a real server and requires the description to name `r.jina.ai`, `third-party` and
+`remotely` — the assertion that catches the omission in the model-visible text.
+`FetchFallbackTests.testAReaderSuccessAfterADirectFailureStillDisclosesTheThirdParty` covers the
+previously-silent path, and `testThinNativeExtractionFallsBackToTheReader` was strengthened to
+require the disclosure on the ordinary fallback. Reverting both production changes makes all three
+fail (the direct-failure case reports an empty warning list), and both files were restored
+byte-identically (`diff` empty; SHA-256 equal). Debug and release build with 0 warnings under
+`-warnings-as-errors`; **504 tests, 6 skipped, 0 failures** (502 at B85 plus these two);
+`swift-format --strict` and `swiftlint --strict` clean over 84 files; the third-party notices check
+reports all 8 pinned packages covered. Artifact:
+`AUDIT/evidence/B87-jina-third-party-disclosure.txt`.
 
 ## B85 — the log query digest was a public FNV-1a documented as non-reversible
 

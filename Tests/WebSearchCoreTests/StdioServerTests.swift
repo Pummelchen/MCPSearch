@@ -450,6 +450,31 @@ final class StdioServerTests: XCTestCase {
         XCTAssertEqual(provider["type"] as? [String], ["string", "null"])
     }
 
+    /// `web_open` can send the target URL to a third-party rendering service, so the
+    /// model-visible description must say so before the call is made. It used to describe only
+    /// a vague "rendering service" and never said the URL left the machine (ledger B87).
+    func testWebOpenDescriptionDisclosesTheThirdPartyReader() throws {
+        let server = try startInitializedServer(environment: [:])
+        defer { server.stop() }
+
+        try server.send(["jsonrpc": "2.0", "id": 71, "method": "tools/list"])
+        let response = try server.readResponse(id: 71)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        let tools = try XCTUnwrap(result["tools"] as? [[String: Any]])
+        let open = try XCTUnwrap(tools.first { $0["name"] as? String == "web_open" })
+        let description = try XCTUnwrap(open["description"] as? String)
+
+        XCTAssertTrue(description.contains("r.jina.ai"), description)
+        XCTAssertTrue(
+            description.lowercased().contains("third-party"),
+            "the description must disclose the third party: \(description)"
+        )
+        XCTAssertTrue(
+            description.lowercased().contains("remotely"),
+            "the description must say the URL is fetched remotely: \(description)"
+        )
+    }
+
     // MARK: - Tool calls
 
     func testSearchWithoutAnyProviderFailsActionablyRatherThanCrashing() throws {

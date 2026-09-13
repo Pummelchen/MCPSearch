@@ -118,7 +118,15 @@ public struct JinaReaderFetcher: Sendable {
         }
 
         let clipped = DirectHTTPFetcher.clip(trimmed, to: maxCharacters)
-        var warnings: [String] = []
+        // The target URL — including any userinfo, token or signed query the caller chose —
+        // has now left this machine and was fetched by a third party. `web_open` accepts
+        // authorisation-bearing URLs and the model cannot be relied on to avoid them, so the
+        // disclosure travels with every reader result rather than only the thin-native path
+        // (ledger B87).
+        var warnings: [String] = [
+            "Used Jina Reader (\(baseURL.host() ?? baseURL.absoluteString)), "
+                + "a third-party service that fetched this URL remotely."
+        ]
         if clipped.truncated {
             warnings.append("Content truncated to \(maxCharacters) characters.")
         }
