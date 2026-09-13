@@ -333,6 +333,56 @@ final class HTTPClientTests: XCTestCase {
         )
     }
 
+    /// A hostile `Retry-After` must not stall a search.
+    ///
+    /// `HTTPPolicy.maxRetryAfter` (5 s as shipped) is the cap on the delay the client is willing
+    /// to honour, so a 429 carrying `Retry-After: 3600` cannot park a tool call for an hour. No
+    /// test covered it: the only header test sends "1", where `min(1 s, 5 s) == 1 s` and the cap
+    /// never applies (ledger B29). The send is raced against a bound just above the cap because
+    /// an unclamped delay would otherwise hold this test — and CI — for the hour the header asks
+    /// for.
+    func testAHostileRetryAfterIsClampedToThePolicyMaximum() async throws {
+        let server = try LoopbackServer(responses: [
+            .init(
+                status: 429,
+                headers: ["Content-Type": "application/json", "Retry-After": "3600"],
+                body: "slow down"
+            ),
+            .init(status: 200, body: #"{"ok":true}"#),
+        ])
+        let client = makeClient(configuration: Fixtures.configuration(), maxRetries: 1)
+        let cap = HTTPPolicy.standard(Fixtures.configuration()).maxRetryAfter.seconds
+
+        let started = DispatchTime.now().uptimeNanoseconds
+        var answered: HTTPResponse?
+        try await withThrowingTaskGroup(of: HTTPResponse?.self) { group in
+            group.addTask { try await client.send(.get(server.baseURL, label: "test")) }
+            group.addTask {
+                try await Task.sleep(for: .seconds(cap + 3))
+                return nil
+            }
+            defer { group.cancelAll() }
+            for try await first in group {
+                answered = first
+                break
+            }
+        }
+        let elapsed = Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000_000
+
+        XCTAssertNotNil(
+            answered,
+            "the 3600 s Retry-After was not clamped: the send outlived the cap by more than 3 s"
+        )
+        XCTAssertEqual(answered?.statusCode, 200)
+        XCTAssertEqual(server.requestCount, 2, "one retry, then the answer")
+        XCTAssertGreaterThanOrEqual(
+            elapsed,
+            cap * 0.9,
+            "ignoring Retry-After entirely is not a clamp: the cap itself must still be waited out"
+        )
+        XCTAssertLessThan(elapsed, cap + 3)
+    }
+
     func testEnforcesResponseSizeLimit() async throws {
         let bigBody = String(repeating: "x", count: 10_000)
         let server = try LoopbackServer(responses: [.init(status: 200, body: bigBody)])
