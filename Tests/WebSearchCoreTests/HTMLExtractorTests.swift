@@ -136,6 +136,31 @@ final class HTMLExtractorTests: XCTestCase {
         XCTAssertFalse(short.truncated)
         XCTAssertEqual(short.text, "short text")
     }
+    /// Hyphenated chrome markers must actually match.
+    ///
+    /// The matcher tokenised class names by splitting on every non-alphanumeric character,
+    /// hyphens included, so `class="side-bar"` became `["side", "bar"]` and could never equal the
+    /// `side-bar` marker; the clause that looked for a hyphen after the marker was unreachable for
+    /// the same reason (ledger B61).
+    func testHyphenatedBoilerplateMarkersAreRemoved() throws {
+        let page = """
+            <html><body>
+              <div class="side-bar"><p>Chrome text that must not survive.</p></div>
+              <div class="site-header"><p>More chrome.</p></div>
+              <main><article class="post-content">
+                <p>Real article text, long enough to be worth keeping as the content root.</p>
+                <p>Second paragraph so the container wins the density comparison.</p>
+              </article></main>
+            </body></html>
+            """
+
+        let extraction = try HTMLExtractor.extract(html: page)
+
+        XCTAssertTrue(extraction.text.contains("Real article text"))
+        XCTAssertFalse(extraction.text.contains("Chrome text"), extraction.text)
+        XCTAssertFalse(extraction.text.contains("More chrome"), extraction.text)
+    }
+
     /// A page that nests its containers must not cost quadratic work.
     ///
     /// `preferredContentRoot` scores each candidate with `Element.text()`, which walks the whole

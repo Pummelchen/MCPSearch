@@ -49,20 +49,23 @@ public enum HTMLExtractor {
     /// splitting on anything that is not a letter or digit, and both exact matches
     /// and marker-prefixed tokens (`advert-banner`) count.
     static func matchesBoilerplateMarker(_ identifier: String) -> Bool {
+        // Split on anything that is not a letter, a digit or a hyphen: the marker list contains
+        // hyphenated names (`side-bar`, `skip-link`, `site-header`), and splitting hyphens away as
+        // well made those markers unmatchable and left the "marker then a hyphen" clause
+        // unreachable, because a token can never contain the hyphen it tested for (ledger B61).
         let tokens =
             identifier
-            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+            .split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "-") })
             .map { String($0) }
         guard !tokens.isEmpty else { return false }
         for marker in boilerplateMarkers {
             let needle = marker.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
             guard !needle.isEmpty else { continue }
+            // Exact, or the marker as a hyphen-delimited part: `side-bar-inner` and
+            // `wrapper-side-bar` are both chrome, while `sidebar` and `side` are untouched unless
+            // they are markers themselves.
             for token in tokens
-            where token == needle
-                || (token.count > needle.count
-                    && token.hasPrefix(needle)
-                    && token.dropFirst(needle.count).first == "-")
-            {
+            where token == needle || token.hasPrefix(needle + "-") || token.hasSuffix("-" + needle) {
                 return true
             }
         }
