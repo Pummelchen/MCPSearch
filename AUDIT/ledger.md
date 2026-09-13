@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 133 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 131 |
-| START (reproduced, expected behaviour written) | 2 |
+| DONE | 132 |
+| START (reproduced, expected behaviour written) | 1 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 88** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 88 S3 tasks 86 are DONE and 2 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 88 S3 tasks 87 are DONE and 1 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -219,6 +219,50 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B103 — the tool layer's cancellation arms are now exercised, except the synthesis arm
+
+**Severity S3** · **category** test · **status** DONE · **host** node1 (arm64)
+
+**Premise checked, and corrected.** The four caller-facing cancellation strings in
+`Sources/SwiftWebSearchMCP/ToolHandlers.swift` were asserted nowhere: B04's `CancellationTests.swift`
+calls `SearchOrchestrator`/`DirectHTTPFetcher`/`WebFetcher` directly and never crosses the MCP
+transport, and no later commit closed the gap. But the premise's "four reachable arms" is wrong:
+`AnswerSynthesizer.complete` wraps every transport error in
+`SearchError.synthesisFailed(Self.describe(error))` and `synthesize` has no other throwing `await`, so
+`web_answer`'s synthesis arm can never receive a `CancellationError`. B97 pins that mapping
+deliberately. A throwaway stdio probe measured it: cancelling mid-synthesis returned a **success**
+result carrying the search results and `Answer synthesis failed: The synthesis request failed.`, never
+`Answer synthesis cancelled.`. So three arms were genuinely unexercised.
+
+**What was added.** `Tests/WebSearchCoreTests/ToolCancellationTests.swift` (new file;
+`StdioServerTests.swift` is 1327 lines against the 1458-line `file_length` ceiling). Three tests,
+each through a real stdio session against the built executable, cancel while a stalled loopback
+origin is in flight and assert the exact string: `Search cancelled.` for `web_search`,
+`Fetch cancelled.` for `web_open`, and `Search cancelled.` for `web_answer`'s search phase; each also
+asserts `isError == true` and that the failure text the arm replaces is absent. A test that merely
+cancelled and accepted any error would be the vacuous-assertion defect B24 removed. The
+synchronisation is deterministic: the stub declares an 8 MiB body and holds the connection, and the
+notification is sent only after the stub has seen the request, at which point the SDK has already
+stored the handler task, so the notification cannot be dropped as "unknown request".
+`web_open` reaches loopback only because the test sets `SEARCH_ALLOW_PRIVATE_NETWORK=true`.
+
+**Falsification.** The B04 defect was reintroduced by deleting the three `catch is CancellationError`
+arms, and both the test bundle and the executable product were rebuilt and relinked (product hash
+`8984ac03…` -> `6c139993…`, so the tests could not still be talking to the old server). All three
+tests failed with 6 assertion failures, each showing the cancellation reported as
+`Search failed: The operation couldn't be completed. (Swift.CancellationError error 1.)` or the
+`Fetch failed:` equivalent. `ToolHandlers.swift` was restored byte-identical (`diff` empty, SHA-256
+`c846dd21ee647fe412e33fce4e1012c59782036f40d301927d49649cf456e269`); `git status` shows only the new
+test file.
+
+**Residual.** The synthesis arm is dead code. Making it live would mean changing `AnswerSynthesizer`
+to rethrow `CancellationError`, which contradicts B97 and belongs to a task that owns the synthesizer,
+not to a test-only item; the caller-visible difference is small because a cancelled caller is gone.
+Recorded here rather than fixed or deleted under B103.
+
+Gate: 588 tests / 6 skipped / 0 failures; debug and release 0 warnings; swift-format 0; swiftlint 0 in
+92 files; notices clean; harness tests 16/16. Evidence: `AUDIT/evidence/B103-tool-cancellation.txt`.
 
 ## B101 — `HTTPMCPHost`'s startup-failure and internal-error paths were untested
 
@@ -1976,7 +2020,7 @@ audit tooling):
 | A | `ScraperSupport.parse` on the same 23-byte junk body | synchronous test (main thread) | **ok** |
 | B | `DuckDuckGoProvider.search` with HTTP 200 + junk body | `async` (cooperative task) | **CRASH** |
 | B102 | S3 | `WebSearchCore` (fetch) | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:245-256` (delegate), `Sources/WebSearchCore/Support/HTTPClient.swift:386` (message) | A cross-scheme redirect is refused by the transport, not by our policy, and surfaces as an opaque transport error | bug | DONE | this Mac (arm64) | Phase D (found while fixing B02) |
-| B103 | S3 | `SwiftWebSearchMCP` (tools) | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:91-93`, `:142-143`, `:237-238`, `:262-263` | The tool-layer cancellation branches are still not exercised by any test | test | START | this Mac (arm64) | Phase D (found while fixing B04) |
+| B103 | S3 | `SwiftWebSearchMCP` (tools) | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:91-93`, `:142-143`, `:237-238`, `:262-263` | The tool-layer cancellation branches are still not exercised by any test | test | DONE | this Mac (arm64) | Phase D (found while fixing B04) |
 | B104 | S3 | build/environment | `AppConfiguration.swift` + the audit scratch tree | `mcps-mon` appeared to crash on startup in a debug build: a stale incremental build, not a code defect | bug | DONE | this Mac | Phase D (found while testing B10) |
 | B105 | S3 | repository hygiene | `scripts/__pycache__/*.pyc` (4 files) | Generated Python byte-code was committed to the branch | style | DONE | this Mac | Phase D (found while restoring the tree) |
 | B106 | S3 | tests/scripts | `scripts/monitor_tty_smoke.py` | The PTY harness reports a crashing monitor as a first-frame timeout | test | DONE | this Mac | Phase D (found during B104) |
