@@ -30,6 +30,17 @@ final class EnvironmentContractTests: XCTestCase {
             .deletingLastPathComponent()
     }
 
+    /// Extensions in the scanned directories that hold text this test can read.
+    ///
+    /// The first version of this test read every regular file, which made it fail the moment a
+    /// `scripts/__pycache__/*.pyc` existed — a decoded-as-UTF-8 error that said nothing about the
+    /// environment contract (and `__pycache__` is a normal by-product of importing the harnesses).
+    /// An allow-list is used rather than "skip what cannot be decoded", so a text file that
+    /// genuinely became unreadable is still a failure.
+    private static let textExtensions: Set<String> = [
+        "py", "sh", "yml", "yaml", "env", "example", "json", "toml", "conf", "sql", "md",
+    ]
+
     /// Every file that configures the server or the deployment.
     ///
     /// The scope is the finding's: the example file, the Python harnesses, `deploy/` and the
@@ -47,7 +58,11 @@ final class EnvironmentContractTests: XCTestCase {
             else { continue }
             for case let url as URL in enumerator {
                 let isFile = try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile
-                if isFile == true { files.append(url) }
+                guard isFile == true else { continue }
+                let isText =
+                    Self.textExtensions.contains(url.pathExtension.lowercased())
+                    || url.lastPathComponent == "Dockerfile"
+                if isText { files.append(url) }
             }
         }
         return files
