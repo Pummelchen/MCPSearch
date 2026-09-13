@@ -6,6 +6,10 @@ server that gives local AI clients reliable public-web search and page fetching.
 [![CI](https://github.com/Pummelchen/MCPSearch/actions/workflows/ci.yml/badge.svg)](https://github.com/Pummelchen/MCPSearch/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Swift 6.3.3](https://img.shields.io/badge/Swift-6.3.3-orange.svg)
+[![Stars](https://img.shields.io/github/stars/Pummelchen/MCPSearch?style=flat-square&logo=github&label=Stars&color=e3b341)](https://github.com/Pummelchen/MCPSearch/stargazers)
+[![Profile Visitors](https://komarev.com/ghpvc/?username=Pummelchen&label=Profile%20Visitors&color=blueviolet&style=flat-square)](https://github.com/Pummelchen)
+[![Last Commit](https://img.shields.io/github/last-commit/Pummelchen/MCPSearch?style=flat-square&logo=git&label=Last%20Commit&color=2ea44f)](https://github.com/Pummelchen/MCPSearch/commits/main)
+[![Contact](https://img.shields.io/badge/Contact-0xa0b1%40gmail.com-blue?style=flat-square&logo=gmail&logoColor=white)](mailto:0xa0b1@gmail.com)
 
 - **No mandatory paid infrastructure.** Every credential is optional; the server runs
   with zero API keys and reports exactly what is missing.
