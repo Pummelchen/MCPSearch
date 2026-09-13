@@ -458,7 +458,7 @@ final class StdioServerTests: XCTestCase {
 
         let server = try startInitializedServer(environment: [
             "SEARXNG_BASE_URL": stub.baseURL.absoluteString,
-            "DEEPSEEK_API_KEY": "sk-test-key-0123456789abcdef",
+            "DEEPSEEK_API_KEY": Fixtures.syntheticDeepSeekKey,
             "DEEPSEEK_BASE_URL": stub.baseURL.absoluteString,
         ])
         defer { server.stop() }
@@ -684,7 +684,7 @@ final class StdioServerTests: XCTestCase {
 
         let server = try startInitializedServer(environment: [
             "SEARXNG_BASE_URL": stub.baseURL.absoluteString,
-            "DEEPSEEK_API_KEY": "sk-test-key-0123456789abcdef",
+            "DEEPSEEK_API_KEY": Fixtures.syntheticDeepSeekKey,
             "DEEPSEEK_BASE_URL": stub.baseURL.absoluteString,
         ])
         defer { server.stop() }
@@ -761,7 +761,7 @@ final class StdioServerTests: XCTestCase {
 
         let server = try startInitializedServer(environment: [
             "SEARXNG_BASE_URL": stub.baseURL.absoluteString,
-            "DEEPSEEK_API_KEY": "sk-test-key-0123456789abcdef",
+            "DEEPSEEK_API_KEY": Fixtures.syntheticDeepSeekKey,
             "DEEPSEEK_BASE_URL": stub.baseURL.absoluteString,
         ])
         defer { server.stop() }
@@ -803,7 +803,7 @@ final class StdioServerTests: XCTestCase {
 
         let server = try startInitializedServer(environment: [
             "SEARXNG_BASE_URL": stub.baseURL.absoluteString,
-            "DEEPSEEK_API_KEY": "sk-test-key-0123456789abcdef",
+            "DEEPSEEK_API_KEY": Fixtures.syntheticDeepSeekKey,
             "DEEPSEEK_BASE_URL": stub.baseURL.absoluteString,
         ])
         defer { server.stop() }

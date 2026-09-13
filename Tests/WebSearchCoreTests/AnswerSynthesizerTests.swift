@@ -53,7 +53,7 @@ final class AnswerSynthesizerTests: XCTestCase {
 
     private func synthesizer(
         _ http: MockHTTPClient,
-        key: String? = "sk-test-key-0123456789abcdef",
+        key: String? = Fixtures.syntheticDeepSeekKey,
         model: String = "deepseek-flash",
         enableReasoning: Bool = false
     ) -> AnswerSynthesizer {
@@ -138,7 +138,7 @@ final class AnswerSynthesizerTests: XCTestCase {
         let request = try XCTUnwrap(client.requests(label: "deepseek.synthesize").first)
         XCTAssertEqual(request.method, "POST")
         XCTAssertEqual(request.url.absoluteString, "https://api.deepseek.com/v1/chat/completions")
-        XCTAssertEqual(request.headers["Authorization"], "Bearer sk-test-key-0123456789abcdef")
+        XCTAssertEqual(request.headers["Authorization"], "Bearer \(Fixtures.syntheticDeepSeekKey)")
 
         let body = try XCTUnwrap(request.body)
         let json = try XCTUnwrap(
@@ -411,7 +411,7 @@ final class AnswerSynthesizerTests: XCTestCase {
     func testAuthenticationFailureDoesNotEchoTheResponseBody() async throws {
         let client = MockHTTPClient()
         client.respondJSON(
-            #"{"error":{"message":"Invalid key sk-test-key-0123456789abcdef"}}"#,
+            #"{"error":{"message":"Invalid key \#(Fixtures.syntheticDeepSeekKey)"}}"#,
             status: 401,
             label: "deepseek.synthesize"
         )
@@ -422,7 +422,7 @@ final class AnswerSynthesizerTests: XCTestCase {
         } catch let error as SearchError {
             XCTAssertTrue(error.safeDescription.contains("rejected the configured credentials"))
             XCTAssertFalse(
-                error.safeDescription.contains("sk-test-key"),
+                error.safeDescription.contains(Fixtures.syntheticDeepSeekKey),
                 "The key must never be echoed from a vendor body"
             )
             XCTAssertFalse(
@@ -440,7 +440,7 @@ final class AnswerSynthesizerTests: XCTestCase {
         _ = try await synthesizer(client).synthesize(query: "q", results: sampleResults)
 
         let request = try XCTUnwrap(client.requests(label: "deepseek.synthesize").first)
-        let key = "sk-test-key-0123456789abcdef"
+        let key = Fixtures.syntheticDeepSeekKey
         XCTAssertFalse(request.url.absoluteString.contains(key))
         if let body = request.body {
             XCTAssertFalse(String(decoding: body, as: UTF8.self).contains(key))

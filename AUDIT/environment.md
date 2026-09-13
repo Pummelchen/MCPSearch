@@ -76,6 +76,21 @@ Already present before the audit (not installed by it): `swiftlint` 0.65.1, `git
 8.30.1, `semgrep` 1.176.0, `ruff` 0.16.7, `shellcheck`, `jq` 1.8.2, `node` v26.8.2,
 Docker 29.8.0, Homebrew, Swift 6.3.3 / Xcode 26.6, CPython 3.14.7.
 
+### How the secret scan is run (and why it is `detect`, not `dir`)
+
+`gitleaks detect --source . --log-opts=--all` scans git-tracked content and its history; that is
+the gate. `gitleaks dir .` additionally reads git-ignored files, and on this Mac it reports exactly
+one thing: `config.env:20`, the operator's own credential file (git-ignored, mode 0600, live-looking
+values on lines 9 and 20, values recorded nowhere in the repository). Scanning a working directory
+would therefore fail for every correctly configured operator while proving nothing about the
+repository.
+
+History contains five `generic-api-key` findings, all the same synthetic literal in two test files
+from commit `41d56935`. They are waived in writing in `.gitleaks.toml`, whose allowlist is an AND of
+those two paths and that exact literal and which keeps the default ruleset (`[extend]
+useDefault = true`); the working tree no longer contains the literal. Ledger: A06.
+
+
 ### Nothing installed on the fleet
 
 No package, container or file was installed on node1–node4 or on the VPS during this

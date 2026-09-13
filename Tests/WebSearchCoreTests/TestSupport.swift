@@ -275,6 +275,17 @@ final class MockSearchProvider: SearchProvider, @unchecked Sendable {
 // MARK: - Fixtures
 
 enum Fixtures {
+
+    /// A key-shaped value that is deliberately not a credential.
+    ///
+    /// The shape is what matters: `AppConfiguration` accepts a key only when it is at least 20
+    /// characters long and contains none of its marker words (`placeholder`, `fake`, `example`,
+    /// …), so a test that needs "a usable key is configured" must supply something key-shaped.
+    /// The body is a run of zeroes, which keeps the full-history secret scan clean: the literal
+    /// this replaced (`sk-test-key-…`) was flagged five times by `gitleaks` (ledger A06), and a
+    /// synthetic value that trips a scanner only teaches people to ignore the scanner.
+    static let syntheticDeepSeekKey = "sk-000000000000000000000000"
+
     static func configuration(
         // Defaults to the shipped order minus the fetch-only provider, which is what a
         // real deployment resolves to.

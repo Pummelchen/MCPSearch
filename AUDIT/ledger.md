@@ -18,8 +18,8 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 115 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102 and B103 found in Phase D) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 8 |
-| START (reproduced, expected behaviour written) | 107 |
+| DONE | 9 |
+| START (reproduced, expected behaviour written) | 106 |
 | BLOCKED | 0 |
 
 Severity of the folded set: S0 2, S1 6, S2 27, S3 66.
@@ -40,7 +40,7 @@ waived in writing.
 | A03 | S2 | repo-wide Swift | `Sources/**`, `Tests/**` | SwiftLint reports 491 findings with no repository config; genuine rules drown in style noise | style | START | this Mac | audit baseline |
 | A04 | S1 | `SwiftWebSearchMCP`, `MCPSMonitor` | `Sources/SwiftWebSearchMCP/**`, `Sources/MCPSMonitor/**` | The executables' coverage is unmeasured (0 % / 29.5 %): the MCP surface is driven as a subprocess | test | START | this Mac | audit baseline (coverage) |
 | A05 | S2 | SwiftPM | `Package.swift:26-30` | `swift-nio` is pinned by range while the other direct dependencies are exact | deps | START | this Mac | scope discovery |
-| A06 | S2 | `Tests/` + history | `Tests/WebSearchCoreTests/StdioServerTests.swift`, `AnswerSynthesizerTests.swift` | 5 secret-scan findings across full history are synthetic test literals | deps | START | this Mac | audit baseline (gitleaks) |
+| A06 | S2 | `Tests/` + history | `Tests/WebSearchCoreTests/StdioServerTests.swift`, `AnswerSynthesizerTests.swift`, `.gitleaks.toml` | 5 secret-scan findings across full history are synthetic test literals | deps | DONE | this Mac | audit baseline (gitleaks) |
 | A07 | S3 | deploy | `deploy/provision-node.sh:69` | Homebrew installed by piping a remote script into bash (supply chain) | unsafe | START | this Mac | audit baseline (semgrep) |
 | A08 | S3 | scripts | `scripts/mcp_smoke.py:335`, `scripts/searxng_health.py:36` | `dynamic-urllib-use`: URLs built at runtime without an explicit scheme/host guard | unsafe | START | this Mac | audit baseline (semgrep) |
 | A09 | S3 | tests | `Tests/WebSearchCoreTests/URLPolicyTests.swift:46` | `detect-insecure-websocket` fires on the *rejection* fixture (false positive) | style | START | this Mac | audit baseline (semgrep) |
