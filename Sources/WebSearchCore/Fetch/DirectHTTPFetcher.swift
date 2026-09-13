@@ -175,7 +175,14 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
 
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await session.data(for: urlRequest)
+            // Capped during the transfer, not after it: a page the model asked to open can
+            // stream for as long as it likes, and `data(for:)` would buffer all of it first
+            // (ledger B07).
+            (data, response) = try await BoundedResponseBody.read(
+                session,
+                urlRequest,
+                limit: maxBytes
+            )
         } catch let error as URLError {
             // These are fetch failures, not search-provider failures: `web_open`
             // connects straight to the target host, so the error is scoped to the URL
@@ -191,15 +198,14 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
                     reason: HTTPError.reason(for: error.code)
                 )
             }
+        } catch is ResponseBodyTooLarge {
+            // Same shape as the old post-hoc cap check: the page is too large to extract.
+            throw SearchError.extractionFailed(request.url)
         } catch is CancellationError {
             throw SearchError.fetchFailed(request.url, reason: "request was cancelled")
         }
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw SearchError.extractionFailed(request.url)
-        }
-
-        if data.count > maxBytes {
             throw SearchError.extractionFailed(request.url)
         }
 

@@ -9,12 +9,31 @@ import XCTest
 /// real socket instead of a mock that would simply encode the same assumptions the
 /// client already makes.
 final class LoopbackServer: @unchecked Sendable {
-    struct Response {
+    struct Response: Sendable {
         var status: Int = 200
         var headers: [String: String] = ["Content-Type": "application/json"]
         var body: String = "{}"
         /// Delay before responding, for timeout tests.
         var delayMilliseconds: Int = 0
+        /// Send the body in pieces and then hold the connection open without finishing it.
+        ///
+        /// `Content-Length` still declares the whole `body`, so a client that waits for the
+        /// complete body waits until it gives up — which is what a hostile, endless page looks
+        /// like. Used to prove a byte cap is enforced *during* the transfer (ledger B07).
+        var drip: Drip?
+
+        struct Drip: Sendable {
+            var chunkBytes: Int
+            var pauseMilliseconds: Int
+            /// How long to hold the unfinished connection open, in seconds.
+            var holdOpenSeconds: Int
+            /// `Content-Length` to declare, when it should be larger than `body`.
+            ///
+            /// Declaring more than is ever sent is what makes the body *incomplete*: a reader
+            /// that insists on the declared length ends in a transport error, while a reader
+            /// that stops at its byte cap reports the cap. That difference is the test.
+            var declaredBytes: Int?
+        }
     }
 
     private let socketFD: Int32
@@ -140,7 +159,8 @@ final class LoopbackServer: @unchecked Sendable {
             }
 
             var headers = "HTTP/1.1 \(response.status) \(LoopbackServer.reason(response.status))\r\n"
-            headers += "Content-Length: \(response.body.utf8.count)\r\n"
+            let declaredBytes = response.drip?.declaredBytes ?? response.body.utf8.count
+            headers += "Content-Length: \(declaredBytes)\r\n"
             headers += "Connection: close\r\n"
             for (name, value) in response.headers {
                 headers += "\(name): \(value)\r\n"
@@ -148,6 +168,31 @@ final class LoopbackServer: @unchecked Sendable {
             headers += "\r\n"
 
             let payload = Array((headers + response.body).utf8)
+            if let drip = response.drip {
+                let headerBytes = Array(headers.utf8)
+                var offset = 0
+                // Headers first, so the client sees Content-Length and starts reading a body.
+                _ = headerBytes.withUnsafeBufferPointer { send(client, $0.baseAddress, $0.count, 0) }
+                while offset < payload.count {
+                    let end = min(offset + drip.chunkBytes, payload.count)
+                    let chunk = Array(payload[offset..<end])
+                    let sent = chunk.withUnsafeBufferPointer {
+                        send(client, $0.baseAddress, $0.count, 0)
+                    }
+                    if sent <= 0 { break }
+                    offset = end
+                    if drip.pauseMilliseconds > 0 {
+                        Thread.sleep(forTimeInterval: Double(drip.pauseMilliseconds) / 1000)
+                    }
+                }
+                // Hold the connection open unfinished, so a client that insists on the declared
+                // Content-Length cannot make progress. Reading returns once the peer gives up.
+                let deadline = Date().addingTimeInterval(Double(drip.holdOpenSeconds))
+                var scratch = [UInt8](repeating: 0, count: 1024)
+                while Date() < deadline, recv(client, &scratch, scratch.count, 0) > 0 {}
+                close(client)
+                continue
+            }
             _ = payload.withUnsafeBufferPointer { send(client, $0.baseAddress, $0.count, 0) }
             close(client)
         }

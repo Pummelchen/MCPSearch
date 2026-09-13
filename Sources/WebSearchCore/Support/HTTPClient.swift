@@ -298,9 +298,18 @@ public final class URLSessionHTTPClient: HTTPClient, @unchecked Sendable {
 
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await session.data(for: urlRequest)
+            // The cap is enforced while the body arrives. `data(for:)` buffers the whole
+            // response first, which let one endless body exhaust memory before any check
+            // could run (ledger B07).
+            (data, response) = try await BoundedResponseBody.read(
+                session,
+                urlRequest,
+                limit: maxBytes
+            )
         } catch let error as URLError {
             throw HTTPError.from(urlError: error, label: request.label)
+        } catch let error as ResponseBodyTooLarge {
+            throw HTTPError.responseTooLarge(label: request.label, limit: error.limit)
         } catch is CancellationError {
             throw HTTPError.cancelled(label: request.label)
         } catch {
@@ -315,13 +324,6 @@ public final class URLSessionHTTPClient: HTTPClient, @unchecked Sendable {
                 label: request.label,
                 reason: "Non-HTTP response"
             )
-        }
-
-        // URLSession already accumulated the body, so enforce the cap after the
-        // fact rather than streaming. Requests that can exceed it ask for a range
-        // or are rejected by the provider contract.
-        if data.count > maxBytes {
-            throw HTTPError.responseTooLarge(label: request.label, limit: maxBytes)
         }
 
         var headers: [String: String] = [:]
