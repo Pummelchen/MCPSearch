@@ -859,19 +859,54 @@ final class SearchOrchestratorTests: XCTestCase {
         XCTAssertNotNil(braveState?.note)
     }
 
+    /// `status()` must project both counters, and the failing provider must actually be run.
+    ///
+    /// This used `fast`, which selects exactly one provider, so `brave` was never called:
+    /// `XCTAssertEqual(brave?.failures, 0)` held whether or not `ProviderHealth.recordFailure`
+    /// incremented anything, and the failure path through `status()` was never observed at all
+    /// (ledger B94). `balanced` selects both `tavily` and `brave`, and the search still succeeds
+    /// because one provider answered.
     func testStatusCountsSuccessesAndFailures() async throws {
         let good = MockSearchProvider.returning(.tavily, results: [("T", "https://t.example.com/1", nil)])
         let bad = MockSearchProvider.failing(.brave, with: .providerUnavailable(.brave))
-        let (orchestrator, _, _) = makeOrchestrator(providers: [good, bad])
+        let (orchestrator, _, _) = makeOrchestrator(
+            providers: [good, bad],
+            configuration: Fixtures.configuration(providerOrder: [.tavily, .brave])
+        )
 
-        // `fast` uses exactly one provider, keeping the counters unambiguous.
-        _ = try await orchestrator.search(Fixtures.request(mode: .fast))
+        let response = try await orchestrator.search(Fixtures.request(mode: .balanced))
+
+        // Both providers were spent, and the failed one is reported to the caller.
+        XCTAssertEqual(good.callCount, 1)
+        XCTAssertEqual(bad.callCount, 1, "the failing provider must really have been selected")
+        XCTAssertEqual(response.providersUsed, [.tavily])
+        XCTAssertEqual(
+            response.providersFailed.map(\.provider),
+            [.brave],
+            "the failure must reach the response, not only the counters"
+        )
+
         let states = await orchestrator.status()
-
         let tavily = states.first { $0.provider == .tavily }
         let brave = states.first { $0.provider == .brave }
+
         XCTAssertEqual(tavily?.successes, 1)
-        XCTAssertEqual(brave?.failures, 0)
+        XCTAssertEqual(tavily?.failures, 0)
         XCTAssertNotNil(tavily?.lastSuccessAt)
+
+        // The counters `ProviderHealthTests` only checks at the actor now have to survive the
+        // projection into the diagnostic tool.
+        XCTAssertEqual(brave?.failures, 1)
+        XCTAssertEqual(brave?.successes, 0)
+        XCTAssertEqual(brave?.lastErrorCategory, .serverError)
+        XCTAssertEqual(brave?.lastError, "Brave Search is temporarily unavailable.")
+        XCTAssertNotNil(brave?.lastFailureAt)
+
+        // A provider that failed once has not earned a circuit, and the configuration is
+        // complete, so both are still selectable.
+        XCTAssertEqual(tavily?.status, .ready)
+        XCTAssertEqual(brave?.status, .ready)
+        XCTAssertEqual(tavily?.totalRequests, 1)
+        XCTAssertEqual(brave?.totalRequests, 1)
     }
 }

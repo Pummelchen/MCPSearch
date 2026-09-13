@@ -1,0 +1,102 @@
+# B94 — `testStatusCountsSuccessesAndFailures` never observed a failure
+
+Host: `node1 (arm64, macOS 26.6.2)` · branch `audit/2026-09-13` · Swift 6.3.3
+
+## Premise check: still open, and the line number had moved
+
+The test was at `SearchOrchestratorTests.swift:862` (the ledger said 716; B93's and earlier test
+additions moved it). Its shape was unchanged and the defect was intact:
+
+```swift
+// before
+let (orchestrator, _, _) = makeOrchestrator(providers: [good, bad])
+// `fast` uses exactly one provider, keeping the counters unambiguous.
+_ = try await orchestrator.search(Fixtures.request(mode: .fast))
+...
+XCTAssertEqual(tavily?.successes, 1)
+XCTAssertEqual(brave?.failures, 0)
+```
+
+`fast` selects one provider, so `brave` was never called and `failures == 0` held whether or not
+`ProviderHealth.recordFailure` incremented anything. The failing provider's classification was never
+seen through `status()`.
+
+## Current behaviour, measured before asserting
+
+Following the spec (`balanced`, order `[.tavily, .brave]`), both providers are selected — both are
+independent indexes, so selection preference keeps them in configured order. Two measurements only
+came from running the changed test rather than reading the code:
+
+* the failed provider's message is `"Brave Search is temporarily unavailable."`, not
+  `"Brave is temporarily unavailable."` — the first run failed on exactly that string, and the
+  assertion was corrected to the code's own output rather than the message changed to match the
+  test;
+* a single failure leaves the breaker closed, so `brave?.status` is `.ready`, not `.circuitOpen`.
+
+## The test
+
+`testStatusCountsSuccessesAndFailures` now runs a `balanced` search in which the failing provider is
+really selected, and asserts:
+
+* `good.callCount == 1`, `bad.callCount == 1` — the failing provider was actually spent;
+* `response.providersUsed == [.tavily]` and `response.providersFailed.map(\.provider) == [.brave]`
+  — the failure reaches the caller as well as the counters;
+* `tavily?.successes == 1`, `failures == 0`, `lastSuccessAt != nil`;
+* `brave?.failures == 1`, `successes == 0`, `lastErrorCategory == .serverError`,
+  `lastError == "Brave Search is temporarily unavailable."`, `lastFailureAt != nil`;
+* both states are `.ready` and each has `totalRequests == 1` — the
+  `ProviderHealth.state(for:configured:enabled:)` projection the spec asked to pin.
+
+## Proof the test can fail (mutations of production code)
+
+**M1 — `ProviderHealth.recordFailure` no longer increments the failure counter**
+(`ProviderHealth.swift`, one line deleted). Library recompiled:
+
+```
+SearchOrchestratorTests.swift:899: error: … testStatusCountsSuccessesAndFailures :
+    XCTAssertEqual failed: ("Optional(0)") is not equal to ("Optional(1)")
+```
+
+**M2 — `ProviderHealth.state` reports `lastErrorCategory: nil`** (one line):
+
+```
+SearchOrchestratorTests.swift:901: error: … testStatusCountsSuccessesAndFailures :
+    XCTAssertEqual failed: ("nil") is not equal to
+    ("Optional(WebSearchCore.ProviderFailure.FailureCategory.serverError)")
+```
+
+Both mutations hit the projection this test exists to pin; the old `fast`-based body would have
+passed M1, which is the finding.
+
+`ProviderHealth.swift` was restored from its pre-mutation copy: `diff` empty, SHA-256
+`e7cc22dd68604a4e884d5e2cb6549ce649b7933d342c4e774c41658571bdd5f0` for both the restored file and
+the backup. `git diff --stat Sources/` is empty.
+
+## No production change
+
+This is a test-only task; the behaviour above is what the shipped code already does.
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (6.32s)                                          0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+Executed 554 tests, with 6 tests skipped and 0 failures (0 unexpected) in 31.373 (31.435) seconds
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (13.58s)                                         0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+exit 0                                                           0 diagnostics
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 87 files.         exit 0
+
+$ python3 scripts/third_party_notices.py
+THIRD-PARTY-NOTICES.md covers all 8 resolved packages at the pinned versions
+```
+
+554 is unchanged from B93: this task strengthens an existing test rather than adding one. The 6
+skips are the pre-existing environment-gated ones.

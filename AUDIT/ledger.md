@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 132 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 123 |
-| START (reproduced, expected behaviour written) | 9 |
+| DONE | 124 |
+| START (reproduced, expected behaviour written) | 8 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 87** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 78 are DONE and 9 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 79 are DONE and 8 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -147,7 +147,7 @@ waived in writing.
 | B91 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:42` | Log emission performs a synchronous blocking write to fd 2 from whatever task is logging | perf | DONE | this Mac (arm64) | Phase B L5-6 |
 | B92 | S3 | `WebSearchCore` / `Fetch` (`JinaReaderFetcher`) | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:125` | `web_open` reports the requested URL as `final_url` on the Jina path, and the reader's own `url` field is decoded but never used | logic | DONE | this Mac (arm64) | Phase B L5-7 |
 | B93 | S3 | `Sources/WebSearchCore/Fetch/MarkupDepth.swift`, `Search/SearchError.swift`, `SwiftWebSearchMCP/ToolHandlers.s | `Sources/WebSearchCore/Fetch/MarkupDepth.swift:190` | The new `MarkupDepth` regression suite still leaves four branches/contracts unpinned | test | DONE | this Mac (arm64) | Phase B L6-4 |
-| B94 | S3 | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift`, `Sources/WebSearchCore/Search/SearchOrchestrator.swi | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift:716` | `testStatusCountsSuccessesAndFailures` never observes a failure | test | START | this Mac (arm64) | Phase B L6-14 |
+| B94 | S3 | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift`, `Sources/WebSearchCore/Search/SearchOrchestrator.swi | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift:716` | `testStatusCountsSuccessesAndFailures` never observes a failure | test | DONE | this Mac (arm64) | Phase B L6-14 |
 | B95 | S3 | `Tests/WebSearchCoreTests/MonitorTests.swift`, `Sources/WebSearchCore/Monitor/ProviderProbe.swift:50` | `Tests/WebSearchCoreTests/MonitorTests.swift:101` | The monitor's setup-hint test asserts a string the test itself constructed | test | START | this Mac (arm64) | Phase B L6-15 |
 | B96 | S3 | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift` | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift:46` | `HTTPStatusMapper.map`'s HTTPError branches and `validate`'s default/422 statuses are untested | test | START | this Mac (arm64) | Phase B L6-16 |
 | B97 | S3 | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift`, `Tests/WebSearchCoreTests/AnswerSynthesizerTests.swift | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift:349` | `AnswerSynthesizer`'s completion edge cases, token usage and locale prompt are untested | test | START | this Mac (arm64) | Phase B L6-17 |
@@ -218,6 +218,38 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B94 — `testStatusCountsSuccessesAndFailures` never observed a failure
+
+**Severity S3** · **category** test · **status** DONE · **host** node1 (arm64)
+
+**Premise confirmed open.** The test had moved to `SearchOrchestratorTests.swift:862` (the ledger
+said 716) but its shape was unchanged: it searched in `fast` mode, which selects exactly one
+provider, so `brave` was never called and `XCTAssertEqual(brave?.failures, 0)` held whether or not
+`ProviderHealth.recordFailure` incremented anything. Nothing else observed a failure through
+`status()`.
+
+**Current behaviour, measured before asserting.** Two assertions came from running the changed test
+rather than reading the code. The failed provider's message is `Brave Search is temporarily
+unavailable.` — the first run failed on the shorter string I had written, and the assertion was
+corrected to the code's own output rather than the message changed to match the test. And a single
+failure leaves the breaker closed, so `brave?.status` is `.ready`, not `.circuitOpen`.
+
+**The test.** A `balanced` search with order `[.tavily, .brave]` now asserts that both providers
+were spent (`callCount == 1` each), that the caller sees `providersUsed == [.tavily]` and
+`providersFailed == [.brave]`, that `tavily` has one success and no failures, and that `brave` has
+one failure, zero successes, `.serverError`, its message and a `lastFailureAt`, with both states
+`.ready` and `totalRequests == 1`.
+
+**Falsification.** M1 deletes `counter.failures += 1` from `ProviderHealth.recordFailure`; the test
+reds with `("Optional(0)") is not equal to ("Optional(1)")`. M2 makes `ProviderHealth.state`
+report `lastErrorCategory: nil`; the test reds with `("nil") is not equal to
+(...FailureCategory.serverError)`. The old `fast`-based body would have passed M1, which is the
+finding. `ProviderHealth.swift` was restored byte-identical (`diff` empty, SHA-256
+`e7cc22dd68604a4e884d5e2cb6549ce649b7933d342c4e774c41658571bdd5f0`).
+
+Gate: 554 tests / 6 skipped / 0 failures; debug and release 0 warnings; swift-format 0;
+swiftlint 0; notices clean. Evidence: `AUDIT/evidence/B94-status-counts-failure.txt`.
 
 ## B93 — the `MarkupDepth` suite's four open branches are pinned
 
