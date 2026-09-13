@@ -16,15 +16,15 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 
 | Metric | Count |
 | --- | --- |
-| Tasks enumerated | 133 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
+| Tasks enumerated | 134 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
 | DONE | 133 |
 | START (reproduced, expected behaviour written) | 0 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
-Severity of the whole set: **S0 3, S1 8, S2 34, S3 88** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 88 S3 tasks 88 are DONE and 0 open.
+Severity of the whole set: **S0 3, S1 8, S2 34, S3 89** — the S0 set (A01, B01, B02) and the S1 set
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 89 S3 tasks 88 are DONE and 0 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -168,6 +168,7 @@ waived in writing.
 | B119 | S3 | `scripts` (`monitor_tty_smoke.py`) | `scripts/monitor_tty_smoke.py` (the startup check) | The PTY harness polls the monitor only once, so a crash after the drain window but before the first frame is still reported as a timeout | test | DONE | node1 (arm64) | Phase C (found while verifying B106) |
 | B120 | S3 | `WebSearchCore` / `Fetch` (`DirectHTTPFetcher`) | `DirectHTTPFetcher.swift` (cross-scheme refusal) | Only the file-system transport codes are mapped, so a redirect to any other cross-scheme target still surfaces as an opaque transport reason | incomplete | DONE | node1 (arm64) | Phase C (residual B102 left) |
 | B121 | S3 | `WebSearchCore` / `Providers` (`HTTPStatusMapper`) | `HTTPStatusMapper.swift` (`unsupportedRequest`) | `HTTPError.invalidURL`'s detail is interpolated verbatim into the caller-facing message, so a URL-shaped detail would be echoed with any key in it | unsafe | DONE | node1 (arm64) | Phase C (surfaced by B96) |
+| B122 | S3 | `WebSearchCore` / `Search` (`AnswerSynthesizer`) | `AnswerSynthesizer.swift` (`complete`/`synthesize`) | Cancellation during answer synthesis is swallowed as a synthesis failure, so the tool layer's cancelled arm is unreachable | bug | BLOCKED | node1 (arm64) | Phase C (found while closing B103) |
 
 ---
 
