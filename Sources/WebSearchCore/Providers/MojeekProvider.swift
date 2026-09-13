@@ -220,10 +220,12 @@ public struct MojeekProvider: SearchProvider {
             let head: Head?
             let results: [Item]?
 
+            /// Only `results` is read: `totalEstimatedMatches` is taken from it. The
+            /// cursor fields (`start`, `return`) and the two redundant date spellings
+            /// (`date`, `pdate`) carried no value, so they are not decoded at all
+            /// (ledger B66).
             struct Head: Decodable {
                 let results: Int?
-                let start: Int?
-                let `return`: Int?
             }
 
             struct Item: Decodable {
@@ -231,10 +233,9 @@ public struct MojeekProvider: SearchProvider {
                 let title: String?
                 let desc: String?
                 let score: Double?
-                /// Last-modified time, epoch seconds.
+                /// Last-modified time, epoch seconds. This is the only date Mojeek
+                /// returns that is used.
                 let timestamp: Int?
-                let date: String?
-                let pdate: Int?
             }
         }
     }

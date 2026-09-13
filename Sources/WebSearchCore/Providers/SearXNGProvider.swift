@@ -172,20 +172,19 @@ public struct SearXNGProvider: SearchProvider {
     }
 
     /// Current SearXNG master returns exactly these keys. `number_of_results` is
-    /// deliberately absent: it is not produced by current releases.
+    /// deliberately absent: it is not produced by current releases. The response's
+    /// echoed `query` and its `corrections`/`suggestions` lists are not read by any
+    /// code path, so they are not decoded either (ledger B66).
     struct SearXNGResponse: Decodable {
-        let query: String?
         let results: [Item]
         let answers: [String]?
-        let corrections: [String]?
-        let suggestions: [String]?
         /// Array of `[engineName, errorMessage]` pairs.
         let unresponsiveEngines: [[String]]?
 
-        /// SearXNG writes snake_case for `unresponsive_engines` while `publishedDate`
-        /// is already camelCase, so the mapping is explicit rather than uniform.
+        /// SearXNG writes snake_case for `unresponsive_engines`, so the mapping is
+        /// explicit rather than uniform.
         enum CodingKeys: String, CodingKey {
-            case query, results, answers, corrections, suggestions
+            case results, answers
             case unresponsiveEngines = "unresponsive_engines"
         }
 
@@ -199,7 +198,6 @@ public struct SearXNGProvider: SearchProvider {
             /// A set upstream, so element order is not meaningful.
             let engines: [String]?
             let score: Double?
-            let category: String?
         }
     }
 }

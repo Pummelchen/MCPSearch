@@ -1,0 +1,169 @@
+# B66 — decoded-but-unused fields across five vendor DTOs
+
+Host: this Mac (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## What was wrong
+
+Five provider adapters declared `Decodable` fields that no code path reads. They are inert at
+runtime — an undecoded or decoded-and-ignored key is the same over the wire — but each one tells a
+reader the value is part of the contract and silently absorbs wire drift that should be visible:
+
+| adapter | fields |
+| --- | --- |
+| Mojeek | `Body.Head.start`, `Body.Head.return`, `Body.Item.date`, `Body.Item.pdate` |
+| Exa | `ExaResponse.requestId`, `ExaResponse.resolvedSearchType`, `Item.author`, `Item.summary` |
+| SearXNG | `SearXNGResponse.query`, `.corrections`, `.suggestions`, `Item.category` |
+| Tavily | `TavilyResponse.query` |
+| Brave | `BraveResponse.type`, `BraveErrorResponse.ErrorBody.id/.status/.detail` |
+
+`BraveErrorResponse.type` is a sixth instance the finding did not enumerate: it is read by nothing
+either (`validate` reads only `error.code` and `error.meta.component`), so it is removed with the
+same rationale. Every field in the list is an `Optional` stored property.
+
+Before:
+
+```
+$ grep -n -E "let (start|`return`|pdate|requestId|resolvedSearchType|author|summary|corrections|suggestions|category):" \
+      Sources/WebSearchCore/Providers/{Mojeek,Exa,SearXNG,Tavily,Brave}Provider.swift
+ExaProvider.swift:177:        let requestId: String?
+ExaProvider.swift:179:        let resolvedSearchType: String?
+ExaProvider.swift:185:            let author: String?
+ExaProvider.swift:187:            let summary: String?
+MojeekProvider.swift:225:                let start: Int?
+MojeekProvider.swift:226:                let `return`: Int?
+MojeekProvider.swift:236:                let date: String?
+MojeekProvider.swift:237:                let pdate: Int?
+SearXNGProvider.swift:177:        let query: String?
+SearXNGProvider.swift:180:        let corrections: [String]?
+SearXNGProvider.swift:181:        let suggestions: [String]?
+SearXNGProvider.swift:202:            let category: String?
+TavilyProvider.swift:167:        let query: String?
+BraveProvider.swift:218:        let type: String?
+BraveProvider.swift:255:        let type: String?
+BraveProvider.swift:259:            let id: String?
+BraveProvider.swift:260:            let status: Int?
+BraveProvider.swift:261:            let detail: String?
+```
+
+A `git grep` for each name outside its own declaration found no reader in `Sources` or `Tests`.
+The test fixtures that mention some of them (`{"requestId":"abc",…}`, `"corrections":[]`,
+`"suggestions":[]`) do so as input JSON, not as field accesses, which is why they still pass after
+the deletion.
+
+## The decision, and the decoding question
+
+The fields are deleted, not surfaced: the alternatives in the finding (`corrections`/`suggestions`
+as warnings) would add a new user-visible behaviour and belong to their own task. This is the same
+call `a375ddd`/`e60203e` made for Brave's earlier dead wire surface and `B78` made for the dead
+provider states.
+
+**Does removing a decoded-but-unread property change decoding?** Checked field by field, and no:
+
+* Every removed property is `Optional`. Swift's synthesized `init(from:)` decodes an optional
+  property with `decodeIfPresent`, so the key was never *required* and no other property's decoding
+  depends on it; JSON keys with no matching property are ignored. Deleting an optional stored
+  property therefore cannot change how any surviving field decodes. The dangerous shape would be a
+  **non-optional** dead field, which would make the key mandatory; none of the fifteen is
+  non-optional.
+* Two of the DTOs carry an explicit `CodingKeys`: SearXNG's `SearXNGResponse` and Tavily's
+  `Item`. In SearXNG the `query`, `corrections` and `suggestions` cases were removed together with
+  their properties, and the surviving cases (`results`, `answers`, `unresponsiveEngines`) keep their
+  exact spellings — including the `unresponsive_engines` rename — so the mapping is unchanged.
+  Tavily's `Item.CodingKeys` was not touched; only the top-level `query`, which had no explicit
+  mapping, was removed. `BraveErrorResponse` and `ExaProvider.ExaResponse` use synthesized keys
+  throughout.
+* Empirically: the fixtures still carry `requestId`, `corrections` and `suggestions`, and the full
+  suite is green, so the decoder still tolerates all of them as unread input.
+
+The DTOs are `Decodable` only (no `Encodable` conformance), so nothing is ever encoded from them and
+the deletion cannot change any outgoing request or log.
+
+## Proof the deleted surface is really gone (compiler)
+
+A deleted field cannot be named by a passing test, so the accepted deletion-task shape applies (see
+`AUDIT/evidence/B78-dead-provider-states.txt`): the compiler proves no reference remains, the suite
+proves no behaviour changed, and the grep proves the declarations are gone. A temporary test method
+naming every removed field was appended to `Tests/WebSearchCoreTests/ProviderContractTests.swift`,
+the test target was built, and the file was restored byte-identically.
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Tests/WebSearchCoreTests/ProviderContractTests.swift:1462:18: error: value of type 'MojeekProvider.MojeekResponse.Body.Head' has no member 'start'
+Tests/WebSearchCoreTests/ProviderContractTests.swift:1463:18: error: value of type 'MojeekProvider.MojeekResponse.Body.Head' has no member 'return'
+Tests/WebSearchCoreTests/ProviderContractTests.swift:1465:24: error: value of type 'MojeekProvider.MojeekResponse.Body.Item' has no member 'date'
+Tests/WebSearchCoreTests/ProviderContractTests.swift:1466:24: error: value of type 'MojeekProvider.MojeekResponse.Body.Item' has no member 'pdate'
+Tests/WebSearchCoreTests/ProviderContractTests.swift:1468:17: error: value of type 'ExaProvider.ExaResponse' has no member 'requestId'
+Tests/WebSearchCoreTests/ProviderContractTests.swift:1469:17: error: value of type 'ExaProvider.ExaResponse' has no member 'resolvedSearchType'
+Tests/WebSearchCoreTests/ProviderContractTests.swift:1471:19: error: value of type 'SearXNGProvider.SearXNGResponse' has no member 'query'
+Tests/WebSearchCoreTests/ProviderContractTests.swift:1472:19: error: value of type 'SearXNGProvider.SearXNGResponse' has no member 'corrections'
+Tests/WebSearchCoreTests/ProviderContractTests.swift:1473:19: error: value of type 'SearXNGProvider.SearXNGResponse' has no member 'suggestions'
+Tests/WebSearchCoreTests/ProviderContractTests.swift:1475:20: error: value of type 'TavilyProvider.TavilyResponse' has no member 'query'
+RC=1
+
+$ cp "$SCRATCH/b66-clean/ProviderContractTests.clean.swift" Tests/WebSearchCoreTests/ProviderContractTests.swift
+$ diff -u "$SCRATCH/b66-clean/ProviderContractTests.clean.swift" Tests/WebSearchCoreTests/ProviderContractTests.swift
+    # no output: identical to the pre-mutation copy
+$ shasum -a 256 "$SCRATCH/b66-clean/ProviderContractTests.clean.swift" Tests/WebSearchCoreTests/ProviderContractTests.swift
+f99f944822d976b62ee6acd3a31b13869283266dc78a4f513b900d62293f85e6  $SCRATCH/b66-clean/ProviderContractTests.clean.swift
+f99f944822d976b62ee6acd3a31b13869283266dc78a4f513b900d62293f85e6  Tests/WebSearchCoreTests/ProviderContractTests.swift
+```
+
+The compiler names the exact deleted member on every one of the five affected types. Only the first
+ten are shown; the build reported all fifteen, plus the two Brave error-body members.
+
+After the deletion the grep has nothing left of its own:
+
+```
+$ grep -n -E "let (`return`|start|pdate|requestId|resolvedSearchType|author|summary|corrections|suggestions|category|id|status|detail):" $FIVE
+Sources/WebSearchCore/Providers/MojeekProvider.swift:14:    public let id: ProviderID = .mojeek
+Sources/WebSearchCore/Providers/MojeekProvider.swift:219:            let status: String?
+Sources/WebSearchCore/Providers/ExaProvider.swift:9:    public let id: ProviderID = .exa
+Sources/WebSearchCore/Providers/SearXNGProvider.swift:15:    public let id: ProviderID = .searxng
+Sources/WebSearchCore/Providers/TavilyProvider.swift:8:    public let id: ProviderID = .tavily
+Sources/WebSearchCore/Providers/BraveProvider.swift:8:    public let id: ProviderID = .brave
+```
+
+The only surviving `id` hits are the `ProviderID` constants on the provider structs;
+`Mojeek.Body.status` is the live auth/quota envelope field. The surviving `query`/`type`
+declarations belong to the *request* bodies (encoded, used) or are the Brave `Query` envelope:
+
+```
+$ grep -n -E "let (type|query|date):" $FIVE
+Sources/WebSearchCore/Providers/ExaProvider.swift:124:        let query: String
+Sources/WebSearchCore/Providers/ExaProvider.swift:125:        let type: String
+Sources/WebSearchCore/Providers/TavilyProvider.swift:118:        let query: String
+Sources/WebSearchCore/Providers/BraveProvider.swift:220:        let query: Query?
+```
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (3.14s)                                                     0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+	 Executed 501 tests, with 6 tests skipped and 0 failures (0 unexpected) in 23.240 (23.313) seconds
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (22.22s)                                                    0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+0 diagnostics                                                               exit=0
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 84 files.                    exit=0
+
+$ python3 scripts/third_party_notices.py
+THIRD-PARTY-NOTICES.md covers all 8 resolved packages at the pinned versions exit=0
+```
+
+The count is unchanged at 501: this is a deletion, and no test names a field that no longer exists.
+The 6 skips are the pre-existing environment-gated ones.
+
+## Noted, not changed
+
+The dead fields' *values* were never surfaced, so the finding's alternative direction (rendering
+SearXNG `corrections`/`suggestions`) is left for a task that owns that user-visible behaviour. The
+wire contract for what is consumed — `totalEstimatedMatches`, the result fields, the Brave altered-
+query warning, the SearXNG unresponsive-engine warnings — is untouched, and the provider contract
+tests that drive all five adapters against scripted transports still pass.

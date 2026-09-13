@@ -172,19 +172,17 @@ public struct ExaProvider: SearchProvider {
     }
 
     /// The current Exa schema has no `score`, and `publishedDate` is documented
-    /// loosely, so every field is optional here.
+    /// loosely, so every item field is optional. Only fields that are read are
+    /// decoded: the envelope's request ids and resolved search type were dead wire
+    /// surface and are gone (ledger B66).
     struct ExaResponse: Decodable {
-        let requestId: String?
         let results: [Item]
-        let resolvedSearchType: String?
 
         struct Item: Decodable {
             let title: String?
             let url: String?
             let publishedDate: String?
-            let author: String?
             let highlights: [String]?
-            let summary: String?
         }
     }
 }

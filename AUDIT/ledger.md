@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 130 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 100 |
-| START (reproduced, expected behaviour written) | 30 |
+| DONE | 101 |
+| START (reproduced, expected behaviour written) | 29 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 85** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 85 S3 tasks 55 are DONE and 30 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 85 S3 tasks 56 are DONE and 29 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -119,7 +119,7 @@ waived in writing.
 | B63 | S3 | `WebSearchCore` / `Search` (`ResultNormalizer`) | `Sources/WebSearchCore/Search/ResultNormalizer.swift:155` | Entity decoding loops over its own output, so `&amp;lt;` becomes a live `<` in text returned to the model | bug | DONE | this Mac (arm64) | Phase B L4-14 |
 | B64 | S3 | `WebSearchCore/Monitor/NodeProbe.swift` | `Sources/WebSearchCore/Monitor/NodeProbe.swift:102` (catch at `:133-142`) | Malformed JSON from a node is reported as "unreachable" | bug | DONE | this Mac (arm64) | Phase B L3-12 |
 | B65 | S3 | `WebSearchCore/Monitor/MonitorModel.swift`, `Sources/MCPSMonitor/main.swift` | `Sources/WebSearchCore/Monitor/MonitorModel.swift:50` | `NodeStatus.State.skipped` is unreachable dead state | dead | DONE | this Mac (arm64) | Phase B L3-13 |
-| B66 | S3 | `WebSearchCore/Providers/*` | `Sources/WebSearchCore/Providers/MojeekProvider.swift:219` (and `ExaProvider.swift:174`, `SearXNGProvider.swift:174`, `TavilyProvider.swift:165`, `Bra | Decoded-but-unused vendor DTO fields across five adapters | dead | START | this Mac (arm64) | Phase B L3-14 |
+| B66 | S3 | `WebSearchCore/Providers/*` | `Sources/WebSearchCore/Providers/MojeekProvider.swift:219` (and `ExaProvider.swift:174`, `SearXNGProvider.swift:174`, `TavilyProvider.swift:165`, `Bra | Decoded-but-unused vendor DTO fields across five adapters | dead | DONE | this Mac (arm64) | Phase B L3-14 |
 | B67 | S3 | `WebSearchCore/Monitor/Renderer.swift` | `Sources/WebSearchCore/Monitor/Renderer.swift:273` (data at `:288`) | Node table header and data disagree on the state column width | style | DONE | this Mac (arm64) | Phase B L3-17 |
 | B68 | S3 | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift` | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift:499` | Stale "detached task" comment plus a 60 ms sleep that waits for nothing | test | DONE | this Mac (arm64) | Phase B L3-18 |
 | B69 | S3 | `Tests/WebSearchCoreTests/CoreUnitTests.swift` | `Tests/WebSearchCoreTests/CoreUnitTests.swift:344` | Clock test asserts a property that cannot fail | test | DONE | this Mac (arm64) | Phase B L3-20 |
@@ -216,6 +216,44 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B66 — decoded-but-unused fields across five vendor DTOs
+
+**Severity S3** (recorded) · **category** dead · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** Five adapters declared `Decodable` fields that nothing reads: Mojeek
+`Head.start`/`Head.return` and `Item.date`/`Item.pdate`; Exa `requestId`/`resolvedSearchType` and
+`Item.author`/`Item.summary`; SearXNG `query`/`corrections`/`suggestions` and `Item.category`;
+Tavily `query`; Brave `BraveResponse.type` and `BraveErrorResponse.ErrorBody.id`/`.status`/`.detail`
+— plus `BraveErrorResponse.type`, a sixth instance the finding did not enumerate and `validate`
+never reads. Inert at runtime, but each field advertises a contract the code does not keep and
+absorbs wire drift that should be visible; `a375ddd`/`e60203e` removed the same class of surface for
+Brave once, and this closes the rest.
+
+**The fix.** Every listed field is deleted rather than surfaced, following B78's call for dead
+surface; rendering SearXNG `corrections`/`suggestions` would be new user-visible behaviour and
+belongs to a task that owns it. All fifteen properties are `Optional`, so the synthesized
+`init(from:)` used `decodeIfPresent` and the key was never required; JSON keys with no matching
+property are ignored, so no surviving field's decoding changes. SearXNG's explicit `CodingKeys`
+lost the three cases with their properties while `results`/`answers`/`unresponsiveEngines` keep
+their exact spellings (including the `unresponsive_engines` rename); Tavily's `Item.CodingKeys` is
+untouched. The DTOs are `Decodable` only, so nothing outbound changes. No public signature changed.
+
+**Verification.** A deletion cannot be pinned by a naming test, so the accepted shape (B78) applies:
+compiler, suite and before/after grep. A temporary test method naming every removed member was
+appended to `ProviderContractTests`, the test target built, and the file restored byte-identically
+(`diff` empty; SHA-256 equal to the backup). The build emitted a `has no member` error for each
+removed field on all five types. The after-grep shows only the live `ProviderID` constants and the
+request-body `query`/`type` fields. Debug and release build with 0 warnings under
+`-warnings-as-errors`; **501 tests, 6 skipped, 0 failures** (unchanged, since no test named a deleted
+field); `swift-format --strict` and `swiftlint --strict` clean over 84 files; the third-party notices
+check reports all 8 pinned packages covered. Artifact:
+`AUDIT/evidence/B66-dead-vendor-dto-fields.txt`.
+
+**Noted, not changed.** The finding's alternative — surfacing SearXNG `corrections`/`suggestions` as
+warnings — is deliberately left to its own task; the consumed wire contract (`totalEstimatedMatches`,
+the result fields, the Brave altered-query warning, the SearXNG unresponsive-engine warnings) is
+unchanged and the scripted-transport contract tests for all five adapters still pass.
 
 ## B114 — the operator-facing usage text had drifted from the parser
 

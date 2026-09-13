@@ -163,8 +163,9 @@ public struct TavilyProvider: SearchProvider {
     /// `.convertFromSnakeCase` would rewrite `published_date` to `publishedDate` before
     /// these keys are consulted, leaving the field nil.
     ///
+    /// The envelope's echoed `query` is not read by any code path and is not decoded
+    /// (ledger B66).
     struct TavilyResponse: Decodable {
-        let query: String?
         let answer: String?
         let results: [Item]
 
