@@ -1,5 +1,11 @@
 name: CI
 
+# Least privilege: every job here only reads the repository. Without this block the job token
+# keeps whatever the repository default is, which is broader than these jobs need — a compromised
+# or mistaken step could write to the repository with it (ledger B38).
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
