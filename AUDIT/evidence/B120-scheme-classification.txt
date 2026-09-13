@@ -1,0 +1,125 @@
+# B120 — the cross-scheme refusal is already classified by scheme, not by transport code
+
+Host: this Mac (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## The finding, and why its premise is wrong
+
+B120 says that B102 legible-ised only the file-system transport codes, so "a redirect to any
+**other** cross-scheme target — `ftp:`, `data:`, or any scheme URLSession refuses beneath the
+policy — still reaches the caller as the generic `the transport rejected the request URL`", and asks
+for the refusal to be classified by the *target scheme*.
+
+That is not what this platform does. Measured two ways.
+
+**1. The transport hands the hop back.** A loopback server answering `302` with a `Location` header
+for each of seventeen schemes, fetched through a `URLSession` whose delegate returns `nil` from
+`willPerformHTTPRedirection` (the same delegate the fetcher installs):
+
+| target scheme | delegate consulted | outcome |
+| --- | --- | --- |
+| `file:` (also `file://host`, `file:/`, `file://%2F…`) | no | `URLError -1102`, failing URL is the **original** `http` URL |
+| `ftp:`, `data:`, `gopher:`, `ws:`, `mailto:`, `javascript:`, `about:`, `ssh:`, `blob:`, `tel:`, `applewebdata:`, `sftp:`, `itms-apps:`, `facetime:`, `x-apple-systempreferences:`, `http+unix:` | yes | the `302` is returned to the caller |
+
+Only `file:` bypasses the fetcher's manual loop. Every other scheme reaches it, and the loop calls
+`policy.validate(nextURL)`, whose first act is `validateLexically` — the `allowedSchemes` check. So a
+cross-scheme target is refused by the same per-hop policy call as a private address, with
+`SearchError.blockedURL(nextURL)` naming the actual target, and a scheme nobody has hit yet needs no
+new code. That is exactly the expected-correct, already true.
+
+**2. The repo's own fetcher agrees.** A new end-to-end test drives `DirectHTTPFetcher` through a
+loopback `302` to `ftp://example.com/file` and to `data:text/plain,hello`. Against **unmodified
+production code** it passes:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter "FetchRedirectTests"
+Test Suite 'FetchRedirectTests' passed at ... 
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.042 (0.042) seconds
+```
+
+The caller sees `Blocked URL: example.com` (a policy denial naming the target), never
+`the transport rejected the request URL`. B120's `evidence_before` describes a defect this host does
+not have.
+
+## Why "classify by the target scheme" cannot cover the one opaque case
+
+`file:` is the single cross-scheme target whose refusal is decided beneath the policy, and it is
+also the single case where the target scheme is **unknowable in-process**:
+
+* the delegate is not called, so the fetch loop never sees the `Location`;
+* the transport reports the failure against the request it made, so `URLError.failingURL` and
+  `NSErrorFailingURLStringKey` are the original `http(s)` URL, not the `file:` target;
+* the only other `userInfo` payload is an unrelated peer-address key.
+
+There is nothing to switch on. The three-code mapping therefore stays, and the honest change is to
+say *why* it exists and that it is the narrow exception, so no future reader files this again.
+
+## What changed
+
+Documentation only in `Sources/WebSearchCore/Fetch/`; no behaviour, no signature:
+
+* `URLPolicy`'s type doc said "a redirect that changes scheme … is refused by `URLSession` beneath
+  this policy", which reads as a rule about cross-scheme redirects. It now says `file:` is the
+  scheme `URLSession` handles itself, and that every other scheme is handed back to the loop and
+  denied by `validateLexically`'s allow-list (ledger B120).
+* `DirectHTTPFetcher`'s file-system-code comment made the same generalisation; it now names `file:`
+  as the only such case and notes that the failing-URL payload carries the original URL, not the
+  target.
+* The B102 doc comment above the file-URL test is corrected the same way.
+
+The test added is `FetchRedirectTests.testARedirectToAnUnfetchableSchemeIsRefusedByTheHopPolicy`: for
+each of `ftp:` and `data:` it asserts a `.blockedURL` naming the target scheme, that the text
+`transport rejected` appears nowhere in the error, and that the entry server saw exactly one request
+(the refused hop is never requested). It is a characterisation test for behaviour that already held;
+that is the correct disposition for a finding whose premise is false, and the ledger entry records
+the correction.
+
+## Proof the test can fail
+
+There is no pre-fix code to revert — the production behaviour was already correct — so the mutation
+is the defect the finding *describes*: make the per-hop denial throw the opaque transport reason.
+
+```
+.../FetchRedirectTests.swift:186: error: -[... testARedirectToAnUnfetchableSchemeIsRefusedByTheHopPolicy] : failed - expected a policy denial for ftp://example.com/file, got fetchFailed(ftp://example.com/file, reason: "the transport rejected the request URL")
+Test Case '-[WebSearchCoreTests.FetchRedirectTests testARedirectToAnUnfetchableSchemeIsRefusedByTheHopPolicy]' failed (0.115 seconds).
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.115 (0.116) seconds
+```
+
+`DirectHTTPFetcher.swift` was restored from a copy and verified byte-identical (`diff` empty;
+SHA-256 `3f6f6bf1…41a6cd10` on both).
+
+The scratch probe used a loopback redirect server and a loopback `URLSession` client under
+`$HOME/Library/Caches/…`; nothing reached the network beyond loopback and nothing was written into
+the repository.
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (6.17s)                                                     0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+	 Executed 521 tests, with 6 tests skipped and 0 failures (0 unexpected) in 25.509 (25.571) seconds
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (15.83s)                                                    0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+0 diagnostics                                                               exit=0
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 85 files.                    exit=0
+
+$ python3 scripts/third_party_notices.py
+THIRD-PARTY-NOTICES.md covers all 8 resolved packages at the pinned versions  exit=0
+```
+
+521 is the 520 from B91 plus this one test; the 6 skips are the pre-existing environment-gated ones.
+
+## Deviation from the spec, stated plainly
+
+The expected-correct asked for a scheme-keyed classification to replace the transport-code
+enumeration. That mechanism already exists for every scheme that can reach the policy, and cannot
+exist for `file:`, where the target never reaches the process. No behavioural change was made:
+the finding's stated impact does not occur, and implementing the literal instruction would have
+meant either routing `file:` through an impossible lookup or duplicating the transport's redirect
+handling — the larger change B102 already considered and rejected.

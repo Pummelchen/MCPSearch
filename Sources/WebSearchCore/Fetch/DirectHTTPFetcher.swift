@@ -206,11 +206,13 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
                 // (ledger B04).
                 throw CancellationError()
             case .fileDoesNotExist, .fileIsDirectory, .noPermissionsToReadFile:
-                // A redirect to `file://` never reaches the manual loop: `URLSession` does not
-                // consult `willPerformHTTPRedirection` for a cross-scheme hop, so it refuses it
-                // internally and reports one of the file-system codes. Name the policy position
-                // instead of leaking the opaque code, and never report local content. The
-                // limitation is documented on `URLPolicy` (ledger B102).
+                // `file:` is the only scheme `URLSession` handles itself, so it is the only
+                // cross-scheme redirect that does not reach the manual loop: the transport refuses
+                // it internally, never calls `willPerformHTTPRedirection`, and reports one of these
+                // file-system codes with the *original* URL attached rather than the target. Every
+                // other scheme is handed back and denied by the per-hop policy call (ledger B120).
+                // Name the policy position instead of leaking the opaque code, and never report
+                // local content. The limitation is documented on `URLPolicy` (ledger B102).
                 throw SearchError.fetchFailed(
                     request.url,
                     reason: "the server redirected to a local file, which is not fetched"

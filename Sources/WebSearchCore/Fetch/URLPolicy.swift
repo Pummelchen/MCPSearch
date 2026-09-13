@@ -20,12 +20,16 @@ import Foundation
 ///    returned address, so a DNS name pointing at private space is rejected.
 /// 3. **Redirect validation** — the fetcher re-runs both layers on every hop.
 ///
-/// One hop never reaches layer 3, and the limit is worth stating: a redirect that changes
-/// scheme (for example `https:` → `file:`) is refused by `URLSession` *beneath* this policy,
-/// without consulting the fetch delegate, so no `Decision` is produced for it. The refusal is
-/// still a policy position — non-http(s) destinations are never fetched — and
-/// `DirectHTTPFetcher` reports it as a fetch failure whose reason says so, rather than as an
-/// opaque transport code (ledger B102).
+/// One hop never reaches layer 3, and the limit is worth stating: a redirect to `file:` — the one
+/// scheme `URLSession` handles itself — is refused by `URLSession` *beneath* this policy, without
+/// consulting the fetch delegate, so no `Decision` is produced for it. The refusal is still a policy
+/// position — non-http(s) destinations are never fetched — and `DirectHTTPFetcher` reports it as a
+/// fetch failure whose reason says so, rather than as an opaque transport code (ledger B102).
+///
+/// Every *other* scheme is handed back to the fetcher's loop, which validates the redirect target
+/// here: `validateLexically` applies `allowedSchemes`, so an `ftp:`, `data:` or not-yet-invented
+/// scheme is denied by the same per-hop call as a private address and needs no new code
+/// (ledger B120).
 public struct URLPolicy: Sendable {
     public struct Decision: Sendable, Hashable {
         public let allowed: Bool

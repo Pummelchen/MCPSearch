@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 132 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 114 |
-| START (reproduced, expected behaviour written) | 18 |
+| DONE | 115 |
+| START (reproduced, expected behaviour written) | 17 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 87** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 69 are DONE and 18 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 70 are DONE and 17 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -166,7 +166,7 @@ waived in writing.
 | B117 | S3 | `scripts` (`mcp_smoke.py`) | `scripts/mcp_smoke.py` (`free_loopback_port`) | The HTTP smoke picks a free port by closing the socket before the child binds, so the child can lose the bind race | test | DONE | this Mac (arm64) | Phase C (residual B83 left) |
 | B118 | S3 | `SwiftWebSearchMCP` (`ServerOptions`) | `Sources/WebSearchCore/Support/TransportConfiguration.swift` (the `--transport` error) | The invalid `--transport` error names only two of the four accepted spellings that the usage text now documents | docs | DONE | node1 (arm64) | Phase C (found while doing B114) |
 | B119 | S3 | `scripts` (`monitor_tty_smoke.py`) | `scripts/monitor_tty_smoke.py` (the startup check) | The PTY harness polls the monitor only once, so a crash after the drain window but before the first frame is still reported as a timeout | test | DONE | node1 (arm64) | Phase C (found while verifying B106) |
-| B120 | S3 | `WebSearchCore` / `Fetch` (`DirectHTTPFetcher`) | `DirectHTTPFetcher.swift` (cross-scheme refusal) | Only the file-system transport codes are mapped, so a redirect to any other cross-scheme target still surfaces as an opaque transport reason | incomplete | START | node1 (arm64) | Phase C (residual B102 left) |
+| B120 | S3 | `WebSearchCore` / `Fetch` (`DirectHTTPFetcher`) | `DirectHTTPFetcher.swift` (cross-scheme refusal) | Only the file-system transport codes are mapped, so a redirect to any other cross-scheme target still surfaces as an opaque transport reason | incomplete | DONE | node1 (arm64) | Phase C (residual B102 left) |
 
 ---
 
@@ -218,6 +218,45 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B120 — the cross-scheme refusal is already classified by scheme, not by transport code
+
+**Severity S3** · **category** incomplete · **status** DONE · **host** node1 (arm64)
+
+**The premise is wrong.** B120 claims that after B102, a redirect to `ftp:`, `data:` or any scheme
+`URLSession` refuses beneath the policy still surfaces as `the transport rejected the request URL`.
+Measured here, `URLSession` consults `willPerformHTTPRedirection` for **every scheme except
+`file:`**: of seventeen targets tried (sixteen non-file, including `ftp:`, `data:`, `gopher:`, `ws:`,
+`mailto:`, `ssh:`, `blob:`, `tel:` and private-use schemes), only the `file:` family bypasses the
+delegate. Every other one hands the `302` back to `DirectHTTPFetcher`'s manual loop, which calls
+`policy.validate(nextURL)`; `validateLexically` applies `allowedSchemes` first, so the hop becomes a
+`blockedURL(nextURL)` naming the actual target — the scheme-keyed classification the finding asks
+for, with no code needed for a new scheme. A new end-to-end test drives the real fetcher through
+loopback 302s to `ftp:` and `data:` and passes against unmodified production code.
+
+**The one opaque case cannot be classified by scheme.** `file:` is refused beneath the policy *and*
+is the case where the target scheme never reaches the process: the delegate is not called,
+`URLError.failingURL` and `NSErrorFailingURLStringKey` carry the original `http(s)` URL, and no
+other `userInfo` payload names the target. The three file-system codes therefore stay, now
+documented as the narrow exception rather than as an instance of a general cross-scheme rule.
+
+**What changed.** Documentation on `URLPolicy`'s type doc and `DirectHTTPFetcher`'s file-code case
+(the generalisation "a redirect that changes scheme is refused beneath the policy" is corrected),
+the same correction in the file-URL test's doc comment, and the new
+`FetchRedirectTests.testARedirectToAnUnfetchableSchemeIsRefusedByTheHopPolicy`, which asserts the
+`.blockedURL` denial and its target scheme, the absence of the opaque `transport rejected` text, and
+that the refused hop is never requested. No behaviour, signature or public API changed.
+
+**Falsification.** There is no pre-fix behaviour to revert, so the mutation is the defect the
+finding describes — the per-hop denial throwing
+`fetchFailed(…, reason: "the transport rejected the request URL")` — and the test reddens with that
+exact error (`expected a policy denial for ftp://example.com/file, got fetchFailed(…)`).
+`DirectHTTPFetcher.swift` was restored byte-identical (`diff` empty, SHA-256 `3f6f6bf1…41a6cd10`).
+
+**Deviation.** The expected-correct asked to replace the transport-code enumeration with a
+scheme-keyed rule. That rule already governs every scheme that can reach the policy and cannot
+exist for `file:`, whose target never reaches the process; the literal change would have required
+duplicating the transport's redirect handling, the larger option B102 already rejected.
 
 ## B91 — log emission blocked the task that logged
 

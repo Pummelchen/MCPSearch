@@ -127,11 +127,13 @@ final class FetchRedirectTests: XCTestCase {
         XCTAssertEqual(target.requestCount, 0, "the credentialed hop must never reach the target")
     }
 
-    /// A redirect to a different scheme never reaches the manual loop at all — `URLSession`
-    /// refuses it internally, without consulting `NoRedirectDelegate` — so the refusal cannot
-    /// come from `URLPolicy`'s per-hop call. `DirectHTTPFetcher` therefore names the policy
-    /// position for the file-system transport codes instead of surfacing the opaque code, and
-    /// the check that matters stays the same: no local content comes back (ledger B102).
+    /// A redirect to `file:` is the one cross-scheme hop that never reaches the manual loop:
+    /// `URLSession` handles that scheme itself, refuses the hop internally without consulting
+    /// `NoRedirectDelegate`, and reports a file-system transport code with no target URL attached.
+    /// `DirectHTTPFetcher` therefore names the policy position for those codes instead of
+    /// surfacing the opaque code, and the check that matters stays the same: no local content
+    /// comes back (ledger B102). Every other scheme is handed back to the loop and refused by
+    /// `URLPolicy` itself — see the test below (ledger B120).
     func testARedirectToAFileURLIsRefusedWithoutReadingTheFile() async throws {
         let readable = URL(fileURLWithPath: "/etc/hosts")
         XCTAssertTrue(
@@ -161,6 +163,36 @@ final class FetchRedirectTests: XCTestCase {
             )
         }
         XCTAssertEqual(server.requestCount, 1)
+    }
+
+    /// A redirect to a scheme the policy does not fetch is refused by the *same* per-hop policy
+    /// call as a redirect to a private address, because the scheme allow-list is applied by
+    /// `URLPolicy.validateLexically`. That is the scheme classification the finding asks for, and
+    /// it needs no new code for a scheme nobody has seen yet.
+    ///
+    /// The premise of ledger B120 was that these redirects surface as the opaque transport reason
+    /// `the transport rejected the request URL`. They do not: `URLSession` consults the redirect
+    /// delegate for every scheme except `file:` and hands the 302 back, so the loop validates the
+    /// target and denies it — measured, not assumed. Only `file:` is refused beneath this loop,
+    /// which is why that one case still maps transport codes (ledger B102).
+    func testARedirectToAnUnfetchableSchemeIsRefusedByTheHopPolicy() async throws {
+        for target in ["ftp://example.com/file", "data:text/plain,hello"] {
+            let server = try LoopbackServer(responses: [Self.redirect(to: target)])
+            do {
+                let result = try await fetch(server.baseURL)
+                XCTFail("a redirect to \(target) must not be fetched: \(result.text.prefix(60))")
+            } catch let error as SearchError {
+                guard case .blockedURL(let url) = error else {
+                    return XCTFail("expected a policy denial for \(target), got \(error)")
+                }
+                XCTAssertEqual(url.scheme, URL(string: target)?.scheme, "the refusal must name the target")
+                XCTAssertFalse(
+                    "\(error)".contains("transport rejected"),
+                    "the refusal must be a policy decision, not an opaque transport code: \(error)"
+                )
+            }
+            XCTAssertEqual(server.requestCount, 1, "the refused hop must not be requested")
+        }
     }
 
     /// A redirect with no `Location` is a broken response, not content to be extracted.
