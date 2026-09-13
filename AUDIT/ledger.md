@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 127 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 79 |
-| START (reproduced, expected behaviour written) | 48 |
+| DONE | 80 |
+| START (reproduced, expected behaviour written) | 47 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 82** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 82 S3 tasks 34 are DONE and 48 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 82 S3 tasks 35 are DONE and 47 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -94,7 +94,7 @@ waived in writing.
 | B38 | S3 | `.github/workflows/ci.yml` | `.github/workflows/ci.yml:1-31` | The CI workflow declares no `permissions:`, so the job token keeps the default scope | unsafe | DONE | this Mac (arm64) | Phase B L0-3 |
 | B39 | S3 | `.github/workflows/ci.yml` | `.github/workflows/ci.yml:40-70` | CI does not pin the Swift toolchain, so "Swift 6.3" is whatever the runner image has | deps | DONE | this Mac (arm64) | Phase B L0-4 |
 | B40 | S3 | `Package.swift`, `Package.resolved`, CI | `Package.swift:31-34`, `.github/workflows/ci.yml:89-96` | Nothing detects that `Package.resolved` has drifted from the manifests | deps | DONE | this Mac (arm64) | Phase B L0-5 |
-| B41 | S3 | `Package.swift`, repository root | `Package.swift:31-34` | Apache-2.0 `NOTICE` files of two dependencies are not carried with any distributed binary | deps | START | this Mac (arm64) | Phase B L0-6 |
+| B41 | S3 | `Package.swift`, repository root | `Package.swift:31-34` | Apache-2.0 `NOTICE` files of two dependencies are not carried with any distributed binary | deps | DONE | node1 (arm64) | Phase B L0-6 |
 | B42 | S3 | `SwiftWebSearchMCP` (`HTTPMCPHost`) | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:448` | The hand-rolled `Origin` check accepts any host starting with `127.`, which is a bypass of the check it pretends to be | logic | DONE | this Mac (arm64) | Phase B L4-7 |
 | B43 | S3 | `AUDIT/plan.md` vs `AUDIT/baseline/` | `AUDIT/plan.md:38` | The baseline evidence table cites `gitleaks.json`, which is not in the repository | docs | DONE | this Mac (arm64) | Phase B L7-5 |
 | B44 | S3 | `scripts/soak.py` | `scripts/soak.py:473-479` | The soak test's comment promises a "provider never contributed" failure that the code never implements | incomplete | DONE | this Mac (arm64) | Phase B L7-6 |
@@ -213,6 +213,49 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B41 — Apache-2.0 `NOTICE` files were not carried with any distributed binary
+
+**Severity S3** (recorded) · **category** deps · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** The project is MIT but links Apache-2.0 packages, and Apache-2.0 §4(d)
+requires a work that is *distributed* to reproduce the attribution notices of the Apache-2.0
+components it contains. No `NOTICE`/`THIRD-PARTY` file existed under any name and no release step
+produced one, so a shipped binary carried no attribution.
+
+**The licence facts, read from the resolved checkouts.** Eight packages, and the obligation is
+narrower than the finding assumed:
+
+| package | version | licence | runtime exception | `NOTICE.txt` |
+| --- | --- | --- | --- | --- |
+| `eventsource` | 1.5.1 | MIT | n/a | — |
+| `swift-atomics` | 1.3.1 | Apache-2.0 | **yes** — §4(a)/(b)/(d) waived | — |
+| `swift-collections` | 1.6.0 | Apache-2.0 | **yes** — §4(a)/(b)/(d) waived | — |
+| `swift-log` | 1.15.1 | Apache-2.0 | no | **yes** |
+| `swift-nio` | 2.102.0 | Apache-2.0 | no | **yes** |
+| `swift-sdk` | 0.12.1 | MIT + Apache-2.0, mixed | n/a | — |
+| `swift-system` | 1.8.1 | Apache-2.0 | **yes** — §4(a)/(b)/(d) waived | — |
+| `SwiftSoup` | 2.13.5 | MIT | n/a | — |
+
+Three packages carry the Swift Runtime Library Exception, whose text (verified byte-identical
+across all three) waives the §4(a)/(b)/(d) attribution for code embedded into a compiled binary,
+so their notices are **not** required. `swift-sdk` is mid-transition MIT→Apache-2.0 and ships no
+`NOTICE.txt`; it is recorded as mixed with both texts carried rather than asserting one.
+
+**The decision.** Add `THIRD-PARTY-NOTICES.md` rather than invent a release step, because there is
+no release workflow and a committed file is checkable. It carries a machine-readable inventory, the
+licence notes, the verbatim `NOTICE.txt` of `swift-nio` and `swift-log`, and the full Apache-2.0,
+Runtime Library Exception and both MIT texts. `scripts/third_party_notices.py` then compares the
+inventory against `Package.resolved` in both directions — the same authority the lockfile gate uses
+— and runs as a CI gate. It deliberately does **not** generate the file: copying a licence in
+automatically is how an unlicensed or copyleft dependency gets shipped unremarked, so each licence
+is read by hand and the check only proves the inventory stayed complete.
+
+**Verification.** The gate was shown to fail under three mutations — drop the `swift-nio` row,
+invent an unresolved package, mis-state a version — each exiting 1 with its own `::error` line; the
+first is the silent failure this task is about. ruff, `ruff format --check`, pyright strict (0
+errors), `swift-format --strict` and `swiftlint --strict` are clean. Artifact:
+`AUDIT/evidence/B41-third-party-notices.txt`.
 
 ## B01 — the compose secret-key override named a variable SearXNG never reads
 

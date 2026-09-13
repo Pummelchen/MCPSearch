@@ -242,6 +242,13 @@ jobs:
           ruff check scripts
           ruff format --check scripts
 
+      # Apache-2.0 section 4(d) requires a distributed binary to carry the attribution notices of
+      # the Apache-2.0 components it links, and this repository links two that ship a NOTICE.txt
+      # (swift-nio and swift-log). The notices file is committed and checked against the lockfile
+      # in both directions, so adding a dependency cannot silently drop its attribution (B41).
+      - name: Third-party notices match the lockfile
+        run: python3 scripts/third_party_notices.py
+
       # The soak harness must make its own `--providers` authoritative: an ambient
       # SEARCH_DISABLED_PROVIDERS must not keep a requested provider switched off, and requesting
       # everything must clear the ambient list rather than leave it in place (ledger B23).

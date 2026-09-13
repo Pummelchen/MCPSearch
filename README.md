@@ -196,3 +196,8 @@ present to prove the suite is hermetic.
 ## License
 
 MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Pummelchen.
+
+The binary links third-party packages with their own terms. Their licences, and the attribution
+notices that Apache-2.0 requires a distributed work to carry, are collected in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md); a CI gate keeps that inventory in step with
+`Package.resolved`.
