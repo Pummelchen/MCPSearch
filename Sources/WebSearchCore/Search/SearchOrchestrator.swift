@@ -535,6 +535,12 @@ public actor SearchOrchestrator {
                 ]
             )
         } catch is CancellationError {
+            // The request was claimed from the breaker before the call and produced no outcome, so
+            // the claim is given back rather than recorded as a provider failure: a caller that
+            // goes away says nothing about the provider. Without this a cancelled request left the
+            // breaker half-open with a claim nobody releases, and the provider was never tried
+            // again (ledger B52).
+            await health.releaseProbe(id)
             result.failures.append(
                 ProviderFailure(
                     provider: id,

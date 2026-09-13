@@ -18,8 +18,8 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 120 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 55 |
-| START (reproduced, expected behaviour written) | 65 |
+| DONE | 57 |
+| START (reproduced, expected behaviour written) | 63 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
@@ -99,8 +99,8 @@ waived in writing.
 | B48 | S3 | `deploy/provision-node.sh` | `deploy/provision-node.sh:296-297` | `provision-node.sh` cannot find a Homebrew-installed Tailscale CLI on Apple Silicon | bug | START | this Mac (arm64) | Phase B L7-11 |
 | B49 | S3 | `deploy/provision-node.sh` | `deploy/provision-node.sh:192-199`, `:203-235` | The generated SearXNG `settings.yml` inherits the umask, so the per-node secret key is world-readable | unsafe | START | this Mac (arm64) | Phase B L7-12 |
 | B50 | S3 | `deploy/provision-node.sh` | `deploy/provision-node.sh:255-284` | Provisioning destroys the working instance before its replacement is proven on the production port, with no rollback | incomplete | START | this Mac (arm64) | Phase B L7-13 |
-| B51 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:119` | `Log.escape` leaves every control character except `\n`, `\r` and `\t`, so a query can inject terminal escapes into stderr | unsafe | START | this Mac (arm64) | Phase B L4-8 |
-| B52 | S3 | WebSearchCore (Search) | `Sources/WebSearchCore/Search/SearchOrchestrator.swift:501` | A claimed half-open probe is never released when a request ends in a bare `CancellationError` | bug | START | this Mac (arm64) | Phase B L2-2 |
+| B51 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:119` | `Log.escape` leaves every control character except `\n`, `\r` and `\t`, so a query can inject terminal escapes into stderr | unsafe | DONE | this Mac (arm64) | Phase B L4-8 |
+| B52 | S3 | WebSearchCore (Search) | `Sources/WebSearchCore/Search/SearchOrchestrator.swift:501` | A claimed half-open probe is never released when a request ends in a bare `CancellationError` | bug | DONE | this Mac (arm64) | Phase B L2-2 |
 | B53 | S3 | WebSearchCore (Monitor) | `Sources/WebSearchCore/Monitor/Terminal.swift:96` | `Terminal.truncate` counts ANSI escape characters as display width, so truncating styled text can drop the SGR reset | bug | DONE | this Mac (arm64) | Phase B L2-9 |
 | B54 | S3 | WebSearchCore (Providers) | `Sources/WebSearchCore/Providers/ParallelMCPProvider.swift:162` | Concurrent first use of the Parallel provider performs the MCP handshake more than once | bug | START | this Mac (arm64) | Phase B L2-10 |
 | B55 | S3 | WebSearchCore (Search) | `Sources/WebSearchCore/Search/ProviderHealth.swift:119` | `ProviderHealth.setNote` is dead public API | dead | DONE | this Mac (arm64) | Phase B L2-11 |

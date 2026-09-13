@@ -180,6 +180,14 @@ public actor ProviderHealth {
 
     // MARK: - Outcomes
 
+    /// Give back a claimed half-open probe after a request that produced no outcome.
+    ///
+    /// Used when the caller was cancelled: the probe was claimed, the provider never answered, and
+    /// leaving the claim in place would strand the breaker (ledger B52).
+    public func releaseProbe(_ provider: ProviderID) async {
+        await breakers[provider]?.releaseProbe()
+    }
+
     public func recordSuccess(
         _ provider: ProviderID,
         latencyMilliseconds: Int,

@@ -519,6 +519,53 @@ final class SearchOrchestratorTests: XCTestCase {
         XCTAssertTrue(response.providersFailed.contains { $0.category == .circuitOpen })
     }
 
+    /// A cancelled request must give back the half-open probe it claimed.
+    ///
+    /// The claim is taken inside `authorize` and was released only by `recordSuccess` /
+    /// `recordFailure`. The cancellation path records no health outcome, correctly — a caller that
+    /// goes away says nothing about the provider — so the claim leaked, the breaker stayed
+    /// half-open with a claim nobody held, and the provider was never tried again (ledger B52).
+    func testACancelledRequestReleasesTheHalfOpenProbe() async throws {
+        let clock = TestClock()
+        let health = ProviderHealth(clock: clock)
+        await health.register(
+            .tavily,
+            breakerPolicy: .init(failureThreshold: 1, cooldown: .seconds(30))
+        )
+        await health.recordFailure(
+            .tavily,
+            failure: ProviderFailure(provider: .tavily, category: .serverError, message: "500")
+        )
+        clock.advance(by: .seconds(31))
+
+        let cancelling = MockSearchProvider(id: .tavily) { _ in throw CancellationError() }
+        // A second, healthy provider so the search itself completes: the cancellation of one
+        // provider is a partial failure, not an error for the whole fan-out.
+        let healthy = MockSearchProvider.returning(
+            .brave,
+            results: [("B", "https://b.example.com/1", nil)]
+        )
+        let (orchestrator, _, _) = makeOrchestrator(
+            providers: [cancelling, healthy],
+            configuration: Fixtures.configuration(providerOrder: [.tavily, .brave]),
+            health: health,
+            clock: clock
+        )
+
+        let response = try await orchestrator.search(Fixtures.request(mode: .balanced))
+
+        XCTAssertEqual(cancelling.callCount, 1, "the half-open probe was spent on this call")
+        XCTAssertTrue(
+            response.providersFailed.contains { $0.category == .cancelled },
+            "\(response.providersFailed)"
+        )
+
+        // Claimable again: the attempt that was cancelled gave the probe back. Before the fix this
+        // returned a `.circuitOpen` refusal, and every later search skipped the provider for good.
+        let next = await health.authorize(.tavily)
+        XCTAssertNil(next, "the probe must have been released, got \(next as Any)")
+    }
+
     func testProviderThatHangsIsCutOffByTheTimeBudget() async throws {
         var configuration = Fixtures.configuration()
         configuration.balancedTimeout = .milliseconds(300)
