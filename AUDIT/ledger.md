@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 129 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 99 |
-| START (reproduced, expected behaviour written) | 30 |
+| DONE | 100 |
+| START (reproduced, expected behaviour written) | 29 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 84** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 54 are DONE and 30 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 55 are DONE and 29 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -160,7 +160,7 @@ waived in writing.
 | B111 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, nullable enums) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:62-66`, `:83-93`, `:94-101`, `:270-274` | Nullable enum arguments declare `["string", "null"]` with an `enum` that excludes `null`, so a strict client cannot legally send the null the design depends on | logic | DONE | this Mac (arm64) | handover re-read L1 |
 | B112 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, `web_search_status` input) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:350-358` | `statusInput` is the only object schema in the file that omits `required` | style | DONE | this Mac (arm64) | handover re-read L1 |
 | B113 | S3 | `WebSearchCore` / `Support` + `SwiftWebSearchMCP` (`main`) | `Sources/SwiftWebSearchMCP/main.swift:16` and `:98` | Configuration is loaded and validated before the command line is parsed, so an unreadable config file pre-empts `--help` | logic | DONE | this Mac (arm64) | handover re-read L7 |
-| B114 | S3 | `SwiftWebSearchMCP` (`TransportConfiguration.usage`) | `Sources/WebSearchCore/Support/TransportConfiguration.swift:51-77` | `usage` under-documents the CLI, and the test that claims to check every flag locks the incomplete list in place | docs | START | this Mac (arm64) | handover re-read L7 |
+| B114 | S3 | `SwiftWebSearchMCP` (`TransportConfiguration.usage`) | `Sources/WebSearchCore/Support/TransportConfiguration.swift:51-77` | `usage` under-documents the CLI, and the test that claims to check every flag locks the incomplete list in place | docs | DONE | this Mac (arm64) | handover re-read L7 |
 | B115 | S3 | repository root (`README.md`) | `README.md:120`, provider table `:122-134` | The README undercounts the keyless routes and its Startpage row omits the flag the adapter actually requires | docs | DONE | this Mac (arm64) | handover re-read L7 |
 | B116 | S3 | `WebSearchCore` / `Search` (`SearchOrchestrator`, `RateLimiter`) | `SearchOrchestrator.swift:456-462`, `RateLimiter.swift:97-104` | A local throttle that cleared between the authorise and the wait estimate was reported as a hard skip, making the suite intermittently red | bug | DONE | node1 (arm64) | Phase E baseline |
 | B117 | S3 | `scripts` (`mcp_smoke.py`) | `scripts/mcp_smoke.py` (`free_loopback_port`) | The HTTP smoke picks a free port by closing the socket before the child binds, so the child can lose the bind race | test | DONE | this Mac (arm64) | Phase C (residual B83 left) |
@@ -215,6 +215,53 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B114 — the operator-facing usage text had drifted from the parser
+
+**Severity S3** (recorded) · **category** docs · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** `ServerOptions.usage` was a hand-written string. The parser accepted more
+than the text described: `--help`/`-h`, the `streamable-http` and `streamable_http` aliases for
+`--transport`, and the `--flag=value` spelling. The guard was toothless —
+`testUsageDocumentsEveryFlag` compared a hand-written list of five names against
+`usage.contains`, so the parser could grow any flag and the test kept passing. A `contains` check
+is also weaker than it looks: `-h` is a substring of `--http-allowed-host`, so it would have
+passed without ever being documented. Separately the empty-configuration warning named five of
+the eight provider-registering variables, omitting `OPEN_WEB_SEARCH_URL`, `SEARCH_ENABLE_SCRAPERS`
+and `SEARCH_ENABLE_PARALLEL`.
+
+**The fix.** Flag names, aliases, value placeholders and descriptions now live in one table,
+`ServerOptions.Flag`; accepted `--transport` values live in `ServerOptions.TransportName`.
+`parse` dispatches on the table (`Flag.matching` plus `inlineValue` for the `=` spelling) and
+`usage` is rendered from the same table, so a flag cannot be accepted without being documented or
+documented without being accepted: the per-case switches are exhaustive, so adding a case forces
+entries in every computed property. `renderUsage` derives the `OPTIONS` column, the
+"Setting any of …" sentence and the alias list from the tables. In `main.swift` the provider
+inventory became a `providerAvailability` table that feeds both the inventory and the warning, so
+the warning names every variable that can register a provider and cannot go stale on its own. No
+public signature changed; `usage` remains a `String`.
+
+**Verification.** `testUsageDocumentsEveryFlagTheParserAccepts` iterates `Flag.allCases` and
+`TransportName.allCases` and matches whole whitespace tokens;
+`testEveryDocumentedFlagIsAcceptedByTheParser` and `testEveryValueFlagAcceptsBothSpellings` are
+table-driven over the parser's table, with an exhaustive test-side `sampleValue(for:)` that fails
+to compile when a flag case is added; `testMissingValuesAreRejected` was likewise switched from a
+hand-written list. A process-level `testEmptyConfigurationWarningNamesEveryProviderVariable`
+starts the executable with a scrubbed environment and asserts the warning on stderr names all
+eight variables. Both defects were mutated back and the tests reddened (usage: 5 failures;
+warning: 3 failures); the first RED run showed `-h` passing as a substring, so the test was
+strengthened to token matching before the recorded run. Both files were restored byte-identical
+and every gate is clean: debug and release builds 0 warnings under `-warnings-as-errors`, 501
+tests / 6 skipped / 0 failures, `swift-format --strict` 0, `swiftlint --strict` 0,
+`third_party_notices.py` clean.
+
+**Interaction with B113.** B113 moved the argv parse and the `--help` arm above
+`AppConfiguration.load()`, making a help request environment-independent; B114 then changed what
+`usage` says without changing when it is produced. Doing B113 first is what allowed the derived
+text to be observed through the real executable under a fatal `SEARCH_CONFIG_FILE`. The two are
+otherwise separate concerns — B113 owns *when* the command line is read, B114 owns *what* it
+documents — and B113's process tests (which assert exit status, `USAGE` and the absence of startup
+diagnostics, never exact flag text) stayed green across the B114 rewrite.
 
 ## B113 — configuration was loaded before the command line was parsed
 

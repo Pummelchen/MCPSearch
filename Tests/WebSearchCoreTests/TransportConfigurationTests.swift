@@ -177,8 +177,8 @@ final class TransportConfigurationTests: XCTestCase {
     }
 
     func testMissingValuesAreRejected() {
-        for flag in ["--transport", "--port", "--host", "--http-path", "--http-allowed-host"] {
-            assertRejects([flag], expecting: .missingValue(flag))
+        for flag in ServerOptions.Flag.allCases where flag.takesValue {
+            assertRejects([flag.canonicalName], expecting: .missingValue(flag.canonicalName))
         }
     }
 
@@ -198,13 +198,55 @@ final class TransportConfigurationTests: XCTestCase {
         XCTAssertTrue(try ServerOptions.parse(["-h"]).wantsHelp)
     }
 
-    /// The usage text must document every supported flag, so `--help` cannot drift from
+    /// The usage text must document every flag the parser accepts, so `--help` cannot drift from
     /// the parser.
-    func testUsageDocumentsEveryFlag() {
-        for flag in ["--transport", "--port", "--host", "--http-path", "--http-allowed-host"] {
+    ///
+    /// The check is driven by the parser's own tables rather than a hand-written list, and it
+    /// matches whole tokens rather than substrings. The previous version asserted four hard-coded
+    /// names, so it passed no matter how the parser grew; a substring check would be little
+    /// better, because `-h` is a substring of `--http-allowed-host` and so would pass without the
+    /// alias ever being documented (ledger B114).
+    func testUsageDocumentsEveryFlagTheParserAccepts() {
+        let tokens = usageTokens()
+        for flag in ServerOptions.Flag.allCases {
+            for name in flag.names {
+                XCTAssertTrue(
+                    tokens.contains(name),
+                    "usage text is missing \(name)"
+                )
+            }
+        }
+        for name in ServerOptions.TransportName.allCases.map(\.rawValue) {
             XCTAssertTrue(
-                ServerOptions.usage.contains(flag),
-                "usage text is missing \(flag)"
+                tokens.contains(name),
+                "usage text is missing the --transport value \(name)"
+            )
+        }
+        XCTAssertTrue(
+            ServerOptions.usage.contains("--flag=value"),
+            "usage text must document the --flag=value spelling"
+        )
+    }
+
+    /// Every flag in the documented table is one the parser accepts.
+    func testEveryDocumentedFlagIsAcceptedByTheParser() throws {
+        for flag in ServerOptions.Flag.allCases {
+            let arguments =
+                sampleValue(for: flag).map { [flag.canonicalName, $0] } ?? [flag.canonicalName]
+            XCTAssertNoThrow(try ServerOptions.parse(arguments), "\(arguments) should parse")
+        }
+    }
+
+    /// Every value-taking flag accepts both `--flag value` and `--flag=value`.
+    func testEveryValueFlagAcceptsBothSpellings() throws {
+        for flag in ServerOptions.Flag.allCases {
+            guard let value = sampleValue(for: flag) else { continue }
+            let spaced = try ServerOptions.parse([flag.canonicalName, value])
+            let inline = try ServerOptions.parse(["\(flag.canonicalName)=\(value)"])
+            XCTAssertEqual(
+                spaced.transport,
+                inline.transport,
+                "\(flag.canonicalName) behaves differently in its two spellings"
             )
         }
     }
@@ -293,6 +335,34 @@ final class TransportConfigurationTests: XCTestCase {
     }
 
     // MARK: - Helper
+
+    /// The whitespace-separated words of the usage text, with trailing `,`/`.` stripped.
+    ///
+    /// Tokens rather than substrings: `-h` occurs inside `--http-allowed-host`, so a raw
+    /// containment check would bless an undocumented short alias (ledger B114).
+    private func usageTokens() -> Set<String> {
+        Set(
+            ServerOptions.usage
+                .split(whereSeparator: { $0.isWhitespace })
+                .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ",.")) }
+        )
+    }
+
+    /// A value the parser accepts for a value-taking flag, or nil for the valueless `--help`.
+    ///
+    /// The switch is deliberately exhaustive without a `default`: adding a flag to
+    /// `ServerOptions.Flag` fails to compile here until the test supplies a value for it, which is
+    /// what keeps the table-driven checks above honest (ledger B114).
+    private func sampleValue(for flag: ServerOptions.Flag) -> String? {
+        switch flag {
+        case .help: nil
+        case .transport: "http"
+        case .port: "9000"
+        case .host: "127.0.0.1"
+        case .httpAllowedHost: "search.example.com"
+        case .httpPath: "/x"
+        }
+    }
 
     private func assertRejects(
         _ arguments: [String],

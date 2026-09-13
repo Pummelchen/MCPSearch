@@ -1247,4 +1247,28 @@ final class StdioServerTests: XCTestCase {
             "expected startup diagnostics on stderr, got: \(stderr.prefix(400))"
         )
     }
+
+    /// The empty-configuration warning must name every variable that can register a provider.
+    ///
+    /// It used to name five of the eight, so an operator who had the scraper and open-web-search
+    /// paths available was told only about API keys (ledger B114).
+    func testEmptyConfigurationWarningNamesEveryProviderVariable() throws {
+        let server = try startInitializedServer(environment: [:])
+        defer { server.stop() }
+
+        try server.send(["jsonrpc": "2.0", "id": 70, "method": "tools/list"])
+        _ = try server.readResponse(id: 70)
+        let stderr =
+            (String(bytes: server.stderrPipe.fileHandleForReading.availableData, encoding: .utf8) ?? "<not valid UTF-8>")
+        for variable in [
+            "TAVILY_API_KEY", "BRAVE_SEARCH_API_KEY", "MOJEEK_API_KEY", "EXA_API_KEY",
+            "SEARXNG_BASE_URL", "OPEN_WEB_SEARCH_URL", "SEARCH_ENABLE_SCRAPERS",
+            "SEARCH_ENABLE_PARALLEL",
+        ] {
+            XCTAssertTrue(
+                stderr.contains(variable),
+                "the empty-configuration warning is missing \(variable): \(stderr)"
+            )
+        }
+    }
 }
