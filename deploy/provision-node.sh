@@ -14,6 +14,25 @@ LOG_PREFIX="[$(date +%H:%M:%S) $NODE_NAME]"
 say() { echo "$LOG_PREFIX $*"; }
 fail() { echo "$LOG_PREFIX ERROR: $*" >&2; exit 1; }
 
+# Install the generated key into the rendered settings file, and prove it landed.
+#
+# Every other mutation in this script carries a `|| fail`, and this one did not: if `sed` failed,
+# the container started with the literal, tracked, publicly known placeholder as its signing key
+# and the canary still answered JSON, so the run reported success (ledger B17). Extracted as a
+# function so the guard can be exercised without provisioning a node.
+install_secret_key() {
+    local settings_file="$1"
+    local key="$2"
+    sed -i '' "s|__SECRET_KEY__|${key}|" "${settings_file}" \
+        || fail "could not install the SearXNG secret key into ${settings_file}"
+    if grep -qF '__SECRET_KEY__' "${settings_file}"; then
+        fail "${settings_file} still contains the __SECRET_KEY__ placeholder; refusing to start a container that would sign with a known key"
+    fi
+    if ! grep -qF "secret_key: \"${key}\"" "${settings_file}"; then
+        fail "${settings_file} does not contain the generated secret key; refusing to start"
+    fi
+}
+
 # Keep the VM small: these machines have 8 GB of RAM and are also doing other work.
 COLIMA_CPU="${COLIMA_CPU:-2}"
 COLIMA_MEMORY="${COLIMA_MEMORY:-2}"
@@ -248,8 +267,9 @@ outgoing:
   pool_maxsize: 20
 SETTINGS
 
-# The heredoc is quoted, so the key is substituted afterwards rather than expanded inline.
-sed -i '' "s|__SECRET_KEY__|${SECRET_KEY}|" "${INSTALL_DIR}/searxng/settings.yml"
+# The heredoc is quoted, so the key is substituted afterwards rather than expanded inline. The
+# substitution is checked and verified, never assumed (ledger B17).
+install_secret_key "${INSTALL_DIR}/searxng/settings.yml" "${SECRET_KEY}"
 
 # Prefer a locally-loaded image (transferred over the LAN) so each node does not
 # re-download ~200 MB from the internet.
