@@ -16,15 +16,20 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 
 | Metric | Count |
 | --- | --- |
-| Tasks enumerated | 120 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI) |
-| Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
+| Tasks enumerated | 127 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
+| Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
 | DONE | 79 |
-| START (reproduced, expected behaviour written) | 41 |
+| START (reproduced, expected behaviour written) | 48 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
-Severity of the whole set: **S0 3, S1 8, S2 34, S3 75** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 75 S3 tasks 7 are DONE and 68 open.
+Severity of the whole set: **S0 3, S1 8, S2 34, S3 82** — the S0 set (A01, B01, B02) and the S1 set
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 82 S3 tasks 34 are DONE and 48 open.
+
+> **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
+> DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
+> minus the 45 DONE S0/S1/S2 tasks is 34 S3 tasks, and 75 - 34 is 41. The figure is recomputed from
+> `ledger.json` now. The summary is generated, not typed.
 
 
 Two cross-cutting gates are **not** tasks but acceptance criteria for Phase E: the whole
@@ -150,6 +155,13 @@ waived in writing.
 | B99 | S3 | `Tests/WebSearchCoreTests/TestSupport.swift`, `scripts/*.py` | `Tests/WebSearchCoreTests/TestSupport.swift:12` | No test ties the Swift test harnesses to the Python harnesses, and two scripts are untested entirely | test | START | this Mac (arm64) | Phase B L6-19 |
 | B100 | S3 | `Sources/SwiftWebSearchMCP/ToolSchemas.swift` (`ToolOutputFormatter`) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:526` | `ToolOutputFormatter`'s fallback and diagnostic branches are untested | test | START | this Mac (arm64) | Phase B L6-20 |
 | B101 | S3 | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift`, `Tests/WebSearchCoreTests/HTTPTransportTests.swift` | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:79` | `HTTPMCPHost`'s startup-failure and internal-error paths are untested | test | START | this Mac (arm64) | Phase B L6-21 |
+| B109 | S3 | `WebSearchCore` / `Search` (`RankFusion`) | `Sources/WebSearchCore/Search/RankFusion.swift:161-162` | The response-level resale discount is applied to every result of an aggregator response, defeating the per-result refinement the code documents | logic | START | this Mac (arm64) | handover re-read L2 |
+| B110 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, `web_answer` input) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:275-281` | `web_answer`'s `provider` argument lost the enum that `web_search`'s `provider` declares, though the schema documents itself as a mirror | logic | START | this Mac (arm64) | handover re-read L1 |
+| B111 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, nullable enums) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:62-66`, `:83-93`, `:94-101`, `:270-274` | Nullable enum arguments declare `["string", "null"]` with an `enum` that excludes `null`, so a strict client cannot legally send the null the design depends on | logic | START | this Mac (arm64) | handover re-read L1 |
+| B112 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, `web_search_status` input) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:350-358` | `statusInput` is the only object schema in the file that omits `required` | style | START | this Mac (arm64) | handover re-read L1 |
+| B113 | S3 | `WebSearchCore` / `Support` + `SwiftWebSearchMCP` (`main`) | `Sources/SwiftWebSearchMCP/main.swift:16` and `:98` | Configuration is loaded and validated before the command line is parsed, so an unreadable config file pre-empts `--help` | logic | START | this Mac (arm64) | handover re-read L7 |
+| B114 | S3 | `SwiftWebSearchMCP` (`TransportConfiguration.usage`) | `Sources/WebSearchCore/Support/TransportConfiguration.swift:51-77` | `usage` under-documents the CLI, and the test that claims to check every flag locks the incomplete list in place | docs | START | this Mac (arm64) | handover re-read L7 |
+| B115 | S3 | repository root (`README.md`) | `README.md:120`, provider table `:122-134` | The README undercounts the keyless routes and its Startpage row omits the flag the adapter actually requires | docs | START | this Mac (arm64) | handover re-read L7 |
 
 ---
 
@@ -183,6 +195,24 @@ Folding them into this ledger:
   the note says so; the tasks are still tracked separately because their fixes are separate.
 * **Scope of a task cannot be narrowed to close it**, and `BLOCKED` requires a named owner; both
   apply to the folded tasks exactly as to the A-series.
+
+### B109-B115 — found while verifying the handover (this session)
+
+The session that resumed this audit on the second machine re-read the tree before touching it,
+the same way Phase B did, and enumerated seven further findings that were not in the five passes.
+They use the same record shape and are folded here rather than kept in a side note:
+
+| id | pass | what the re-read checked |
+| --- | --- | --- |
+| B109 | L2 | `RankFusion`'s discount decision against the comment that documents it |
+| B110, B111, B112 | L1 | the four tool schemas against each other and against the stated strict-mode rules |
+| B113 | L7 | startup ordering: configuration versus `argv` |
+| B114 | L7 | the operator-facing `usage` text against the parser it describes |
+| B115 | L7 | `README.md`'s claims against the adapter registration predicates |
+
+Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
+pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
+`raw_id` is `H1`-`H7` so the provenance is still traceable.
 
 ## B01 — the compose secret-key override named a variable SearXNG never reads
 
