@@ -30,61 +30,13 @@ final class SchemaCompatibilityTests: XCTestCase {
 
     // MARK: - Server harness
 
-    private final class Server {
-        let process = Process()
-        let stdin = Pipe()
-        let stdout = Pipe()
-        private var buffer = Data()
-
-        init(binary: URL) {
-            process.executableURL = binary
-            process.standardInput = stdin
-            process.standardOutput = stdout
-            process.standardError = Pipe()
-            // Hermetic: no provider credentials can influence the tool list.
-            process.environment = ServerTestSupport.childEnvironment(base: [
-                "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
-            ])
-        }
-
-        func start() throws { try process.run() }
-
-        func send(_ object: [String: Any]) throws {
-            var data = try JSONSerialization.data(withJSONObject: object)
-            data.append(UInt8(ascii: "\n"))
-            stdin.fileHandleForWriting.write(data)
-        }
-
-        func readResponse(id: Int, timeout: TimeInterval = 20) throws -> [String: Any] {
-            let deadline = Date().addingTimeInterval(timeout)
-            while Date() < deadline {
-                if let newline = buffer.firstIndex(of: UInt8(ascii: "\n")) {
-                    let line = buffer[buffer.startIndex..<newline]
-                    buffer = Data(buffer[buffer.index(after: newline)...])
-                    guard !line.isEmpty else { continue }
-                    if let object = try JSONSerialization.jsonObject(with: Data(line))
-                        as? [String: Any],
-                        (object["id"] as? Int) == id
-                    {
-                        return object
-                    }
-                    continue
-                }
-                let chunk = stdout.fileHandleForReading.availableData
-                if chunk.isEmpty { throw Failure.unexpectedExit }
-                buffer.append(chunk)
-            }
-            throw Failure.timeout
-        }
-
-        func stop() {
-            try? stdin.fileHandleForWriting.close()
-            if process.isRunning { process.terminate() }
-            process.waitUntilExit()
-        }
-
-        enum Failure: Error { case timeout, unexpectedExit }
-    }
+    /// The one subprocess harness, shared with every other stdio test file.
+    ///
+    /// This file used to carry its own copy, which had drifted further than the others: its
+    /// `Failure` enum was `case timeout, unexpectedExit` with no stderr payload, and the
+    /// `Pipe()` it assigned to `standardError` was never read, so an early exit reported the
+    /// bare words `unexpectedExit` and no diagnostic at all (ledger B71).
+    private typealias Server = ServerProcess
 
     /// Fetch `tools/list` from a freshly started server.
     private func advertisedTools() throws -> [[String: Any]] {

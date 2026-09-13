@@ -107,7 +107,52 @@ enum ServerTestError: Error, CustomStringConvertible {
     }
 }
 
+/// The stderr a child produced, accumulated as it is produced.
+///
+/// A separate box rather than fields on the harness because the readability handler that fills
+/// it is `@Sendable` and must not reach back into the non-`Sendable` harness. The lock is the
+/// only point of contact between the reader queue and the test thread (ledger B71).
+private final class StderrCapture: @unchecked Sendable {
+    private let lock = NSLock()
+    private var buffer = Data()
+
+    /// Reached EOF, so no further bytes can arrive.
+    let drained = DispatchGroup()
+
+    init(pipe: Pipe) {
+        drained.enter()
+        pipe.fileHandleForReading.readabilityHandler = { [self] handle in
+            let chunk = handle.availableData
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+                drained.leave()
+                return
+            }
+            lock.withLock { buffer.append(chunk) }
+        }
+    }
+
+    /// Everything the child wrote to stderr before it exited.
+    ///
+    /// A bounded wait: the background reader delivers what the child flushed, and a child that is
+    /// still alive keeps the pipe open, so an unbounded wait would hang the way the read loop
+    /// once did. Two seconds is far longer than a pipe read needs; it costs a test nothing
+    /// because the reader signals the group as soon as the data lands.
+    func text() -> String {
+        _ = drained.wait(timeout: .now() + 2)
+        let data = lock.withLock { buffer }
+        return String(bytes: data, encoding: .utf8) ?? "<not valid UTF-8>"
+    }
+}
+
 /// One running subprocess spoken to with newline-delimited JSON, stdout to stdin.
+///
+/// The single harness for every stdio test. Three hand-copied versions of this used to live in
+/// `StdioServerTests`, `ErrorReportingTests` and `SchemaCompatibilityTests`, and had already
+/// drifted: the `SchemaCompatibilityTests` copy declared a `failure` that dropped the stderr
+/// payload, and its `process.standardError = Pipe()` was never read, so an early exit reported
+/// the bare words `unexpectedExit` with no diagnostic (ledger B71). The shared environment
+/// scrub list had been factored out; the framing, the deadline and the stderr capture had not.
 ///
 /// The deadline is enforced at the read, not merely checked between reads. The loop this
 /// replaces was `while Date() < deadline { … availableData }`, and `availableData` blocks
@@ -122,7 +167,8 @@ final class ServerProcess {
     private let stdoutPipe = Pipe()
     private let stderrPipe = Pipe()
     private var stdoutBuffer = Data()
-    private var stderrBuffer = Data()
+    /// The stderr stream, accumulated by a background reader for the life of the harness.
+    private let stderrCapture: StderrCapture
 
     /// Start a child with a scrubbed environment.
     ///
@@ -149,6 +195,17 @@ final class ServerProcess {
         }
         for (key, value) in environment { merged[key] = value }
         process.environment = ServerTestSupport.childEnvironment(base: merged)
+
+        // Every call site used to leave stderr unread until something had already gone wrong,
+        // which is exactly when its diagnostics are needed. Draining it as it is produced also
+        // means a child that writes more to stderr than the pipe can hold cannot wedge on the
+        // write (ledger B71).
+        stderrCapture = StderrCapture(pipe: stderrPipe)
+    }
+
+    /// Stop the stderr reader and release the pipe.
+    deinit {
+        stderrPipe.fileHandleForReading.readabilityHandler = nil
     }
 
     func start() throws {
@@ -159,6 +216,20 @@ final class ServerProcess {
         var line = try JSONSerialization.data(withJSONObject: object)
         line.append(UInt8(ascii: "\n"))
         stdinPipe.fileHandleForWriting.write(line)
+    }
+
+    /// Send one JSON-RPC request and read the response that carries `id`.
+    ///
+    /// The convenience the `ErrorReportingTests` copy had and the other two did not; folding it
+    /// in is what lets that file drop its whole private harness.
+    func call(id: Int, tool: String, arguments: [String: Any]) throws -> [String: Any] {
+        try send([
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "tools/call",
+            "params": ["name": tool, "arguments": arguments],
+        ])
+        return try readResponse(id: id)
     }
 
     /// Read one JSON object from stdout, blocking until a full line arrives.
@@ -226,16 +297,15 @@ final class ServerProcess {
         }
     }
 
-    /// Everything the child has written to stderr so far.
+    /// Everything the child wrote to stderr before it exited.
     ///
-    /// The reads and the buffer are shared across calls, so a diagnostic drained while
-    /// waiting for a response is still available to the assertion that needs it and
-    /// nothing is consumed twice. Reading opportunistically cannot truncate a later
-    /// diagnostic, because `availableData` returns only bytes already delivered.
+    /// Waiting for the background reader to reach EOF is what makes this the *complete* stream
+    /// rather than whatever happened to have arrived: the reader is the only consumer, and it
+    /// signals the group at EOF. The wait is bounded because the child is often still alive when
+    /// a test inspects its diagnostics — a live MCP session keeps stdout and stderr open until
+    /// `stop()` — so an unbounded wait here would hang exactly the way the read loop did.
     func stderrText() -> String {
-        let chunk = stderrPipe.fileHandleForReading.availableData
-        if !chunk.isEmpty { stderrBuffer.append(chunk) }
-        return String(bytes: stderrBuffer, encoding: .utf8) ?? "<not valid UTF-8>"
+        stderrCapture.text()
     }
 
     func stop() {
@@ -244,6 +314,10 @@ final class ServerProcess {
             process.terminate()
         }
         process.waitUntilExit()
+        // The reader signals its group at EOF; if the process was already gone the handler can
+        // be the only thing still holding the read end, so tear it down rather than leave a
+        // handler alive on a pipe that no longer has a writer.
+        stderrPipe.fileHandleForReading.readabilityHandler = nil
     }
 }
 

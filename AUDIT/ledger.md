@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 132 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 121 |
-| START (reproduced, expected behaviour written) | 11 |
+| DONE | 122 |
+| START (reproduced, expected behaviour written) | 10 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 87** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 76 are DONE and 11 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 77 are DONE and 10 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -124,7 +124,7 @@ waived in writing.
 | B68 | S3 | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift` | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift:499` | Stale "detached task" comment plus a 60 ms sleep that waits for nothing | test | DONE | this Mac (arm64) | Phase B L3-18 |
 | B69 | S3 | `Tests/WebSearchCoreTests/CoreUnitTests.swift` | `Tests/WebSearchCoreTests/CoreUnitTests.swift:344` | Clock test asserts a property that cannot fail | test | DONE | this Mac (arm64) | Phase B L3-20 |
 | B70 | S3 | `Tests/WebSearchCoreTests/StdioServerTests.swift` (same pattern in `ErrorReportingTests.swift`, `SchemaCompati | `Tests/WebSearchCoreTests/StdioServerTests.swift:85` (loop `:70-93`) | Subprocess harnesses advertise a timeout that a blocking read cannot enforce | test | DONE | this Mac (arm64) | Phase B L3-21 |
-| B71 | S3 | `Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift` | `Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift:30` | Three copies of the same subprocess harness, already diverged | test | START | this Mac (arm64) | Phase B L3-22 |
+| B71 | S3 | `Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift` | `Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift:30` | Three copies of the same subprocess harness, already diverged | test | DONE | this Mac (arm64) | Phase B L3-22 |
 | B72 | S3 | `Tests/WebSearchCoreTests/TestSupport.swift` | `Tests/WebSearchCoreTests/TestSupport.swift:178` (body `:170-189`) | `assertNoCredentialLeak` documents a check it does not perform and passes vacuously | test | DONE | this Mac (arm64) | Phase B L3-23 |
 | B73 | S3 | `scripts/soak.py` | `scripts/soak.py:446` | Soak report attributes every failure category to every provider | bug | DONE | this Mac (arm64) | Phase B L3-24 |
 | B74 | S3 | `MCPSMonitor` (option parsing) | `Sources/MCPSMonitor/main.swift:200` (`--no-nodes` at `:143`, custom nodes at `:160`) | `--no-nodes` is silently ignored whenever a `--node` is also present | logic | DONE | this Mac (arm64) | Phase B L3-29 |
@@ -218,6 +218,41 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B71 — three copies of the subprocess harness, already diverged
+
+**Severity S3** · **category** test · **status** DONE · **host** node1 (arm64)
+
+**Premise confirmed.** `StdioServerTests.ServerProcess`, `ErrorReportingTests.Server` and
+`SchemaCompatibilityTests.Server` were three copies of one process + pipe + newline-JSON harness.
+The `SchemaCompatibilityTests` copy had drifted furthest: `enum Failure { case timeout,
+unexpectedExit }` dropped the stderr payload, and the `Pipe()` assigned to `standardError` was
+never read, so an early exit reported bare `unexpectedExit`. The shared environment scrub list had
+been factored out earlier; the framing, deadline and stderr capture had not.
+
+**What changed.** `ServerProcess` in `TestSupport.swift` is the one harness, with the scrub list,
+`childEnvironment`, the B70 `poll` deadline, `send`/`readMessage`/`readResponse`, the
+`call(id:tool:arguments:)` convenience only one copy had, and a background readability handler
+that accumulates stderr for the life of the harness. Both other files now declare
+`private typealias Server = ServerProcess`. No production code changed and no call site changed
+spelling. 150 lines deleted, 96 added.
+
+**Equivalence shown, not asserted.** A detached worktree at the previous commit was built with
+its own scratch path; the same three test classes were run in both trees through the same runner.
+The `Test Case … passed/failed/skipped` lines, stripped of timing and sorted, form manifests that
+are byte-identical (`diff` exit 0; 46 tests each, 0 failures). The one case where the copies
+differed was probed separately: a child that exits without answering (`/usr/bin/true`) yields
+`unexpectedExit` from the old `SchemaCompatibilityTests` harness and `server exited early; stderr:`
+from the consolidated one. The probe was removed and the file restored byte-identical (`diff`
+empty, SHA-256 `7493e9ef89e6ff04856dba3a9c51e785ec37b2134b15a683898a9eec9495b53f`).
+
+**A hang found during the refactor.** The first stderr-capture version waited unbounded for EOF;
+`StdioServerTests` inspects stderr while the child is still running, so the class hung — the same
+failure mode B70 removes. The wait is now bounded at two seconds. Recorded because a "pure
+refactor" claim would otherwise have hidden it.
+
+Gate: 549 tests / 6 skipped / 0 failures; debug and release 0 warnings; swift-format 0;
+swiftlint 0; notices clean. Evidence: `AUDIT/evidence/B71-one-subprocess-harness.txt`.
 
 ## B70 — the subprocess harness "timeout" could not fire
 

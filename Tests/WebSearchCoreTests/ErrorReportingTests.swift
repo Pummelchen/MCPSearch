@@ -16,92 +16,12 @@ final class ErrorReportingTests: XCTestCase {
 
     // MARK: - Server harness
 
-    private final class Server {
-        let process = Process()
-        let stdin = Pipe()
-        let stdout = Pipe()
-        let stderr = Pipe()
-        private var buffer = Data()
-
-        init(binary: URL, environment: [String: String]) {
-            process.executableURL = binary
-            process.standardInput = stdin
-            process.standardOutput = stdout
-            process.standardError = stderr
-            // Start from a scrubbed base so ambient credentials cannot affect results.
-            var env: [String: String] = [
-                "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
-            ]
-            for key in ServerTestSupport.providerEnvironmentVariables {
-                env.removeValue(forKey: key)
-            }
-            for (key, value) in environment { env[key] = value }
-            process.environment = ServerTestSupport.childEnvironment(base: env)
-        }
-
-        func start() throws { try process.run() }
-
-        func call(id: Int, tool: String, arguments: [String: Any]) throws -> [String: Any] {
-            let request: [String: Any] = [
-                "jsonrpc": "2.0",
-                "id": id,
-                "method": "tools/call",
-                "params": ["name": tool, "arguments": arguments],
-            ]
-            try send(request)
-            return try readResponse(id: id)
-        }
-
-        func send(_ object: [String: Any]) throws {
-            var data = try JSONSerialization.data(withJSONObject: object)
-            data.append(UInt8(ascii: "\n"))
-            stdin.fileHandleForWriting.write(data)
-        }
-
-        func readResponse(id: Int, timeout: TimeInterval = 20) throws -> [String: Any] {
-            let deadline = Date().addingTimeInterval(timeout)
-            while Date() < deadline {
-                if let newline = buffer.firstIndex(of: UInt8(ascii: "\n")) {
-                    let line = buffer[buffer.startIndex..<newline]
-                    buffer = Data(buffer[buffer.index(after: newline)...])
-                    guard !line.isEmpty else { continue }
-                    if let object = try JSONSerialization.jsonObject(with: Data(line))
-                        as? [String: Any],
-                        (object["id"] as? Int) == id
-                    {
-                        return object
-                    }
-                    continue
-                }
-                let chunk = stdout.fileHandleForReading.availableData
-                if chunk.isEmpty { throw Failure.unexpectedExit(stderrText()) }
-                buffer.append(chunk)
-            }
-            throw Failure.timeout
-        }
-
-        func stderrText() -> String {
-            (String(bytes: stderr.fileHandleForReading.availableData, encoding: .utf8) ?? "<not valid UTF-8>")
-        }
-
-        func stop() {
-            try? stdin.fileHandleForWriting.close()
-            if process.isRunning { process.terminate() }
-            process.waitUntilExit()
-        }
-
-        enum Failure: Error, CustomStringConvertible {
-            case timeout
-            case unexpectedExit(String)
-
-            var description: String {
-                switch self {
-                case .timeout: "timed out waiting for a response"
-                case .unexpectedExit(let stderr): "server exited early; stderr: \(stderr)"
-                }
-            }
-        }
-    }
+    /// The one subprocess harness, shared with every other stdio test file.
+    ///
+    /// This file used to carry its own 85-line copy: same pipes, same newline framing, same
+    /// scrub list, and a read loop with the unenforceable deadline (ledger B70). The copies had
+    /// already drifted before being folded together (ledger B71).
+    private typealias Server = ServerProcess
 
     private func startServer(environment: [String: String] = [:]) throws -> Server {
         let binary = try ServerTestSupport.binaryURL()
