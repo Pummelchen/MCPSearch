@@ -60,6 +60,15 @@ public struct Renderer: Sendable {
 
     // MARK: - Layout
 
+    /// Pad a leading column and keep exactly one separating space.
+    ///
+    /// Padding alone does not separate columns: a value that fills its width — which is
+    /// precisely what truncation produces — runs into the next column, so a long provider or
+    /// node name collided with `kind` or `state`. The total width is unchanged.
+    static func leadingColumn(_ text: String, width: Int) -> String {
+        Terminal.pad(text, to: max(0, width - 1)) + " "
+    }
+
     public func render(_ model: MonitorModel, columns: Int, rows: Int) -> [String] {
         let lines = compose(model, columns: columns, rows: rows)
         // Clamp width and height last, so no individual section has to know the limit.
@@ -159,7 +168,7 @@ public struct Renderer: Sendable {
         _ provider: String, _ kind: String, _ state: String, _ last: String,
         _ average: String, _ count: String, _ rate: String, _ note: String
     ) -> String {
-        Terminal.pad(provider, to: 17) + Terminal.pad(kind, to: 12)
+        Self.leadingColumn(provider, width: 17) + Terminal.pad(kind, to: 12)
             + Terminal.pad(state, to: 8) + Terminal.pad(last, to: 8, alignment: .right)
             + Terminal.pad(average, to: 8, alignment: .right)
             + Terminal.pad(count, to: 4, alignment: .right)
@@ -167,7 +176,10 @@ public struct Renderer: Sendable {
     }
 
     private func providerRow(_ status: ProviderStatus, columns: Int) -> String {
-        let name = Terminal.pad("  " + glyph(status.state) + " " + status.displayName, to: 17)
+        let name = Self.leadingColumn(
+            "  " + glyph(status.state) + " " + status.displayName,
+            width: 17
+        )
         let kind = Terminal.pad(status.kind, to: 12)
         let state = stateText(status.state)
         let last = Terminal.pad(
@@ -227,7 +239,7 @@ public struct Renderer: Sendable {
         lines.append("  " + Terminal.bold("SEARXNG NODES", enabled: useColour) + "   " + summary)
         lines.append(
             Terminal.colour(
-                "  " + Terminal.pad("  node", to: 16) + Terminal.pad("state", to: 10)
+                "  " + Self.leadingColumn("  node", width: 16) + Terminal.pad("state", to: 10)
                     + Terminal.pad("latency", to: 9, alignment: .right)
                     + Terminal.pad("results", to: 9, alignment: .right)
                     + Terminal.pad("ok", to: 5, alignment: .right) + "  engines",
@@ -237,9 +249,9 @@ public struct Renderer: Sendable {
         )
 
         for node in model.nodes {
-            let name = Terminal.pad(
+            let name = Self.leadingColumn(
                 "  " + glyph(node.state) + " " + node.name,
-                to: 16
+                width: 16
             )
             let state = stateText(node.state)
             let latency = Terminal.pad(

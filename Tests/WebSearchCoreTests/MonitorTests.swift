@@ -222,6 +222,38 @@ final class RendererTests: XCTestCase {
         XCTAssertTrue(lines.contains("Tavily"))
     }
 
+    /// A value that fills its column must still be separated from the next one.
+    ///
+    /// Padding alone does not separate columns: truncation returns a string of exactly the
+    /// column width, so the longest provider name ran into `kind` and the longest node name
+    /// into `state`. Seen on a live dashboard, which rendered "Open Web Se…aggregator".
+    func testTruncatedNamesKeepTheirColumnSeparator() {
+        let rendered = Renderer(useColour: false).render(
+            model(
+                nodes: [node("a-very-long-node-name", state: .up)],
+                providers: [provider(.openWebSearch, state: .notConfigured)]
+            ),
+            columns: 140,
+            rows: 40
+        )
+
+        let providerLine = rendered.first { $0.contains("Open Web") }
+        XCTAssertNotNil(providerLine)
+        XCTAssertFalse(
+            providerLine?.contains("…aggregator") ?? false,
+            "the truncated provider name runs into the kind column: \(providerLine ?? "")"
+        )
+        XCTAssertTrue(providerLine?.contains("… aggregator") ?? false, providerLine ?? "")
+
+        // The node name column is narrower, so the name truncates earlier.
+        let nodeLine = rendered.first { $0.contains("a-very-lon") }
+        XCTAssertNotNil(nodeLine)
+        XCTAssertFalse(
+            nodeLine?.contains("…UP") ?? false,
+            "the truncated node name runs into the state column: \(nodeLine ?? "")"
+        )
+    }
+
     func testFailureMessageIsShown() {
         let lines = Renderer(useColour: false).render(
             model(providers: [
