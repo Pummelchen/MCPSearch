@@ -35,9 +35,7 @@ public struct Renderer: Sendable {
         case .healthy: Terminal.colour("●", .brightGreen, enabled: useColour)
         case .configuredButIdle: Terminal.colour("○", .cyan, enabled: useColour)
         case .failing: Terminal.colour("✖", .brightRed, enabled: useColour)
-        case .unavailable: Terminal.colour("◐", .brightYellow, enabled: useColour)
         case .notConfigured: Terminal.colour("–", .grey, enabled: useColour)
-        case .probing: Terminal.colour("·", .grey, enabled: useColour)
         }
     }
 
@@ -46,7 +44,6 @@ public struct Renderer: Sendable {
         switch state {
         case .healthy: return Terminal.colour(label, .brightGreen, enabled: useColour)
         case .failing: return Terminal.colour(label, .brightRed, enabled: useColour)
-        case .unavailable: return Terminal.colour(label, .brightYellow, enabled: useColour)
         case .notConfigured: return Terminal.colour(label, .grey, enabled: useColour)
         default: return Terminal.colour(label, .cyan, enabled: useColour)
         }

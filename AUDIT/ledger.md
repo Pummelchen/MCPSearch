@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 129 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 90 |
-| START (reproduced, expected behaviour written) | 39 |
+| DONE | 91 |
+| START (reproduced, expected behaviour written) | 38 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 84** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 45 are DONE and 39 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 46 are DONE and 38 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -131,7 +131,7 @@ waived in writing.
 | B75 | S3 | `MCPSMonitor` (option parsing); same helper copied in `WebSearchCore/Support/TransportConfiguration.swift` | `Sources/MCPSMonitor/main.swift:155` (helper `:127-135`); `Sources/WebSearchCore/Support/TransportConfiguration.swift:97` | `--node` accepts a relative URL and can swallow the next flag as its value | logic | DONE | this Mac (arm64) | Phase B L3-30 |
 | B76 | S3 | `MCPSMonitor` (provider selection); `WebSearchCore/Search/ProviderRegistry.swift` | `Sources/MCPSMonitor/main.swift:348` (and `:292`), `Sources/WebSearchCore/Search/ProviderRegistry.swift:34` | `mcps-mon` ignores `SEARCH_DISABLED_PROVIDERS`, labels disabled providers "ready", and probes them | logic | START | this Mac (arm64) | Phase B L3-31 |
 | B77 | S3 | `SwiftWebSearchMCP` (argument parsing) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:464` | `ToolArguments.bool(_:)` has no caller | dead | DONE | this Mac (arm64) | Phase B L3-33 |
-| B78 | S3 | `MCPSMonitor` view state; `WebSearchCore/Monitor/Renderer.swift` | `Sources/WebSearchCore/Monitor/MonitorModel.swift:127` and `:134` | `ProviderStatus.State.probing` and `.unavailable` can never be produced, so their renderer branches are unreachable | dead | START | this Mac (arm64) | Phase B L3-34 |
+| B78 | S3 | `MCPSMonitor` view state; `WebSearchCore/Monitor/Renderer.swift` | `Sources/WebSearchCore/Monitor/MonitorModel.swift:127` and `:134` | `ProviderStatus.State.probing` and `.unavailable` can never be produced, so their renderer branches are unreachable | dead | DONE | this Mac (arm64) | Phase B L3-34 |
 | B79 | S3 | `SwiftWebSearchMCP` (HTTP host body cap) | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:167` | A request-head `Content-Length` reserves up to 1 MiB per connection before any body arrives | unsafe | START | this Mac (arm64) | Phase B L3-36 |
 | B80 | S3 | `scripts/soak.py` | `scripts/soak.py:170` (used at `:183`) | `soak.py` conflates EOF with a malformed stdout line and discards the line | bug | DONE | this Mac (arm64) | Phase B L3-38 |
 | B81 | S3 | `scripts/mcp_smoke.py` | `scripts/mcp_smoke.py:315` (decode at `:296`) | `mcp_smoke.py` de-chunks an SSE body after decoding it to `str` | bug | DONE | this Mac (arm64) | Phase B L3-39 |
@@ -215,6 +215,16 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B78 — `ProviderStatus.State.probing` and `.unavailable` were unreachable
+
+**Severity S3** (recorded) · **category** dead · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** `ProviderStatus.State` declared six cases but only four could be produced: `pending(provider:configured:hint:)` starts at `.configuredButIdle` or `.notConfigured`, and `applying(_:)` assigns `.healthy` or `.failing`. Nothing assigned `.probing` (the monitor builds a fresh immutable model only after all probes return, so it cannot draw an in-flight probe) or `.unavailable`, yet `Renderer` implemented a glyph and a colour for both - including the "N/A" presentation that looked like an enabled-but-unusable provider's state while being permanently unreachable. The other `.probing` hit in the tree is `ProviderHealth.Status.probing`, a different enum.
+
+**The decision.** Delete the two cases and their three render branches rather than invent producers, the same call B65 made for `NodeStatus.State.skipped`. `.probing` would need the monitor to publish a partially updated model mid-cycle, which the design deliberately avoids. `.unavailable` describes an operator-disabled provider, and **B76** (still open) is the task whose `expected-correct` says a disabled provider must be presented as unavailable; that producer belongs to B76, so the dead branch is removed here rather than left for it to inherit.
+
+**Verification.** A grep before the change showed the two declarations whose only other uses were the render branches, with no producer and no test constructing either. The compiler and the suite prove nothing referenced them: a temporary test method naming both removed cases fails the build with `type 'ProviderStatus.State' has no member 'probing'` / `'unavailable'`, and the file was restored byte-identically (`diff` clean). Debug and release build with 0 warnings under `-warnings-as-errors`; **490 tests, 6 skipped, 0 failures** (unchanged, because no test can name a deleted case); `swift-format --strict` and `swiftlint --strict` clean. Artifact: `AUDIT/evidence/B78-dead-provider-states.txt`.
 
 ## B64 — a non-SearXNG body from a live node was reported as "unreachable"
 

@@ -118,20 +118,15 @@ public struct NodeStatus: Sendable, Identifiable {
 public struct ProviderStatus: Sendable, Identifiable {
     public enum State: Sendable, Equatable {
         case configuredButIdle
-        case probing
         case healthy
         case failing
-        /// Enabled but unusable, e.g. a scraper that is switched off or a host blocked.
-        case unavailable
         case notConfigured
 
         public var label: String {
             switch self {
             case .configuredButIdle: "IDLE"
-            case .probing: "····"
             case .healthy: "OK"
             case .failing: "FAIL"
-            case .unavailable: "N/A"
             case .notConfigured: "NO KEY"
             }
         }
