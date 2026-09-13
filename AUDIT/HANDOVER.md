@@ -7,10 +7,10 @@ authoritative; `AUDIT/ledger.json` carries every field. This page is orientation
 
 | | |
 | --- | --- |
-| Branch | `audit/2026-09-13` at **`3cc0620`**, pushed to `origin` (never merged; `main` untouched at `f3dd8d9`) |
+| Branch | `audit/2026-09-13` at **`2691812`**, pushed to `origin` (never merged; `main` untouched at `f3dd8d9`) |
 | Relationship | `main` is a **strict ancestor** of this branch — `git rev-list --count origin/audit/2026-09-13..origin/main` is 0, so the eventual merge is a fast-forward |
-| Tasks | **100 DONE, 0 PROGRESS, 30 START, 0 BLOCKED** (130 enumerated; all open work is S3) |
-| Suite | **501 tests, 6 skipped, 0 failures** (486 baseline + 3 from B116) |
+| Tasks | **105 DONE, 0 PROGRESS, 26 START, 0 BLOCKED** (131 enumerated; all open work is S3) |
+| Suite | **504 tests, 6 skipped, 0 failures** (486 baseline + 3 from B116) |
 | Builds | debug + release, 0 warnings under `-warnings-as-errors` |
 | Linters | `swift-format --strict` 0 · `swiftlint --strict` 0 · ruff clean · pyright strict 0 |
 | Phases | A, B and D complete; C in progress (all S0/S1/S2 closed); **E not started** |
@@ -34,6 +34,14 @@ Two things worth carrying forward:
   S0/S1/S2 = 34). The mechanical fields — status cell, counts, severity sentence — are now written
   by a helper kept **outside** the repository at `~/Library/Caches/MCPSearch/ledger_tool.py`;
   prose is still written by hand. Run it as `ledger_tool.py complete <ID> <payload.json>`.
+* **A task can be closed in the ledger but still marked START.** B106's fix had been committed
+  (`761966b1`) and only its evidence artifact was missing, so it read START for a whole session and
+  would have blocked Phase E. Before assuming an open task is open, run
+  `git log --oneline --all --grep "audit(<ID>)"` for it.
+* **Never run two workers in this checkout.** Two did in round 2: one wrote the shared
+  `AUDIT/ledger.json` while the other was mid-task. It was recovered by staging a task-only ledger
+  copy via `git update-index --cacheinfo`, but the ledger is a single shared file with no locking,
+  so workers must be serialised.
 * **A green suite on the CI runner is not the same as a green suite here.** The B116 flake passed
   CI repeatedly. Establish the baseline locally, several times, before trusting it.
 * **One commit on this branch is authored `Node1 <node1@Node1.local>`** (`audit(B64): …`) rather
@@ -86,7 +94,7 @@ Two things worth carrying forward:
   `node1` runs one (`mcps-searxng`, `127.0.0.1:8888`); its image ID matches the digest pinned in
   `deploy/docker-compose.yml`, so the fleet is in sync.
 
-## Open tasks (30, all S3)
+## Open tasks (26, all S3)
 
 The queue order is this table's order.
 
@@ -96,20 +104,16 @@ The queue order is this table's order.
 | B101 | S3 | test | HTTPMCPHost's startup-failure and internal-error paths are untested | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:79` |
 | B102 | S3 | bug | A cross-scheme redirect is refused by the transport, not by our policy, and surfaces as an opaque transp | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:245-256 (NoR` |
 | B103 | S3 | test | The tool-layer cancellation branches are still not exercised by any test | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:91-93, 142-143, 237` |
-| B106 | S3 | test | The PTY harness reports a crashing monitor as a first-frame timeout | `scripts/monitor_tty_smoke.py` |
-| B118 | S3 | docs | The invalid --transport error names only two of the four accepted spellings that the usage text now do | `Sources/WebSearchCore/Support/TransportConfiguration.swift (the ` |
+| B119 | S3 | test | The PTY harness polls the monitor only once, so a crash after the drain window but before the first fram | `scripts/monitor_tty_smoke.py (the startup check after session.dr` |
 | B46 | S3 | incomplete | mcps-mon always exits 0, so --iterations cannot be used as a health check | `Sources/MCPSMonitor/main.swift:45-78 (--iterations  Stop after n` |
 | B54 | S3 | bug | Concurrent first use of the Parallel provider performs the MCP handshake more than once | `Sources/WebSearchCore/Providers/ParallelMCPProvider.swift:162` |
 | B57 | S3 | logic | The per-provider "which variable enables me" contract is triplicated across units and already wrong for  | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:407` |
 | B58 | S3 | style | web_search and web_answer duplicate their argument parsing, and the two schemas have already drifted | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:186` |
-| B66 | S3 | dead | Decoded-but-unused vendor DTO fields across five adapters | `Sources/WebSearchCore/Providers/MojeekProvider.swift:219 (and Ex` |
 | B70 | S3 | test | Subprocess harnesses advertise a timeout that a blocking read cannot enforce | `Tests/WebSearchCoreTests/StdioServerTests.swift:85 (loop :70-93)` |
 | B71 | S3 | test | Three copies of the same subprocess harness, already diverged | `Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift:30` |
 | B76 | S3 | logic | mcps-mon ignores SEARCH_DISABLED_PROVIDERS, labels disabled providers "ready", and probes them | `Sources/MCPSMonitor/main.swift:348 (and :292), Sources/WebSearch` |
 | B79 | S3 | unsafe | A request-head Content-Length reserves up to 1 MiB per connection before any body arrives | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:167` |
 | B84 | S3 | unsafe | IPAddress.v6 is a public case that accepts any byte count, and its accessors index 16 bytes unconditio | `Sources/WebSearchCore/Fetch/URLPolicy.swift:289` |
-| B85 | S3 | docs | Query hashing for logs is a fast unsalted FNV-1a, but is documented as non-reversible | `Sources/WebSearchCore/Support/Logging.swift:93` |
-| B87 | S3 | docs | The Jina Reader fallback discloses the target URL to a third party by default, with no warning that it d | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:65` |
 | B88 | S3 | perf | The declared per-host DNS cache does not exist, and every redirect hop resolves twice | `Sources/WebSearchCore/Fetch/URLPolicy.swift:57` |
 | B89 | S3 | perf | SearchCache.pruneExpired rebuilds the whole dictionary on every read, write and stats call | `Sources/WebSearchCore/Search/SearchCache.swift:103` |
 | B90 | S3 | perf | The HTTP listener bounds the request body but nothing else, so idle or slow connections are unbounded | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:61` |
