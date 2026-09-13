@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 #if canImport(Glibc)
@@ -83,20 +84,34 @@ public struct Log: Sendable {
 
     // MARK: - Helpers
 
-    /// Render a query for logging: stable hash unless explicitly opted in.
+    /// Render a query for logging: a per-process correlation id unless explicitly opted in.
     public func queryDescription(_ query: String) -> String {
         logQueries ? query : Log.hash(query)
     }
 
-    /// Stable, non-reversible short hash for correlating repeated queries without
-    /// recording user content.
+    /// Key for `hash`, generated once in memory and never persisted or logged.
+    ///
+    /// Because the key is per process, a correlation id is reproducible within a run but not
+    /// across restarts — an accepted cost of the design, and the reason the doc below no longer
+    /// promises a stable value (ledger B85).
+    private static let queryHashKey = SymmetricKey(size: .bits256)
+
+    /// A keyed correlation id for a query, short enough to keep a log line readable.
+    ///
+    /// This used to be an unkeyed FNV-1a and was documented as non-reversible. That was false:
+    /// search queries are low-entropy natural language, so anyone holding a log line could
+    /// confirm or recover a candidate by hashing a dictionary against the same public function
+    /// (`hash("swift concurrency")` was a one-line offline check). HMAC-SHA-256 under
+    /// `queryHashKey`, truncated to 64 bits, makes a dictionary attack require the key, which
+    /// lives only in this process's memory. The `q` + hex shape is unchanged, so existing log
+    /// consumers see the same field (ledger B85).
     public static func hash(_ value: String) -> String {
-        var hash: UInt64 = 0xcbf2_9ce4_8422_2325
-        for byte in value.utf8 {
-            hash ^= UInt64(byte)
-            hash = hash &* 0x0000_0100_0000_01b3
+        let mac = HMAC<SHA256>.authenticationCode(for: Data(value.utf8), using: queryHashKey)
+        var truncated: UInt64 = 0
+        for byte in mac.prefix(8) {
+            truncated = (truncated << 8) | UInt64(byte)
         }
-        return "q" + String(hash, radix: 16)
+        return "q" + String(truncated, radix: 16)
     }
 
     static func timestamp() -> String {

@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 130 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 101 |
-| START (reproduced, expected behaviour written) | 29 |
+| DONE | 102 |
+| START (reproduced, expected behaviour written) | 28 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 85** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 85 S3 tasks 56 are DONE and 29 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 85 S3 tasks 57 are DONE and 28 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -138,7 +138,7 @@ waived in writing.
 | B82 | S3 | `scripts/soak.py` | `scripts/soak.py:327` (argument at `:301`) | A negative `--queries` silently truncates the query list from the end | bug | DONE | this Mac (arm64) | Phase B L3-40 |
 | B83 | S3 | `scripts/mcp_smoke.py` | `scripts/mcp_smoke.py:345-353` (port at `:350-357`, stderr only read at `:458`) | HTTP smoke can wait 20 s on a dead server and never checks that it is alive | bug | DONE | this Mac (arm64) | Phase B L3-41 |
 | B84 | S3 | `WebSearchCore` / `Fetch` (`URLPolicy`) | `Sources/WebSearchCore/Fetch/URLPolicy.swift:289` | `IPAddress.v6` is a public case that accepts any byte count, and its accessors index 16 bytes unconditionally | unsafe | START | this Mac (arm64) | Phase B L4-9 |
-| B85 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:93` | Query hashing for logs is a fast unsalted FNV-1a, but is documented as non-reversible | docs | START | this Mac (arm64) | Phase B L4-10 |
+| B85 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:93` | Query hashing for logs is a fast unsalted FNV-1a, but is documented as non-reversible | docs | DONE | this Mac (arm64) | Phase B L4-10 |
 | B86 | S3 | `deploy` (`provision-node.sh`) | `deploy/provision-node.sh:71` | Provisioning writes through fixed, predictable `/tmp` paths and loads a container image from one | unsafe | DONE | this Mac (arm64) | Phase B L4-12 |
 | B87 | S3 | `WebSearchCore` / `Fetch` (`JinaReaderFetcher`) + `WebSearchCore` / `Search` (`SearchPipelineFactory`) | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:65` | The Jina Reader fallback discloses the target URL to a third party by default, with no warning that it did | docs | START | this Mac (arm64) | Phase B L4-13 |
 | B88 | S3 | `WebSearchCore` / `Fetch` (`URLPolicy` + `DirectHTTPFetcher`) | `Sources/WebSearchCore/Fetch/URLPolicy.swift:57` | The declared per-host DNS cache does not exist, and every redirect hop resolves twice | perf | START | this Mac (arm64) | Phase B L5-3 |
@@ -216,6 +216,41 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B85 — the log query digest was a public FNV-1a documented as non-reversible
+
+**Severity S3** (recorded) · **category** docs · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** `Log.hash` rendered a query as an unkeyed FNV-1a digest and its doc comment
+claimed a "Stable, non-reversible short hash for correlating repeated queries without recording
+user content". FNV-1a has no key, so "non-reversible" was false: queries are low-entropy natural
+language and anyone holding a log line can confirm or recover a candidate by hashing a dictionary
+with the same public function — a one-line offline check. The default (`logQueries: false`) is
+still better than verbatim logging, but the claim overstated the protection for whoever reads the
+logs (a collector, a pasted bug report, an operator).
+
+**The fix.** The finding allowed renaming this a correlation id *or* making it resistant. The
+second was chosen: the recoverability is the problem, and relabelling would leave the fact in place
+while deleting the only warning about it. `hash` is now HMAC-SHA-256 under a 256-bit `SymmetricKey`
+generated once at process start, truncated to the same 64-bit `q` + hex form so the log-line field
+is unchanged for existing consumers. The key is held in memory only, never persisted or logged, so
+a dictionary attack needs it. CryptoKit was already a dependency (`SearchCache` uses `SHA256`), so
+no package was added, and no public signature changed. The trade-off the design implies — ids
+reproduce within a run but not across restarts — is now stated in the code rather than hidden
+behind "stable".
+
+**Verification.** `LoggingTests.testHashIsNotTheUnkeyedFNV1aDigest` holds the exact FNV-1a outputs
+of three inputs, computed independently in Python, and asserts the current digest differs; reverting
+`hash` to FNV-1a fails all three with `XCTAssertNotEqual ... reproduces the unkeyed FNV-1a digest`,
+which is the dictionary attack made concrete. `Logging.swift` was then restored byte-identically
+(`diff` empty; SHA-256 equal). `LoggingTests` is 7 tests green. Debug and release build with 0
+warnings under `-warnings-as-errors`; **502 tests, 6 skipped, 0 failures** (501 at B66 plus this
+one); `swift-format --strict` and `swiftlint --strict` clean over 84 files; the third-party notices
+check reports all 8 pinned packages covered. Artifact:
+`AUDIT/evidence/B85-query-hash-keyed.txt`.
+
+**Noted.** No README or operator-facing document repeated the false claim; it lived only in the
+source comment, so there was no second wording to correct.
 
 ## B66 — decoded-but-unused fields across five vendor DTOs
 

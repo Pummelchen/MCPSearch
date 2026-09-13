@@ -581,6 +581,27 @@ final class LoggingTests: XCTestCase {
         XCTAssertFalse(Log.hash("query").contains("query"))
     }
 
+    /// The digest must be keyed, not the public FNV-1a it used to be.
+    ///
+    /// The old value was recomputable by anyone: a log reader could hash a candidate query with
+    /// the same public algorithm and confirm it, so the "non-reversible" doc claim was false.
+    /// These are the exact FNV-1a outputs the defective function produced, computed independently
+    /// of the Swift code; a keyed digest must not reproduce them (ledger B85).
+    func testHashIsNotTheUnkeyedFNV1aDigest() {
+        let knownFNV1a = [
+            "swift concurrency": "q13a54df77317abdf",
+            "my secret search terms": "qcdc8b5bd8d3de1dc",
+            "query": "qb1068f146c4596c3",
+        ]
+        for (query, digest) in knownFNV1a {
+            XCTAssertNotEqual(
+                Log.hash(query),
+                digest,
+                "hash(\(query)) reproduces the unkeyed FNV-1a digest"
+            )
+        }
+    }
+
     func testEscapeKeepsOutputOnOneLine() {
         XCTAssertEqual(Log.escape("a\nb\tc\"d\\e"), "a\\nb\\tc\\\"d\\\\e")
     }
