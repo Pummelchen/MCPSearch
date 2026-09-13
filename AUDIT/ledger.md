@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 133 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 127 |
-| START (reproduced, expected behaviour written) | 6 |
+| DONE | 128 |
+| START (reproduced, expected behaviour written) | 5 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 88** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 88 S3 tasks 82 are DONE and 6 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 88 S3 tasks 83 are DONE and 5 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -151,7 +151,7 @@ waived in writing.
 | B95 | S3 | `Tests/WebSearchCoreTests/MonitorTests.swift`, `Sources/WebSearchCore/Monitor/ProviderProbe.swift:50` | `Tests/WebSearchCoreTests/MonitorTests.swift:101` | The monitor's setup-hint test asserts a string the test itself constructed | test | DONE | this Mac (arm64) | Phase B L6-15 |
 | B96 | S3 | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift` | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift:46` | `HTTPStatusMapper.map`'s HTTPError branches and `validate`'s default/422 statuses are untested | test | DONE | this Mac (arm64) | Phase B L6-16 |
 | B97 | S3 | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift`, `Tests/WebSearchCoreTests/AnswerSynthesizerTests.swift | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift:349` | `AnswerSynthesizer`'s completion edge cases, token usage and locale prompt are untested | test | DONE | this Mac (arm64) | Phase B L6-17 |
-| B98 | S3 | `Sources/MCPSMonitor/main.swift` (`Monitor`), `Tests/MCPSMonitorTests/MonitorOptionsTests.swift` | `Sources/MCPSMonitor/main.swift:337` | The `Monitor` actor's refresh/counting/warning logic has no Swift test | test | START | this Mac (arm64) | Phase B L6-18 |
+| B98 | S3 | `Sources/MCPSMonitor/main.swift` (`Monitor`), `Tests/MCPSMonitorTests/MonitorOptionsTests.swift` | `Sources/MCPSMonitor/main.swift:337` | The `Monitor` actor's refresh/counting/warning logic has no Swift test | test | DONE | this Mac (arm64) | Phase B L6-18 |
 | B99 | S3 | `Tests/WebSearchCoreTests/TestSupport.swift`, `scripts/*.py` | `Tests/WebSearchCoreTests/TestSupport.swift:12` | No test ties the Swift test harnesses to the Python harnesses, and two scripts are untested entirely | test | START | this Mac (arm64) | Phase B L6-19 |
 | B100 | S3 | `Sources/SwiftWebSearchMCP/ToolSchemas.swift` (`ToolOutputFormatter`) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:526` | `ToolOutputFormatter`'s fallback and diagnostic branches are untested | test | START | this Mac (arm64) | Phase B L6-20 |
 | B101 | S3 | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift`, `Tests/WebSearchCoreTests/HTTPTransportTests.swift` | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:79` | `HTTPMCPHost`'s startup-failure and internal-error paths are untested | test | START | this Mac (arm64) | Phase B L6-21 |
@@ -219,6 +219,20 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B98 — the `Monitor` actor's refresh/counting/warning logic had no Swift test
+
+**Severity S3** · **category** test · **status** DONE · **host** node1 (arm64)
+
+**Premise open, one clause wrong.** Only `Options.parse`/`exitCode` and the renderer plus `NodeStatus`/`ProviderStatus.applying` in isolation were covered; the actor's `refresh`, `buildWarnings` and `waitForNextCycle` were not, and no commit mentions B98. But the record's "with a stub HTTPClient" was not reachable: `Monitor.init(options:)` built its own `URLSessionHTTPClient` and `Log(level: .none)` from this machine's environment, and nothing accepted a client.
+
+**Production change, stated plainly.** A test-only internal `init(options:configuration:http:log:)` was added and `init(options:)` now delegates to it unchanged. The two stored properties widened to `any HTTPClient`/`Log`. That is the whole source diff; production construction is identical (same client, same 8 s probe timeout, same disabled log, same registry).
+
+**What was added.** `Tests/MCPSMonitorTests/MonitorActorTests.swift` with nine tests and two local stubs (a URL-keyed `StubHTTPClient`, plus a `FailingEndpointClient` that fails one node endpoint). They pin the first-refresh probe and the no-second-credit gate, the forced probe, an empty node list, `.up`/`.degraded` folding into checks/failures, accumulation across refreshes, the down-node + fleet-engine + missing-credential warnings with the `max(2, nodes/2)` threshold, that one node's failing engine is below it, and `waitForNextCycle` returning early on `requestRefresh()` but otherwise honouring a short interval.
+
+**Falsification.** M1 set `hasProbedBefore: true` so nothing is probed; M2 deleted the `else { failures += 1 }` arm of `NodeStatus.applying`; M3 raised the engine-warning threshold to 999. Each built and run under `--filter MonitorActorTests`, producing 10 failures across the nine tests. Both files restored byte-identical (`diff` empty, SHA-256 unchanged).
+
+Gate: 579 tests / 6 skipped / 0 failures; debug and release 0 warnings; swift-format 0; swiftlint 0 in 89 files; notices clean. Evidence: `AUDIT/evidence/B98-monitor-actor.txt`.
 
 ## B97 — `AnswerSynthesizer`'s completion edge cases, token usage and locale prompt were untested
 

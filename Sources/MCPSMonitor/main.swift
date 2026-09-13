@@ -324,8 +324,8 @@ struct Options: Sendable {
 /// to run concurrently.
 actor Monitor {
     private var options: Options
-    private let log = Log(level: .none)
-    private let http: URLSessionHTTPClient
+    private let log: Log
+    private let http: any HTTPClient
     private let nodeProbe: NodeProbe
     private let providerProbe: ProviderProbe
     private var renderer: Renderer
@@ -337,14 +337,38 @@ actor Monitor {
     private var probedProviders: Set<ProviderID> = []
 
     init(options: Options) {
-        self.options = options
-
         let configuration = ProviderProbe.buildConfiguration()
         // A dedicated client: probing must not contend with anything else, and a short
         // timeout keeps a dead provider from stalling the whole refresh.
         var probeConfiguration = configuration
         probeConfiguration.requestTimeout = .seconds(8)
+        let log = Log(level: .none)
         let http = URLSessionHTTPClient(configuration: probeConfiguration, log: log)
+        self.init(
+            options: options,
+            configuration: configuration,
+            http: http,
+            log: log
+        )
+    }
+
+    /// The same actor with its transport supplied.
+    ///
+    /// `refresh`'s probe gating, counter folding and warning aggregation cannot be reached
+    /// from a test through `init(options:)`, which builds a live `URLSession` client and
+    /// reads this machine's environment; a worker's shell has no nodes to probe and no keys
+    /// to spend, so every refresh would return an unchanged model. This seam takes the
+    /// transport and the configuration instead, so a test can script both. It is the same
+    /// construction — a real `NodeProbe` and `ProviderProbe` over the supplied client — not
+    /// a shortened test path (ledger B98).
+    init(
+        options: Options,
+        configuration: AppConfiguration,
+        http: any HTTPClient,
+        log: Log
+    ) {
+        self.options = options
+        self.log = log
         self.http = http
         self.nodeProbe = NodeProbe(http: http)
         let providerProbe = ProviderProbe(
