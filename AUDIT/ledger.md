@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 133 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 130 |
-| START (reproduced, expected behaviour written) | 3 |
+| DONE | 131 |
+| START (reproduced, expected behaviour written) | 2 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 88** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 88 S3 tasks 85 are DONE and 3 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 88 S3 tasks 86 are DONE and 2 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -154,7 +154,7 @@ waived in writing.
 | B98 | S3 | `Sources/MCPSMonitor/main.swift` (`Monitor`), `Tests/MCPSMonitorTests/MonitorOptionsTests.swift` | `Sources/MCPSMonitor/main.swift:337` | The `Monitor` actor's refresh/counting/warning logic has no Swift test | test | DONE | this Mac (arm64) | Phase B L6-18 |
 | B99 | S3 | `Tests/WebSearchCoreTests/TestSupport.swift`, `scripts/*.py` | `Tests/WebSearchCoreTests/TestSupport.swift:12` | No test ties the Swift test harnesses to the Python harnesses, and two scripts are untested entirely | test | DONE | this Mac (arm64) | Phase B L6-19 |
 | B100 | S3 | `Sources/SwiftWebSearchMCP/ToolSchemas.swift` (`ToolOutputFormatter`) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:526` | `ToolOutputFormatter`'s fallback and diagnostic branches are untested | test | DONE | this Mac (arm64) | Phase B L6-20 |
-| B101 | S3 | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift`, `Tests/WebSearchCoreTests/HTTPTransportTests.swift` | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:79` | `HTTPMCPHost`'s startup-failure and internal-error paths are untested | test | START | this Mac (arm64) | Phase B L6-21 |
+| B101 | S3 | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift`, `Tests/WebSearchCoreTests/HTTPTransportTests.swift` | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:79` | `HTTPMCPHost`'s startup-failure and internal-error paths are untested | test | DONE | this Mac (arm64) | Phase B L6-21 |
 | B109 | S3 | `WebSearchCore` / `Search` (`RankFusion`) | `Sources/WebSearchCore/Search/RankFusion.swift:161-162` | The response-level resale discount is applied to every result of an aggregator response, defeating the per-result refinement the code documents | logic | DONE | this Mac (arm64) | handover re-read L2 |
 | B110 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, `web_answer` input) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:275-281` | `web_answer`'s `provider` argument lost the enum that `web_search`'s `provider` declares, though the schema documents itself as a mirror | logic | DONE | this Mac (arm64) | handover re-read L1 |
 | B111 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, nullable enums) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:62-66`, `:83-93`, `:94-101`, `:270-274` | Nullable enum arguments declare `["string", "null"]` with an `enum` that excludes `null`, so a strict client cannot legally send the null the design depends on | logic | DONE | this Mac (arm64) | handover re-read L1 |
@@ -219,6 +219,20 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B101 — `HTTPMCPHost`'s startup-failure and internal-error paths were untested
+
+**Severity S3** · **category** test · **status** DONE · **host** node1 (arm64)
+
+**Premise: two gaps open, one already closed, one unreachable.** No test bound an occupied port, so `start()`'s `HTTPHostError.bindFailed` path was unexercised. The `localhost`/`[::1]` acceptance was already unit-tested in `LoopbackOriginTests`, but never served through the HTTP path — the cross-origin test used a foreign origin, a `127.`-prefixed lookalike and `127.0.0.1` only. The `.failure` → 500 "Internal error" arm fires only when `dispatch` throws, and `HTTPMCPHost.handle` never throws; measured against the built server, every malformed-initialize variant answers 4xx (normal/wrong-protocol 200, no-Accept and wrong-Content-Type 406, non-JSON 400), so the arm is a defensive catch-all the current SDK cannot reach. The non-loopback startup warning was left alone because reaching it means binding a real interface.
+
+**What was added.** `HTTPMCPHostLifecycleTests.swift`, two tests: a port held by the test makes the child exit 1 with `Could not bind 127.0.0.1:<port>` and `Address already in use` on stderr, and an initialized session is served for `http://localhost:<port>` and `http://[::1]:<port>` with `http://localhost.attacker.example:<port>` as a 403 control. `RawHTTP` and `freeLoopbackPort` moved from file-private to internal so the new file drives the same client instead of copying ~300 lines of socket code. No production code changed.
+
+**Falsification.** M1 rewrote `bindFailed`'s description (the first attempt failed to compile under `-warnings-as-errors` on unused bindings, so the build log was checked before trusting the red); M2 removed `[::1]` from `loopbackAuthorities`. Each relinked `SwiftWebSearchMCP` and produced one failure, 2 combined. Both files restored byte-identical (`diff` empty, SHA-256 verified).
+
+**Deviations.** `bindFailed.description` is asserted through the startup log because the executable cannot be imported; the 500 dispatch-failure arm is recorded as unreachable rather than faked; the non-loopback warning stays uncovered on purpose.
+
+Gate: 585 tests / 6 skipped / 0 failures; debug and release 0 warnings; swift-format 0; swiftlint 0 in 91 files; notices clean. Evidence: `AUDIT/evidence/B101-http-host-lifecycle.txt`.
 
 ## B100 — `ToolOutputFormatter`'s fallback and diagnostic branches were untested
 

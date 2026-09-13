@@ -10,7 +10,10 @@ import XCTest
 /// oversized body that the server refuses mid-stream, and to inspect the exact status
 /// line, headers and framing without a client library "helpfully" retrying or
 /// normalising them away.
-private struct RawHTTP {
+///
+/// Internal rather than file-private so `HTTPMCPHostLifecycleTests` drives the same client
+/// instead of growing a second copy of it (ledger B101).
+struct RawHTTP {
     struct Response {
         let status: Int
         let headers: [String: String]
@@ -277,7 +280,10 @@ final class HTTPTransportTests: XCTestCase {
     /// The port is free *when it is chosen*, not reserved: the probe socket closes before the child
     /// binds, so anything on the machine can take it in that window. That is why `startServer`
     /// retries with a fresh port rather than assuming the kernel held this one (ledger B20).
-    private static func freeLoopbackPort() throws -> UInt16 {
+    ///
+    /// Internal for `HTTPMCPHostLifecycleTests`, which needs the same "a free port, briefly" helper
+    /// (ledger B101).
+    static func freeLoopbackPort() throws -> UInt16 {
         let fd = socket(AF_INET, SOCK_STREAM, 0)
         guard fd >= 0 else { throw RawHTTP.Failure.socket("could not create a probe socket") }
         defer { close(fd) }
