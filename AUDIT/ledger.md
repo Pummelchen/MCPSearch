@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 127 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 81 |
-| START (reproduced, expected behaviour written) | 46 |
+| DONE | 82 |
+| START (reproduced, expected behaviour written) | 45 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 82** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 82 S3 tasks 36 are DONE and 46 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 82 S3 tasks 37 are DONE and 45 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -133,7 +133,7 @@ waived in writing.
 | B77 | S3 | `SwiftWebSearchMCP` (argument parsing) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:464` | `ToolArguments.bool(_:)` has no caller | dead | DONE | this Mac (arm64) | Phase B L3-33 |
 | B78 | S3 | `MCPSMonitor` view state; `WebSearchCore/Monitor/Renderer.swift` | `Sources/WebSearchCore/Monitor/MonitorModel.swift:127` and `:134` | `ProviderStatus.State.probing` and `.unavailable` can never be produced, so their renderer branches are unreachable | dead | START | this Mac (arm64) | Phase B L3-34 |
 | B79 | S3 | `SwiftWebSearchMCP` (HTTP host body cap) | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:167` | A request-head `Content-Length` reserves up to 1 MiB per connection before any body arrives | unsafe | START | this Mac (arm64) | Phase B L3-36 |
-| B80 | S3 | `scripts/soak.py` | `scripts/soak.py:170` (used at `:183`) | `soak.py` conflates EOF with a malformed stdout line and discards the line | bug | START | this Mac (arm64) | Phase B L3-38 |
+| B80 | S3 | `scripts/soak.py` | `scripts/soak.py:170` (used at `:183`) | `soak.py` conflates EOF with a malformed stdout line and discards the line | bug | DONE | this Mac (arm64) | Phase B L3-38 |
 | B81 | S3 | `scripts/mcp_smoke.py` | `scripts/mcp_smoke.py:315` (decode at `:296`) | `mcp_smoke.py` de-chunks an SSE body after decoding it to `str` | bug | START | this Mac (arm64) | Phase B L3-39 |
 | B82 | S3 | `scripts/soak.py` | `scripts/soak.py:327` (argument at `:301`) | A negative `--queries` silently truncates the query list from the end | bug | START | this Mac (arm64) | Phase B L3-40 |
 | B83 | S3 | `scripts/mcp_smoke.py` | `scripts/mcp_smoke.py:345-353` (port at `:350-357`, stderr only read at `:458`) | HTTP smoke can wait 20 s on a dead server and never checks that it is alive | bug | START | this Mac (arm64) | Phase B L3-41 |
@@ -213,6 +213,31 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B80 — `soak.py` conflated EOF with a malformed stdout line and discarded the line
+
+**Severity S3** (recorded) · **category** bug · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** `Server.read()` returned `None` for both an empty read and a line that failed
+`json.loads`. Its caller treats `None` as "the server closed stdout", so a corrupted protocol
+stream was reported as a clean end of stream and the offending line was thrown away - the one
+piece of evidence that would have explained the failure.
+
+**The fix.** `None` now means end of stream only; a `JSONDecodeError` raises a `RuntimeError`
+carrying the decoder message and the offending line, which `request()` propagates because it has
+no `except` around `read()`.
+
+**Verification.** A check driving `read()` over a fake process with a `StringIO` stdout goes red
+against the reverted code (`AssertionError: malformed protocol line was discarded as if stdout
+had closed`) and green with the fix; an empty stream still returns `None`. ruff, `ruff format
+--check` and pyright strict are clean. The end-to-end request path needs a live soak and provider
+credentials, which was not run; that limit is stated in the artifact rather than implied. Artifact:
+`AUDIT/evidence/B80-soak-eof.txt`.
+
+**Noted, not fixed (out of B80's scope).** `json.loads` can still return a non-dict (a bare JSON
+array or scalar), which would make `request()`'s `message.get()` raise `AttributeError`. B80's
+expected-correct covers only the `JSONDecodeError`/EOF conflation, so no type check was added; it
+is recorded here so it is not rediscovered as a surprise.
 
 ## B115 — the README undercounted the keyless routes and mis-stated two `Needs` cells
 

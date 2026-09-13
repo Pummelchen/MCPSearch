@@ -162,14 +162,21 @@ class Server:
         self.process.stdin.flush()
 
     def read(self) -> dict[str, Any] | None:
+        """Next protocol message, or None only when stdout is at end of stream."""
         assert self.process.stdout is not None
         line = self.process.stdout.readline()
         if not line:
             return None
         try:
             return json.loads(line)
-        except json.JSONDecodeError:
-            return None
+        except json.JSONDecodeError as error:
+            # A line that is not JSON is a corrupted protocol stream, not end of stream:
+            # returning None here let `request` discard the offending line and report a
+            # closed stdout instead (ledger B80).
+            raise RuntimeError(
+                f"stdout is not valid JSON (protocol stream corrupted): {error}; "
+                f"offending line: {line!r}"
+            ) from error
 
     def request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         self._next_id += 1
