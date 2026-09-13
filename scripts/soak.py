@@ -341,6 +341,13 @@ def main() -> int:
     parser.add_argument("--max-results", type=int, default=5)
     args = parser.parse_args()
 
+    # `QUERIES[: args.queries]` with a negative count silently takes queries from the end,
+    # so `--queries -3` ran 48 of 51 while the header presented that as the request; a zero
+    # count starts nothing. Reject both before the run rather than run a different soak than
+    # the one asked for (ledger B82).
+    if args.queries <= 0:
+        parser.error("--queries must be positive")
+
     if args.binary:
         binary = args.binary
     else:
