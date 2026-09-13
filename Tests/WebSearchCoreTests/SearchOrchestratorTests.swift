@@ -768,9 +768,18 @@ final class SearchOrchestratorTests: XCTestCase {
         }
         let (orchestrator, _, _) = makeOrchestrator(providers: [capturing])
         _ = try await orchestrator.search(Fixtures.request(maxResults: 3, mode: .fast))
-        // 3 requested results yields a provider budget of 6.
-        // Verified indirectly: the call succeeds and the provider was invoked once.
         XCTAssertEqual(capturing.callCount, 1)
+        // 3 requested results must reach the provider as a budget of 6 — that surplus is the
+        // entire contract this test is named for, so asserting only that the call succeeded
+        // proved nothing (ledger B19).
+        let request = try XCTUnwrap(capturing.requests.first)
+        XCTAssertEqual(request.maxResults, 3)
+        XCTAssertEqual(request.providerResultBudget, 6)
+        XCTAssertGreaterThan(
+            request.providerResultBudget,
+            request.maxResults,
+            "fusion needs more material than the caller asked to return"
+        )
     }
 
     // MARK: Diagnostics

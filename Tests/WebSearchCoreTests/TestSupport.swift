@@ -223,6 +223,9 @@ final class MockSearchProvider: SearchProvider, @unchecked Sendable {
 
     private let lock = NSLock()
     private var _callCount = 0
+    /// Every request the provider was called with, in order, so a test can assert the
+    /// contract the orchestrator is supposed to hand it (ledger B19).
+    private var _requests: [SearchRequest] = []
     private var outcome: @Sendable (SearchRequest) async throws -> ProviderSearchResponse
 
     init(
@@ -284,11 +287,19 @@ final class MockSearchProvider: SearchProvider, @unchecked Sendable {
         return _callCount
     }
 
+    /// The requests this provider received, oldest first.
+    var requests: [SearchRequest] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _requests
+    }
+
     func search(_ request: SearchRequest) async throws -> ProviderSearchResponse {
         // `NSLock.lock()` is unavailable in an async context under Swift 6, so the
         // counter update is scoped with `withLock`.
         let outcome = lock.withLock { () -> @Sendable (SearchRequest) async throws -> ProviderSearchResponse in
             _callCount += 1
+            _requests.append(request)
             return self.outcome
         }
         return try await outcome(request)
