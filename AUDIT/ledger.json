@@ -1985,7 +1985,7 @@
       "fix_summary": "",
       "evidence_after": "",
       "commit_sha": "",
-      "notes": "raw record: AUDIT/findings/L3-placeholders.md L3-31 \u00b7 expected-correct: Make the monitor's ready/configured notion agree with server eligibility by factoring in `registry.isEnabled(id)`, and present such a provider as unavailable rather than ready. \u00b7 confidence: certain (code); credit impact likely",
+      "notes": "raw record: AUDIT/findings/L3-placeholders.md L3-31 \u00b7 expected-correct: Make the monitor's ready/configured notion agree with server eligibility by factoring in `registry.isEnabled(id)`, and present such a provider as unavailable rather than ready. \u00b7 confidence: certain (code); credit impact likely\n\nNOTE from B78 (this session): B78 DELETED `ProviderStatus.State.unavailable` as dead state, and this task's expected-correct is the one place that could legitimately need it - an operator-disabled provider should be presented as unavailable rather than ready. The deletion was deliberate: nothing produced the case, and this task owns the producer, so it should introduce the state WITH its semantics (and the matching renderer branch) rather than inherit a branch that never ran. If B76's fix needs that case back, reintroducing it is part of B76, not a contradiction of B78. Recorded so the two tasks do not read as conflicting.",
       "blocked_reason": "",
       "raw_id": "L3-31",
       "raw_ids": [
@@ -2030,7 +2030,7 @@
       "evidence_before": "The only producers of `ProviderStatus` are `ProviderStatus.pending` (`configuredButIdle`/`notConfigured`) and `applying` (`healthy`/`failing`); no code assigns `.probing` or `.unavailable` (the only other `.unavailable` references are the unrelated `unavailableEngines`), yet `Renderer` implements a glyph and state colour for both (`Renderer.swift:34-36`, `:45`). The monitor does not model an in-flight probe (the model is updated only after all probes return), so the \"N/A\" presentation for an enabled-but-unusable provider is permanently unreachable.",
       "fix_summary": "Delete the unreachable ProviderStatus.State.probing and .unavailable cases (and their label, glyph and state-colour branches in Renderer), which no producer or test constructed; the compiler, the unchanged 490-test suite and a before/after grep prove nothing referenced them. The producer for an operator-disabled provider belongs to B76.",
       "evidence_after": "Before: ProviderStatus.State declared six cases, but only pending(configured:) and applying(_:) produced states (configuredButIdle/notConfigured/healthy/failing), while Renderer carried glyph and colour branches for .probing and .unavailable that nothing could reach. After: both cases and their three render branches are gone; a temporary reference fails to compile (\"has no member\"), the grep shows no producer outside the unrelated ProviderHealth.Status.probing, and debug/release build with 0 warnings and 490 tests, 6 skipped, 0 failures.",
-      "commit_sha": "",
+      "commit_sha": "3d93267",
       "notes": "raw record: AUDIT/findings/L3-placeholders.md L3-34 \u00b7 expected-correct: Either set `.probing` around a probe cycle and `.unavailable` for an enabled-but-unusable provider, or delete the two states and their render branches. \u00b7 confidence: certain",
       "blocked_reason": "",
       "raw_id": "L3-34",
