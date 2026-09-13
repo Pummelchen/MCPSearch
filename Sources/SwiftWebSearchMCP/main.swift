@@ -3,15 +3,37 @@ import Logging
 import MCP
 import WebSearchCore
 
-/// Entry point for the SwiftWebSearchMCP stdio server.
-///
-/// Boot sequence:
-/// 1. Parse configuration from the optional config file plus environment variables.
-/// 2. Build the provider registry and the search/fetch pipeline.
-/// 3. Register `web_search`, `web_open`, `web_answer` and `web_search_status`.
-/// 4. Serve MCP over stdio until the transport completes.
-///
-/// All diagnostics go to stderr. stdout carries JSON-RPC framing only.
+// Entry point for the SwiftWebSearchMCP server.
+//
+// Boot sequence:
+// 1. Parse the command line and answer `--help`, before anything depends on the environment.
+// 2. Parse configuration from the optional config file plus environment variables.
+// 3. Build the provider registry and the search/fetch pipeline.
+// 4. Register `web_search`, `web_open`, `web_answer` and `web_search_status`.
+// 5. Serve MCP over the selected transport until it completes.
+//
+// All diagnostics go to stderr. stdout carries JSON-RPC framing only.
+
+// The command line is parsed before any configuration is loaded. The reverse order meant that a
+// mistyped `SEARCH_CONFIG_FILE` refused to start even for `--help`, and a flag that was about to
+// be rejected still emitted the startup log and built the HTTP client and the whole provider
+// pipeline first (ledger B113).
+let options: ServerOptions
+do {
+    options = try ServerOptions.parse(Array(CommandLine.arguments.dropFirst()))
+} catch {
+    // The logger takes its level from the configuration, which is deliberately not loaded yet, so
+    // this diagnostic goes to stderr directly.
+    FileHandle.standardError.write(
+        Data(("Invalid arguments: \(error)\n" + ServerOptions.usage + "\n").utf8)
+    )
+    exit(2)
+}
+
+if options.wantsHelp {
+    print(ServerOptions.usage)
+    exit(0)
+}
 
 let configuration = AppConfiguration.load()
 let log = Log(level: configuration.logLevel, logQueries: configuration.logQueries)
@@ -90,22 +112,6 @@ let pipeline = SearchPipelineFactory.make(
 )
 
 let handlers = ToolHandlers(pipeline: pipeline, log: log)
-
-// Parse command-line options before building the server: a bad flag should fail fast
-// and loudly rather than starting the wrong transport.
-let options: ServerOptions
-do {
-    options = try ServerOptions.parse(Array(CommandLine.arguments.dropFirst()))
-} catch {
-    log.error("Invalid arguments", metadata: ["error": "\(error)"])
-    FileHandle.standardError.write(Data((ServerOptions.usage + "\n").utf8))
-    exit(2)
-}
-
-if options.wantsHelp {
-    print(ServerOptions.usage)
-    exit(0)
-}
 
 let server = await MCPServerFactory.make(handlers: handlers, log: log)
 

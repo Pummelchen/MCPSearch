@@ -23,6 +23,46 @@ final class StdioServerTests: XCTestCase {
         try ServerTestSupport.binaryURL()
     }
 
+    /// Run the executable to completion and capture its exit status and streams.
+    ///
+    /// `--help` and a rejected flag both exit before a transport is served, so this is a one-shot
+    /// process rather than an MCP session. The output is at most a few kilobytes — far below the
+    /// pipe buffer — so draining the pipes after `waitUntilExit` cannot deadlock the child.
+    private func runToCompletion(
+        arguments: [String],
+        environment: [String: String] = [:]
+    ) throws -> (status: Int32, stdout: String, stderr: String) {
+        let process = Process()
+        process.executableURL = try binaryURL()
+        process.arguments = arguments
+        process.standardInput = FileHandle.nullDevice
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        // Hermetic exactly like the MCP harness: no ambient provider credential or config path.
+        var merged: [String: String] = [
+            "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+        ]
+        for key in ServerTestSupport.providerEnvironmentVariables {
+            merged.removeValue(forKey: key)
+        }
+        for (key, value) in environment { merged[key] = value }
+        process.environment = ServerTestSupport.childEnvironment(base: merged)
+
+        try process.run()
+        process.waitUntilExit()
+
+        let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+        let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+        return (
+            process.terminationStatus,
+            String(bytes: stdoutData, encoding: .utf8) ?? "<not valid UTF-8>",
+            String(bytes: stderrData, encoding: .utf8) ?? "<not valid UTF-8>"
+        )
+    }
+
     /// A running server process with newline-delimited JSON-RPC framing.
     private final class ServerProcess {
         let process = Process()
@@ -182,6 +222,56 @@ final class StdioServerTests: XCTestCase {
             "method": "notifications/initialized",
         ])
         return server
+    }
+
+    // MARK: - Command line before configuration (ledger B113)
+
+    /// `--help` must be answered from the command line alone.
+    ///
+    /// Configuration used to be loaded and validated before `argv` was parsed, so a mistyped
+    /// `SEARCH_CONFIG_FILE` made `--help` exit 2 with "Refusing to start" and print no usage at
+    /// all (ledger B113).
+    func testHelpSucceedsEvenWhenTheConfigurationFileIsUnreadable() throws {
+        let result = try runToCompletion(
+            arguments: ["--help"],
+            environment: ["SEARCH_CONFIG_FILE": "/nonexistent/audit-missing-config.env"]
+        )
+        XCTAssertEqual(result.status, 0, "stderr: \(result.stderr)")
+        XCTAssertTrue(
+            result.stdout.contains("USAGE"),
+            "usage did not reach stdout: \(result.stdout)"
+        )
+        XCTAssertFalse(
+            result.stderr.contains("Refusing to start"),
+            "a help request must not depend on the environment: \(result.stderr)"
+        )
+    }
+
+    /// An invalid flag is reported before the configuration is validated or any client is built.
+    ///
+    /// The same fatal `SEARCH_CONFIG_FILE` is in the environment, so a process that loaded
+    /// configuration first would report only the config problem and never the typo (ledger B113).
+    func testInvalidFlagIsReportedBeforeConfigurationIsValidated() throws {
+        let result = try runToCompletion(
+            arguments: ["--not-a-flag"],
+            environment: ["SEARCH_CONFIG_FILE": "/nonexistent/audit-missing-config.env"]
+        )
+        XCTAssertEqual(result.status, 2, "stdout: \(result.stdout)")
+        XCTAssertTrue(
+            result.stderr.contains("Unknown argument: --not-a-flag"),
+            "the argument error must win over the configuration error: \(result.stderr)"
+        )
+        XCTAssertFalse(result.stderr.contains("Refusing to start"), result.stderr)
+    }
+
+    /// A help request must not load configuration at all, so it emits no startup diagnostics.
+    func testHelpDoesNotLoadConfiguration() throws {
+        let result = try runToCompletion(arguments: ["--help"])
+        XCTAssertEqual(result.status, 0)
+        XCTAssertFalse(
+            result.stderr.contains("Starting"),
+            "help loaded configuration and logged startup: \(result.stderr)"
+        )
     }
 
     // MARK: - Protocol

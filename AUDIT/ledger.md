@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 129 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 98 |
-| START (reproduced, expected behaviour written) | 31 |
+| DONE | 99 |
+| START (reproduced, expected behaviour written) | 30 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 84** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 53 are DONE and 31 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 54 are DONE and 30 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -159,7 +159,7 @@ waived in writing.
 | B110 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, `web_answer` input) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:275-281` | `web_answer`'s `provider` argument lost the enum that `web_search`'s `provider` declares, though the schema documents itself as a mirror | logic | DONE | this Mac (arm64) | handover re-read L1 |
 | B111 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, nullable enums) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:62-66`, `:83-93`, `:94-101`, `:270-274` | Nullable enum arguments declare `["string", "null"]` with an `enum` that excludes `null`, so a strict client cannot legally send the null the design depends on | logic | DONE | this Mac (arm64) | handover re-read L1 |
 | B112 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, `web_search_status` input) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:350-358` | `statusInput` is the only object schema in the file that omits `required` | style | DONE | this Mac (arm64) | handover re-read L1 |
-| B113 | S3 | `WebSearchCore` / `Support` + `SwiftWebSearchMCP` (`main`) | `Sources/SwiftWebSearchMCP/main.swift:16` and `:98` | Configuration is loaded and validated before the command line is parsed, so an unreadable config file pre-empts `--help` | logic | START | this Mac (arm64) | handover re-read L7 |
+| B113 | S3 | `WebSearchCore` / `Support` + `SwiftWebSearchMCP` (`main`) | `Sources/SwiftWebSearchMCP/main.swift:16` and `:98` | Configuration is loaded and validated before the command line is parsed, so an unreadable config file pre-empts `--help` | logic | DONE | this Mac (arm64) | handover re-read L7 |
 | B114 | S3 | `SwiftWebSearchMCP` (`TransportConfiguration.usage`) | `Sources/WebSearchCore/Support/TransportConfiguration.swift:51-77` | `usage` under-documents the CLI, and the test that claims to check every flag locks the incomplete list in place | docs | START | this Mac (arm64) | handover re-read L7 |
 | B115 | S3 | repository root (`README.md`) | `README.md:120`, provider table `:122-134` | The README undercounts the keyless routes and its Startpage row omits the flag the adapter actually requires | docs | DONE | this Mac (arm64) | handover re-read L7 |
 | B116 | S3 | `WebSearchCore` / `Search` (`SearchOrchestrator`, `RateLimiter`) | `SearchOrchestrator.swift:456-462`, `RateLimiter.swift:97-104` | A local throttle that cleared between the authorise and the wait estimate was reported as a hard skip, making the suite intermittently red | bug | DONE | node1 (arm64) | Phase E baseline |
@@ -215,6 +215,44 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B113 — configuration was loaded before the command line was parsed
+
+**Severity S3** (recorded) · **category** logic · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** `main.swift` called `AppConfiguration.load()` at the top and only parsed
+`argv` after the HTTP client and the whole provider pipeline had been built. Because B09 made an
+unreadable `SEARCH_CONFIG_FILE` fatal at startup, `SwiftWebSearchMCP --help` with a mistyped path
+wrote "Refusing to start" and `exit(2)` **before** the `wantsHelp` arm could run, so a help
+request depended on the environment. The same ordering meant an unknown flag could only be
+reported after the config error, after the startup log and after the client and pipeline were
+constructed — the comment at the old parse site ("a bad flag should fail fast and loudly")
+described an intent the ordering defeated.
+
+**The fix.** The parse block moved above `AppConfiguration.load()`. `--help` is answered and a
+bad flag is reported first. The parse error no longer routes through `log.error` (the logger's
+level comes from the configuration, which is deliberately not loaded yet) and is written to
+stderr directly, followed by the same usage text as before. Nothing else depended on the early
+load: the issue report, the `unreadableConfigFile` fatal arm, the `Starting` log, the provider
+inventory and the empty-configuration warning all remain below the new block and still run for a
+real invocation. No public signature changed.
+
+**Why not the other reading.** The finding also mentions that `AppConfiguration.parse` drops
+empty values, which makes the `PARALLEL_MCP_URL=` arm unreachable (`:330-332`). That is B59's
+deliberately recorded behaviour — an explicitly empty environment value is how the built-in
+Parallel endpoint is removed — and it is not part of this task's expected-correct, which is only
+about parse order. It was left alone.
+
+**Verification.** Three process-level tests were added to `StdioServerTests` using a new
+`runToCompletion` helper that launches the built executable with the hermetic provider-scrubbed
+environment and returns `(status, stdout, stderr)`. They assert that `--help` under
+`SEARCH_CONFIG_FILE=/nonexistent/audit-missing-config.env` exits 0 with usage on stdout and no
+"Refusing to start"; that `--not-a-flag` under the same fatal configuration exits 2 with
+`Unknown argument: --not-a-flag`; and that a plain `--help` emits no `Starting` diagnostic. The
+tests were proven to fail against HEAD's ordering (3 tests, 6 failures), the file was restored
+byte-identical (SHA-256 `38f356f3…e386415`), and every gate is clean: debug and release builds 0
+warnings under `-warnings-as-errors`, 498 tests / 6 skipped / 0 failures, `swift-format --strict`
+0, `swiftlint --strict` 0, `third_party_notices.py` clean.
 
 ## B117 — the HTTP smoke picked a free port before the child bound, so the child could lose the race
 
