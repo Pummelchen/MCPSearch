@@ -245,6 +245,13 @@ public struct URLPolicy: Sendable {
 // MARK: - IP addresses
 
 /// A parsed IP address with the classification predicates the SSRF policy needs.
+///
+/// `case v6` carries a `[UInt8]` rather than a fixed-width tuple so the enum stays
+/// `Hashable` and the presentation form is easy to build, which means a caller can construct
+/// one of any length. `init?(_:)` only ever produces 16 bytes and every in-tree producer goes
+/// through it, but the case is public, so each accessor checks the length before indexing.
+/// A malformed value is classified as "not in this range" (and rendered as malformed) rather
+/// than trapping (ledger B84).
 public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
     case v4(UInt32)
     case v6([UInt8])
@@ -275,6 +282,10 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
             ]
             return bytes.map(String.init).joined(separator: ".")
         case .v6(let bytes):
+            // A public case carrying a byte array can hold any length, so the fixed-width
+            // unpacking below must be guarded (ledger B84). There is no presentation form for
+            // a value that is not a 16-byte address, so say so instead of trapping.
+            guard bytes.count == 16 else { return "invalid IPv6 (\(bytes.count) bytes)" }
             let groups = stride(from: 0, to: 16, by: 2).map { index in
                 String(format: "%x", (UInt16(bytes[index]) << 8) | UInt16(bytes[index + 1]))
             }
@@ -285,8 +296,10 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
     /// 127.0.0.0/8, ::1
     public var isLoopback: Bool {
         switch self {
-        case .v4(let value): (value >> 24) == 127
-        case .v6(let bytes): bytes.dropLast().allSatisfy { $0 == 0 } && bytes[15] == 1
+        case .v4(let value): return (value >> 24) == 127
+        case .v6(let bytes):
+            guard bytes.count == 16 else { return false }
+            return bytes.dropLast().allSatisfy { $0 == 0 } && bytes[15] == 1
         }
     }
 
@@ -303,6 +316,8 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
     /// client address is stored inverted).
     public var embeddedIPv4: IPAddress? {
         guard case .v6(let bytes) = self else { return nil }
+        // Only a 16-byte address has the fixed offsets this unwrapping reads (ledger B84).
+        guard bytes.count == 16 else { return nil }
 
         func address(at offset: Int) -> IPAddress {
             .v4(
@@ -345,8 +360,10 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
     /// 169.254.0.0/16, fe80::/10
     public var isLinkLocal: Bool {
         switch self {
-        case .v4(let value): (value >> 16) == 0xA9FE
-        case .v6(let bytes): (bytes[0] == 0xFE) && (bytes[1] & 0xC0) == 0x80
+        case .v4(let value): return (value >> 16) == 0xA9FE
+        case .v6(let bytes):
+            guard bytes.count == 16 else { return false }
+            return (bytes[0] == 0xFE) && (bytes[1] & 0xC0) == 0x80
         }
     }
 
@@ -362,6 +379,7 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
             // Carrier-grade NAT and other non-public ranges that are still internal.
             return false
         case .v6(let bytes):
+            guard bytes.count == 16 else { return false }
             // fc00::/7 unique local addresses.
             return (bytes[0] & 0xFE) == 0xFC
         }
@@ -382,16 +400,20 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
     /// 0.0.0.0, ::
     public var isUnspecified: Bool {
         switch self {
-        case .v4(let value): value == 0
-        case .v6(let bytes): bytes.allSatisfy { $0 == 0 }
+        case .v4(let value): return value == 0
+        case .v6(let bytes):
+            guard bytes.count == 16 else { return false }
+            return bytes.allSatisfy { $0 == 0 }
         }
     }
 
     /// 224.0.0.0/4, ff00::/8
     public var isMulticast: Bool {
         switch self {
-        case .v4(let value): (value >> 28) == 0xE
-        case .v6(let bytes): bytes[0] == 0xFF
+        case .v4(let value): return (value >> 28) == 0xE
+        case .v6(let bytes):
+            guard bytes.count == 16 else { return false }
+            return bytes[0] == 0xFF
         }
     }
 

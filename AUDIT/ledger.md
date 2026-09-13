@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 131 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 106 |
-| START (reproduced, expected behaviour written) | 25 |
+| DONE | 107 |
+| START (reproduced, expected behaviour written) | 24 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 86** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 86 S3 tasks 61 are DONE and 25 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 86 S3 tasks 62 are DONE and 24 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -137,7 +137,7 @@ waived in writing.
 | B81 | S3 | `scripts/mcp_smoke.py` | `scripts/mcp_smoke.py:315` (decode at `:296`) | `mcp_smoke.py` de-chunks an SSE body after decoding it to `str` | bug | DONE | this Mac (arm64) | Phase B L3-39 |
 | B82 | S3 | `scripts/soak.py` | `scripts/soak.py:327` (argument at `:301`) | A negative `--queries` silently truncates the query list from the end | bug | DONE | this Mac (arm64) | Phase B L3-40 |
 | B83 | S3 | `scripts/mcp_smoke.py` | `scripts/mcp_smoke.py:345-353` (port at `:350-357`, stderr only read at `:458`) | HTTP smoke can wait 20 s on a dead server and never checks that it is alive | bug | DONE | this Mac (arm64) | Phase B L3-41 |
-| B84 | S3 | `WebSearchCore` / `Fetch` (`URLPolicy`) | `Sources/WebSearchCore/Fetch/URLPolicy.swift:289` | `IPAddress.v6` is a public case that accepts any byte count, and its accessors index 16 bytes unconditionally | unsafe | START | this Mac (arm64) | Phase B L4-9 |
+| B84 | S3 | `WebSearchCore` / `Fetch` (`URLPolicy`) | `Sources/WebSearchCore/Fetch/URLPolicy.swift:289` | `IPAddress.v6` is a public case that accepts any byte count, and its accessors index 16 bytes unconditionally | unsafe | DONE | this Mac (arm64) | Phase B L4-9 |
 | B85 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:93` | Query hashing for logs is a fast unsalted FNV-1a, but is documented as non-reversible | docs | DONE | this Mac (arm64) | Phase B L4-10 |
 | B86 | S3 | `deploy` (`provision-node.sh`) | `deploy/provision-node.sh:71` | Provisioning writes through fixed, predictable `/tmp` paths and loads a container image from one | unsafe | DONE | this Mac (arm64) | Phase B L4-12 |
 | B87 | S3 | `WebSearchCore` / `Fetch` (`JinaReaderFetcher`) + `WebSearchCore` / `Search` (`SearchPipelineFactory`) | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:65` | The Jina Reader fallback discloses the target URL to a third party by default, with no warning that it did | docs | DONE | this Mac (arm64) | Phase B L4-13 |
@@ -217,6 +217,42 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B84 — `IPAddress.v6` accepted any byte count while its accessors indexed 16 bytes
+
+**Severity S3** · **category** unsafe · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** `IPAddress` is a public enum whose `case v6([UInt8])` carries an
+unvalidated array. `init?(_:)` only ever produces 16 bytes and every in-tree producer goes
+through it, so no MCP tool path is affected, but a downstream caller can write
+`IPAddress.v6([1])`. `description` (`stride(to: 16, by: 2)` indexing `bytes[index + 1]`),
+`isLoopback` (`bytes[15]`), `embeddedIPv4` (`bytes[0..<10]`, `bytes[10]`, `bytes[11]`, and
+`address(at:)` at offset 12), `isLinkLocal`, `isPrivate` and `isMulticast` all indexed fixed
+offsets unconditionally, so a short array turned a data value into a process crash. `isUnspecified`
+did not trap but classified `[]` as unspecified.
+
+**The fix, and the API decision.** The public API is unchanged: the case and its `[UInt8]`
+payload stay, and every accessor is defended. `description` returns `invalid IPv6 (N bytes)` for a
+non-16-byte value, `embeddedIPv4` returns nil and the five predicates return false. I chose the
+guard approach rather than a fixed-width payload because the stronger options change a public
+enum's associated value: a 16-byte tuple payload would drop `Hashable` (Swift does not synthesise
+it for tuple payloads), and a public wrapper type would break `IPAddress.v6([...])` at every
+downstream construction and pattern match, for a defect not reachable from `web_open`/`web_search`.
+The honest cost is that the invariant stays structurally representable, so the guards are the
+defence. `isCloudMetadata`/`isReserved` already used `prefix(4)` and
+`isSharedAddressSpace`/`isBroadcast` return constants, so they needed no change; nothing about the
+SSRF classification of a valid address changed. The v4 arms of four predicates gained an explicit
+`return`, a mechanical consequence of turning their switches from expressions into statements.
+
+**Verification.** `testMalformedIPv6ValuesAreClassifiedInsteadOfTrapping` in the existing
+`URLPolicyTests.swift` builds 0-, 1-, 2-, 10-, 15-, 17- and 32-byte `IPAddress.v6` values and
+exercises every accessor. **Falsification.** Removing the seven accessor guards restores the
+defect and the test aborts the process: `Swift/ContiguousArrayBuffer.swift:692: Fatal error: Index
+out of range`, xctest signal code 5. The file was restored byte-identical (`diff` empty, SHA-256
+`f2040f3b…0eda0b`). `URLPolicyTests` is green (24 tests) and the full suite is 506 tests,
+6 skipped, 0 failures; debug and release builds are 0 warnings under `-warnings-as-errors`,
+`swift-format --strict` and `swiftlint --strict` are clean (85 files), `third_party_notices.py` is
+clean. Evidence: `AUDIT/evidence/B84-ipv6-case-guards.txt`.
 
 ## B54 — concurrent first use of the Parallel provider performed the MCP handshake more than once
 

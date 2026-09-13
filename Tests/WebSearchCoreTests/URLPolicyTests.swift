@@ -304,6 +304,28 @@ final class URLPolicyTests: XCTestCase {
         XCTAssertEqual(IPAddress("10.0.0.1")?.description, "10.0.0.1")
     }
 
+    /// `case v6` is public and carries a byte array, so a caller can build one of any length;
+    /// every accessor must classify it instead of indexing past the end (ledger B84).
+    ///
+    /// A trap here kills the whole test process rather than failing one assertion, which is
+    /// exactly the crash this test exists to prevent.
+    func testMalformedIPv6ValuesAreClassifiedInsteadOfTrapping() {
+        for count in [0, 1, 2, 10, 15, 17, 32] {
+            let address = IPAddress.v6(Array(repeating: 0, count: count))
+            XCTAssertFalse(address.isLoopback, "\(count) bytes")
+            XCTAssertFalse(address.isLinkLocal, "\(count) bytes")
+            XCTAssertFalse(address.isPrivate, "\(count) bytes")
+            XCTAssertFalse(address.isReserved, "\(count) bytes")
+            XCTAssertFalse(address.isCloudMetadata, "\(count) bytes")
+            XCTAssertFalse(address.isMulticast, "\(count) bytes")
+            XCTAssertFalse(address.isSharedAddressSpace, "\(count) bytes")
+            XCTAssertFalse(address.isBroadcast, "\(count) bytes")
+            XCTAssertFalse(address.isUnspecified, "\(count) bytes")
+            XCTAssertNil(address.embeddedIPv4, "\(count) bytes")
+            XCTAssertEqual(address.description, "invalid IPv6 (\(count) bytes)")
+        }
+    }
+
     func testIPLiteralDetectionIsStrict() {
         XCTAssertTrue(URLPolicy.isIPLiteral("127.0.0.1"))
         XCTAssertTrue(URLPolicy.isIPLiteral("::1"))
