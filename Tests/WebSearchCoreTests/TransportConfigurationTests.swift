@@ -392,3 +392,38 @@ final class TransportConfigurationTests: XCTestCase {
         }
     }
 }
+
+/// The server's request-body limits for the Streamable HTTP transport.
+final class HTTPRequestBodyPolicyTests: XCTestCase {
+
+    /// The reservation must not be sized from the request's own `Content-Length`.
+    ///
+    /// `ByteBuffer.reserveCapacity` reallocates immediately, so a client that sent only a
+    /// request head with `Content-Length: 1048576` made the process hold a megabyte per
+    /// connection before a single body byte arrived — with B90's 64-connection bound, 64 MiB
+    /// of allocation from a peer that sent no body at all (ledger B79).
+    func testReservationIgnoresTheDeclaredContentLength() {
+        for declared in [nil, 0, 1, 4096, HTTPRequestBodyPolicy.maximumBodyBytes, Int.max] {
+            XCTAssertEqual(
+                HTTPRequestBodyPolicy.reservationCapacity(declaredContentLength: declared),
+                HTTPRequestBodyPolicy.initialCapacity,
+                "declaring \(String(describing: declared)) bytes must not change the reservation"
+            )
+        }
+    }
+
+    /// The reservation stays a small fraction of the body cap, so the head-only case cannot
+    /// hold a body-sized buffer per connection even at the connection bound.
+    func testReservationIsFarBelowTheBodyCap() {
+        XCTAssertLessThanOrEqual(HTTPRequestBodyPolicy.initialCapacity, 64 * 1024)
+        XCTAssertLessThan(
+            HTTPRequestBodyPolicy.initialCapacity,
+            HTTPRequestBodyPolicy.maximumBodyBytes
+        )
+        XCTAssertLessThanOrEqual(
+            HTTPRequestBodyPolicy.initialCapacity * 64,
+            4 * 1024 * 1024,
+            "64 connections at the reservation must stay in the low megabytes"
+        )
+    }
+}

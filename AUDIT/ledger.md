@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 132 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 119 |
-| START (reproduced, expected behaviour written) | 13 |
+| DONE | 120 |
+| START (reproduced, expected behaviour written) | 12 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 87** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 74 are DONE and 13 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 75 are DONE and 12 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -132,7 +132,7 @@ waived in writing.
 | B76 | S3 | `MCPSMonitor` (provider selection); `WebSearchCore/Search/ProviderRegistry.swift` | `Sources/MCPSMonitor/main.swift:348` (and `:292`), `Sources/WebSearchCore/Search/ProviderRegistry.swift:34` | `mcps-mon` ignores `SEARCH_DISABLED_PROVIDERS`, labels disabled providers "ready", and probes them | logic | DONE | this Mac (arm64) | Phase B L3-31 |
 | B77 | S3 | `SwiftWebSearchMCP` (argument parsing) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:464` | `ToolArguments.bool(_:)` has no caller | dead | DONE | this Mac (arm64) | Phase B L3-33 |
 | B78 | S3 | `MCPSMonitor` view state; `WebSearchCore/Monitor/Renderer.swift` | `Sources/WebSearchCore/Monitor/MonitorModel.swift:127` and `:134` | `ProviderStatus.State.probing` and `.unavailable` can never be produced, so their renderer branches are unreachable | dead | DONE | this Mac (arm64) | Phase B L3-34 |
-| B79 | S3 | `SwiftWebSearchMCP` (HTTP host body cap) | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:167` | A request-head `Content-Length` reserves up to 1 MiB per connection before any body arrives | unsafe | START | this Mac (arm64) | Phase B L3-36 |
+| B79 | S3 | `SwiftWebSearchMCP` (HTTP host body cap) | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:167` | A request-head `Content-Length` reserves up to 1 MiB per connection before any body arrives | unsafe | DONE | this Mac (arm64) | Phase B L3-36 |
 | B80 | S3 | `scripts/soak.py` | `scripts/soak.py:170` (used at `:183`) | `soak.py` conflates EOF with a malformed stdout line and discards the line | bug | DONE | this Mac (arm64) | Phase B L3-38 |
 | B81 | S3 | `scripts/mcp_smoke.py` | `scripts/mcp_smoke.py:315` (decode at `:296`) | `mcp_smoke.py` de-chunks an SSE body after decoding it to `str` | bug | DONE | this Mac (arm64) | Phase B L3-39 |
 | B82 | S3 | `scripts/soak.py` | `scripts/soak.py:327` (argument at `:301`) | A negative `--queries` silently truncates the query list from the end | bug | DONE | this Mac (arm64) | Phase B L3-40 |
@@ -218,6 +218,20 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B79 — a request head could allocate 1 MiB per connection
+
+**Severity S3** · **category** unsafe · **status** DONE · **host** node1 (arm64)
+
+**Premise holds.** At HEAD `HTTPMCPHandler.channelRead`'s `.head` branch called `bodyBuffer.reserveCapacity(min(contentLength ?? 4096, 1 << 20))`. The header is peer-written, a fresh `ByteBuffer()` has capacity 0, and the pinned swift-nio (`NIOCore/ByteBuffer-core.swift:755`) reallocates whenever the request exceeds the current capacity — so a client sending only a head with `Content-Length: 1048576` allocated a megabyte per connection. The cap (`maximumBodyBytes`) was checked only in `.body`, after bytes arrived. Composed with B90's `maximumConnections = 64`, the ceiling was 64 MiB from a peer that sent no body; the default loopback bind confines the peer, the opt-in non-loopback bind does not.
+
+**Measured, and why the test pins the decision.** A probe of 64 loopback head-only connections declaring 1 MiB against the defective binary grew RSS by only ~1.9 MiB (control: ~0.6 MiB for `Content-Length: 1`) and left `ps`'s virtual-size field flat: macOS maps the 1 MiB allocations and `reserveCapacity` never touches the pages. The premise is therefore confirmed against the dependency's implementation and the call site rather than by an RSS delta, and the regression test asserts the reservation decision, not the allocator.
+
+**Fix.** New `HTTPRequestBodyPolicy` in WebSearchCore (beside `HTTPTransportConfiguration`): `initialCapacity = 4096`, `maximumBodyBytes = 1 << 20`, and `reservationCapacity(declaredContentLength:)` returning the constant while keeping the parameter so the decision is visible. The handler reserves that fixed capacity, `writeBuffer` grows the buffer as body parts arrive, and the cap stays the enforcement point in `.body`. `HTTPMCPHandler.maximumBodyBytes` is gone, so the cap is named once.
+
+**Falsification.** Reverting `reservationCapacity` to `min(declared ?? 4096, maximumBodyBytes)` reddens `testReservationIgnoresTheDeclaredContentLength` with `("1048576") is not equal to ("4096")` for both the 1 MiB and `Int.max` declarations. Restored byte-identical (`diff` empty, SHA-256 `9799cac4…`). `testReservationIsFarBelowTheBodyCap` additionally holds the constant below 64 KiB and 64 connections below 4 MiB.
+
+**Noted.** The constants live in `WebSearchCore` because `HTTPMCPHandler` is private to the executable target, which the test target cannot import (the limitation `HTTPTransportTests` already documents); a private constant would have no falsifiable test. No handler behaviour for an accepted request changed.
 
 ## B76 — the monitor was labelling and probing disabled providers
 

@@ -417,14 +417,21 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
             requestHead = head
             bodyBuffer.clear()
             didRespond = false
-            // Bound the body so a single request cannot exhaust memory.
+            // A small fixed reservation, owned by `HTTPRequestBodyPolicy`. Reserving the
+            // declared `Content-Length` meant a head-only request held up to 1 MiB per
+            // connection before any body arrived, because `ByteBuffer.reserveCapacity`
+            // reallocates immediately (ledger B79).
+            let declaredLength = head.headers.first(name: "content-length").flatMap(Int.init)
             bodyBuffer.reserveCapacity(
-                min(head.headers.first(name: "content-length").flatMap(Int.init) ?? 4096, 1 << 20))
+                HTTPRequestBodyPolicy.reservationCapacity(
+                    declaredContentLength: declaredLength
+                )
+            )
 
         case .body(var buffer):
             guard !didRespond else { return }
             bodyBuffer.writeBuffer(&buffer)
-            if bodyBuffer.readableBytes > HTTPMCPHandler.maximumBodyBytes {
+            if bodyBuffer.readableBytes > HTTPRequestBodyPolicy.maximumBodyBytes {
                 didRespond = true
                 requestHead = nil
                 bodyBuffer.clear()
@@ -484,10 +491,6 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
             }
         }
     }
-
-    /// Largest accepted request body. MCP requests are small; a search result body is
-    /// produced by the server, not received.
-    static let maximumBodyBytes = 1 << 20  // 1 MiB
 
     /// A prepared response.
     ///

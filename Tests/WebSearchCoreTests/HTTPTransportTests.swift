@@ -629,7 +629,7 @@ final class HTTPTransportTests: XCTestCase {
     func testOversizedBodyIsRefusedWithPayloadTooLarge() throws {
         try startServer()
 
-        // Larger than HTTPMCPHandler.maximumBodyBytes (1 MiB). The body is sent without
+        // Larger than HTTPRequestBodyPolicy.maximumBodyBytes (1 MiB). The body is sent without
         // a session on purpose: the cap is enforced in the network layer before the SDK
         // ever sees the request.
         let oversized = Data(repeating: UInt8(ascii: "x"), count: (1 << 20) + 4096)
