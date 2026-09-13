@@ -1,9 +1,40 @@
 import Foundation
+import WebSearchCore
 import XCTest
 
 @testable import MCPSMonitor
 
 final class MonitorOptionsTests: XCTestCase {
+
+    private func node(_ name: String, state: NodeStatus.State) -> NodeStatus {
+        var status = NodeStatus.pending(name: name, endpoint: "http://\(name):8888")
+        status.state = state
+        return status
+    }
+
+    private func provider(_ id: ProviderID, state: ProviderStatus.State) -> ProviderStatus {
+        var status = ProviderStatus.pending(
+            provider: id,
+            configured: state != .notConfigured,
+            hint: "TAVILY_API_KEY"
+        )
+        status.state = state
+        return status
+    }
+
+    private func model(
+        nodes: [NodeStatus] = [],
+        providers: [ProviderStatus] = []
+    ) -> MonitorModel {
+        MonitorModel(
+            startedAt: Date(timeIntervalSince1970: 1_700_000_000),
+            refreshedAt: Date(timeIntervalSince1970: 1_700_000_100),
+            cycleDuration: .zero,
+            nodes: nodes,
+            providers: providers,
+            warnings: []
+        )
+    }
 
     func testDefaultsIncludeTheClusterAndDoNotProbe() throws {
         let options = try Options.parse([])
@@ -234,5 +265,106 @@ final class MonitorOptionsTests: XCTestCase {
         XCTAssertThrowsError(try Options.parse(["--interval", "\(maximum + 1)"]))
         // A whole-number value still works exactly as before.
         XCTAssertEqual(try Options.parse(["--interval", "45"]).interval, .seconds(45))
+    }
+
+    // MARK: - Exit status (ledger B46)
+
+    /// `--iterations` is documented as "useful for scripting", but the loop fell off the end
+    /// of `main.swift` and the process exited 0 whatever the probes found, so a scripted run
+    /// against a dead fleet looked exactly like a healthy one.
+    func testExitStatusIsZeroWhenTheFleetAnswers() throws {
+        let options = try Options.parse(["--iterations", "1"])
+        let healthy = model(
+            nodes: [node("this-mac", state: .up)],
+            providers: [provider(.tavily, state: .healthy)]
+        )
+        XCTAssertEqual(options.exitCode(for: healthy), 0)
+    }
+
+    func testExitStatusIsNonZeroWhenEveryNodeIsDown() throws {
+        let options = try Options.parse(["--iterations", "1"])
+        let dead = model(
+            nodes: [node("this-mac", state: .down), node("node1", state: .down)],
+            providers: [provider(.tavily, state: .healthy)]
+        )
+        XCTAssertEqual(options.exitCode(for: dead), 1)
+    }
+
+    /// A node that answered but returned nothing usable cannot serve a search, so an
+    /// all-degraded run is not a healthy one.
+    func testExitStatusCountsDegradedNodesAsFailed() throws {
+        let options = try Options.parse(["--iterations", "1"])
+        let degraded = model(
+            nodes: [node("node1", state: .degraded)],
+            providers: [provider(.tavily, state: .healthy)]
+        )
+        XCTAssertEqual(options.exitCode(for: degraded), 1)
+    }
+
+    /// One node still answering is enough: the common case is a cluster with an unreachable
+    /// peer, and failing on that would make the status useless as a liveness check.
+    func testExitStatusIsZeroWhileAnyNodeAnswers() throws {
+        let options = try Options.parse(["--iterations", "1"])
+        let partiallyDown = model(
+            nodes: [node("this-mac", state: .up), node("node1", state: .down)],
+            providers: [provider(.tavily, state: .healthy)]
+        )
+        XCTAssertEqual(options.exitCode(for: partiallyDown), 0)
+    }
+
+    func testExitStatusIsNonZeroWhenEveryConfiguredProviderFails() throws {
+        let options = try Options.parse(["--iterations", "1"])
+        let dead = model(
+            nodes: [node("this-mac", state: .up)],
+            providers: [
+                provider(.tavily, state: .failing),
+                provider(.brave, state: .failing),
+            ]
+        )
+        XCTAssertEqual(options.exitCode(for: dead), 1)
+    }
+
+    /// `NO KEY` is the expected state for a provider the operator never configured, and a
+    /// monitor with no keyed provider at all is not a failed health check.
+    func testUnconfiguredProvidersDoNotFailTheRun() throws {
+        let options = try Options.parse(["--iterations", "1"])
+        let keyless = model(
+            nodes: [node("this-mac", state: .up)],
+            providers: [
+                provider(.tavily, state: .notConfigured),
+                provider(.brave, state: .notConfigured),
+            ]
+        )
+        XCTAssertEqual(options.exitCode(for: keyless), 0)
+    }
+
+    func testRunThatCheckedNothingIsNotAFailure() throws {
+        let options = try Options.parse(["--no-nodes", "--iterations", "1"])
+        XCTAssertEqual(options.exitCode(for: model()), 0)
+    }
+
+    /// A run that never completed a refresh (no model) has nothing to report, and neither
+    /// does one interrupted before the first frame.
+    func testExitStatusIsZeroWithoutAModel() throws {
+        XCTAssertEqual(try Options.parse(["--iterations", "1"]).exitCode(for: nil), 0)
+    }
+
+    /// The graphical/scripted split is why the flag exists: the same dead model reports 1
+    /// by default and 0 when the operator asked for a display-only run.
+    func testExitZeroForcesSuccessForAGraphicalRun() throws {
+        let dead = model(
+            nodes: [node("this-mac", state: .down)],
+            providers: [provider(.tavily, state: .failing)]
+        )
+        let scripted = try Options.parse(["--iterations", "1"])
+        let graphical = try Options.parse(["--exit-zero"])
+        XCTAssertEqual(scripted.exitCode(for: dead), 1)
+        XCTAssertEqual(graphical.exitCode(for: dead), 0)
+        XCTAssertTrue(graphical.exitZero)
+    }
+
+    func testUsageDocumentsTheExitStatusContract() {
+        XCTAssertTrue(Options.usage.contains("--exit-zero"))
+        XCTAssertTrue(Options.usage.contains("EXIT STATUS"))
     }
 }

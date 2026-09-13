@@ -1,0 +1,183 @@
+# B46 — `mcps-mon` always exited 0, so `--iterations` was not a health check
+
+Host: this Mac (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## The premise, checked first
+
+True as reported, and no prior fix existed:
+
+```
+$ grep -rn "exit(" Sources/MCPSMonitor/ ; git log --oneline --all --grep "audit(B46)"
+Sources/MCPSMonitor/main.swift:501:    exit(0)          # --help
+Sources/MCPSMonitor/main.swift:505:    exit(2)          # parse error
+                                              # no B46 commit anywhere on the branch
+```
+
+The refresh loop ended at the bottom of `main.swift` with no `exit` call at all, so a scripted
+run returned the C runtime's default status 0 whatever the probes found. The sibling operator
+tool documents a real status contract — `scripts/searxng_health.py`: "Exit codes: 0 healthy,
+1 the instance or its JSON API is unusable, 2 unreachable" — which is the precedent followed
+here. `SignalRestore` deliberately `_exit(0)`s on an external SIGINT/SIGTERM ("a supervisor
+asking us to stop is a clean shutdown"), and that is left unchanged.
+
+## The contract chosen
+
+Defaults, documented in `Options.usage` under a new `EXIT STATUS` section:
+
+* **0** — the fleet answered: at least one probed node returned results, and, when any
+  provider was configured, at least one of them was healthy. A run that checked nothing
+  (no nodes, no configured providers, or no completed refresh) also reports 0.
+* **1** — every probed node failed to return results, or every configured provider failed.
+  A `degraded` node — answered but returned nothing usable — counts as failed.
+* **2** — invalid arguments. Unchanged; parsing already did this before any probe.
+
+`--exit-zero` forces 0 for a purely graphical run. This is a deliberate behaviour change and
+is called out as one: anyone who today pipes `mcps-mon > frame.txt` or runs
+`mcps-mon --iterations n` will now get 1 when the whole fleet is down. That is the point of
+the finding — the status could not previously distinguish the two — and the flag is the
+opt-out the finding asks for. It does not change the interactive exit path when the fleet is
+healthy, and the PTY smoke test's stub is healthy, so its `q`/SIGINT/SIGTERM exit-0
+assertions still hold (measured below).
+
+## The fix
+
+```
+$ git diff -- Sources/MCPSMonitor/main.swift
+@@ -20,6 +20,8 @@ struct Options: Sendable {
+     /// Permits probing more often than the safe floor.
+     var allowExpensiveProbing = false
++    /// Force exit status 0 whatever the probes found, for a purely graphical run.
++    var exitZero = false
+     /// Things the user should know about how their options were interpreted.
+     var notes: [String] = []
+@@ -50,6 +52,38 @@ struct Options: Sendable {
++    /// The status a finished run reports to its caller.
++    ///
++    /// `--iterations` is documented as "useful for scripting", but the refresh loop fell off
++    /// the end of `main.swift` and the process always exited 0, so a scripted run against a
++    /// completely dead fleet was indistinguishable from a healthy one (ledger B46). […]
++    func exitCode(for model: MonitorModel?) -> Int32 {
++        guard !exitZero, let model else { return 0 }
++        let noNodeAnswered = !model.nodes.isEmpty && model.healthyNodes == 0
++        let configured = model.providers.filter { $0.state != .notConfigured }
++        let noProviderWorked = !configured.isEmpty && model.healthyProviders == 0
++        return noNodeAnswered || noProviderWorked ? 1 : 0
++    }
+@@ usage
++          --exit-zero            Always exit 0, even when every node or every
++                                 configured provider failed. For a purely graphical
++                                 run; without it the status is a health check.
++        EXIT STATUS
++          0  the fleet answered: a node returned results and, when any provider
++             was configured, one of them was healthy (a run that probed nothing,
++             or one that was told --exit-zero, also reports 0)
++          1  every probed node failed, or every configured provider failed
++          2  invalid arguments
+@@ parse loop
++            case argument == "--exit-zero":
++                options.exitZero = true
+@@ end of main.swift
++// The loop used to fall off the end of the file […]
++exit(options.exitCode(for: lastModel))
+```
+
+The decision is a pure function on `Options` so it is unit-testable; `main.swift` only wires
+the model to it after the final summary. No public API signature changed (`Options` is
+internal to the executable target).
+
+## The test added
+
+Ten cases in `Tests/MCPSMonitorTests/MonitorOptionsTests.swift` under `// MARK: - Exit status
+(ledger B46)`: a healthy fleet is 0, all nodes down is 1, all-degraded is 1, one node up is 0,
+all configured providers failing is 1, all `NO KEY` is 0 (an unconfigured provider is not a
+failure), a run that probed nothing is 0, no model is 0, `--exit-zero` turns a dead fleet's 1
+into 0, and the usage text documents the flag and the section.
+
+## Proof the tests can fail (mutation, not assertion)
+
+`exitCode` was replaced with the original always-zero behaviour — `return 0` — the rest of the
+file untouched:
+
+```
+$ python3  # replace the body of exitCode with `return 0`
+$ swift test --scratch-path "$SCRATCH" --filter 'MonitorOptionsTests/testExitStatus|…'
+Tests/MCPSMonitorTests/MonitorOptionsTests.swift:301: error: -[MCPSMonitorTests.MonitorOptionsTests testExitStatusCountsDegradedNodesAsFailed] : XCTAssertEqual failed: ("0") is not equal to ("1")
+Tests/MCPSMonitorTests/MonitorOptionsTests.swift:324: error: -[MCPSMonitorTests.MonitorOptionsTests testExitStatusIsNonZeroWhenEveryConfiguredProviderFails] : XCTAssertEqual failed: ("0") is not equal to ("1")
+Tests/MCPSMonitorTests/MonitorOptionsTests.swift:290: error: -[MCPSMonitorTests.MonitorOptionsTests testExitStatusIsNonZeroWhenEveryNodeIsDown] : XCTAssertEqual failed: ("0") is not equal to ("1")
+Tests/MCPSMonitorTests/MonitorOptionsTests.swift:361: error: -[MCPSMonitorTests.MonitorOptionsTests testExitZeroForcesSuccessForAGraphicalRun] : XCTAssertEqual failed: ("0") is not equal to ("1")
+	 Executed 8 tests, with 4 failures (0 unexpected) in 0.106 (0.107) seconds
+```
+
+That is the original defect reproduced: every unhealthy case reports 0. The file was restored
+from a pre-mutation copy and verified byte-identical:
+
+```
+$ diff -u "$SCRATCH/B46-main.clean.swift" Sources/MCPSMonitor/main.swift   # no output
+$ shasum -a 256 -c "$SCRATCH/B46-main.clean.sha256"
+Sources/MCPSMonitor/main.swift: OK        (sha256 e832d6c1…, before and after)
+```
+
+## The contract measured on the real process
+
+The unit test pins the decision; this shows the process actually returns it. No provider key
+in the environment, so no provider can be configured and only the node term can fire. The
+dead node is a closed loopback port (connection refused, no external network):
+
+```
+$ BIN="$SCRATCH/arm64-apple-macosx/debug/mcps-mon"
+$ env -i PATH="$PATH" "$BIN" --iterations 1 --node dead=http://127.0.0.1:9 >/dev/null 2>&1; echo $?
+1
+$ env -i PATH="$PATH" "$BIN" --iterations 1 --node dead=http://127.0.0.1:9 --exit-zero >/dev/null 2>&1; echo $?
+0
+$ env -i PATH="$PATH" "$BIN" --iterations 1 --no-nodes >/dev/null 2>&1; echo $?
+0
+```
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (2.78s)                                                     0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+	 Executed 531 tests, with 6 tests skipped and 0 failures (0 unexpected) in 25.311 (25.363) seconds
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (3.64s)                                                     0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+0 diagnostics                                                               exit=0
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 85 files.                    exit=0
+
+$ python3 scripts/third_party_notices.py
+THIRD-PARTY-NOTICES.md covers all 8 resolved packages at the pinned versions
+
+$ python3 scripts/monitor_tty_smoke.py "$SCRATCH/arm64-apple-macosx/release/mcps-mon"
+  startup hid the cursor and cleared the screen
+  frames home the cursor and clear to the end of the line and screen
+  colour on by default; `c` switched it off (8 frames painted)
+  `e` hid and restored the engine breakdown
+  `r` repainted immediately
+  `p` probed providers and the stub answered OK
+  `q` exited 0, restored the cursor and printed the summary
+  hostile engine text was replaced, not executed
+  Ctrl-C byte exited 0 and restored the terminal
+  SIGINT exited 0 and restored the terminal
+  SIGTERM exited 0 and restored the terminal
+MONITOR TTY SMOKE PASSED
+```
+
+The suite is 531 (521 at HEAD + 10 new). The 6 skips are the pre-existing environment-gated
+ones. The smoke test was run against the release binary built by the gate above, so it did not
+start a second Swift build.
+
+## Noted, not changed
+
+* The signal path still `_exit(0)`s. A supervisor stopping a *graphical* run is not asking for
+  a health verdict, and changing that would make `kill` report a failure for a deliberate
+  shutdown. The signal branch is asserted by the smoke test above.
+* `exitCode` filters providers with `state != .notConfigured`. B76 introduces a state for an
+  operator-disabled provider, which is likewise not a failure; that task owns the expression
+  and must extend this filter when it adds the case, or a fully disabled fleet would report 1.

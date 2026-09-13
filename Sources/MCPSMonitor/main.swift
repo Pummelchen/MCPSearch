@@ -20,6 +20,8 @@ struct Options: Sendable {
     var probeQueries: ProbeQueries
     /// Permits probing more often than the safe floor.
     var allowExpensiveProbing = false
+    /// Force exit status 0 whatever the probes found, for a purely graphical run.
+    var exitZero = false
     /// Things the user should know about how their options were interpreted.
     var notes: [String] = []
 
@@ -50,6 +52,38 @@ struct Options: Sendable {
         forced || probeRequested || !hasProbedBefore
     }
 
+    /// The status a finished run reports to its caller.
+    ///
+    /// `--iterations` is documented as "useful for scripting", but the refresh loop fell off
+    /// the end of `main.swift` and the process always exited 0, so a scripted run against a
+    /// completely dead fleet was indistinguishable from a healthy one (ledger B46). The
+    /// contract is deliberately a liveness check, not a per-node report:
+    ///
+    /// * `0` — the fleet answered: at least one probed node returned results and, if any
+    ///   provider was configured, at least one of them was healthy. A run that checked
+    ///   nothing (no nodes, no configured providers) is not a failed run.
+    /// * `1` — every probed node failed to return results, or every configured provider
+    ///   failed. A node that answered but returned nothing usable (`degraded`) counts as
+    ///   failed: it cannot serve a search either.
+    /// * `2` — the arguments were invalid, thrown during parsing before any probe.
+    ///
+    /// `--exit-zero` forces `0`: an operator watching the dashboard and an unattended script
+    /// want different answers from the same run, and only the script asked for a status.
+    func exitCode(for model: MonitorModel?) -> Int32 {
+        // Checked before the model: a run that never completed a refresh has nothing to
+        // report, and the flag is about the run rather than about its result.
+        guard !exitZero, let model else { return 0 }
+
+        let noNodeAnswered = !model.nodes.isEmpty && model.healthyNodes == 0
+
+        // An unconfigured provider is an expected state (`NO KEY`), not a failure, and a
+        // monitor with no keyed provider at all is not a failed health check.
+        let configured = model.providers.filter { $0.state != .notConfigured }
+        let noProviderWorked = !configured.isEmpty && model.healthyProviders == 0
+
+        return noNodeAnswered || noProviderWorked ? 1 : 0
+    }
+
     static let usage = """
         mcps-mon — live dashboard for MCPSearch providers and nodes.
 
@@ -70,9 +104,19 @@ struct Options: Sendable {
                                  Permit probe intervals below 60s. A 10s interval costs
                                  roughly 360 credits an hour per keyed provider.
           --iterations <n>       Stop after n refreshes (useful for scripting).
+          --exit-zero            Always exit 0, even when every node or every
+                                 configured provider failed. For a purely graphical
+                                 run; without it the status is a health check.
           --no-colour            Disable ANSI colour (--no-color is accepted too).
           --no-engines           Hide the per-node engine breakdown.
           --help                 Show this message.
+
+        EXIT STATUS
+          0  the fleet answered: a node returned results and, when any provider
+             was configured, one of them was healthy (a run that probed nothing,
+             or one that was told --exit-zero, also reports 0)
+          1  every probed node failed, or every configured provider failed
+          2  invalid arguments
 
         KEYS (interactive)
           p  probe providers now          r  refresh now
@@ -210,6 +254,9 @@ struct Options: Sendable {
 
             case argument == "--allow-expensive-probing":
                 options.allowExpensiveProbing = true
+
+            case argument == "--exit-zero":
+                options.exitZero = true
 
             case argument == "--no-colour" || argument == "--no-color":
                 options.useColour = false
@@ -613,3 +660,8 @@ if let model = lastModel {
     print("")
     print("final: \(model.healthyProviders) provider(s) ok, \(model.healthyNodes)/\(model.nodes.count) node(s) up")
 }
+
+// The loop used to fall off the end of the file, so the process exited 0 no matter what the
+// probes found and `--iterations` could not be used as a health check (ledger B46). The
+// status is derived here, after the summary, so a script always gets the prose first.
+exit(options.exitCode(for: lastModel))

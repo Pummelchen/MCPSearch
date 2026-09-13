@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 132 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 115 |
-| START (reproduced, expected behaviour written) | 17 |
+| DONE | 116 |
+| START (reproduced, expected behaviour written) | 16 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 87** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 70 are DONE and 17 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 71 are DONE and 16 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -99,7 +99,7 @@ waived in writing.
 | B43 | S3 | `AUDIT/plan.md` vs `AUDIT/baseline/` | `AUDIT/plan.md:38` | The baseline evidence table cites `gitleaks.json`, which is not in the repository | docs | DONE | this Mac (arm64) | Phase B L7-5 |
 | B44 | S3 | `scripts/soak.py` | `scripts/soak.py:473-479` | The soak test's comment promises a "provider never contributed" failure that the code never implements | incomplete | DONE | this Mac (arm64) | Phase B L7-6 |
 | B45 | S3 | `scripts/mcp_smoke.py`, `scripts/monitor_tty_smoke.py` | `scripts/mcp_smoke.py:100-105`, `scripts/monitor_tty_smoke.py:186-194` | The "prove the scrub" loops in both smoke scripts are no-ops that cannot fail | dead | DONE | this Mac (arm64) | Phase B L7-7 |
-| B46 | S3 | `MCPSMonitor` | `Sources/MCPSMonitor/main.swift:45-78` (`--iterations  Stop after n refreshes (useful for scripting)`), `:533-580` | `mcps-mon` always exits 0, so `--iterations` cannot be used as a health check | incomplete | START | this Mac (arm64) | Phase B L7-8 |
+| B46 | S3 | `MCPSMonitor` | `Sources/MCPSMonitor/main.swift:45-78` (`--iterations  Stop after n refreshes (useful for scripting)`), `:533-580` | `mcps-mon` always exits 0, so `--iterations` cannot be used as a health check | incomplete | DONE | this Mac (arm64) | Phase B L7-8 |
 | B47 | S3 | `example.env` vs `deploy/` | `example.env:35-39` | `example.env` tells the operator to fix a SearXNG setting that the shipped files already set | docs | DONE | this Mac (arm64) | Phase B L7-9 |
 | B48 | S3 | `deploy/provision-node.sh` | `deploy/provision-node.sh:296-297` | `provision-node.sh` cannot find a Homebrew-installed Tailscale CLI on Apple Silicon | bug | DONE | this Mac (arm64) | Phase B L7-11 |
 | B49 | S3 | `deploy/provision-node.sh` | `deploy/provision-node.sh:192-199`, `:203-235` | The generated SearXNG `settings.yml` inherits the umask, so the per-node secret key is world-readable | unsafe | DONE | this Mac (arm64) | Phase B L7-12 |
@@ -218,6 +218,22 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B46 — `mcps-mon` exits 0 even when the whole fleet is down
+
+**Severity S3** · **category** incomplete · **status** DONE · **host** node1 (arm64)
+
+**The premise holds.** `grep -rn "exit(" Sources/MCPSMonitor/` found only `--help` (0) and the parse error (2); the refresh loop ended at the bottom of `main.swift` with no `exit` call, so the C runtime returned 0 whatever the probes found, and no `audit(B46)` commit existed anywhere on the branch. The sibling `scripts/searxng_health.py` already documents 0/1/2, which is the precedent the usage text now follows.
+
+**The contract, stated explicitly.** 0 — the fleet answered: at least one probed node returned results and, when any provider was configured, at least one was healthy (a run that checked nothing, or did not finish a refresh, also reports 0). 1 — every probed node failed to return results, or every configured provider failed; a `degraded` node counts as failed because it cannot serve a search either. 2 — invalid arguments, unchanged. This is a deliberate behaviour change: a script that pipes a frame or runs `--iterations n` now sees 1 when the whole fleet is down, which is exactly the signal the task exists to provide; `--exit-zero` is the opt-out the expected-correct asks for. The signal path keeps its deliberate `_exit(0)` — a supervisor's `kill` is a clean stop, not a health verdict.
+
+**What changed.** `Options.exitZero` and `Options.exitCode(for:)`, a `--exit-zero` parse case, an `EXIT STATUS` section plus the flag in `Options.usage`, and one `exit(options.exitCode(for: lastModel))` after the final summary. No public signature changed; `Options` is internal to the executable target.
+
+**Falsification.** Replacing `exitCode`'s body with `return 0` — the original behaviour — reddens `testExitStatusIsNonZeroWhenEveryNodeIsDown`, `testExitStatusCountsDegradedNodesAsFailed`, `testExitStatusIsNonZeroWhenEveryConfiguredProviderFails` and `testExitZeroForcesSuccessForAGraphicalRun` with `("0") is not equal to ("1")`. The file was restored byte-identical (`diff` empty, SHA-256 `e832d6c1…`).
+
+**Measured on the process.** Against a refused loopback port with no provider key: default `--iterations 1` exits 1, `--exit-zero` exits 0, `--no-nodes` exits 0. `scripts/monitor_tty_smoke.py` (healthy stub) still observes exit 0 on `q`, Ctrl-C, SIGINT and SIGTERM.
+
+**Noted.** `exitCode` filters on `state != .notConfigured`; B76's operator-disabled case must extend that filter when it introduces the case, or a fully disabled fleet would report 1. Recorded there in the task's evidence.
 
 ## B120 — the cross-scheme refusal is already classified by scheme, not by transport code
 
