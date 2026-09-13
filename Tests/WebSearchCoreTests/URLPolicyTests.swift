@@ -43,6 +43,9 @@ final class URLPolicyTests: XCTestCase {
             "javascript:alert(1)",
             "ftp://example.com/file",
             "gopher://example.com/",
+            // Deliberately insecure, and deliberately never opened: this list is the set of URLs
+            // the policy must *reject*, so the fixture has to contain them (ledger A09).
+            // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
             "ws://example.com/socket",
         ] {
             let decision = subject.validateLexically(URL(string: raw)!)
