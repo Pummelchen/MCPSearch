@@ -19,6 +19,7 @@ import XCTest
 /// | every object declares `properties` | An object schema without it is rejected. |
 /// | every object declares `required` | An absent key must not be read as "the empty set"; the declared set is the contract. |
 /// | every array declares `items` | Required for a well-formed schema. |
+/// | nullable types admit null in `enum` too | `type` and `enum` are conjunctive, so an `enum` that omits null makes the advertised nullable union an illegal value; a strict client filling every `required` slot cannot say "use the default". |
 /// | mirrored tools agree property by property | `web_answer` advertises the same discovery arguments as `web_search`; a constraint that reaches only one of them is a client-visible divergence. |
 /// | root is a closed object, never a union | Non-object roots are rejected. |
 /// | tool names at most 64 characters | Documented limit across clients. |
@@ -231,6 +232,28 @@ final class SchemaCompatibilityTests: XCTestCase {
                 found.append("\(path): array schema without `items`")
             }
 
+            // In JSON Schema `type` and `enum` are conjunctive, so a nullable union whose
+            // `enum` omits null advertises a value that no strict validator accepts: the
+            // value satisfies `type` and violates `enum`. Because every property is also
+            // `required`, a client that fills every slot must send null to mean "use the
+            // default", and such a client could not legally express it (ledger B111).
+            if let properties = object["properties"] as? [String: Any] {
+                for key in properties.keys.sorted() {
+                    guard
+                        let property = properties[key] as? [String: Any],
+                        let types = property["type"] as? [String],
+                        types.contains("null"),
+                        let values = property["enum"] as? [Any]
+                    else { continue }
+                    if !values.contains(where: { $0 is NSNull }) {
+                        found.append(
+                            "\(path).\(key): `type` admits null but `enum` does not, so the "
+                                + "nullable union the schema advertises is not a legal value"
+                        )
+                    }
+                }
+            }
+
             for (key, value) in object {
                 let nested = (mirror?["properties"] as? [String: Any])?[key]
                 violations(in: value, path: "\(path).\(key)", mirror: nested as? [String: Any], into: &found)
@@ -365,6 +388,49 @@ final class SchemaCompatibilityTests: XCTestCase {
                 XCTAssertTrue(
                     mutable.contains("null"),
                     "\(name).\(key) is required but not nullable, so it cannot be omitted"
+                )
+                // `type` and `enum` are conjunctive, so a value that satisfies only one
+                // of them is not legal. An enum that names the choices without null
+                // rejects the very null this schema is built around (ledger B111).
+                if let values = property["enum"] as? [Any] {
+                    XCTAssertTrue(
+                        values.contains { $0 is NSNull },
+                        "\(name).\(key) admits null in `type` but its `enum` does not, "
+                            + "so a strict client cannot fill this required slot"
+                    )
+                }
+            }
+        }
+    }
+
+    /// Every argument a strict client may need to send as null must accept null, and an
+    /// `enum` must admit it.
+    ///
+    /// `type` and `enum` are conjunctive in JSON Schema, so an `enum` that lists the
+    /// choices without null makes the advertised nullable union an invalid value. Since
+    /// every property is also `required`, a client that must fill every slot could not
+    /// legally say "use the default" for `recency`, `provider` or `mode` (ledger B111).
+    /// The recursive keyword check in `violations` covers the whole advertised surface;
+    /// this test states the input-schema contract for both search tools directly, so the
+    /// failure names the argument a caller cannot express.
+    func testOptionalSearchArgumentsAdmitNull() throws {
+        for tool in try advertisedTools() {
+            let name = tool["name"] as? String ?? "?"
+            guard name == "web_search" || name == "web_answer" else { continue }
+            let schema = try XCTUnwrap(tool["inputSchema"] as? [String: Any])
+            let properties = try XCTUnwrap(schema["properties"] as? [String: Any])
+
+            for key in ["recency", "provider", "mode"] {
+                let property = try XCTUnwrap(properties[key] as? [String: Any], "\(name).\(key)")
+                XCTAssertTrue(
+                    (property["type"] as? [String] ?? []).contains("null"),
+                    "\(name).\(key) must be declared nullable"
+                )
+                let values = try XCTUnwrap(property["enum"] as? [Any], "\(name).\(key) enum")
+                XCTAssertTrue(
+                    values.contains { $0 is NSNull },
+                    "\(name).\(key) advertises a nullable union but its enum rejects null, "
+                        + "so no strict client can fill this required slot with the default"
                 )
             }
         }

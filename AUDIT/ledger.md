@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 129 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 96 |
-| START (reproduced, expected behaviour written) | 33 |
+| DONE | 97 |
+| START (reproduced, expected behaviour written) | 32 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 84** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 51 are DONE and 33 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 52 are DONE and 32 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -157,7 +157,7 @@ waived in writing.
 | B101 | S3 | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift`, `Tests/WebSearchCoreTests/HTTPTransportTests.swift` | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:79` | `HTTPMCPHost`'s startup-failure and internal-error paths are untested | test | START | this Mac (arm64) | Phase B L6-21 |
 | B109 | S3 | `WebSearchCore` / `Search` (`RankFusion`) | `Sources/WebSearchCore/Search/RankFusion.swift:161-162` | The response-level resale discount is applied to every result of an aggregator response, defeating the per-result refinement the code documents | logic | DONE | this Mac (arm64) | handover re-read L2 |
 | B110 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, `web_answer` input) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:275-281` | `web_answer`'s `provider` argument lost the enum that `web_search`'s `provider` declares, though the schema documents itself as a mirror | logic | DONE | this Mac (arm64) | handover re-read L1 |
-| B111 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, nullable enums) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:62-66`, `:83-93`, `:94-101`, `:270-274` | Nullable enum arguments declare `["string", "null"]` with an `enum` that excludes `null`, so a strict client cannot legally send the null the design depends on | logic | START | this Mac (arm64) | handover re-read L1 |
+| B111 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, nullable enums) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:62-66`, `:83-93`, `:94-101`, `:270-274` | Nullable enum arguments declare `["string", "null"]` with an `enum` that excludes `null`, so a strict client cannot legally send the null the design depends on | logic | DONE | this Mac (arm64) | handover re-read L1 |
 | B112 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, `web_search_status` input) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:350-358` | `statusInput` is the only object schema in the file that omits `required` | style | DONE | this Mac (arm64) | handover re-read L1 |
 | B113 | S3 | `WebSearchCore` / `Support` + `SwiftWebSearchMCP` (`main`) | `Sources/SwiftWebSearchMCP/main.swift:16` and `:98` | Configuration is loaded and validated before the command line is parsed, so an unreadable config file pre-empts `--help` | logic | START | this Mac (arm64) | handover re-read L7 |
 | B114 | S3 | `SwiftWebSearchMCP` (`TransportConfiguration.usage`) | `Sources/WebSearchCore/Support/TransportConfiguration.swift:51-77` | `usage` under-documents the CLI, and the test that claims to check every flag locks the incomplete list in place | docs | START | this Mac (arm64) | handover re-read L7 |
@@ -215,6 +215,54 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B111 — nullable enums excluded the null the design depends on
+
+**Severity S3** (recorded) · **category** logic · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** Every optional argument in `ToolSchemas.swift` is a nullable union
+(`["string", "null"]`) listed in `required`, the documented strict-mode idiom, and the runtime
+parser treats an explicit null as absent. Where such a property also carried an `enum`, the `enum`
+listed only the choices: `web_search.recency`, `web_search.mode`, `web_answer.recency` and
+`web_answer.mode`. `type` and `enum` are conjunctive in JSON Schema, so null satisfied `type` and
+violated `enum` — the value the design depends on was invalid, and a strict client that must fill
+every required slot could not legally ask for the default. Read back from a started server, the
+contradiction was visible on the wire for all four. The repository lint could not see it because
+`testToolsAreUsableWithNoOptionalArguments` asserted nullability from `type` alone.
+
+**Why the enum gained null.** The finding offers dropping these from `required` instead. That was
+rejected: `required` is what OpenAI strict mode demands, the file's lint enforces
+`properties == required` on every object, and every other optional argument uses the same
+nullable-union-listed-in-`required` idiom — dropping it for these four would abandon the file's one
+optionality idiom and leave `provider` (whose handler treats `auto` and null identically)
+inconsistent with its neighbours. Adding `null` keeps the idiom and makes the advertised value legal,
+which is what the parser already implements. The literals use `Value.null` so the mixed arrays still
+type as `[Value]`. The file header's nullable-types bullet now states the pairing rule.
+
+**The lint.** The recursive `violations` walk now appends a violation whenever a property whose
+`type` admits null has an `enum` that does not, for every object schema at any depth. The check is
+unconditional on `required`, matching the finding's wording and covering nested output schemas where
+the same contradiction could appear. The rule table at the top of the test file gained the matching
+row, `testToolsAreUsableWithNoOptionalArguments` now asserts the `enum` next to the `type` assertion
+it already made, and `testOptionalSearchArgumentsAdmitNull` states the contract for `recency`,
+`provider` and `mode` on both search tools so a failure names the argument a caller cannot express.
+
+**Verification.** Mutation-proven. Removing `Value.null` from the two `recency` enums makes the lint
+report exactly `web_search.inputSchema.recency: type admits null but enum does not, so the nullable
+union the schema advertises is not a legal value` and the same for `web_answer`, while the focused
+test reports the two argument-level failures. Running the **pre-B111** test file (taken from the B110
+commit, so every earlier rule including B110's parity comparison was active) against that defective
+tree passes — 7 tests, 0 failures, 0.740 s — which is the omission the finding describes and shows
+the new rule is load-bearing. The production file was restored from a copy and verified
+byte-identical (`diff` empty; SHA-256 equal to the backup). Debug and release build with 0 warnings
+under `-warnings-as-errors`; **495 tests, 6 skipped, 0 failures** (494 plus the one new test method);
+`swift-format --strict` 0 diagnostics and `swiftlint --strict` 0 violations in 84 files. Artifact:
+`AUDIT/evidence/B111-nullable-enum-admits-null.txt`.
+
+**Noted, not changed.** The four enums remain literals rather than derivations of `Recency` and
+`SearchMode`; only `provider` is derived, because B110's subject was a drift between two tools. The
+finding's compatibility caveat stands: no vendor client is run here, so the impact is reasoned from
+the JSON Schema specification and from this server's parser, not observed against a vendor.
 
 ## B110 — `web_answer`'s `provider` argument lost the enum that `web_search`'s declares
 

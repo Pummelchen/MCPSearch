@@ -23,6 +23,10 @@ import WebSearchCore
 ///   expressed as a **nullable type** (`["string", "null"]`), which OpenAI supports
 ///   under strict mode and documents as the idiom for optional fields. Clients that
 ///   are not strict simply omit the argument.
+/// - **An `enum` on a nullable property must list null too.** `type` and `enum` are
+///   conjunctive in JSON Schema, so a value must satisfy both: an `enum` that names the
+///   choices without null makes the null this required-list convention depends on an
+///   invalid value. The schema lint enforces the pairing (ledger B111).
 /// - **No `format` keyword.** OpenAI rejects anything outside a nine-value allowlist
 ///   (`date-time`, `time`, `date`, `duration`, `email`, `hostname`, `ipv4`, `ipv6`,
 ///   `uuid`); `format: "uri"` is a hard error, so URL shape is described in prose and
@@ -95,7 +99,10 @@ public enum ToolSchemas {
                 ],
                 "recency": [
                     "type": ["string", "null"],
-                    "enum": ["any", "day", "week", "month", "year"],
+                    // `enum` and `type` are conjunctive in JSON Schema, so a null the
+                    // union advertises must appear here too: this property is required,
+                    // and null is how a strict client asks for the default (ledger B111).
+                    "enum": ["any", "day", "week", "month", "year", Value.null],
                     "description": "Publication time window; default \"any\"",
                 ],
                 "include_domains": [
@@ -117,7 +124,10 @@ public enum ToolSchemas {
                 "provider": Self.providerDiscoverySchema,
                 "mode": [
                     "type": ["string", "null"],
-                    "enum": ["fast", "balanced", "thorough"],
+                    // `enum` and `type` are conjunctive in JSON Schema, so a null the
+                    // union advertises must appear here too: this property is required,
+                    // and null is how a strict client asks for the default (ledger B111).
+                    "enum": ["fast", "balanced", "thorough", Value.null],
                     "description": Value.string(
                         "fast uses one provider; balanced fuses two; thorough fuses three "
                             + "and may add an aggregator; default \"balanced\""
@@ -272,7 +282,10 @@ public enum ToolSchemas {
                 ],
                 "recency": [
                     "type": ["string", "null"],
-                    "enum": ["any", "day", "week", "month", "year"],
+                    // `enum` and `type` are conjunctive in JSON Schema, so a null the
+                    // union advertises must appear here too: this property is required,
+                    // and null is how a strict client asks for the default (ledger B111).
+                    "enum": ["any", "day", "week", "month", "year", Value.null],
                     "description": "Publication time window; default \"any\"",
                 ],
                 "include_domains": [
@@ -293,7 +306,10 @@ public enum ToolSchemas {
                 ],
                 "mode": [
                     "type": ["string", "null"],
-                    "enum": ["fast", "balanced", "thorough"],
+                    // `enum` and `type` are conjunctive in JSON Schema, so a null the
+                    // union advertises must appear here too: this property is required,
+                    // and null is how a strict client asks for the default (ledger B111).
+                    "enum": ["fast", "balanced", "thorough", Value.null],
                     "description": "Search depth before answering; default \"balanced\"",
                 ],
                 "provider": Self.providerDiscoverySchema,
