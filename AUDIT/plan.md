@@ -114,6 +114,13 @@ Any finding discovered at any time gets a new ledger id and the same treatment.
 
 ## Phase E — final verification (not started)
 
+**CI coverage note (measured this round).** `.github/workflows/ci.yml` triggers on
+`push: branches: [main]`, `pull_request: branches: [main]` and `workflow_dispatch`. Pushing the
+audit branch therefore starts **no CI run at all** — the latest runs on GitHub are all from `main`
+at `f3dd8d9`. Every gate reported for this branch so far was run locally on this Mac. The PR to
+`main` is what will exercise CI on this work, which is the right place for it but means the PR must
+be opened before Phase E can claim "CI green".
+
 Fresh clone on a **node that did not develop the fix** (node1–node4, 8 GB each, one heavy
 job at a time), clean build with zero warnings, full suite green, coverage report, all
 scanners clean or waived in writing, zero placeholders, no non-BLOCKED open task, wiki
