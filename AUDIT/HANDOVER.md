@@ -7,10 +7,10 @@ authoritative; `AUDIT/ledger.json` carries every field. This page is orientation
 
 | | |
 | --- | --- |
-| Branch | `audit/2026-09-13` at **`67db1c4`**, pushed to `origin` (never merged; `main` untouched at `f3dd8d9`) |
+| Branch | `audit/2026-09-13` at **`3b5ded6`**, pushed to `origin` (never merged; `main` untouched at `f3dd8d9`) |
 | Relationship | `main` is a **strict ancestor** of this branch — `git rev-list --count origin/audit/2026-09-13..origin/main` is 0, so the eventual merge is a fast-forward |
-| Tasks | **131 DONE, 0 PROGRESS, 2 START, 0 BLOCKED** (133 enumerated; all open work is S3) |
-| Suite | **585 tests, 6 skipped, 0 failures** (486 baseline + 3 from B116) |
+| Tasks | **133 DONE, 0 PROGRESS, 0 START, 1 BLOCKED** (134 enumerated; all open work is S3) |
+| Suite | **588 tests, 6 skipped, 0 failures** (486 baseline + 3 from B116) |
 | Builds | debug + release, 0 warnings under `-warnings-as-errors` |
 | Linters | `swift-format --strict` 0 · `swiftlint --strict` 0 · ruff clean · pyright strict 0 |
 | Phases | A, B and D complete; C in progress (all S0/S1/S2 closed); **E not started** |
@@ -120,7 +120,9 @@ Two things worth carrying forward:
   `node1` runs one (`mcps-searxng`, `127.0.0.1:8888`); its image ID matches the digest pinned in
   `deploy/docker-compose.yml`, so the fleet is in sync.
 
-## Open tasks (2, all S3)
+## Open tasks
+
+| — | — | — | *(none: every S3 task is DONE or BLOCKED-with-owner)* | — |
 
 The queue order is this table's order.
 
@@ -133,7 +135,7 @@ The queue order is this table's order.
 
 1. Continue the S3 queue above, one commit per task, each with its own evidence file, ledger rows
    and CI record.
-2. Then **Phase E**, which is now imminent (2 tasks left). It is an acceptance gate, not a task
+2. **Phase E is the next step** — the S3 queue is complete (133 DONE, 1 BLOCKED-with-owner). It is an acceptance gate, not a task
    list: a fresh clone on an independent host, zero warnings, the full suite green **repeatedly**
    (a single green run has already hidden one real flake, B116), coverage at or above the 80 % floor
    via `scripts/coverage_floor.py`, every scanner clean or waived in writing, the ledger containing
