@@ -1614,7 +1614,7 @@
       "discovered_by": "Phase B pass L3-placeholders (L3-8)",
       "evidence_before": "`items.append(URLQueryItem(name: \"kl\", value: \"\\(region.lowercased())-\\(region.lowercased())\"))` produces `kl=us-us` for `en-US`. DDG's `kl` is `region-language` (`us-en`, `de-de`); the language is available as `request.locale?.language` and is discarded. The copy-paste of `region` in both positions is the wrong operand.",
       "fix_summary": "The kl hint is built as region-language from the locale hint's two parts in a testable helper, and is omitted entirely when the locale carries no region; the old code sent the region twice (`us-us`).",
-      "evidence_after": "Fails-before: with region-region restored the new test fails on us-us != us-en; after the fix the helper returns us-en, de-de and nil for a region-less locale, and the suite is green at 483 tests / 6 skipped / 0 failures; swift-format --strict 0; swiftlint --strict 0. Artifact: AUDIT/evidence/B60-ddg-region-hint.txt",
+      "evidence_after": "Fails-before: with region-region restored the new test fails on us-us != us-en; after the fix the helper returns us-en, de-de and nil for a region-less locale, and the suite is green at 483 tests / 6 skipped / 0 failures; swift-format --strict 0; swiftlint --strict 0. Artifact: AUDIT/evidence/B60-ddg-region-hint.txt CI: run 34753974720 finished green (build-and-test, static-analysis) \u2014 https://github.com/Pummelchen/MCPSearch/actions/runs/34753974720",
       "commit_sha": "",
       "notes": "raw record: AUDIT/findings/L3-placeholders.md L3-8 \u00b7 expected-correct: `\"\\(region.lowercased())-\\(locale.language)\"` (guard both parts), or omit `kl` when the language is unknown. \u00b7 confidence: certain",
       "blocked_reason": "",
