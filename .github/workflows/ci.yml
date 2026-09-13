@@ -306,6 +306,17 @@ jobs:
       - name: Python types
         run: npx --yes pyright@1.1.414
 
+      # The harnesses no Swift test can reach: `searxng_health.py` was tested only by pointing it
+      # at a live instance, and `soak.py`'s argument parsing and credential scan were not driven
+      # at all. This also asserts the one contract that crosses the two languages — the provider
+      # environment scrub list in `scripts/mcp_smoke.py` must be set-equal to
+      # `ServerTestSupport.providerEnvironmentVariables`, because a drift leaves a developer's
+      # exported API key visible to the child the smoke test believes it scrubbed (ledger B99).
+      # Its SearXNG cases run against a loopback stub, so it needs no credentials and no live
+      # instance.
+      - name: Python harness tests (searxng_health, soak, scrub list)
+        run: python3 scripts/harness_tests.py
+
       # The default registry ruleset, deliberately not vendored: a new rule should be able to
       # fail this job, and `--metrics=off` keeps the scan local.
       - name: Python security patterns

@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 133 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 128 |
-| START (reproduced, expected behaviour written) | 5 |
+| DONE | 129 |
+| START (reproduced, expected behaviour written) | 4 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 88** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 88 S3 tasks 83 are DONE and 5 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 88 S3 tasks 84 are DONE and 4 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -152,7 +152,7 @@ waived in writing.
 | B96 | S3 | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift` | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift:46` | `HTTPStatusMapper.map`'s HTTPError branches and `validate`'s default/422 statuses are untested | test | DONE | this Mac (arm64) | Phase B L6-16 |
 | B97 | S3 | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift`, `Tests/WebSearchCoreTests/AnswerSynthesizerTests.swift | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift:349` | `AnswerSynthesizer`'s completion edge cases, token usage and locale prompt are untested | test | DONE | this Mac (arm64) | Phase B L6-17 |
 | B98 | S3 | `Sources/MCPSMonitor/main.swift` (`Monitor`), `Tests/MCPSMonitorTests/MonitorOptionsTests.swift` | `Sources/MCPSMonitor/main.swift:337` | The `Monitor` actor's refresh/counting/warning logic has no Swift test | test | DONE | this Mac (arm64) | Phase B L6-18 |
-| B99 | S3 | `Tests/WebSearchCoreTests/TestSupport.swift`, `scripts/*.py` | `Tests/WebSearchCoreTests/TestSupport.swift:12` | No test ties the Swift test harnesses to the Python harnesses, and two scripts are untested entirely | test | START | this Mac (arm64) | Phase B L6-19 |
+| B99 | S3 | `Tests/WebSearchCoreTests/TestSupport.swift`, `scripts/*.py` | `Tests/WebSearchCoreTests/TestSupport.swift:12` | No test ties the Swift test harnesses to the Python harnesses, and two scripts are untested entirely | test | DONE | this Mac (arm64) | Phase B L6-19 |
 | B100 | S3 | `Sources/SwiftWebSearchMCP/ToolSchemas.swift` (`ToolOutputFormatter`) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:526` | `ToolOutputFormatter`'s fallback and diagnostic branches are untested | test | START | this Mac (arm64) | Phase B L6-20 |
 | B101 | S3 | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift`, `Tests/WebSearchCoreTests/HTTPTransportTests.swift` | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:79` | `HTTPMCPHost`'s startup-failure and internal-error paths are untested | test | START | this Mac (arm64) | Phase B L6-21 |
 | B109 | S3 | `WebSearchCore` / `Search` (`RankFusion`) | `Sources/WebSearchCore/Search/RankFusion.swift:161-162` | The response-level resale discount is applied to every result of an aggregator response, defeating the per-result refinement the code documents | logic | DONE | this Mac (arm64) | handover re-read L2 |
@@ -219,6 +219,22 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B99 — no test tied the Swift harnesses to the Python harnesses, and two scripts were untested
+
+**Severity S3** · **category** test · **status** DONE · **host** node1 (arm64)
+
+**Premise open, one clause stale.** The 18-entry scrub list really was duplicated by hand and unenforced in both directions, and `searxng_health.py` had no test at all. `soak.py` had more coverage than recorded: CI already drives `build_environment`, `silent_providers` and `run_verdict` (B23/B44 guards); only `main`'s argument handling, `parse_dotenv`, `load_secret_values` and `find_credential_leaks` were uncovered.
+
+**What was chosen.** One new module, `scripts/harness_tests.py`, with 16 stdlib `unittest` tests: the cross-language scrub-list equality (reading the Swift literal from `TestSupport.swift` and the tuple from `mcp_smoke.py`, failing with the diff in each direction), seven `searxng_health.py` cases against a real loopback `ThreadingHTTPServer` (healthy, 403 JSON-disabled, empty results, non-JSON 200, closed port, `file://` refusal, human report), and seven `soak.py` cases (`--help`, the B82 non-positive `--queries` guard, missing binary, dotenv, leak scan, config-file secrets). A single CI step runs it in `static-analysis`.
+
+**Why that option.** The alternative `soak.py --queries 1` CI invocation needs the release binary and a reusable SearXNG stub that does not exist outside `monitor_tty_smoke.py`, and would still not exercise soak.py's own parsing and leak scan. The module lives in `scripts/` rather than a new `tests/` so it is covered by the existing ruff and pyright gates with no scope change.
+
+**Falsification.** One entry deleted from each scrub list (`SEARCH_PROVIDER_ORDER` from Swift, `DEEPSEEK_MODEL` from Python) turned the equality red with the "names variables scripts/mcp_smoke.py does not scrub" message; a first attempt deleting only from Python produced the other message. Both files restored byte-identical (`diff` empty, SHA-256 verified).
+
+**Left open.** The record's third clause — driving both built executables against one stub and comparing their reports — is a different contract and is not addressed; the artifact says so rather than implying it was closed.
+
+Gate: 579 Swift tests / 6 skipped / 0 failures; debug and release 0 warnings; swift-format 0; swiftlint 0 in 89 files; ruff and pyright clean; notices clean; 16 Python harness tests OK. Evidence: `AUDIT/evidence/B99-harness-tie.txt`.
 
 ## B98 — the `Monitor` actor's refresh/counting/warning logic had no Swift test
 
