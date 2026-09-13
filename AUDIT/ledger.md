@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 133 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 126 |
-| START (reproduced, expected behaviour written) | 7 |
+| DONE | 127 |
+| START (reproduced, expected behaviour written) | 6 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 88** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 88 S3 tasks 81 are DONE and 7 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 88 S3 tasks 82 are DONE and 6 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -150,7 +150,7 @@ waived in writing.
 | B94 | S3 | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift`, `Sources/WebSearchCore/Search/SearchOrchestrator.swi | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift:716` | `testStatusCountsSuccessesAndFailures` never observes a failure | test | DONE | this Mac (arm64) | Phase B L6-14 |
 | B95 | S3 | `Tests/WebSearchCoreTests/MonitorTests.swift`, `Sources/WebSearchCore/Monitor/ProviderProbe.swift:50` | `Tests/WebSearchCoreTests/MonitorTests.swift:101` | The monitor's setup-hint test asserts a string the test itself constructed | test | DONE | this Mac (arm64) | Phase B L6-15 |
 | B96 | S3 | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift` | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift:46` | `HTTPStatusMapper.map`'s HTTPError branches and `validate`'s default/422 statuses are untested | test | DONE | this Mac (arm64) | Phase B L6-16 |
-| B97 | S3 | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift`, `Tests/WebSearchCoreTests/AnswerSynthesizerTests.swift | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift:349` | `AnswerSynthesizer`'s completion edge cases, token usage and locale prompt are untested | test | START | this Mac (arm64) | Phase B L6-17 |
+| B97 | S3 | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift`, `Tests/WebSearchCoreTests/AnswerSynthesizerTests.swift | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift:349` | `AnswerSynthesizer`'s completion edge cases, token usage and locale prompt are untested | test | DONE | this Mac (arm64) | Phase B L6-17 |
 | B98 | S3 | `Sources/MCPSMonitor/main.swift` (`Monitor`), `Tests/MCPSMonitorTests/MonitorOptionsTests.swift` | `Sources/MCPSMonitor/main.swift:337` | The `Monitor` actor's refresh/counting/warning logic has no Swift test | test | START | this Mac (arm64) | Phase B L6-18 |
 | B99 | S3 | `Tests/WebSearchCoreTests/TestSupport.swift`, `scripts/*.py` | `Tests/WebSearchCoreTests/TestSupport.swift:12` | No test ties the Swift test harnesses to the Python harnesses, and two scripts are untested entirely | test | START | this Mac (arm64) | Phase B L6-19 |
 | B100 | S3 | `Sources/SwiftWebSearchMCP/ToolSchemas.swift` (`ToolOutputFormatter`) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:526` | `ToolOutputFormatter`'s fallback and diagnostic branches are untested | test | START | this Mac (arm64) | Phase B L6-20 |
@@ -219,6 +219,18 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B97 — `AnswerSynthesizer`'s completion edge cases, token usage and locale prompt were untested
+
+**Severity S3** · **category** test · **status** DONE · **host** node1 (arm64)
+
+**Premise confirmed open.** The four named branches had no coverage: no test sends `{"choices":[]}`; `completion.inputTokens`/`outputTokens` are decoded on every response and never asserted; every `synthesize` call omits `locale:`; and `describe(_:)` was never called because no mock throws `URLError` or `CancellationError`. B70/B71/B93–B96/B54/B76/B79 did not touch this file, and no commit mentions B97.
+
+**What was added.** Eight tests in the existing `AnswerSynthesizerTests.swift` (646 -> 772 lines, under the ceiling, so no split) plus a private `userTurn(in:)` decoding helper. They pin: a 200 with an empty `choices` array -> `synthesisFailed` naming "no choices"; `answer.inputTokens == 100` / `outputTokens == 20`; `locale: "de-DE"` -> "Answer in the language implied by locale de-DE." in the user turn, with `nil`/`""` adding nothing; the full `describe` table (timeout, cancelled, five unreachable codes, generic); and a thrown `CancellationError` surfacing as a cancelled request. Production code unchanged — the injectable `HTTPClient` seam already existed.
+
+**Falsification.** Four one-line production mutations, each built and run under `--filter AnswerSynthesizerTests` after a `touch`: "no choices" -> "no completions"; `!locale.isEmpty` dropped; `promptTokens` -> `completionTokens`; `.timedOut` -> "gave up". Each produced exactly the matching assertion failure (35 tests, 4 failures combined). `AnswerSynthesizer.swift` restored byte-identical (`diff` empty, SHA-256 `0c756413edfc7bc313cda8cb8f43fbd5f363c26eeceedee1f5daaca0790117b6`).
+
+Gate: 570 tests / 6 skipped / 0 failures; debug and release 0 warnings; swift-format 0; swiftlint 0 in 88 files; notices clean. Evidence: `AUDIT/evidence/B97-answer-synthesizer-edges.txt`.
 
 ## B96 — the status mapper's `HTTPError` arms and `validate`'s default/422 paths were untested
 

@@ -89,6 +89,16 @@ final class AnswerSynthesizerTests: XCTestCase {
         return String(data: data, encoding: .utf8) ?? #"{"error":"unencodable fixture"}"#
     }
 
+    /// The user turn of the request the synthesizer just sent, decoded from the mock's
+    /// recorded body.
+    private static func userTurn(in client: MockHTTPClient) throws -> String {
+        let request = try XCTUnwrap(client.requests(label: "deepseek.synthesize").first)
+        let body = try XCTUnwrap(request.body)
+        let json = try XCTUnwrap(try JSONSerialization.jsonObject(with: body) as? [String: Any])
+        let messages = try XCTUnwrap(json["messages"] as? [[String: Any]])
+        return try XCTUnwrap(messages.last?["content"] as? String)
+    }
+
     // MARK: Configuration
 
     func testIsNotConfiguredWithoutAKey() {
@@ -160,6 +170,44 @@ final class AnswerSynthesizerTests: XCTestCase {
         XCTAssertTrue(user.contains("QUESTION: why linux"))
     }
 
+    /// A locale is the caller's answer-language request, and the model can only honour it if
+    /// the instruction reaches the user turn (ledger B97).
+    func testLocaleInstructionReachesTheUserTurn() async throws {
+        let client = MockHTTPClient()
+        client.respondJSON(Self.completion("ok [1]."), label: "deepseek.synthesize")
+
+        _ = try await synthesizer(client).synthesize(
+            query: "why linux",
+            results: sampleResults,
+            locale: "de-DE"
+        )
+
+        let user = try Self.userTurn(in: client)
+        XCTAssertTrue(
+            user.contains("Answer in the language implied by locale de-DE."),
+            "the locale instruction must reach the model: \(user)"
+        )
+    }
+
+    /// No locale and an empty locale both mean "no language instruction", rather than a
+    /// dangling sentence that names nothing.
+    func testNoLocaleInstructionWithoutALocale() async throws {
+        for locale in [nil, ""] as [String?] {
+            let client = MockHTTPClient()
+            client.respondJSON(Self.completion("ok [1]."), label: "deepseek.synthesize")
+            _ = try await synthesizer(client).synthesize(
+                query: "why linux",
+                results: sampleResults,
+                locale: locale
+            )
+            let user = try Self.userTurn(in: client)
+            XCTAssertFalse(
+                user.contains("Answer in the language implied by locale"),
+                "locale \(locale ?? "nil") must not add a language instruction: \(user)"
+            )
+        }
+    }
+
     /// The API defaults to thinking *enabled*, which can consume the entire output
     /// budget and return `finish_reason: length` with empty content. The request must
     /// therefore disable it explicitly rather than rely on the default.
@@ -197,6 +245,37 @@ final class AnswerSynthesizerTests: XCTestCase {
     }
 
     // MARK: Parsing the completion
+
+    /// A 200 whose `choices` array is present but empty carries no answer at all, and it is
+    /// not the same failure as a truncated one: the caller needs to know the shape was wrong
+    /// (ledger B97).
+    func testAnEmptyChoiceArrayIsRefused() async throws {
+        let client = MockHTTPClient()
+        client.respondJSON(#"{"choices":[]}"#, label: "deepseek.synthesize")
+
+        do {
+            _ = try await synthesizer(client).synthesize(query: "q", results: sampleResults)
+            XCTFail("An empty choices array is not an answer")
+        } catch let error as SearchError {
+            XCTAssertTrue(
+                error.safeDescription.contains("no choices"),
+                error.safeDescription
+            )
+        }
+    }
+
+    /// The token counts are decoded from `usage` and returned on the answer, so a caller can
+    /// account for the billed request (ledger B97).
+    func testTokenUsageIsReported() async throws {
+        let client = MockHTTPClient()
+        client.respondJSON(Self.completion("Linux dominates [1]."), label: "deepseek.synthesize")
+
+        let answer = try await synthesizer(client)
+            .synthesize(query: "q", results: sampleResults)
+
+        XCTAssertEqual(answer.inputTokens, 100)
+        XCTAssertEqual(answer.outputTokens, 20)
+    }
 
     func testReturnsAnswerWithValidatedCitations() async throws {
         let client = MockHTTPClient()
@@ -546,6 +625,53 @@ final class AnswerSynthesizerTests: XCTestCase {
     }
 
     // MARK: Error mapping
+
+    /// Transport failures are curated rather than passed through `localizedDescription`, which
+    /// can echo the request URL back into an operator-visible message. The timeout, the
+    /// cancellation and the unreachable arms are each a distinct operator-facing string
+    /// (ledger B97).
+    func testTransportErrorsMapToCuratedMessages() {
+        XCTAssertEqual(
+            AnswerSynthesizer.describe(URLError(.timedOut)),
+            "The synthesis model timed out."
+        )
+        XCTAssertEqual(
+            AnswerSynthesizer.describe(URLError(.cancelled)),
+            "The request was cancelled."
+        )
+        for code: URLError.Code in [
+            .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost,
+            .dnsLookupFailed, .cannotFindHost,
+        ] {
+            XCTAssertEqual(
+                AnswerSynthesizer.describe(URLError(code)),
+                "The synthesis model could not be reached.",
+                "\(code) must be mapped as unreachable"
+            )
+        }
+        // Anything else is curated rather than `localizedDescription`.
+        XCTAssertEqual(
+            AnswerSynthesizer.describe(URLError(.badServerResponse)),
+            "The synthesis request failed."
+        )
+    }
+
+    /// A synthesis that is cancelled while the request is in flight must surface as a cancelled
+    /// request rather than as a generic failure (ledger B97).
+    func testCancellationDuringSynthesisIsReportedAsCancelled() async throws {
+        let client = MockHTTPClient()
+        client.on("deepseek.synthesize") { _ in throw CancellationError() }
+
+        do {
+            _ = try await synthesizer(client).synthesize(query: "q", results: sampleResults)
+            XCTFail("A cancelled request is not an answer")
+        } catch let error as SearchError {
+            XCTAssertTrue(
+                error.safeDescription.contains("cancelled"),
+                error.safeDescription
+            )
+        }
+    }
 
     func testAuthenticationFailureDoesNotEchoTheResponseBody() async throws {
         let client = MockHTTPClient()
