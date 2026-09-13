@@ -459,7 +459,7 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
         // vendors call server-to-server, so an Origin header is unexpected; if one is
         // present it must be loopback.
         if let origin = head.headers.first(name: "Origin"), !origin.isEmpty {
-            guard HTTPMCPHandler.isLoopbackOrigin(origin) else {
+            guard LoopbackOrigin.isLoopback(origin) else {
                 log.warning("Rejected request from a non-loopback Origin")
                 return PreparedResponse(
                     status: .forbidden,
@@ -597,13 +597,6 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
         channel.writeAndFlush(HTTPServerResponsePart.end(nil)).whenComplete { _ in
             channel.close(promise: nil)
         }
-    }
-
-    /// Whether an `Origin` header refers to this machine.
-    private static func isLoopbackOrigin(_ origin: String) -> Bool {
-        guard let url = URL(string: origin), let host = url.host() else { return false }
-        return host == "127.0.0.1" || host == "::1" || host == "localhost"
-            || host.hasPrefix("127.")
     }
 }
 

@@ -463,6 +463,23 @@ final class HTTPTransportTests: XCTestCase {
             "a browser page on another origin must not be able to drive this server"
         )
 
+        // A name that merely starts with `127.` is not this machine, even though the hand-rolled
+        // check used to accept it (ledger B42).
+        let prefixed = try RawHTTP.request(
+            port: port,
+            method: "POST",
+            path: "/mcp",
+            headers: Self.mcpHeaders
+                .merging(["Origin": "http://127.0.0.1.attacker.example"]) { _, new in new }
+                .merging(["Mcp-Session-Id": session]) { _, new in new },
+            body: try toolsListBody()
+        )
+        XCTAssertEqual(
+            prefixed.status,
+            403,
+            "a host name that starts with 127. is not a loopback origin"
+        )
+
         // A loopback Origin is not cross-origin and must still be served.
         let local = try RawHTTP.request(
             port: port,
