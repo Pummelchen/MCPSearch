@@ -32,8 +32,14 @@ from typing import Any, cast
 def probe(base_url: str, query: str, timeout: float = 25.0):
     """Return (http_status, payload_or_text)."""
     url = f"{base_url.rstrip('/')}/search?{urllib.parse.urlencode({'q': query, 'format': 'json'})}"
+    # `base_url` comes from the command line, and `urlopen` supports `file://`: assert the
+    # scheme and host before opening anything (ledger A08).
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError(f"refusing to probe a non-HTTP URL: {base_url!r}")
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
+        # nosemgrep: dynamic-urllib-use-detected
         with urllib.request.urlopen(request, timeout=timeout) as response:
             body = response.read().decode("utf-8", "replace")
             try:
@@ -53,7 +59,15 @@ def main() -> int:
     parser.add_argument("--json", action="store_true", help="emit machine-readable output")
     args = parser.parse_args()
 
-    status, payload = probe(args.base_url, args.query)
+    try:
+        status, payload = probe(args.base_url, args.query)
+    except ValueError as error:
+        # A refused URL is a usage error, so report it as one instead of a traceback.
+        if args.json:
+            print(json.dumps({"healthy": False, "reason": "invalid_url", "detail": str(error)}))
+        else:
+            print(f"INVALID URL  {error}")
+        return 2
 
     if status is None:
         if args.json:

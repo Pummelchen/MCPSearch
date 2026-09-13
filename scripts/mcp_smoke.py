@@ -33,6 +33,7 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, cast
 
@@ -351,10 +352,18 @@ def http_exchange(
 
 def wait_for_health(port: int, timeout: float = 20.0) -> None:
     """Poll /health until the HTTP transport is accepting connections."""
+    # The URL is built from a port number, so the scheme and host are asserted rather than
+    # assumed: `urlopen` would happily follow a `file://` URL, and a probe that can be pointed
+    # anywhere is exactly what the audit flagged (ledger A08).
+    health_url = f"http://127.0.0.1:{port}/health"
+    parsed = urllib.parse.urlparse(health_url)
+    if parsed.scheme != "http" or parsed.hostname != "127.0.0.1":
+        raise Failure(f"refusing to probe a non-loopback URL: {health_url}")
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=2) as response:
+            # nosemgrep: dynamic-urllib-use-detected
+            with urllib.request.urlopen(health_url, timeout=2) as response:
                 if response.status == 200:
                     return
         except urllib.error.URLError, ConnectionError, OSError:
