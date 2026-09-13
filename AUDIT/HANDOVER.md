@@ -7,10 +7,10 @@ authoritative; `AUDIT/ledger.json` carries every field. This page is orientation
 
 | | |
 | --- | --- |
-| Branch | `audit/2026-09-13` at **`35d50a1`**, pushed to `origin` (never merged; `main` untouched at `f3dd8d9`) |
+| Branch | `audit/2026-09-13` at **`67db1c4`**, pushed to `origin` (never merged; `main` untouched at `f3dd8d9`) |
 | Relationship | `main` is a **strict ancestor** of this branch — `git rev-list --count origin/audit/2026-09-13..origin/main` is 0, so the eventual merge is a fast-forward |
-| Tasks | **126 DONE, 0 PROGRESS, 7 START, 0 BLOCKED** (133 enumerated; all open work is S3) |
-| Suite | **564 tests, 6 skipped, 0 failures** (486 baseline + 3 from B116) |
+| Tasks | **131 DONE, 0 PROGRESS, 2 START, 0 BLOCKED** (133 enumerated; all open work is S3) |
+| Suite | **585 tests, 6 skipped, 0 failures** (486 baseline + 3 from B116) |
 | Builds | debug + release, 0 warnings under `-warnings-as-errors` |
 | Linters | `swift-format --strict` 0 · `swiftlint --strict` 0 · ruff clean · pyright strict 0 |
 | Phases | A, B and D complete; C in progress (all S0/S1/S2 closed); **E not started** |
@@ -49,9 +49,13 @@ Two things worth carrying forward:
     delegate for every scheme **except `file:`**, so those hops already reach the policy and are
     already refused as `blockedURL(target)`. The task needed no behaviour change at all.
 
-  Two more joined this round: **B58**'s premise was *half* stale (the parser duplication was real,
+  Two more joined in round 5: **B58**'s premise was *half* stale (the parser duplication was real,
   the schema drift it also described had already been fixed by B110), and **B57** understated its own
   problem — the enablement mapping was in **five** places, not three.
+
+  Round 7 added two more: **B98** claimed a testable seam the Monitor actor did not have (it built
+  its own HTTP client), and **B100** named a `"No results."` branch that cannot be reached. **B101**
+  found its internal-error arm unreachable from the HTTP surface — measured, not assumed.
 
   So: **verify a finding against the code or a measurement before implementing it, and correct the
   ledger record when the premise falls** — a closed task with a false premise is worse than an open
@@ -116,25 +120,25 @@ Two things worth carrying forward:
   `node1` runs one (`mcps-searxng`, `127.0.0.1:8888`); its image ID matches the digest pinned in
   `deploy/docker-compose.yml`, so the fleet is in sync.
 
-## Open tasks (7, all S3)
+## Open tasks (2, all S3)
 
 The queue order is this table's order.
 
 | id | sev | category | title | file |
 | --- | --- | --- | --- | --- |
-| B100 | S3 | test | ToolOutputFormatter's fallback and diagnostic branches are untested | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:526` |
-| B101 | S3 | test | HTTPMCPHost's startup-failure and internal-error paths are untested | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:79` |
 | B103 | S3 | test | The tool-layer cancellation branches are still not exercised by any test | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:91-93, 142-143, 237` |
 | B121 | S3 | unsafe | HTTPError.invalidURL's detail is interpolated verbatim into the caller-facing message, so a URL-shaped | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift (unsuppor` |
-| B97 | S3 | test | AnswerSynthesizer's completion edge cases, token usage and locale prompt are untested | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift:349` |
-| B98 | S3 | test | The Monitor actor's refresh/counting/warning logic has no Swift test | `Sources/MCPSMonitor/main.swift:337` |
-| B99 | S3 | test | No test ties the Swift test harnesses to the Python harnesses, and two scripts are untested entirely | `Tests/WebSearchCoreTests/TestSupport.swift:12` |
 
 ## Next steps, in order
 
 1. Continue the S3 queue above, one commit per task, each with its own evidence file, ledger rows
    and CI record.
-2. Then **Phase E**: a fresh clone on an independent host (node1 is the designated one, and the
+2. Then **Phase E**, which is now imminent (2 tasks left). It is an acceptance gate, not a task
+   list: a fresh clone on an independent host, zero warnings, the full suite green **repeatedly**
+   (a single green run has already hidden one real flake, B116), coverage at or above the 80 % floor
+   via `scripts/coverage_floor.py`, every scanner clean or waived in writing, the ledger containing
+   only DONE or BLOCKED-with-owner, the wiki tracker mirrored, and finally a pull request of
+   `audit/2026-09-13` into `main`. The Phase E checklist: a fresh clone on an independent host (node1 is the designated one, and the
    baseline is already established here), zero warnings, full suite green **repeatedly**, coverage
    at or above the 80 % floor, every scanner clean or waived in writing, the ledger containing only
    DONE or BLOCKED-with-owner, the wiki tracker mirrored, and finally a pull request to `main`.
