@@ -26,6 +26,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import Counter
+from typing import Any, cast
 
 
 def probe(base_url: str, query: str, timeout: float = 25.0):
@@ -92,13 +93,15 @@ def main() -> int:
             print(f"  {str(payload)[:300]}")
         return 1
 
-    results = payload.get("results") or []
+    # The guard above proved this is a JSON object; the cast is what tells the type checker.
+    payload_obj = cast("dict[str, Any]", payload)
+    results = cast("list[Any]", payload_obj.get("results") or [])
     engines: Counter[str] = Counter()
     for result in results:
         for engine in result.get("engines") or [result.get("engine")]:
             if engine:
                 engines[engine] += 1
-    unresponsive = payload.get("unresponsive_engines") or []
+    unresponsive = cast("list[Any]", payload_obj.get("unresponsive_engines") or [])
 
     healthy = bool(results)
 
@@ -129,8 +132,10 @@ def main() -> int:
     if unresponsive:
         print("unavailable:")
         for entry in unresponsive:
-            if isinstance(entry, list) and len(entry) >= 2:
-                print(f"  - {entry[0]}: {entry[1]}")
+            if isinstance(entry, list):
+                pair = cast("list[Any]", entry)
+                if len(pair) >= 2:
+                    print(f"  - {pair[0]}: {pair[1]}")
     else:
         print("unavailable: none reported")
 

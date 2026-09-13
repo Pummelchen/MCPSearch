@@ -45,6 +45,7 @@ import sys
 import termios
 import threading
 import time
+from collections.abc import Callable
 from typing import Any
 
 # Escape sequences the display is expected to emit. Kept in step with
@@ -235,7 +236,9 @@ class Session:
             raise Failure("no frame was painted")
         return ANSI.sub("", frames[-1])
 
-    def wait_for(self, predicate, description: str, timeout: float = 12.0) -> None:
+    def wait_for(
+        self, predicate: Callable[[Session], bool], description: str, timeout: float = 12.0
+    ) -> None:
         """Read frames until the predicate holds, or fail with the description."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:

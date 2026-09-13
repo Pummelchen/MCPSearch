@@ -3,6 +3,6 @@
     "scripts"
   ],
   "pythonVersion": "3.14",
-  "typeCheckingMode": "standard",
+  "typeCheckingMode": "strict",
   "reportMissingTypeStubs": false
 }

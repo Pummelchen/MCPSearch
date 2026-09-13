@@ -34,7 +34,7 @@ import sys
 import time
 import urllib.error
 import urllib.request
-from typing import Any
+from typing import Any, cast
 
 # Provider and synthesis variables are cleared so the run is hermetic: an exported API
 # key must not change the outcome of this test.
@@ -135,7 +135,7 @@ class Server:
             ) from error
         if not isinstance(message, dict):
             raise Failure(f"expected a JSON object on stdout, got: {line!r}")
-        return message
+        return cast("dict[str, Any]", message)
 
     def request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         self._next_id += 1
@@ -183,10 +183,11 @@ def check_initialize(server: Server) -> None:
     result = response.get("result")
     if not isinstance(result, dict):
         raise Failure(f"initialize returned no result: {response}")
-    info = result.get("serverInfo", {})
+    result_obj = cast("dict[str, Any]", result)
+    info: dict[str, Any] = result_obj.get("serverInfo") or {}
     if info.get("name") != "SwiftWebSearchMCP":
         raise Failure(f"unexpected server name: {info}")
-    if not result.get("protocolVersion"):
+    if not result_obj.get("protocolVersion"):
         raise Failure("initialize did not negotiate a protocol version")
     print(f"  initialize ok (server={info.get('name')} {info.get('version')})")
 
@@ -195,10 +196,15 @@ def check_initialize(server: Server) -> None:
 
 def check_tools(server: Server) -> None:
     response = server.request("tools/list")
-    tools = response.get("result", {}).get("tools")
+    result_obj = cast("dict[str, Any]", response.get("result") or {})
+    tools = result_obj.get("tools")
     if not isinstance(tools, list):
         raise Failure(f"tools/list returned no tools: {response}")
-    names = {tool.get("name") for tool in tools}
+    # The isinstance check is the validation; the cast tells the type checker what it proved.
+    tool_list = cast("list[dict[str, Any]]", tools)
+    names: set[str] = {
+        cast("str", tool["name"]) for tool in tool_list if isinstance(tool.get("name"), str)
+    }
     missing = set(REQUIRED_TOOLS) - names
     if missing:
         raise Failure(f"tools/list is missing {sorted(missing)}; advertised {sorted(names)}")
@@ -208,15 +214,19 @@ def check_tools(server: Server) -> None:
         # is visible in the smoke log instead of silently accepted.
         print(f"  note: {sorted(undocumented)} advertised but not listed in this script")
 
-    for tool in tools:
+    for tool in tool_list:
         schema = tool.get("inputSchema")
-        if not isinstance(schema, dict) or schema.get("type") != "object":
+        if not isinstance(schema, dict):
             raise Failure(f"tool {tool.get('name')} has no object inputSchema")
-        if not isinstance(schema.get("properties"), dict):
+        typed_schema = cast("dict[str, Any]", schema)
+        if typed_schema.get("type") != "object":
+            raise Failure(f"tool {tool.get('name')} has no object inputSchema")
+        if not isinstance(typed_schema.get("properties"), dict):
             raise Failure(f"tool {tool.get('name')} has no properties")
 
-    search = next(t for t in tools if t["name"] == "web_search")
-    properties = set(search["inputSchema"]["properties"])
+    search = next(t for t in tool_list if t["name"] == "web_search")
+    search_schema = cast("dict[str, Any]", search["inputSchema"])
+    properties = set(cast("list[str]", search_schema["properties"]))
     expected_properties = {
         "query",
         "max_results",
@@ -231,7 +241,7 @@ def check_tools(server: Server) -> None:
         raise Failure(
             f"web_search schema drifted: {sorted(properties)} != {sorted(expected_properties)}"
         )
-    print(f"  tools/list ok ({len(tools)} tools, schema verified)")
+    print(f"  tools/list ok ({len(tool_list)} tools, schema verified)")
 
 
 def check_unconfigured_search_is_a_tool_error(server: Server) -> str:
@@ -243,11 +253,15 @@ def check_unconfigured_search_is_a_tool_error(server: Server) -> str:
     result = response.get("result")
     if not isinstance(result, dict):
         raise Failure(f"tools/call returned no result: {response}")
-    if result.get("isError") is not True:
+    result_obj = cast("dict[str, Any]", result)
+    if result_obj.get("isError") is not True:
         raise Failure(f"expected isError=true with no provider configured: {result}")
-    text = " ".join(
-        block.get("text", "") for block in result.get("content", []) if isinstance(block, dict)
-    )
+    raw_content = result_obj.get("content")
+    if raw_content is not None and not isinstance(raw_content, list):
+        raise Failure(f"tools/call content is not a list: {result}")
+    content = cast("list[Any]", raw_content or [])
+    blocks = [cast("dict[str, Any]", block) for block in content if isinstance(block, dict)]
+    text = " ".join(block.get("text", "") for block in blocks if isinstance(block.get("text"), str))
     if "TAVILY_API_KEY" not in text and "not configured" not in text:
         raise Failure(f"error message is not actionable: {text!r}")
     print("  web_search without a provider fails as an actionable tool error")
@@ -311,7 +325,8 @@ def http_exchange(
 
     # De-chunk if the body is chunked.
     if headers.get("transfer-encoding", "").lower() == "chunked":
-        pieces, remaining = [], rest
+        pieces: list[str] = []
+        remaining = rest
         while True:
             index = remaining.find("\r\n")
             if index < 0:
@@ -326,7 +341,9 @@ def http_exchange(
             remaining = remaining[index + 2 + size + 2 :]
         rest = "".join(pieces)
 
-    messages = [json.loads(m) for m in re.findall(r"^data: (\{.*\})$", rest, re.MULTILINE)]
+    messages: list[Any] = [
+        json.loads(m) for m in re.findall(r"^data: (\{.*\})$", rest, re.MULTILINE)
+    ]
     if not messages and rest.strip().startswith("{"):
         messages = [json.loads(rest)]
     return status, headers, messages
