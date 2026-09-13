@@ -30,7 +30,7 @@ final class ErrorReportingTests: XCTestCase {
             process.standardError = stderr
             // Start from a scrubbed base so ambient credentials cannot affect results.
             var env: [String: String] = [
-                "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin",
+                "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
             ]
             for key in ServerTestSupport.providerEnvironmentVariables {
                 env.removeValue(forKey: key)
@@ -191,7 +191,7 @@ final class ErrorReportingTests: XCTestCase {
         // SearXNG is configured, Tavily is not. Auto-selection would happily use
         // SearXNG, which is exactly the silent degradation this guards against.
         let server = try startServer(environment: [
-            "SEARXNG_BASE_URL": "https://searx.example.invalid",
+            "SEARXNG_BASE_URL": "https://searx.example.invalid"
         ])
         defer { server.stop() }
 
@@ -220,11 +220,11 @@ final class ErrorReportingTests: XCTestCase {
             .init(
                 status: 200,
                 body: """
-                {"query":"swift","results":[
-                  {"url":"https://swift.org/","title":"Swift","content":"Swift.","engine":"brave"}
-                ],"answers":[],"corrections":[],"infoboxes":[],"suggestions":[],
-                "unresponsive_engines":[]}
-                """
+                    {"query":"swift","results":[
+                      {"url":"https://swift.org/","title":"Swift","content":"Swift.","engine":"brave"}
+                    ],"answers":[],"corrections":[],"infoboxes":[],"suggestions":[],
+                    "unresponsive_engines":[]}
+                    """
             )
         ])
         let server = try startServer(environment: ["SEARXNG_BASE_URL": stub.baseURL.absoluteString])
@@ -312,10 +312,12 @@ final class ErrorReportingTests: XCTestCase {
         let mapped = HTTPStatusMapper.map(transportError, provider: .mojeek)
         XCTAssertFalse(mapped.safeDescription.contains("api_key"), mapped.safeDescription)
 
-        guard case .connectionFailed(_, let reason) = HTTPError.from(
-            urlError: transportError,
-            label: "mojeek"
-        ) else {
+        guard
+            case .connectionFailed(_, let reason) = HTTPError.from(
+                urlError: transportError,
+                label: "mojeek"
+            )
+        else {
             return XCTFail("expected a connection failure")
         }
         XCTAssertFalse(reason.contains("api_key"), reason)

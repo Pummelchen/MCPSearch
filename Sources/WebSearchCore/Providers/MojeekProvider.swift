@@ -42,10 +42,12 @@ public struct MojeekProvider: SearchProvider {
     public func search(_ request: SearchRequest) async throws -> ProviderSearchResponse {
         let started = DispatchTime.now().uptimeNanoseconds
 
-        guard var components = URLComponents(
-            url: MojeekProvider.endpoint,
-            resolvingAgainstBaseURL: false
-        ) else {
+        guard
+            var components = URLComponents(
+                url: MojeekProvider.endpoint,
+                resolvingAgainstBaseURL: false
+            )
+        else {
             throw SearchError.unsupportedRequest(.mojeek, "could not build request URL")
         }
 
@@ -139,19 +141,21 @@ public struct MojeekProvider: SearchProvider {
         for (index, item) in (payload.response?.results ?? []).enumerated() {
             // Mojeek's `timestamp` is the last-modified time, in epoch seconds.
             let published = item.timestamp.map { Date(timeIntervalSince1970: TimeInterval($0)) }
-            guard let result = ResultNormalizer.make(
-                provider: .mojeek,
-                rank: index + 1,
-                title: item.title,
-                urlString: item.url,
-                // Mojeek calls the snippet `desc`, not `description`.
-                snippet: item.desc,
-                publishedAt: published,
-                score: item.score,
-                content: nil,
-                request: request,
-                seenKeys: &seen
-            ) else { continue }
+            guard
+                let result = ResultNormalizer.make(
+                    provider: .mojeek,
+                    rank: index + 1,
+                    title: item.title,
+                    urlString: item.url,
+                    // Mojeek calls the snippet `desc`, not `description`.
+                    snippet: item.desc,
+                    publishedAt: published,
+                    score: item.score,
+                    content: nil,
+                    request: request,
+                    seenKeys: &seen
+                )
+            else { continue }
             results.append(result)
         }
 

@@ -44,13 +44,15 @@ final class MarkupDepthTests: XCTestCase {
     }
 
     func testCommentsAndDeclarationsDoNotNest() {
-        let html = "<!doctype html>"
+        let html =
+            "<!doctype html>"
             + String(repeating: "<!-- <div><div><div> -->", count: 5_000)
         XCTAssertFalse(MarkupDepth.exceedsLimit(html))
     }
 
     func testClosingTagsReturnToTheParent() {
-        let html = String(repeating: "<div>", count: 400)
+        let html =
+            String(repeating: "<div>", count: 400)
             + String(repeating: "</div>", count: 400)
             + String(repeating: "<div>", count: 400)
         XCTAssertFalse(MarkupDepth.exceedsLimit(html))

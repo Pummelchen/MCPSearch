@@ -444,9 +444,10 @@ public struct ToolArguments: Sendable {
     }
 
     public func requiredString(_ name: String) throws -> String {
-        guard let value = try string(name)?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty
+        guard
+            let value = try string(name)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+            !value.isEmpty
         else {
             throw ArgumentError("`\(name)` is required and must be a non-empty string")
         }
@@ -551,8 +552,8 @@ public enum ToolOutputFormatter {
             lines.append(
                 "Unavailable providers: "
                     + response.providersFailed
-                        .map { "\($0.provider.rawValue) (\($0.category.rawValue))" }
-                        .joined(separator: ", ")
+                    .map { "\($0.provider.rawValue) (\($0.category.rawValue))" }
+                    .joined(separator: ", ")
             )
         }
         for warning in response.warnings where !warning.isEmpty {
@@ -655,8 +656,8 @@ public enum ToolOutputFormatter {
             lines.append(
                 "Unavailable providers: "
                     + response.providersFailed
-                        .map { "\($0.provider.rawValue) (\($0.category.rawValue))" }
-                        .joined(separator: ", ")
+                    .map { "\($0.provider.rawValue) (\($0.category.rawValue))" }
+                    .joined(separator: ", ")
             )
         }
 

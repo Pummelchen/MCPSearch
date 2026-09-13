@@ -252,7 +252,7 @@ extension AppConfiguration {
         let fileURL =
             configFileURL
             ?? environment[Key.configFile.rawValue].flatMap { URL(fileURLWithPath: $0) }
-                .flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+            .flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
 
         if let fileURL, let contents = try? String(contentsOf: fileURL, encoding: .utf8) {
             for (key, value) in parseDotEnv(contents) {
@@ -275,7 +275,7 @@ extension AppConfiguration {
     public static func parse(_ values: [String: String]) -> AppConfiguration {
         func string(_ key: Key) -> String? {
             guard let raw = values[key.rawValue]?.trimmingCharacters(in: .whitespacesAndNewlines),
-                  !raw.isEmpty
+                !raw.isEmpty
             else { return nil }
             return raw
         }
@@ -332,7 +332,8 @@ extension AppConfiguration {
         }
 
         if let order = string(.providerOrder) {
-            let parsed = order
+            let parsed =
+                order
                 .split(separator: ",")
                 .compactMap { ProviderID(rawValue: $0.trimmingCharacters(in: .whitespaces).lowercased()) }
             if !parsed.isEmpty {
@@ -407,7 +408,7 @@ extension AppConfiguration {
             let key = String(line[line.startIndex..<separator]).trimmingCharacters(in: .whitespaces)
             var value = String(line[line.index(after: separator)...]).trimmingCharacters(in: .whitespaces)
             if value.count >= 2,
-               (value.hasPrefix("\"") && value.hasSuffix("\""))
+                (value.hasPrefix("\"") && value.hasSuffix("\""))
                     || (value.hasPrefix("'") && value.hasSuffix("'"))
             {
                 value = String(value.dropFirst().dropLast())

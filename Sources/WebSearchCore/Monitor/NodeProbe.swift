@@ -41,10 +41,12 @@ public struct NodeProbe: Sendable {
     public func probe(_ target: Target) async -> Result {
         let started = DispatchTime.now().uptimeNanoseconds
 
-        guard var components = URLComponents(
-            url: target.baseURL.appendingPathComponent("search"),
-            resolvingAgainstBaseURL: false
-        ) else {
+        guard
+            var components = URLComponents(
+                url: target.baseURL.appendingPathComponent("search"),
+                resolvingAgainstBaseURL: false
+            )
+        else {
             return Result(
                 state: .down,
                 latencyMilliseconds: nil,

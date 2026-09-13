@@ -238,7 +238,7 @@ public actor SearchOrchestrator {
             warnings.append(
                 "\(failures.count) provider(s) failed: "
                     + failures.map { "\($0.provider.rawValue) (\($0.category.rawValue))" }
-                        .joined(separator: ", ")
+                    .joined(separator: ", ")
                     + "."
             )
         }
@@ -560,8 +560,9 @@ public actor SearchOrchestrator {
                 enabled: registry.isEnabled(id)
             )
             var annotated = state
-            if let reason = registry.ineligibleReasons()[id], state.status == .notConfigured
-                || state.status == .disabled
+            if let reason = registry.ineligibleReasons()[id],
+                state.status == .notConfigured
+                    || state.status == .disabled
             {
                 annotated = ProviderHealth.ProviderState(
                     provider: state.provider,

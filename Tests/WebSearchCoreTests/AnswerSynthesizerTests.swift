@@ -246,7 +246,8 @@ final class AnswerSynthesizerTests: XCTestCase {
             )
             let thinking = (json["thinking"] as? [String: Any])?["type"] as? String
             let count = attempts.increment()
-            let text = count == 1
+            let text =
+                count == 1
                 ? Self.completion(nil, finish: "length", reasoning: "thinking...")
                 : Self.completion("Recovered answer [1].")
             _ = thinking
@@ -475,8 +476,9 @@ final class AnswerSynthesizerTests: XCTestCase {
 
     func testVendorErrorObjectIsSurfaced() async throws {
         let client = MockHTTPClient()
-        client.respondJSON(#"{"error":{"message":"model overloaded","type":"server_error"}}"#,
-                           label: "deepseek.synthesize")
+        client.respondJSON(
+            #"{"error":{"message":"model overloaded","type":"server_error"}}"#,
+            label: "deepseek.synthesize")
         do {
             _ = try await synthesizer(client).synthesize(query: "q", results: sampleResults)
             XCTFail("Expected a vendor error")

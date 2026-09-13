@@ -119,7 +119,7 @@ public enum Terminal {
         while index < text.endIndex {
             let character = text[index]
             if character == "\u{1B}", text.index(after: index) < text.endIndex,
-               text[text.index(after: index)] == "["
+                text[text.index(after: index)] == "["
             {
                 // Skip to the terminating letter of the escape sequence.
                 var cursor = text.index(index, offsetBy: 2, limitedBy: text.endIndex) ?? text.endIndex
@@ -140,8 +140,8 @@ public enum Terminal {
         case 0..<0x20, 0x7F:
             return 0
         case 0x1100...0x115F, 0x2E80...0xA4CF, 0xAC00...0xD7A3,
-             0xF900...0xFAFF, 0xFE30...0xFE6F, 0xFF00...0xFF60,
-             0xFFE0...0xFFE6, 0x1F300...0x1F64F, 0x1F900...0x1F9FF:
+            0xF900...0xFAFF, 0xFE30...0xFE6F, 0xFF00...0xFF60,
+            0xFFE0...0xFFE6, 0x1F300...0x1F64F, 0x1F900...0x1F9FF:
             return 2
         default:
             return 1

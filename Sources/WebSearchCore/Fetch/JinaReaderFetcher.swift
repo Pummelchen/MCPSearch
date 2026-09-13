@@ -141,7 +141,7 @@ public struct JinaReaderFetcher: Sendable {
     /// `{"retryAfter": 1e33}` used to trap on the `Double` → `Int` conversion.
     static func retryAfterFromBody(_ body: Data) -> Duration? {
         guard let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
-              let seconds = object["retryAfter"] as? Double
+            let seconds = object["retryAfter"] as? Double
         else { return nil }
         return RetryAfter.boundedDuration(seconds: seconds)
     }

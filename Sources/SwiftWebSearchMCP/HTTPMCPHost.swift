@@ -1,8 +1,8 @@
 import Foundation
 import Logging
 import MCP
-import NIOHTTP1
 import NIOCore
+import NIOHTTP1
 import NIOPosix
 import WebSearchCore
 
@@ -164,7 +164,8 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
             bodyBuffer.clear()
             didRespond = false
             // Bound the body so a single request cannot exhaust memory.
-            bodyBuffer.reserveCapacity(min(head.headers.first(name: "content-length").flatMap(Int.init) ?? 4096, 1 << 20))
+            bodyBuffer.reserveCapacity(
+                min(head.headers.first(name: "content-length").flatMap(Int.init) ?? 4096, 1 << 20))
 
         case .body(var buffer):
             guard !didRespond else { return }
@@ -184,7 +185,8 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
         case .end:
             guard let head = requestHead else { return }
             requestHead = nil
-            let body = bodyBuffer.readableBytes > 0
+            let body =
+                bodyBuffer.readableBytes > 0
                 ? Data(bodyBuffer.readableBytesView)
                 : nil
             bodyBuffer.clear()

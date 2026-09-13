@@ -26,9 +26,9 @@ public enum ResultNormalizer {
         seenKeys: inout Set<String>
     ) -> SearchResult? {
         guard let rawURL = urlString?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !rawURL.isEmpty,
-              let url = normalizedURL(from: rawURL),
-              let host = url.host(), !host.isEmpty
+            !rawURL.isEmpty,
+            let url = normalizedURL(from: rawURL),
+            let host = url.host(), !host.isEmpty
         else { return nil }
 
         guard passesDomainFilters(url: url, host: host, request: request) else {
@@ -82,9 +82,9 @@ public enum ResultNormalizer {
         }
 
         guard let url = URL(string: candidate),
-              let scheme = url.scheme?.lowercased(),
-              scheme == "http" || scheme == "https",
-              let host = url.host(), !host.isEmpty
+            let scheme = url.scheme?.lowercased(),
+            scheme == "http" || scheme == "https",
+            let host = url.host(), !host.isEmpty
         else { return nil }
 
         return url

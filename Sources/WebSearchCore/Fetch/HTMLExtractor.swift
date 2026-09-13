@@ -49,7 +49,8 @@ public enum HTMLExtractor {
     /// splitting on anything that is not a letter or digit, and both exact matches
     /// and marker-prefixed tokens (`advert-banner`) count.
     static func matchesBoilerplateMarker(_ identifier: String) -> Bool {
-        let tokens = identifier
+        let tokens =
+            identifier
             .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
             .map { String($0) }
         guard !tokens.isEmpty else { return false }
@@ -205,7 +206,7 @@ public enum HTMLExtractor {
 
         // Skip hidden elements: `display:none` content is never article prose.
         if let style = try? element.attr("style"),
-           style.replacingOccurrences(of: " ", with: "").lowercased().contains("display:none")
+            style.replacingOccurrences(of: " ", with: "").lowercased().contains("display:none")
         {
             return
         }
@@ -216,8 +217,14 @@ public enum HTMLExtractor {
         let isListItem = tag == "li"
 
         if isBlock { builder.newline() }
-        if isHeading { builder.newline(); builder.newline() }
-        if isListItem { builder.newline(); builder.append("– ") }
+        if isHeading {
+            builder.newline()
+            builder.newline()
+        }
+        if isListItem {
+            builder.newline()
+            builder.append("– ")
+        }
 
         for child in element.getChildNodes() {
             try walk(child, into: &builder)

@@ -218,7 +218,7 @@ public struct URLPolicy: Sendable {
         guard parts.count == 4 else { return false }
         return parts.allSatisfy { part in
             guard !part.isEmpty, part.count <= 3, part.allSatisfy(\.isNumber),
-                  let value = Int(part)
+                let value = Int(part)
             else { return false }
             return (0...255).contains(value)
         }
@@ -411,7 +411,7 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
         case .v4(let value):
             switch value {
             case 0xA9FE_A9FE,  // 169.254.169.254 (AWS/Azure/GCP/DO)
-                 0x6464_6464:  // 100.100.100.200 (Alibaba)
+                0x6464_6464:  // 100.100.100.200 (Alibaba)
                 return true
             default:
                 return false
@@ -487,7 +487,8 @@ public struct SystemDNSResolver: DNSResolver {
                             nil, 0,
                             NI_NUMERICHOST
                         ) == 0 {
-                            let text = String(decoding: buffer.prefix { $0 != 0 }.map(UInt8.init(bitPattern:)), as: UTF8.self)
+                            let text = String(
+                                decoding: buffer.prefix { $0 != 0 }.map(UInt8.init(bitPattern:)), as: UTF8.self)
                             // Strip an IPv6 zone index (`fe80::1%en0`).
                             let cleaned = text.split(separator: "%").first.map(String.init) ?? text
                             if let address = IPAddress(cleaned) { addresses.append(address) }

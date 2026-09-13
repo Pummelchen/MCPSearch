@@ -58,10 +58,12 @@ public struct DuckDuckGoProvider: SearchProvider {
 
         let started = DispatchTime.now().uptimeNanoseconds
 
-        guard var components = URLComponents(
-            url: DuckDuckGoProvider.endpoint,
-            resolvingAgainstBaseURL: false
-        ) else {
+        guard
+            var components = URLComponents(
+                url: DuckDuckGoProvider.endpoint,
+                resolvingAgainstBaseURL: false
+            )
+        else {
             throw SearchError.unsupportedRequest(.duckDuckGo, "could not build request URL")
         }
         var items = [URLQueryItem(name: "q", value: request.normalizedQuery)]
@@ -124,15 +126,17 @@ public struct DuckDuckGoProvider: SearchProvider {
         var seen: Set<String> = []
         var results: [SearchResult] = []
         for (index, item) in page.results.enumerated() {
-            guard let result = ResultNormalizer.make(
-                provider: .duckDuckGo,
-                rank: index + 1,
-                title: item.title,
-                urlString: item.url,
-                snippet: item.snippet,
-                request: request,
-                seenKeys: &seen
-            ) else { continue }
+            guard
+                let result = ResultNormalizer.make(
+                    provider: .duckDuckGo,
+                    rank: index + 1,
+                    title: item.title,
+                    urlString: item.url,
+                    snippet: item.snippet,
+                    request: request,
+                    seenKeys: &seen
+                )
+            else { continue }
             results.append(result)
         }
 

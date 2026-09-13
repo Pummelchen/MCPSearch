@@ -74,17 +74,19 @@ public actor ParallelMCPProvider: SearchProvider {
         var seen: Set<String> = []
         var results: [SearchResult] = []
         for (index, item) in result.items.enumerated() {
-            guard let normalized = ResultNormalizer.make(
-                provider: .parallel,
-                rank: index + 1,
-                title: item.title,
-                urlString: item.url,
-                snippet: item.snippet,
-                publishedAt: item.publishedAt.flatMap(JSONCoding.date(from:)),
-                content: item.content,
-                request: request,
-                seenKeys: &seen
-            ) else { continue }
+            guard
+                let normalized = ResultNormalizer.make(
+                    provider: .parallel,
+                    rank: index + 1,
+                    title: item.title,
+                    urlString: item.url,
+                    snippet: item.snippet,
+                    publishedAt: item.publishedAt.flatMap(JSONCoding.date(from:)),
+                    content: item.content,
+                    request: request,
+                    seenKeys: &seen
+                )
+            else { continue }
             results.append(normalized)
         }
 
@@ -223,7 +225,7 @@ public actor ParallelMCPProvider: SearchProvider {
             JSONRPCRequest(id: nextRequestID(), method: "tools/list", params: [:])
         )
         guard let result = response?.result,
-              let tools = result["tools"] as? [[String: Any]]
+            let tools = result["tools"] as? [[String: Any]]
         else { return }
 
         let names = tools.compactMap { $0["name"] as? String }
@@ -234,14 +236,16 @@ public actor ParallelMCPProvider: SearchProvider {
         }
         // Fall back to any tool whose name mentions search.
         if resolvedToolName == nil,
-           let searchTool = names.first(where: { $0.lowercased().contains("search") }) {
+            let searchTool = names.first(where: { $0.lowercased().contains("search") })
+        {
             resolvedToolName = searchTool
         }
 
         // Only send `max_results` if the announced input schema actually declares it.
         if let tool = tools.first(where: { ($0["name"] as? String) == resolvedToolName }),
-           let schema = tool["inputSchema"] as? [String: Any],
-           let properties = schema["properties"] as? [String: Any] {
+            let schema = tool["inputSchema"] as? [String: Any],
+            let properties = schema["properties"] as? [String: Any]
+        {
             resolvedToolSupportsMaxResults = properties["max_results"] != nil
         }
     }
@@ -282,7 +286,7 @@ public actor ParallelMCPProvider: SearchProvider {
         let jsonText = ParallelMCPProvider.extractJSON(from: text)
 
         guard let data = jsonText.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
             throw SearchError.malformedResponse(.parallel)
         }
@@ -367,7 +371,7 @@ public actor ParallelMCPProvider: SearchProvider {
         static func parse(_ result: [String: Any]) throws -> ToolOutput {
             // Structured content is preferred when the server provides it.
             if let structured = result["structuredContent"] as? [String: Any],
-               let items = itemsFromJSON(structured)
+                let items = itemsFromJSON(structured)
             {
                 return ToolOutput(items: items)
             }
@@ -379,11 +383,11 @@ public actor ParallelMCPProvider: SearchProvider {
             for block in content {
                 guard let text = block["text"] as? String else { continue }
                 guard let data = text.data(using: .utf8),
-                      let object = try? JSONSerialization.jsonObject(with: data)
+                    let object = try? JSONSerialization.jsonObject(with: data)
                 else { continue }
 
                 if let dictionary = object as? [String: Any],
-                   let items = itemsFromJSON(dictionary)
+                    let items = itemsFromJSON(dictionary)
                 {
                     return ToolOutput(items: items)
                 }

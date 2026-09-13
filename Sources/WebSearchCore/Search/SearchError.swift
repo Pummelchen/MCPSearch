@@ -78,17 +78,17 @@ public enum SearchError: Error, Sendable, Hashable {
     public var provider: ProviderID? {
         switch self {
         case .authenticationRequired(let id),
-             .rateLimited(let id, _),
-             .providerUnavailable(let id),
-             .timeout(let id),
-             .malformedResponse(let id),
-             .networkFailure(let id, _),
-             .notConfigured(let id),
-             .unsupportedRequest(let id, _):
+            .rateLimited(let id, _),
+            .providerUnavailable(let id),
+            .timeout(let id),
+            .malformedResponse(let id),
+            .networkFailure(let id, _),
+            .notConfigured(let id),
+            .unsupportedRequest(let id, _):
             id
         case .invalidRequest, .allProvidersFailed, .providersFailed,
-             .temporarilyUnavailable, .blockedURL, .extractionFailed, .fetchFailed,
-             .markupDepthExceeded, .synthesisFailed:
+            .temporarilyUnavailable, .blockedURL, .extractionFailed, .fetchFailed,
+            .markupDepthExceeded, .synthesisFailed:
             nil
         }
     }
@@ -174,7 +174,7 @@ extension ProviderFailure {
                 case .timedOut: .timeout
                 case .cancelled: .cancelled
                 case .cannotConnectToHost, .networkConnectionLost, .notConnectedToInternet,
-                     .dnsLookupFailed, .cannotFindHost:
+                    .dnsLookupFailed, .cannotFindHost:
                     .network
                 default: .unknown
                 }

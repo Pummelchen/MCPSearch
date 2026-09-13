@@ -240,7 +240,7 @@ final class HTTPTransportTests: XCTestCase {
                 )
             }
             if let response = try? RawHTTP.request(port: port, method: "GET", path: "/health"),
-               response.status == 200
+                response.status == 200
             {
                 return
             }
@@ -349,9 +349,10 @@ final class HTTPTransportTests: XCTestCase {
         let (session, response) = try initializeSession()
 
         XCTAssertFalse(session.isEmpty)
-        let object = try JSONSerialization.jsonObject(
-            with: Data(Self.jsonMessage(from: response.body).utf8)
-        ) as? [String: Any]
+        let object =
+            try JSONSerialization.jsonObject(
+                with: Data(Self.jsonMessage(from: response.body).utf8)
+            ) as? [String: Any]
         let result = try XCTUnwrap(object?["result"] as? [String: Any])
         XCTAssertEqual(result["protocolVersion"] as? String, "2025-06-18")
         let serverInfo = try XCTUnwrap(result["serverInfo"] as? [String: Any])
@@ -375,9 +376,10 @@ final class HTTPTransportTests: XCTestCase {
 
         XCTAssertEqual(response.status, 200)
         XCTAssertEqual(response.headers["content-type"], "text/event-stream")
-        let object = try JSONSerialization.jsonObject(
-            with: Data(Self.jsonMessage(from: response.body).utf8)
-        ) as? [String: Any]
+        let object =
+            try JSONSerialization.jsonObject(
+                with: Data(Self.jsonMessage(from: response.body).utf8)
+            ) as? [String: Any]
         let result = try XCTUnwrap(object?["result"] as? [String: Any])
         let tools = try XCTUnwrap(result["tools"] as? [[String: Any]])
         XCTAssertEqual(

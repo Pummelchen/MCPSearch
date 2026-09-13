@@ -130,12 +130,14 @@ public enum RankFusion {
                 if let existing = bestRankForProvider[key], existing <= rank { continue }
                 bestRankForProvider[key] = rank
 
-                var cluster = clusters[key] ?? {
-                    let fresh = Cluster(canonicalURL: result.canonicalURL)
-                    clusters[key] = fresh
-                    order.append(key)
-                    return fresh
-                }()
+                var cluster =
+                    clusters[key]
+                    ?? {
+                        let fresh = Cluster(canonicalURL: result.canonicalURL)
+                        clusters[key] = fresh
+                        order.append(key)
+                        return fresh
+                    }()
 
                 // A resold page belongs to the index it came from, not to the aggregator
                 // that relayed it. Without this the same index counts as two families and
@@ -185,7 +187,8 @@ public enum RankFusion {
                 // The aggregator discount is already folded into `rawWeight` by
                 // `weight(for:provider:base:configuration:)`. Applying it again here
                 // would square it (0.7 x 0.7), silently double-penalising aggregators.
-                total += contribution.rawWeight
+                total +=
+                    contribution.rawWeight
                     / (configuration.k + Double(contribution.rank))
             }
 
@@ -247,7 +250,7 @@ public enum RankFusion {
                 let domain = cluster.canonicalURL.host()?.lowercased() ?? ""
                 let count = perDomainCount[domain, default: 0]
                 if configuration.maxResultsPerDomain > 0,
-                   count >= configuration.maxResultsPerDomain
+                    count >= configuration.maxResultsPerDomain
                 {
                     continue
                 }
@@ -278,7 +281,7 @@ public enum RankFusion {
         guard response.provider.isAggregator, !ownedFamilies.isEmpty else { return false }
         for engine in response.upstreamEngines {
             if let family = RankFusion.family(forUpstreamEngine: engine),
-               ownedFamilies.contains(family)
+                ownedFamilies.contains(family)
             {
                 return true
             }

@@ -153,7 +153,8 @@ public struct Renderer: Sendable {
         let left = "  \(title)  \(subtitle)"
 
         let uptime = Self.duration(model.uptime)
-        let right = "\(Terminal.colour("up", .grey, enabled: useColour)) \(uptime)  "
+        let right =
+            "\(Terminal.colour("up", .grey, enabled: useColour)) \(uptime)  "
             + "\(Terminal.colour("cycle", .grey, enabled: useColour)) \(Self.milliseconds(model.cycleDuration))  "
             + "\(Terminal.colour("refreshed", .grey, enabled: useColour)) \(Self.clock(model.refreshedAt))  "
 
@@ -181,9 +182,10 @@ public struct Renderer: Sendable {
         lines.append("  " + Terminal.bold("PROVIDERS", enabled: useColour) + "   " + summary)
         lines.append(
             Terminal.colour(
-                "  " + headerRow(
-                    "  provider", "kind", "state", "last", "avg", "n", "ok%", "note"
-                ),
+                "  "
+                    + headerRow(
+                        "  provider", "kind", "state", "last", "avg", "n", "ok%", "note"
+                    ),
                 .grey,
                 enabled: useColour
             )

@@ -237,8 +237,8 @@ public final class URLSessionHTTPClient: HTTPClient, @unchecked Sendable {
             do {
                 let response = try await perform(request, maxBytes: maxBytes)
                 if HTTPPolicy.retryableStatusCodes.contains(response.statusCode),
-                   request.isIdempotent,
-                   attempt < policy.maxAttempts
+                    request.isIdempotent,
+                    attempt < policy.maxAttempts
                 {
                     let retryAfter = RetryAfter.parse(response.header("Retry-After"))
                     let delay = min(
@@ -262,8 +262,8 @@ public final class URLSessionHTTPClient: HTTPClient, @unchecked Sendable {
                 return response
             } catch let error as HTTPError {
                 guard error.isTransient,
-                      request.isIdempotent,
-                      attempt < policy.maxAttempts
+                    request.isIdempotent,
+                    attempt < policy.maxAttempts
                 else { throw error }
 
                 let delay = policy.backoff(forRetryIndex: retryIndex)
@@ -349,8 +349,8 @@ extension HTTPError {
         case .cancelled:
             .cancelled(label: label)
         case .cannotConnectToHost, .cannotFindHost, .dnsLookupFailed,
-             .networkConnectionLost, .notConnectedToInternet, .secureConnectionFailed,
-             .serverCertificateUntrusted, .serverCertificateHasBadDate:
+            .networkConnectionLost, .notConnectedToInternet, .secureConnectionFailed,
+            .serverCertificateUntrusted, .serverCertificateHasBadDate:
             .connectionFailed(label: label, reason: reason(for: urlError.code))
         default:
             .transportFailure(label: label, reason: reason(for: urlError.code))

@@ -3,7 +3,6 @@ import XCTest
 
 @testable import MCPSMonitor
 
-
 final class MonitorOptionsTests: XCTestCase {
 
     func testDefaultsIncludeTheClusterAndDoNotProbe() throws {
@@ -129,9 +128,11 @@ final class MonitorOptionsTests: XCTestCase {
     }
 
     func testUsageDocumentsEveryFlag() {
-        for flag in ["--node", "--no-nodes", "--interval", "--probe", "--watch",
-                     "--allow-expensive-probing", "--iterations", "--no-colour",
-                     "--no-color", "--no-engines", "--help"] {
+        for flag in [
+            "--node", "--no-nodes", "--interval", "--probe", "--watch",
+            "--allow-expensive-probing", "--iterations", "--no-colour",
+            "--no-color", "--no-engines", "--help",
+        ] {
             XCTAssertTrue(Options.usage.contains(flag), "usage is missing \(flag)")
         }
     }

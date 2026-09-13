@@ -110,22 +110,24 @@ public struct SearXNGProvider: SearchProvider {
             if let engine = item.engine { upstreamEngines.insert(engine) }
             for engine in item.engines ?? [] { upstreamEngines.insert(engine) }
 
-            guard let result = ResultNormalizer.make(
-                provider: .searxng,
-                rank: index + 1,
-                title: item.title,
-                urlString: item.url,
-                snippet: item.content,
-                // `publishedDate` is nullable ISO 8601.
-                publishedAt: item.publishedDate.flatMap(JSONCoding.date(from:)),
-                score: item.score,
-                content: nil,
-                // Per-result provenance: fusion discounts a resold index exactly rather
-                // than treating the whole response as resold.
-                upstreamEngines: Self.engines(of: item),
-                request: request,
-                seenKeys: &seen
-            ) else { continue }
+            guard
+                let result = ResultNormalizer.make(
+                    provider: .searxng,
+                    rank: index + 1,
+                    title: item.title,
+                    urlString: item.url,
+                    snippet: item.content,
+                    // `publishedDate` is nullable ISO 8601.
+                    publishedAt: item.publishedDate.flatMap(JSONCoding.date(from:)),
+                    score: item.score,
+                    content: nil,
+                    // Per-result provenance: fusion discounts a resold index exactly rather
+                    // than treating the whole response as resold.
+                    upstreamEngines: Self.engines(of: item),
+                    request: request,
+                    seenKeys: &seen
+                )
+            else { continue }
             results.append(result)
         }
 

@@ -87,7 +87,8 @@ final class SearchOrchestratorTests: XCTestCase {
     func testExplicitProviderBypassesSelectionPolicy() async throws {
         let tavily = MockSearchProvider.returning(.tavily, results: [("T", "https://t.example.com/1", nil)])
         let brave = MockSearchProvider.returning(.brave, results: [("B", "https://b.example.com/1", nil)])
-        let (orchestrator, _, _) = makeOrchestrator(providers: [tavily, brave], configuration: Fixtures.configuration())
+        let (orchestrator, _, _) = makeOrchestrator(
+            providers: [tavily, brave], configuration: Fixtures.configuration())
 
         let response = try await orchestrator.search(
             Fixtures.request(mode: .fast),
@@ -179,7 +180,8 @@ final class SearchOrchestratorTests: XCTestCase {
             _ = try await orchestrator.search(SearchRequest(query: "   "))
             XCTFail("expected an invalid-request error")
         } catch let error as SearchError {
-            if case .invalidRequest = error {} else {
+            if case .invalidRequest = error {
+            } else {
                 XCTFail("expected invalidRequest, got \(error)")
             }
         } catch {

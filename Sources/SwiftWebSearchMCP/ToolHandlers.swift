@@ -11,11 +11,6 @@ struct ToolHandlers: Sendable {
     let pipeline: SearchPipelineFactory.Pipeline
     let log: Log
 
-    init(pipeline: SearchPipelineFactory.Pipeline, log: Log) {
-        self.pipeline = pipeline
-        self.log = log
-    }
-
     // MARK: - web_search
 
     func webSearch(_ arguments: [String: Value]?) async -> CallTool.Result {
@@ -272,7 +267,8 @@ struct ToolHandlers: Sendable {
                 synthesisWarning = "Answer synthesis failed."
             }
         } else {
-            synthesisWarning = "No synthesis model is configured (set DEEPSEEK_API_KEY); "
+            synthesisWarning =
+                "No synthesis model is configured (set DEEPSEEK_API_KEY); "
                 + "returning search results only."
         }
 

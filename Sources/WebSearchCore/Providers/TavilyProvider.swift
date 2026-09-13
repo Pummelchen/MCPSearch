@@ -81,18 +81,20 @@ public struct TavilyProvider: SearchProvider {
         var seen: Set<String> = []
         var results: [SearchResult] = []
         for (index, item) in payload.results.enumerated() {
-            guard let result = ResultNormalizer.make(
-                provider: .tavily,
-                rank: index + 1,
-                title: item.title,
-                urlString: item.url,
-                snippet: item.content,
-                publishedAt: item.publishedDate.flatMap(JSONCoding.date(from:)),
-                score: item.score,
-                content: nil,
-                request: request,
-                seenKeys: &seen
-            ) else { continue }
+            guard
+                let result = ResultNormalizer.make(
+                    provider: .tavily,
+                    rank: index + 1,
+                    title: item.title,
+                    urlString: item.url,
+                    snippet: item.content,
+                    publishedAt: item.publishedDate.flatMap(JSONCoding.date(from:)),
+                    score: item.score,
+                    content: nil,
+                    request: request,
+                    seenKeys: &seen
+                )
+            else { continue }
             results.append(result)
         }
 

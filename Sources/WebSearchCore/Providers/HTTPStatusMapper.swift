@@ -51,7 +51,7 @@ public enum HTTPStatusMapper {
             case .timedOut: return .timeout(provider)
             case .cancelled: return .networkFailure(provider, "cancelled")
             case .connectionFailed(_, let reason),
-                 .transportFailure(_, let reason):
+                .transportFailure(_, let reason):
                 return .networkFailure(provider, reason)
             case .responseTooLarge:
                 return .malformedResponse(provider)

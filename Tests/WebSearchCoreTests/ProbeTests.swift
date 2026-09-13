@@ -130,10 +130,12 @@ final class ProviderProbeTests: XCTestCase {
     }
 
     func testProbeReturnsSuccessAndResultCount() async {
-        let provider = MockSearchProvider.returning(.tavily, results: [
-            ("A", "https://example.com/a", nil),
-            ("B", "https://example.com/b", nil),
-        ])
+        let provider = MockSearchProvider.returning(
+            .tavily,
+            results: [
+                ("A", "https://example.com/a", nil),
+                ("B", "https://example.com/b", nil),
+            ])
         let probe = makeProbe([provider])
 
         let outcome = await probe.probe(.tavily, query: "swift concurrency")

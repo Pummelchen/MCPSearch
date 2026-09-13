@@ -58,12 +58,12 @@ enum ScraperSupport {
             return href
         }
         guard let components = URLComponents(string: absolute(href)),
-              let items = components.queryItems
+            let items = components.queryItems
         else { return href }
 
         for name in ["uddg", "url", "u", "q"] {
             if let value = items.first(where: { $0.name == name })?.value,
-               value.lowercased().hasPrefix("http")
+                value.lowercased().hasPrefix("http")
             {
                 return value
             }
@@ -148,20 +148,20 @@ enum ScraperSupport {
 
         for containerSelector in containerSelectors {
             guard let containers = try? document.select(containerSelector),
-                  !containers.isEmpty
+                !containers.isEmpty
             else { continue }
 
             for container in containers {
                 guard let link = try? firstMatch(container, selectors: linkSelectors),
-                      let href = try? link.attr("href"),
-                      !href.isEmpty
+                    let href = try? link.attr("href"),
+                    !href.isEmpty
                 else { continue }
 
                 let target = unwrapRedirect(href)
                 let absoluteTarget = absolute(target, base: base)
                 guard let url = URL(string: absoluteTarget),
-                      let host = url.host()?.lowercased(),
-                      !excludeHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) })
+                    let host = url.host()?.lowercased(),
+                    !excludeHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) })
                 else { continue }
 
                 let key = URLCanonicalizer.key(for: url)
@@ -214,8 +214,8 @@ enum ScraperSupport {
             let target = unwrapRedirect(href)
             let absoluteTarget = absolute(target, base: base)
             guard let url = URL(string: absoluteTarget),
-                  let host = url.host()?.lowercased(),
-                  !excludeHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) })
+                let host = url.host()?.lowercased(),
+                !excludeHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) })
             else { continue }
 
             let text = ((try? anchor.text()) ?? "").collapsedWhitespace

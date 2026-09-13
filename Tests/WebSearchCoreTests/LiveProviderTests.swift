@@ -50,9 +50,10 @@ final class LiveProviderTests: XCTestCase {
     static func liveTestsEnabled(
         _ environment: [String: String] = ProcessInfo.processInfo.environment
     ) -> Bool {
-        guard let raw = environment[optInVariable]?
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .lowercased(),
+        guard
+            let raw = environment[optInVariable]?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased(),
             !raw.isEmpty
         else { return false }
         return ["1", "true", "yes", "on", "enabled"].contains(raw)
@@ -83,7 +84,7 @@ final class LiveProviderTests: XCTestCase {
     private static func liveKey(_ name: String) -> String? {
         let environment = ProcessInfo.processInfo.environment
         if let value = environment[name]?.trimmingCharacters(in: .whitespaces),
-           !value.isEmpty
+            !value.isEmpty
         {
             return isUsableKey(value) ? value : nil
         }
@@ -93,8 +94,8 @@ final class LiveProviderTests: XCTestCase {
         for _ in 0..<6 {
             let candidate = directory.appendingPathComponent("config.env")
             if let contents = try? String(contentsOf: candidate, encoding: .utf8),
-               let parsed = AppConfiguration.parseDotEnv(contents)[name],
-               !parsed.isEmpty
+                let parsed = AppConfiguration.parseDotEnv(contents)[name],
+                !parsed.isEmpty
             {
                 return isUsableKey(parsed) ? parsed : nil
             }

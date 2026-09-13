@@ -174,7 +174,7 @@ struct Options: Sendable {
                 // `isFinite` is the part that matters: `Double("inf")` parses, satisfies
                 // `>= 1`, and would trap in the conversion below.
                 guard let seconds = Double(raw), seconds.isFinite,
-                      seconds >= 1, seconds <= Options.maximumInterval.seconds
+                    seconds >= 1, seconds <= Options.maximumInterval.seconds
                 else {
                     throw OptionError.invalidValue(
                         flag: "--interval", value: raw,
@@ -361,7 +361,8 @@ actor Monitor {
         let providerIDs = providerProbe.probeTargets().filter { providerProbe.isConfigured($0) }
 
         async let nodes = probeNodes(nodeTargets)
-        async let providers = shouldProbeProviders
+        async let providers =
+            shouldProbeProviders
             ? probeProviders(providerIDs, query: query)
             : []
 

@@ -260,11 +260,12 @@ public actor ProviderHealth {
 
         // `timeUntilAvailable()` returns a nested optional because the limiter
         // lookup is itself failable; flatten it explicitly.
-        let waitForToken: Duration? = if let limiter = limiters[provider] {
-            await limiter.timeUntilAvailable()
-        } else {
-            nil
-        }
+        let waitForToken: Duration? =
+            if let limiter = limiters[provider] {
+                await limiter.timeUntilAvailable()
+            } else {
+                nil
+            }
 
         let status: Status
         if !configured {

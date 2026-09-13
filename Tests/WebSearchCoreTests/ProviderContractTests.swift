@@ -15,7 +15,7 @@ final class ProviderContractTests: XCTestCase {
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         guard let data = try? encoder.encode(value),
-              let text = String(data: data, encoding: .utf8)
+            let text = String(data: data, encoding: .utf8)
         else { return "{}" }
         return text
     }
@@ -981,7 +981,8 @@ final class ProviderContractTests: XCTestCase {
 
     /// The three common envelope keys and the success-envelope variant are accepted.
     func testOpenWebSearchAcceptsEveryEnvelopeShape() async throws {
-        let item = #"{"title":"Aggregated result","url":"https://example.com/aggregated","snippet":"Text.","engine":"brave"}"#
+        let item =
+            #"{"title":"Aggregated result","url":"https://example.com/aggregated","snippet":"Text.","engine":"brave"}"#
         let shapes = [
             "results": #"{"results":[\#(item)]}"#,
             "data": #"{"data":[\#(item)]}"#,
@@ -1116,7 +1117,8 @@ final class ProviderContractTests: XCTestCase {
         let http = MockHTTPClient()
         let properties = announcesMaxResults ? #"{"max_results":{"type":"number"}}"# : "{}"
         http.onAny { request in
-            let body = (request.body.flatMap { try? JSONSerialization.jsonObject(with: $0) })
+            let body =
+                (request.body.flatMap { try? JSONSerialization.jsonObject(with: $0) })
                 as? [String: Any] ?? [:]
             let method = body["method"] as? String ?? ""
             let id = body["id"] as? Int ?? 0
@@ -1134,7 +1136,8 @@ final class ProviderContractTests: XCTestCase {
                         url: request.url
                     )
                 }
-                let json = #"{"jsonrpc":"2.0","id":\#(id),"result":{"protocolVersion":"2025-06-18","capabilities":{},"serverInfo":{"name":"Parallel","version":"1.0.0"}}}"#
+                let json =
+                    #"{"jsonrpc":"2.0","id":\#(id),"result":{"protocolVersion":"2025-06-18","capabilities":{},"serverInfo":{"name":"Parallel","version":"1.0.0"}}}"#
                 return HTTPResponse(
                     statusCode: 200,
                     headers: headers,
@@ -1144,7 +1147,8 @@ final class ProviderContractTests: XCTestCase {
             case "notifications/initialized":
                 return HTTPResponse(statusCode: 202, headers: [:], body: Data(), url: request.url)
             case "tools/list":
-                let json = #"{"jsonrpc":"2.0","id":\#(id),"result":{"tools":[{"name":"\#(toolName)","inputSchema":{"type":"object","properties":\#(properties)}}]}}"#
+                let json =
+                    #"{"jsonrpc":"2.0","id":\#(id),"result":{"tools":[{"name":"\#(toolName)","inputSchema":{"type":"object","properties":\#(properties)}}]}}"#
                 return HTTPResponse(
                     statusCode: 200,
                     headers: headers,
@@ -1173,7 +1177,7 @@ final class ProviderContractTests: XCTestCase {
 
     private func rpcBody(_ request: MockHTTPClient.Recorded) -> [String: Any] {
         guard let body = request.body,
-              let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+            let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
         else { return [:] }
         return object
     }
@@ -1197,7 +1201,8 @@ final class ProviderContractTests: XCTestCase {
     /// tools/list discovery, then a tools/call whose text content is mapped onto
     /// normalized results.
     func testParallelMCPHandshakeDiscoveryAndToolCall() async throws {
-        let toolText = #"{"results":[{"title":"Swift Concurrency","url":"https://example.com/swift","excerpts":["Actors isolate state.","Sendable is checked."],"publish_date":"2024-01-15T00:00:00Z"},{"title":"Other","link":"https://example.com/other","snippet":"Other snippet."}]}"#
+        let toolText =
+            #"{"results":[{"title":"Swift Concurrency","url":"https://example.com/swift","excerpts":["Actors isolate state.","Sendable is checked."],"publish_date":"2024-01-15T00:00:00Z"},{"title":"Other","link":"https://example.com/other","snippet":"Other snippet."}]}"#
         let http = makeParallelStub { id in
             Self.textToolResponse(id, text: toolText)
         }

@@ -93,7 +93,7 @@ public actor WebFetcher {
         }
 
         if let result = directResult,
-           result.text.count >= request.minimumUsefulCharacters
+            result.text.count >= request.minimumUsefulCharacters
         {
             var finalized = result
             finalized.elapsedMilliseconds =

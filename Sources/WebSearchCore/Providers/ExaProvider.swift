@@ -64,17 +64,19 @@ public struct ExaProvider: SearchProvider {
         for (index, item) in payload.results.enumerated() {
             // Exa returns no comparable relevance score in the current schema, so
             // only the rank is carried forward.
-            guard let result = ResultNormalizer.make(
-                provider: .exa,
-                rank: index + 1,
-                title: item.title,
-                urlString: item.url,
-                snippet: ExaProvider.snippet(from: item),
-                publishedAt: item.publishedDate.flatMap(JSONCoding.date(from:)),
-                score: nil,
-                request: request,
-                seenKeys: &seen
-            ) else { continue }
+            guard
+                let result = ResultNormalizer.make(
+                    provider: .exa,
+                    rank: index + 1,
+                    title: item.title,
+                    urlString: item.url,
+                    snippet: ExaProvider.snippet(from: item),
+                    publishedAt: item.publishedDate.flatMap(JSONCoding.date(from:)),
+                    score: nil,
+                    request: request,
+                    seenKeys: &seen
+                )
+            else { continue }
             results.append(result)
         }
 

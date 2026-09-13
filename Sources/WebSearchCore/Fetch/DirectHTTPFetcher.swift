@@ -80,7 +80,7 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
 
             // Handle redirects ourselves, validating each destination.
             if (300..<400).contains(response.statusCode),
-               let location = response.header("Location")
+                let location = response.header("Location")
             {
                 guard redirectsFollowed < maxRedirects else {
                     throw SearchError.extractionFailed(request.url)
@@ -116,22 +116,26 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
             let contentType = response.header("Content-Type")
             let mimeType = DirectHTTPFetcher.mimeType(from: contentType)
 
-            guard let mimeType, DirectHTTPFetcher.isTextual(
-                mimeType,
-                allowedPrefixes: allowedContentTypePrefixes
-            ) else {
+            guard let mimeType,
+                DirectHTTPFetcher.isTextual(
+                    mimeType,
+                    allowedPrefixes: allowedContentTypePrefixes
+                )
+            else {
                 throw SearchError.extractionFailed(currentURL)
             }
 
             let body = response.body
             let extraction: HTMLDocument.Extraction
             if mimeType.contains("html") || mimeType.contains("xhtml") {
-                let html = String(data: body, encoding: .utf8)
+                let html =
+                    String(data: body, encoding: .utf8)
                     ?? String(data: body, encoding: .isoLatin1)
                     ?? ""
                 extraction = try HTMLExtractor.extract(html: html)
             } else {
-                let text = String(data: body, encoding: .utf8)
+                let text =
+                    String(data: body, encoding: .utf8)
                     ?? String(data: body, encoding: .isoLatin1)
                     ?? ""
                 extraction = HTMLDocument.Extraction(
@@ -246,7 +250,7 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
         let prefix = String(text[text.startIndex..<end])
         // Prefer cutting at the last whitespace so we do not split a word in half.
         if let lastSpace = prefix.lastIndex(where: { $0.isWhitespace }),
-           prefix.distance(from: prefix.startIndex, to: lastSpace) > limit / 2
+            prefix.distance(from: prefix.startIndex, to: lastSpace) > limit / 2
         {
             return (String(prefix[prefix.startIndex..<lastSpace]), true)
         }

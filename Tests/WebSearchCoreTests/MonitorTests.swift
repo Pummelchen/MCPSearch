@@ -121,8 +121,9 @@ final class RendererTests: XCTestCase {
                     providers: [
                         provider(.tavily, state: .healthy),
                         provider(.brave, state: .notConfigured, probes: 0, successes: 0),
-                        provider(.startpage, state: .failing, probes: 3, successes: 0, failures: 3,
-                                 error: "Startpage is temporarily unavailable."),
+                        provider(
+                            .startpage, state: .failing, probes: 3, successes: 0, failures: 3,
+                            error: "Startpage is temporarily unavailable."),
                     ]
                 ),
                 columns: width,
@@ -312,8 +313,9 @@ final class RendererTests: XCTestCase {
     func testFailureMessageIsShown() {
         let lines = Renderer(useColour: false).render(
             model(providers: [
-                provider(.startpage, state: .failing, probes: 2, successes: 0, failures: 2,
-                         error: "Startpage is temporarily unavailable."),
+                provider(
+                    .startpage, state: .failing, probes: 2, successes: 0, failures: 2,
+                    error: "Startpage is temporarily unavailable.")
             ]),
             columns: 140,
             rows: 40
@@ -324,7 +326,7 @@ final class RendererTests: XCTestCase {
     func testUnconfiguredProviderShowsItsSetupHint() {
         let lines = Renderer(useColour: false).render(
             model(providers: [
-                provider(.brave, state: .notConfigured, probes: 0, successes: 0),
+                provider(.brave, state: .notConfigured, probes: 0, successes: 0)
             ]),
             columns: 140,
             rows: 40
@@ -382,16 +384,19 @@ final class MonitorModelTests: XCTestCase {
 
         // Two successes and one failure.
         status = status.applying(
-            NodeProbe.Result(state: .up, latencyMilliseconds: 100, resultCount: 25,
-                             engines: ["brave"], unavailableEngines: [], error: nil)
+            NodeProbe.Result(
+                state: .up, latencyMilliseconds: 100, resultCount: 25,
+                engines: ["brave"], unavailableEngines: [], error: nil)
         )
         status = status.applying(
-            NodeProbe.Result(state: .up, latencyMilliseconds: 200, resultCount: 25,
-                             engines: ["brave"], unavailableEngines: [], error: nil)
+            NodeProbe.Result(
+                state: .up, latencyMilliseconds: 200, resultCount: 25,
+                engines: ["brave"], unavailableEngines: [], error: nil)
         )
         status = status.applying(
-            NodeProbe.Result(state: .down, latencyMilliseconds: nil, resultCount: 0,
-                             engines: [], unavailableEngines: [], error: "unreachable")
+            NodeProbe.Result(
+                state: .down, latencyMilliseconds: nil, resultCount: 0,
+                engines: [], unavailableEngines: [], error: "unreachable")
         )
 
         XCTAssertEqual(status.checks, 3)

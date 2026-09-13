@@ -233,7 +233,8 @@ public struct AnswerSynthesizer: Sendable {
 
         let elapsed = Int((DispatchTime.now().uptimeNanoseconds - started) / 1_000_000)
         let isInsufficient = raw.hasPrefix(Self.insufficientMarker)
-        let body = isInsufficient
+        let body =
+            isInsufficient
             ? String(raw.dropFirst(Self.insufficientMarker.count))
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             : raw
@@ -259,7 +260,8 @@ public struct AnswerSynthesizer: Sendable {
         // the one signal that the model tried to cite something it was not given.
         var text = validated.text
         if validated.strippedMarkers > 0 {
-            text += "\n\n> Note: \(validated.strippedMarkers) citation marker(s) in the "
+            text +=
+                "\n\n> Note: \(validated.strippedMarkers) citation marker(s) in the "
                 + "model's answer did not match a supplied result and were removed."
         }
 
@@ -431,7 +433,8 @@ public struct AnswerSynthesizer: Sendable {
     }
 
     static func clip(_ text: String, to limit: Int) -> String {
-        let collapsed = text
+        let collapsed =
+            text
             .replacingOccurrences(of: "\r\n", with: "\n")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard collapsed.count > limit else { return collapsed }
@@ -458,17 +461,18 @@ public struct AnswerSynthesizer: Sendable {
         results: [SearchResult]
     ) -> ValidatedCitations {
         let pattern = try? NSRegularExpression(pattern: #"\[(\d{1,3})\]"#)
-        let matches = pattern?.matches(
-            in: text,
-            range: NSRange(text.startIndex..<text.endIndex, in: text)
-        ) ?? []
+        let matches =
+            pattern?.matches(
+                in: text,
+                range: NSRange(text.startIndex..<text.endIndex, in: text)
+            ) ?? []
 
         // First pass: which indices are valid, in order of appearance.
         var order: [Int] = []
         var invalidCount = 0
         for match in matches {
             guard let range = Range(match.range(at: 1), in: text),
-                  let number = Int(text[range])
+                let number = Int(text[range])
             else { continue }
             if number >= 1, number <= resultCount {
                 if !order.contains(number) { order.append(number) }
@@ -503,8 +507,8 @@ public struct AnswerSynthesizer: Sendable {
         var cursor = text.startIndex
         for match in matches {
             guard let full = Range(match.range, in: text),
-                  let digits = Range(match.range(at: 1), in: text),
-                  let number = Int(text[digits])
+                let digits = Range(match.range(at: 1), in: text),
+                let number = Int(text[digits])
             else { continue }
             rewritten += text[cursor..<full.lowerBound]
             if let mapped = renumbering[number] {
@@ -530,7 +534,7 @@ public struct AnswerSynthesizer: Sendable {
             case .timedOut: return "The synthesis model timed out."
             case .cancelled: return "The request was cancelled."
             case .notConnectedToInternet, .networkConnectionLost, .cannotConnectToHost,
-                 .dnsLookupFailed, .cannotFindHost:
+                .dnsLookupFailed, .cannotFindHost:
                 return "The synthesis model could not be reached."
             default:
                 // Curated rather than `localizedDescription`, which can echo the URL.

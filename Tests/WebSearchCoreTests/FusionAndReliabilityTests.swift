@@ -58,14 +58,18 @@ final class RankFusionTests: XCTestCase {
         // "solo" is Tavily's top hit but nobody else confirms it.
         let fused = RankFusion.fuse(
             responses: [
-                response(.tavily, [
-                    ("Solo", "https://solo.example.com/only"),
-                    ("Corroborated", "https://both.example.com/page"),
-                ]),
-                response(.brave, [
-                    ("Corroborated", "https://both.example.com/page"),
-                    ("Other", "https://other.example.com/x"),
-                ]),
+                response(
+                    .tavily,
+                    [
+                        ("Solo", "https://solo.example.com/only"),
+                        ("Corroborated", "https://both.example.com/page"),
+                    ]),
+                response(
+                    .brave,
+                    [
+                        ("Corroborated", "https://both.example.com/page"),
+                        ("Other", "https://other.example.com/x"),
+                    ]),
             ],
             limit: 10
         )
@@ -76,11 +80,13 @@ final class RankFusionTests: XCTestCase {
         let fused = RankFusion.fuse(
             responses: [
                 response(.brave, [("Page", "https://example.com/p")]),
-                response(.tavily, [
-                    ("Filler", "https://example.com/filler"),
-                    ("Filler2", "https://example.com/filler2"),
-                    ("Page", "https://example.com/p"),
-                ]),
+                response(
+                    .tavily,
+                    [
+                        ("Filler", "https://example.com/filler"),
+                        ("Filler2", "https://example.com/filler2"),
+                        ("Page", "https://example.com/p"),
+                    ]),
             ],
             limit: 10
         )
@@ -92,10 +98,12 @@ final class RankFusionTests: XCTestCase {
     }
 
     func testSameProviderListingDuplicateURLOnlyVotesOnce() {
-        let duplicate = response(.tavily, [
-            ("Page", "https://example.com/p"),
-            ("Page again", "https://example.com/p?utm_source=x"),
-        ])
+        let duplicate = response(
+            .tavily,
+            [
+                ("Page", "https://example.com/p"),
+                ("Page again", "https://example.com/p?utm_source=x"),
+            ])
         // The normalizer already drops the intra-provider duplicate.
         XCTAssertEqual(duplicate.results.count, 1)
 

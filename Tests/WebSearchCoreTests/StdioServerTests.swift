@@ -1,7 +1,6 @@
 import Foundation
-import XCTest
-
 import WebSearchCore
+import XCTest
 
 /// End-to-end tests that drive the **built executable** over a real MCP stdio session.
 ///
@@ -44,7 +43,7 @@ final class StdioServerTests: XCTestCase {
             // tells a user to export) would make a stub-provider test contact the live
             // vendor and report a false failure.
             var merged: [String: String] = [
-                "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin",
+                "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
             ]
             for key in ServerTestSupport.providerEnvironmentVariables {
                 merged.removeValue(forKey: key)
@@ -380,15 +379,15 @@ final class StdioServerTests: XCTestCase {
             .init(
                 status: 200,
                 body: """
-                {"query":"swift concurrency","results":[
-                  {"url":"https://swift.org/documentation/concurrency/",
-                   "title":"Concurrency | Swift Documentation",
-                   "content":"Swift concurrency documentation.","engine":"brave"},
-                  {"url":"https://example.com/second",
-                   "title":"Second result","content":"Another result.","engine":"duckduckgo"}
-                ],"answers":[],"corrections":[],"infoboxes":[],"suggestions":[],
-                "unresponsive_engines":[]}
-                """
+                    {"query":"swift concurrency","results":[
+                      {"url":"https://swift.org/documentation/concurrency/",
+                       "title":"Concurrency | Swift Documentation",
+                       "content":"Swift concurrency documentation.","engine":"brave"},
+                      {"url":"https://example.com/second",
+                       "title":"Second result","content":"Another result.","engine":"duckduckgo"}
+                    ],"answers":[],"corrections":[],"infoboxes":[],"suggestions":[],
+                    "unresponsive_engines":[]}
+                    """
             )
         ])
 
@@ -530,7 +529,7 @@ final class StdioServerTests: XCTestCase {
 
         let server = try startInitializedServer(environment: [
             // The loopback page is on 127.0.0.1, which the SSRF policy refuses by design.
-            "SEARCH_ALLOW_PRIVATE_NETWORK": "1",
+            "SEARCH_ALLOW_PRIVATE_NETWORK": "1"
         ])
         defer { server.stop() }
 
