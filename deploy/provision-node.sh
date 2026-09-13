@@ -23,8 +23,15 @@ fail() { echo "$LOG_PREFIX ERROR: $*" >&2; exit 1; }
 install_secret_key() {
     local settings_file="$1"
     local key="$2"
+    # The settings file is created by a plain redirect, so under the default umask 022 it is
+    # 0644, and the substitution below copies the same secret the 0600 key file holds into it.
+    # BSD `sed -i` preserves the original file's mode rather than applying the umask (measured:
+    # a 0600 input stays 0600, a 0644 input stays 0644), so the mode is corrected here after the
+    # substitution and then asserted, rather than assumed from the umask (ledger B49).
     sed -i '' "s|__SECRET_KEY__|${key}|" "${settings_file}" \
         || fail "could not install the SearXNG secret key into ${settings_file}"
+    chmod 600 "${settings_file}" \
+        || fail "could not restrict the mode of ${settings_file}"
     if grep -qF '__SECRET_KEY__' "${settings_file}"; then
         fail "${settings_file} still contains the __SECRET_KEY__ placeholder; refusing to start a container that would sign with a known key"
     fi
@@ -268,7 +275,11 @@ outgoing:
 SETTINGS
 
 # The heredoc is quoted, so the key is substituted afterwards rather than expanded inline. The
-# substitution is checked and verified, never assumed (ledger B17).
+# substitution is checked and verified, never assumed (ledger B17). The mode is set before the
+# key is written, not only after: `chmod` here means the secret is never briefly readable, and
+# because `sed -i` preserves the mode it survives the substitution (ledger B49).
+chmod 600 "${INSTALL_DIR}/searxng/settings.yml" \
+    || fail "could not restrict the mode of the SearXNG settings file"
 install_secret_key "${INSTALL_DIR}/searxng/settings.yml" "${SECRET_KEY}"
 
 # Prefer a locally-loaded image (transferred over the LAN) so each node does not

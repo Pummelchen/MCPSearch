@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 127 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 84 |
-| START (reproduced, expected behaviour written) | 43 |
+| DONE | 85 |
+| START (reproduced, expected behaviour written) | 42 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 82** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 82 S3 tasks 39 are DONE and 43 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 82 S3 tasks 40 are DONE and 42 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -102,7 +102,7 @@ waived in writing.
 | B46 | S3 | `MCPSMonitor` | `Sources/MCPSMonitor/main.swift:45-78` (`--iterations  Stop after n refreshes (useful for scripting)`), `:533-580` | `mcps-mon` always exits 0, so `--iterations` cannot be used as a health check | incomplete | START | this Mac (arm64) | Phase B L7-8 |
 | B47 | S3 | `example.env` vs `deploy/` | `example.env:35-39` | `example.env` tells the operator to fix a SearXNG setting that the shipped files already set | docs | DONE | this Mac (arm64) | Phase B L7-9 |
 | B48 | S3 | `deploy/provision-node.sh` | `deploy/provision-node.sh:296-297` | `provision-node.sh` cannot find a Homebrew-installed Tailscale CLI on Apple Silicon | bug | START | this Mac (arm64) | Phase B L7-11 |
-| B49 | S3 | `deploy/provision-node.sh` | `deploy/provision-node.sh:192-199`, `:203-235` | The generated SearXNG `settings.yml` inherits the umask, so the per-node secret key is world-readable | unsafe | START | this Mac (arm64) | Phase B L7-12 |
+| B49 | S3 | `deploy/provision-node.sh` | `deploy/provision-node.sh:192-199`, `:203-235` | The generated SearXNG `settings.yml` inherits the umask, so the per-node secret key is world-readable | unsafe | DONE | this Mac (arm64) | Phase B L7-12 |
 | B50 | S3 | `deploy/provision-node.sh` | `deploy/provision-node.sh:255-284` | Provisioning destroys the working instance before its replacement is proven on the production port, with no rollback | incomplete | START | this Mac (arm64) | Phase B L7-13 |
 | B51 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:119` | `Log.escape` leaves every control character except `\n`, `\r` and `\t`, so a query can inject terminal escapes into stderr | unsafe | DONE | this Mac (arm64) | Phase B L4-8 |
 | B52 | S3 | WebSearchCore (Search) | `Sources/WebSearchCore/Search/SearchOrchestrator.swift:501` | A claimed half-open probe is never released when a request ends in a bare `CancellationError` | bug | DONE | this Mac (arm64) | Phase B L2-2 |
@@ -213,6 +213,35 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B49 — the generated `settings.yml` inherited the umask, so the node secret was world-readable
+
+**Severity S3** (recorded) · **category** unsafe · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** The script generates a per-node key, writes it to a `0600` file, then
+substitutes the same value into `settings.yml` - which a plain redirect creates `0644` under the
+default umask, with no `chmod` applied. The key the key file protects was copied into a
+world-readable one. Impact is limited (single-operator Mac minis, no accounts, `limiter: false`,
+`public_instance: false`), but two files holding the same secret disagreeing about who may read it
+is a defect regardless.
+
+**A hypothesis the test disproved.** The first fix wrapped the `sed` in a `umask 077` subshell,
+assuming `sed -i` replaces the file and therefore takes the umask's mode. Measuring shows that is
+false here: BSD `sed -i` **preserves** the original mode (a `0600` input stays `0600`). The fix was
+redirected accordingly, and the wrong assumption and the measurement that killed it are both in the
+artifact - the umask version would have looked correct and passed a check that only ever started
+from `0644`.
+
+**The fix.** Two changes for different reasons: a guarded `chmod 600` **before** the substitution,
+so the secret never lands in a `0644` file even momentarily (it survives the `sed` because the mode
+is preserved); and a `chmod 600` **inside** `install_secret_key` after the substitution, which is
+what the finding asks for and makes the mode a property the function guarantees rather than one its
+caller happens to have set.
+
+**Verification.** RED: mode 644 with the key present, exit 1. GREEN: mode 600, placeholder gone, key
+present, exit 0. `bash -n` passes; shellcheck's finding set is identical to HEAD's; the B17
+assertions are untouched. Provisioning a real node was deliberately not run. Artifact:
+`AUDIT/evidence/B49-settings-mode.txt`.
 
 ## B81 — `mcp_smoke.py` de-chunked an SSE body after decoding it to `str`
 
