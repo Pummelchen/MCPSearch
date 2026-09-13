@@ -546,9 +546,17 @@ while await runFlag.isRunning {
     if interactive {
         draw(model, renderer: renderer)
     } else {
-        // Plain-text frame for logs and piping.
+        // Plain-text frame for logs and piping. `fillHeight: false` because there is no
+        // screen to fill: padding to an assumed height looks like a stray block of blank
+        // lines in a file, and capping the sections to it could silently drop providers.
         let size = Terminal.size
-        print(renderer.render(model, columns: size.columns, rows: size.rows).joined(separator: "\n"))
+        let frame = renderer.render(
+            model,
+            columns: size.columns,
+            rows: size.rows,
+            fillHeight: false
+        )
+        print(frame.joined(separator: "\n"))
         print("")
     }
 

@@ -222,6 +222,61 @@ final class RendererTests: XCTestCase {
         XCTAssertTrue(lines.contains("Tavily"))
     }
 
+    /// A redirected frame must not be padded to a screen it is not filling.
+    ///
+    /// The dashboard pads so the footer sits at the bottom of the display, which appears as a
+    /// stray block of blank lines when the output is piped to a file or another program.
+    func testRedirectedFrameIsNotPaddedToTheTerminalHeight() {
+        let renderer = Renderer(useColour: false)
+        let dashboard = model(
+            nodes: [node("node1", state: .up)],
+            providers: [provider(.tavily, state: .healthy)]
+        )
+
+        let piped = renderer.render(dashboard, columns: 100, rows: 40, fillHeight: false)
+        XCTAssertLessThan(piped.count, 40, "a redirected frame keeps only its content")
+        XCTAssertTrue(piped.last?.contains("quit") ?? false, piped.last ?? "")
+        XCTAssertFalse(
+            piped.suffix(2).contains(""),
+            "no blank filler before the footer: \(piped.suffix(4))"
+        )
+
+        // The interactive frame still fills the screen so the footer stays at the bottom.
+        let interactive = renderer.render(dashboard, columns: 100, rows: 40, fillHeight: true)
+        XCTAssertEqual(interactive.count, 40)
+        XCTAssertTrue(interactive.last?.contains("quit") ?? false)
+    }
+
+    /// Nothing may be dropped to fit a screen that is not being filled.
+    func testRedirectedFrameKeepsEveryProvider() {
+        let ids: [ProviderID] = [
+            .tavily, .brave, .mojeek, .exa, .searxng, .openWebSearch, .duckDuckGo, .startpage,
+            .parallel,
+        ]
+        // Deliberately shorter than the content: the interactive path would cap the section.
+        let piped = Renderer(useColour: false).render(
+            model(providers: ids.map { provider($0, state: .healthy) }),
+            columns: 120,
+            rows: 12,
+            fillHeight: false
+        )
+
+        XCTAssertGreaterThan(piped.count, 12)
+        XCTAssertFalse(
+            piped.contains { $0.contains("more") },
+            "no provider may be hidden in a redirected frame"
+        )
+        // The name column is narrower than the longest names, so match on a prefix: a
+        // truncated name is still that provider's row.
+        for id in ids {
+            let prefix = String(id.displayName.prefix(8))
+            XCTAssertTrue(
+                piped.contains { $0.contains(prefix) },
+                "\(id.displayName) is missing from the redirected frame"
+            )
+        }
+    }
+
     /// A value that fills its column must still be separated from the next one.
     ///
     /// Padding alone does not separate columns: truncation returns a string of exactly the

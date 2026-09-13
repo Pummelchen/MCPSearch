@@ -69,17 +69,34 @@ public struct Renderer: Sendable {
         Terminal.pad(text, to: max(0, width - 1)) + " "
     }
 
-    public func render(_ model: MonitorModel, columns: Int, rows: Int) -> [String] {
-        let lines = compose(model, columns: columns, rows: rows)
-        // Clamp width and height last, so no individual section has to know the limit.
-        // A wrapped line is far worse than a truncated one on a live display: it shifts
-        // every subsequent row and the dashboard stops being readable.
+    /// Render the dashboard.
+    ///
+    /// - Parameter fillHeight: When true the frame is sized for a screen: the sections are
+    ///   capped to the available rows and blank lines push the footer to the bottom. A frame
+    ///   that is not drawn to a terminal is not filling anything, so callers that redirect or
+    ///   pipe the output pass false: the content is emitted in full, never padded, and no
+    ///   provider is dropped to fit a screen that does not exist.
+    public func render(
+        _ model: MonitorModel,
+        columns: Int,
+        rows: Int,
+        fillHeight: Bool = true
+    ) -> [String] {
+        let lines = compose(model, columns: columns, rows: rows, fillHeight: fillHeight)
+        // Clamp width last, so no individual section has to know the limit. A wrapped line is
+        // far worse than a truncated one: it shifts every subsequent row and the dashboard
+        // stops being readable. Height is clamped only when a screen is being filled.
         let width = max(1, columns)
-        let height = max(1, rows)
+        let height = fillHeight ? max(1, rows) : lines.count
         return lines.prefix(height).map { Terminal.truncate($0, to: width) }
     }
 
-    private func compose(_ model: MonitorModel, columns: Int, rows: Int) -> [String] {
+    private func compose(
+        _ model: MonitorModel,
+        columns: Int,
+        rows: Int,
+        fillHeight: Bool
+    ) -> [String] {
         var lines: [String] = []
 
         lines.append(contentsOf: header(model, columns: columns))
@@ -89,23 +106,37 @@ public struct Renderer: Sendable {
         let nodeBlock = nodeSection(model, columns: columns)
         let footerBlock = footer(model, columns: columns, rows: rows)
 
-        // Reserve space for the footer, then give the remainder to providers and nodes.
-        let available = max(6, rows - lines.count - footerBlock.count)
-        let nodeHeight = min(nodeBlock.count, max(3, available / 3))
-        let providerHeight = max(3, available - nodeHeight)
+        if fillHeight {
+            // Reserve space for the footer, then give the remainder to providers and nodes.
+            let available = max(6, rows - lines.count - footerBlock.count)
+            let nodeHeight = min(nodeBlock.count, max(3, available / 3))
+            let providerHeight = max(3, available - nodeHeight)
 
-        lines.append(contentsOf: providerBlock.prefix(providerHeight))
-        if providerBlock.count > providerHeight {
-            lines.append(Terminal.colour("   … \(providerBlock.count - providerHeight) more", .grey, enabled: useColour))
-        }
+            lines.append(contentsOf: providerBlock.prefix(providerHeight))
+            if providerBlock.count > providerHeight {
+                lines.append(
+                    Terminal.colour(
+                        "   … \(providerBlock.count - providerHeight) more",
+                        .grey,
+                        enabled: useColour
+                    )
+                )
+            }
 
-        lines.append("")
-        lines.append(contentsOf: nodeBlock.prefix(nodeHeight))
-
-        // Pad so the footer sits at the bottom rather than floating mid-screen.
-        while lines.count + footerBlock.count < rows {
             lines.append("")
+            lines.append(contentsOf: nodeBlock.prefix(nodeHeight))
+
+            // Pad so the footer sits at the bottom rather than floating mid-screen.
+            while lines.count + footerBlock.count < rows {
+                lines.append("")
+            }
+        } else {
+            // Not drawing to a screen: everything, in order, with no filler.
+            lines.append(contentsOf: providerBlock)
+            lines.append("")
+            lines.append(contentsOf: nodeBlock)
         }
+
         lines.append(contentsOf: footerBlock)
         return lines
     }
