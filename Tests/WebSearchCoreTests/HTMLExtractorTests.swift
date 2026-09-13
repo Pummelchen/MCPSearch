@@ -1,4 +1,5 @@
 import Foundation
+import SwiftSoup
 import XCTest
 
 @testable import WebSearchCore
@@ -135,6 +136,43 @@ final class HTMLExtractorTests: XCTestCase {
         XCTAssertFalse(short.truncated)
         XCTAssertEqual(short.text, "short text")
     }
+    /// A page that nests its containers must not cost quadratic work.
+    ///
+    /// `preferredContentRoot` scores each candidate with `Element.text()`, which walks the whole
+    /// subtree, and a container's text includes everything inside it — so a candidate nested in
+    /// another can never outscore it, and scoring it re-walked text already counted. Markup can
+    /// force that: 500 nested `.entry-content` containers inside a `.content` div, each level
+    /// carrying its own paragraph, is 1.8 MB of HTML, and the scoring pass used to build the text
+    /// of every one of them — about 450 MB of copying for a page whose real content is 1.8 MB
+    /// (ledger B28). Only maximal candidates are scored now, and their subtrees are disjoint.
+    ///
+    /// The document is parsed outside the timed region: this is about the scoring pass, and a
+    /// timing assertion over the whole pipeline would mostly measure SwiftSoup's parser.
+    func testDeeplyNestedContainersDoNotCostQuadraticTime() throws {
+        // Just under `MarkupDepth.maximumNesting` (512), so the document is one the extractor
+        // accepts: the cost under test is scoring, not the nesting guard.
+        let depth = 500
+        let level =
+            "<p>" + String(repeating: "some article text that repeats here ", count: 200) + "</p>"
+        let html =
+            "<html><body><div class=\"content\">"
+            + String(repeating: "<div class=\"entry-content\">" + level, count: depth)
+            + String(repeating: "</div>", count: depth)
+            + "</div></body></html>"
+        let document = try SwiftSoup.parse(html)
+
+        let started = ContinuousClock.now
+        let root = HTMLExtractor.preferredContentRoot(in: document)
+        let elapsed = ContinuousClock.now - started
+
+        XCTAssertEqual(try root?.className(), "content", "the outermost container wins")
+        XCTAssertLessThan(
+            elapsed,
+            .seconds(1),
+            "scoring nested containers re-walks their subtrees: took \(elapsed)"
+        )
+    }
+
 }
 
 /// Scraper parsing, driven by stored markup rather than the network.
@@ -314,4 +352,5 @@ final class ScraperTests: XCTestCase {
         // Nothing may reach the network.
         XCTAssertTrue(http.requests.isEmpty)
     }
+
 }

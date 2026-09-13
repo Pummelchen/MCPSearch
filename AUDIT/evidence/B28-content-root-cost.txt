@@ -1,0 +1,70 @@
+# B28 — nested content containers made extraction quadratic
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+```swift
+// HTMLExtractor.preferredContentRoot (before)
+for selector in contentSelectors {
+    guard let elements = try? document.select(selector) else { continue }
+    for element in elements {
+        let score = estimateTextLength(element)      // element.text() — walks the whole subtree
+        if score > bestScore { bestScore = score; best = element }
+    }
+}
+```
+
+`Element.text()` walks an element's entire subtree, and a container's text *includes* everything
+inside it. A candidate nested in another candidate can therefore never outscore it, yet it was
+scored anyway, so every level of nesting re-walked the text of all the levels below. Crafted
+markup forces that: 500 nested `.entry-content` containers inside a `.content` div, each carrying
+its own paragraph, is 1.8 MB of HTML — and the scoring pass built the text of all 500 of them.
+
+## Fails-before evidence
+
+The document is parsed outside the timed region: the finding is about the scoring pass, and timing
+the whole pipeline would mostly measure SwiftSoup's parser. With the original loop restored:
+
+```
+$ swift test --filter testDeeplyNestedContainersDoNotCostQuadraticTime
+error: ... XCTAssertLessThan failed: ("7.185886667 seconds") is not less than ("1.0 seconds")
+  - scoring nested containers re-walks their subtrees: took 7.185886667 seconds
+```
+
+## The fix
+
+Only the candidates that no other candidate contains are scored. They are found in one
+depth-first pass with `NodeTraversor` (a `NodeVisitor` records a candidate as maximal when no
+candidate is open on the current path), and because maximal candidates never nest, their subtrees
+are disjoint — so scoring touches each node once:
+
+```swift
+let maximal = maximalCandidates(in: document)
+for selector in contentSelectors {
+    guard let elements = try? document.select(selector) else { continue }
+    for element in elements where maximal.contains(ObjectIdentifier(element)) {
+        let score = estimateTextLength(element)
+        ...
+```
+
+The selector-major order and the strict `>` comparison are unchanged, so which root wins is
+unchanged as well, with one exception worth stating: if a nested candidate scored *exactly* the
+same as its container — possible only when the container adds nothing but markup — the container
+now wins. That is the same text plus its siblings, so the extracted text cannot shrink.
+
+## Verification
+
+```
+$ swift test --filter testDeeplyNestedContainersDoNotCostQuadraticTime
+Executed 1 test, with 0 failures (0 unexpected) in 0.280 seconds     # 0.28 s vs 7.19 s
+
+$ swift test
+Executed 442 tests, with 6 skipped and 0 failures (0 unexpected) in 16.993 seconds
+    # including every existing extractor fixture: the chosen root and the text are unchanged
+
+$ swift build --scratch-path $SCRATCH -Xswiftc -warnings-as-errors                  0 warnings, 0 errors
+$ swift build -c release --scratch-path $SCRATCH -Xswiftc -warnings-as-errors      0 warnings, 0 errors
+$ swift-format lint --recursive --strict Sources Tests                             0 diagnostics
+$ swiftlint lint --strict                                                          0 violations in 79 files
+```

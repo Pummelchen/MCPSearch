@@ -152,9 +152,20 @@ public enum HTMLExtractor {
         var best: Element?
         var bestScore = 0
 
+        // Score only the candidates that no other candidate contains. `Element.text()` walks the
+        // whole subtree and a container's text includes everything inside it, so a candidate
+        // nested in another can never outscore it — scoring it would re-walk text that has
+        // already been counted. A page that nests its containers, which crafted markup can force,
+        // therefore cost quadratic work: on 2 000 nested `<div>`s the scoring pass walked four
+        // million nodes and built a string for each (ledger B28). The maximal candidates are
+        // found in one depth-first pass and their subtrees are disjoint, so scoring is linear in
+        // the document. The selector-major order and the strict `>` comparison are unchanged, so
+        // which root wins is unchanged too — except where a nested candidate tied with its
+        // container, and the container (the same text plus its siblings) now wins.
+        let maximal = maximalCandidates(in: document)
         for selector in contentSelectors {
             guard let elements = try? document.select(selector) else { continue }
-            for element in elements {
+            for element in elements where maximal.contains(ObjectIdentifier(element)) {
                 let score = estimateTextLength(element)
                 if score > bestScore {
                     bestScore = score
@@ -167,6 +178,50 @@ public enum HTMLExtractor {
         // whole body; otherwise a short `<section>` would discard the rest.
         guard bestScore >= 200 else { return body }
         return best ?? body
+    }
+
+    /// The candidates with no candidate ancestor, in one depth-first pass over the document.
+    ///
+    /// A candidate is maximal when its subtree is not inside another candidate's: those are the
+    /// only ones whose `text()` has to be computed, and because maximal candidates never nest,
+    /// their subtrees are disjoint — the scoring pass touches each node once.
+    static func maximalCandidates(in document: Document) -> Set<ObjectIdentifier> {
+        let union = contentSelectors.joined(separator: ", ")
+        guard let candidates = try? document.select(union) else { return [] }
+        let collector = MaximalCandidateCollector(
+            candidateIDs: Set(candidates.map(ObjectIdentifier.init))
+        )
+        try? NodeTraversor(collector).traverse(document)
+        return collector.maximal
+    }
+
+    /// Records candidates that are not inside another candidate, using the traversor's depth.
+    ///
+    /// A class because `NodeTraversor` calls back into it; the mutable state is confined to the
+    /// traversal, which is synchronous.
+    private final class MaximalCandidateCollector: NodeVisitor {
+        private let candidateIDs: Set<ObjectIdentifier>
+        /// Depths of the candidates on the current path, innermost last.
+        private var openDepths: [Int] = []
+        private(set) var maximal: Set<ObjectIdentifier> = []
+
+        init(candidateIDs: Set<ObjectIdentifier>) {
+            self.candidateIDs = candidateIDs
+        }
+
+        func head(_ node: Node, _ depth: Int) throws {
+            guard let element = node as? Element, candidateIDs.contains(ObjectIdentifier(element))
+            else { return }
+            // No candidate is open, so nothing above this node contains it.
+            if openDepths.isEmpty { maximal.insert(ObjectIdentifier(element)) }
+            openDepths.append(depth)
+        }
+
+        func tail(_ node: Node, _ depth: Int) throws {
+            guard let element = node as? Element, candidateIDs.contains(ObjectIdentifier(element))
+            else { return }
+            if openDepths.last == depth { openDepths.removeLast() }
+        }
     }
 
     static func estimateTextLength(_ element: Element) -> Int {
