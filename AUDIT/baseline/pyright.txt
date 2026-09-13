@@ -1,0 +1,7 @@
+/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/scripts/mcp_smoke.py
+  /Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/scripts/mcp_smoke.py:254:12 - error: Type "LiteralString" is not assignable to return type "None"
+    "str" is not assignable to "None" (reportReturnType)
+/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/scripts/monitor_tty_smoke.py
+  /Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/scripts/monitor_tty_smoke.py:144:17 - error: Method "log_message" overrides class "BaseHTTPRequestHandler" in an incompatible manner
+    Parameter 2 mismatch: base parameter "format" is keyword parameter, override parameter is position-only (reportIncompatibleMethodOverride)
+2 errors, 0 warnings, 0 informations

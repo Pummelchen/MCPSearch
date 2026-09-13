@@ -1,0 +1,12 @@
+# gitleaks full-history secret scan — REDACTED summary
+# The raw report held the matched values and is deliberately NOT committed (section 0:
+# never commit secrets). Only rule, location and commit are recorded.
+# command: gitleaks detect --source . --log-opts=--all --report-format json
+# version: gitleaks 8.30.1
+# findings: 5
+
+generic-api-key	Tests/WebSearchCoreTests/StdioServerTests.swift:432	commit=41d56935
+generic-api-key	Tests/WebSearchCoreTests/StdioServerTests.swift:493	commit=41d56935
+generic-api-key	Tests/WebSearchCoreTests/StdioServerTests.swift:570	commit=41d56935
+generic-api-key	Tests/WebSearchCoreTests/StdioServerTests.swift:612	commit=41d56935
+generic-api-key	Tests/WebSearchCoreTests/AnswerSynthesizerTests.swift:443	commit=41d56935

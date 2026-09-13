@@ -1,0 +1,4421 @@
+[
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/_NIOFileSystem.build/DerivedSources/resource_bundle_accessor.swift",
+    "line" : 6,
+    "reason" : "Line should be 120 characters or less; currently it has 156 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : null,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/_NIOFileSystem.build/DerivedSources/resource_bundle_accessor.swift",
+    "line" : 17,
+    "reason" : "Files should have a single trailing newline",
+    "rule_id" : "trailing_newline",
+    "severity" : "Warning",
+    "type" : "Trailing Newline"
+  },
+  {
+    "character" : 50,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/MCPSMonitorTests/MonitorOptionsTests.swift",
+    "line" : 31,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 50,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/MCPSMonitorTests/MonitorOptionsTests.swift",
+    "line" : 43,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 70,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/MCPSMonitorTests/MonitorOptionsTests.swift",
+    "line" : 91,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 41,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/MCPSMonitorTests/MonitorOptionsTests.swift",
+    "line" : 114,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/MCPSMonitorTests/MonitorOptionsTests.swift",
+    "line" : 6,
+    "reason" : "Limit vertical whitespace to a single empty line; currently 2",
+    "rule_id" : "vertical_whitespace",
+    "severity" : "Warning",
+    "type" : "Vertical Whitespace"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/NIOPosix.build/DerivedSources/resource_bundle_accessor.swift",
+    "line" : 6,
+    "reason" : "Line should be 120 characters or less; currently it has 150 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : null,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/NIOPosix.build/DerivedSources/resource_bundle_accessor.swift",
+    "line" : 17,
+    "reason" : "Files should have a single trailing newline",
+    "rule_id" : "trailing_newline",
+    "severity" : "Warning",
+    "type" : "Trailing Newline"
+  },
+  {
+    "character" : 48,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ProbeTests.swift",
+    "line" : 135,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 38,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/URLPolicyTests.swift",
+    "line" : 46,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 53,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/URLPolicyTests.swift",
+    "line" : 70,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 38,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/URLPolicyTests.swift",
+    "line" : 119,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 49,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/URLPolicyTests.swift",
+    "line" : 167,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 41,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/URLPolicyTests.swift",
+    "line" : 183,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/MonitorTests.swift",
+    "line" : 454,
+    "reason" : "File should contain 400 lines or less: currently contains 454",
+    "rule_id" : "file_length",
+    "severity" : "Warning",
+    "type" : "File Length"
+  },
+  {
+    "character" : 14,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/MonitorTests.swift",
+    "line" : 154,
+    "reason" : "Variable name 'a' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 17,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/MonitorTests.swift",
+    "line" : 154,
+    "reason" : "Variable name 'b' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/MonitorTests.swift",
+    "line" : 202,
+    "reason" : "Variable name 'm' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 81,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/MonitorTests.swift",
+    "line" : 125,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 22,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/MonitorTests.swift",
+    "line" : 254,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 73,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/MonitorTests.swift",
+    "line" : 316,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 81,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/MonitorTests.swift",
+    "line" : 327,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 7,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/MonitorTests.swift",
+    "line" : 61,
+    "reason" : "Class body should span 250 lines or less excluding comments and whitespace: currently spans 263 lines",
+    "rule_id" : "type_body_length",
+    "severity" : "Warning",
+    "type" : "Type Body Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 125,
+    "reason" : "Imports should be unique",
+    "rule_id" : "duplicate_imports",
+    "severity" : "Warning",
+    "type" : "Duplicate Imports"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 392,
+    "reason" : "Imports should be unique",
+    "rule_id" : "duplicate_imports",
+    "severity" : "Warning",
+    "type" : "Duplicate Imports"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 502,
+    "reason" : "Imports should be unique",
+    "rule_id" : "duplicate_imports",
+    "severity" : "Warning",
+    "type" : "Duplicate Imports"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 547,
+    "reason" : "File should contain 400 lines or less: currently contains 547",
+    "rule_id" : "file_length",
+    "severity" : "Warning",
+    "type" : "File Length"
+  },
+  {
+    "character" : 17,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 143,
+    "reason" : "Variable name 'h' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 17,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 171,
+    "reason" : "Variable name 'fd' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 19,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 197,
+    "reason" : "Variable name 'fd' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 19,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 209,
+    "reason" : "Variable name 'fd' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 18,
+    "reason" : "Line should be 120 characters or less; currently it has 130 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 63,
+    "reason" : "Line should be 120 characters or less; currently it has 176 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 67,
+    "reason" : "Line should be 120 characters or less; currently it has 144 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 86,
+    "reason" : "Line should be 120 characters or less; currently it has 175 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 90,
+    "reason" : "Line should be 120 characters or less; currently it has 147 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 388,
+    "reason" : "Line should be 200 characters or less; currently it has 209 characters",
+    "rule_id" : "line_length",
+    "severity" : "Error",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 456,
+    "reason" : "Line should be 120 characters or less; currently it has 151 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 508,
+    "reason" : "Line should be 120 characters or less; currently it has 177 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 34,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 33,
+    "reason" : "Prefer non-optional `Data(_:)` initializer when converting `String` to `Data`",
+    "rule_id" : "non_optional_string_data_conversion",
+    "severity" : "Warning",
+    "type" : "Non-optional String -> Data Conversion"
+  },
+  {
+    "character" : 4,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 108,
+    "reason" : "FIXMEs should be resolved (Copied from `Lock.swift` in TS...)",
+    "rule_id" : "todo",
+    "severity" : "Warning",
+    "type" : "Todo"
+  },
+  {
+    "character" : 4,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 227,
+    "reason" : "FIXMEs should be resolved (Copied from `XCTEvents.swift`,...)",
+    "rule_id" : "todo",
+    "severity" : "Warning",
+    "type" : "Todo"
+  },
+  {
+    "character" : 8,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 256,
+    "reason" : "TODOs should be resolved (Handle `userInfo: [AnyHashable...)",
+    "rule_id" : "todo",
+    "severity" : "Warning",
+    "type" : "Todo"
+  },
+  {
+    "character" : null,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 547,
+    "reason" : "Files should have a single trailing newline",
+    "rule_id" : "trailing_newline",
+    "severity" : "Warning",
+    "type" : "Trailing Newline"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 542,
+    "reason" : "Lines should not have trailing whitespace",
+    "rule_id" : "trailing_whitespace",
+    "severity" : "Warning",
+    "type" : "Trailing Whitespace"
+  },
+  {
+    "character" : 90,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/.build/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift",
+    "line" : 524,
+    "reason" : "Prefer `-> Void` over `-> ()`",
+    "rule_id" : "void_return",
+    "severity" : "Warning",
+    "type" : "Void Return"
+  },
+  {
+    "character" : 48,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FetchFallbackTests.swift",
+    "line" : 155,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 48,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FetchFallbackTests.swift",
+    "line" : 183,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 7,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FetchFallbackTests.swift",
+    "line" : 13,
+    "reason" : "Class body should span 250 lines or less excluding comments and whitespace: currently spans 318 lines",
+    "rule_id" : "type_body_length",
+    "severity" : "Warning",
+    "type" : "Type Body Length"
+  },
+  {
+    "character" : 19,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/TestSupport.swift",
+    "line" : 220,
+    "reason" : "Tuples should have at most 2 members",
+    "rule_id" : "large_tuple",
+    "severity" : "Warning",
+    "type" : "Large Tuple"
+  },
+  {
+    "character" : 68,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/TestSupport.swift",
+    "line" : 26,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ErrorReportingTests.swift",
+    "line" : 93,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 21,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ErrorReportingTests.swift",
+    "line" : 71,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ErrorReportingTests.swift",
+    "line" : 84,
+    "reason" : "Prefer failable `String(bytes:encoding:)` initializer when converting `Data` to `String`",
+    "rule_id" : "optional_data_string_conversion",
+    "severity" : "Warning",
+    "type" : "Optional Data -> String Conversion"
+  },
+  {
+    "character" : 5,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ErrorReportingTests.swift",
+    "line" : 14,
+    "reason" : "A doc comment should be attached to a declaration",
+    "rule_id" : "orphaned_doc_comment",
+    "severity" : "Warning",
+    "type" : "Orphaned Doc Comment"
+  },
+  {
+    "character" : 87,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ErrorReportingTests.swift",
+    "line" : 33,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 65,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ErrorReportingTests.swift",
+    "line" : 49,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 82,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ErrorReportingTests.swift",
+    "line" : 119,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 14,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ErrorReportingTests.swift",
+    "line" : 120,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 64,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ErrorReportingTests.swift",
+    "line" : 194,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 7,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ErrorReportingTests.swift",
+    "line" : 12,
+    "reason" : "Class body should span 250 lines or less excluding comments and whitespace: currently spans 252 lines",
+    "rule_id" : "type_body_length",
+    "severity" : "Warning",
+    "type" : "Type Body Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/HTMLExtractorTests.swift",
+    "line" : 152,
+    "reason" : "Line should be 120 characters or less; currently it has 128 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/HTMLExtractorTests.swift",
+    "line" : 156,
+    "reason" : "Line should be 120 characters or less; currently it has 135 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 84,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/TransportConfigurationTests.swift",
+    "line" : 79,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 58,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/TransportConfigurationTests.swift",
+    "line" : 112,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/LiveProviderTests.swift",
+    "line" : 87,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/LiveProviderTests.swift",
+    "line" : 98,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 86,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/LiveProviderTests.swift",
+    "line" : 69,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 41,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/LiveProviderTests.swift",
+    "line" : 198,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 845,
+    "reason" : "File should contain 400 lines or less: currently contains 845",
+    "rule_id" : "file_length",
+    "severity" : "Warning",
+    "type" : "File Length"
+  },
+  {
+    "character" : 5,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 226,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 63 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 21,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 692,
+    "reason" : "Tuples should have at most 2 members",
+    "rule_id" : "large_tuple",
+    "severity" : "Warning",
+    "type" : "Large Tuple"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 452,
+    "reason" : "Line should be 120 characters or less; currently it has 182 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 65,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 80,
+    "reason" : "Prefer failable `String(bytes:encoding:)` initializer when converting `Data` to `String`",
+    "rule_id" : "optional_data_string_conversion",
+    "severity" : "Warning",
+    "type" : "Optional Data -> String Conversion"
+  },
+  {
+    "character" : 33,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 89,
+    "reason" : "Prefer failable `String(bytes:encoding:)` initializer when converting `Data` to `String`",
+    "rule_id" : "optional_data_string_conversion",
+    "severity" : "Warning",
+    "type" : "Optional Data -> String Conversion"
+  },
+  {
+    "character" : 20,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 110,
+    "reason" : "Prefer failable `String(bytes:encoding:)` initializer when converting `Data` to `String`",
+    "rule_id" : "optional_data_string_conversion",
+    "severity" : "Warning",
+    "type" : "Optional Data -> String Conversion"
+  },
+  {
+    "character" : 22,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 836,
+    "reason" : "Prefer failable `String(bytes:encoding:)` initializer when converting `Data` to `String`",
+    "rule_id" : "optional_data_string_conversion",
+    "severity" : "Warning",
+    "type" : "Optional Data -> String Conversion"
+  },
+  {
+    "character" : 5,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 13,
+    "reason" : "A doc comment should be attached to a declaration",
+    "rule_id" : "orphaned_doc_comment",
+    "severity" : "Warning",
+    "type" : "Orphaned Doc Comment"
+  },
+  {
+    "character" : 87,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 47,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 63,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 141,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 79,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 159,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 14,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 160,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 50,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 181,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 45,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 257,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 45,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 288,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 90,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 361,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 40,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 397,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 94,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 407,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 14,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 408,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 49,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 456,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 61,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 462,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 92,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 472,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 14,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 473,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 49,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 517,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 61,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 523,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 74,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 533,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 14,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 534,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 74,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 567,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 14,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 568,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 77,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 594,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 61,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 600,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 74,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 610,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 14,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 611,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 49,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 636,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 61,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 642,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 74,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 652,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 14,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 653,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 74,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 677,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 14,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 678,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 62,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 697,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 83,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 705,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 82,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 731,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 78,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 763,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 76,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 777,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 14,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 778,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 79,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 789,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 83,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 806,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 81,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 827,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 7,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/StdioServerTests.swift",
+    "line" : 11,
+    "reason" : "Class body should span 350 lines or less excluding comments and whitespace: currently spans 650 lines",
+    "rule_id" : "type_body_length",
+    "severity" : "Error",
+    "type" : "Type Body Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/HTTPTransportTests.swift",
+    "line" : 475,
+    "reason" : "File should contain 400 lines or less: currently contains 475",
+    "rule_id" : "file_length",
+    "severity" : "Warning",
+    "type" : "File Length"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/HTTPTransportTests.swift",
+    "line" : 43,
+    "reason" : "Variable name 'fd' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 33,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/HTTPTransportTests.swift",
+    "line" : 97,
+    "reason" : "Variable name 'fd' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/HTTPTransportTests.swift",
+    "line" : 186,
+    "reason" : "Variable name 'fd' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/HTTPTransportTests.swift",
+    "line" : 244,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 20,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/HTTPTransportTests.swift",
+    "line" : 115,
+    "reason" : "Prefer failable `String(bytes:encoding:)` initializer when converting `Data` to `String`",
+    "rule_id" : "optional_data_string_conversion",
+    "severity" : "Warning",
+    "type" : "Optional Data -> String Conversion"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/HTTPTransportTests.swift",
+    "line" : 263,
+    "reason" : "Prefer failable `String(bytes:encoding:)` initializer when converting `Data` to `String`",
+    "rule_id" : "optional_data_string_conversion",
+    "severity" : "Warning",
+    "type" : "Optional Data -> String Conversion"
+  },
+  {
+    "character" : 81,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/HTTPTransportTests.swift",
+    "line" : 278,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 14,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/HTTPTransportTests.swift",
+    "line" : 279,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 64,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/HTTPTransportTests.swift",
+    "line" : 288,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 56,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/HTTPTransportTests.swift",
+    "line" : 310,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SearchOrchestratorTests.swift",
+    "line" : 731,
+    "reason" : "File should contain 400 lines or less: currently contains 731",
+    "rule_id" : "file_length",
+    "severity" : "Warning",
+    "type" : "File Length"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SearchOrchestratorTests.swift",
+    "line" : 218,
+    "reason" : "Variable name 'a' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SearchOrchestratorTests.swift",
+    "line" : 219,
+    "reason" : "Variable name 'b' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 17,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SearchOrchestratorTests.swift",
+    "line" : 256,
+    "reason" : "Variable name 'a' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 17,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SearchOrchestratorTests.swift",
+    "line" : 257,
+    "reason" : "Variable name 'b' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 10,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SearchOrchestratorTests.swift",
+    "line" : 14,
+    "reason" : "Tuples should have at most 2 members",
+    "rule_id" : "large_tuple",
+    "severity" : "Warning",
+    "type" : "Large Tuple"
+  },
+  {
+    "character" : 44,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SearchOrchestratorTests.swift",
+    "line" : 252,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 75,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SearchOrchestratorTests.swift",
+    "line" : 617,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 81,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SearchOrchestratorTests.swift",
+    "line" : 648,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 7,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SearchOrchestratorTests.swift",
+    "line" : 7,
+    "reason" : "Class body should span 350 lines or less excluding comments and whitespace: currently spans 578 lines",
+    "rule_id" : "type_body_length",
+    "severity" : "Error",
+    "type" : "Type Body Length"
+  },
+  {
+    "character" : 59,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SearchOrchestratorTests.swift",
+    "line" : 676,
+    "reason" : "Unused parameter in a closure should be replaced with _",
+    "rule_id" : "unused_closure_parameter",
+    "severity" : "Warning",
+    "type" : "Unused Closure Parameter"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/CoreUnitTests.swift",
+    "line" : 408,
+    "reason" : "File should contain 400 lines or less: currently contains 408",
+    "rule_id" : "file_length",
+    "severity" : "Warning",
+    "type" : "File Length"
+  },
+  {
+    "character" : 5,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/CoreUnitTests.swift",
+    "line" : 189,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 54 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/CoreUnitTests.swift",
+    "line" : 99,
+    "reason" : "Variable name 'a' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/CoreUnitTests.swift",
+    "line" : 100,
+    "reason" : "Variable name 'b' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/CoreUnitTests.swift",
+    "line" : 101,
+    "reason" : "Variable name 'c' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 55,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/CoreUnitTests.swift",
+    "line" : 91,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 49,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/CoreUnitTests.swift",
+    "line" : 164,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 41,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/CoreUnitTests.swift",
+    "line" : 213,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 40,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/CoreUnitTests.swift",
+    "line" : 287,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 68,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Package.swift",
+    "line" : 16,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 10,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Package.swift",
+    "line" : 34,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 65,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Package.swift",
+    "line" : 55,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 10,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Package.swift",
+    "line" : 84,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/AnswerSynthesizerTests.swift",
+    "line" : 506,
+    "reason" : "File should contain 400 lines or less: currently contains 506",
+    "rule_id" : "file_length",
+    "severity" : "Warning",
+    "type" : "File Length"
+  },
+  {
+    "character" : 19,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/AnswerSynthesizerTests.swift",
+    "line" : 87,
+    "reason" : "Force tries should be avoided",
+    "rule_id" : "force_try",
+    "severity" : "Error",
+    "type" : "Force Try"
+  },
+  {
+    "character" : 28,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/AnswerSynthesizerTests.swift",
+    "line" : 446,
+    "reason" : "Prefer failable `String(bytes:encoding:)` initializer when converting `Data` to `String`",
+    "rule_id" : "optional_data_string_conversion",
+    "severity" : "Warning",
+    "type" : "Optional Data -> String Conversion"
+  },
+  {
+    "character" : 14,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/AnswerSynthesizerTests.swift",
+    "line" : 50,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 69,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/AnswerSynthesizerTests.swift",
+    "line" : 84,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 69,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/AnswerSynthesizerTests.swift",
+    "line" : 396,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 7,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/AnswerSynthesizerTests.swift",
+    "line" : 11,
+    "reason" : "Class body should span 350 lines or less excluding comments and whitespace: currently spans 390 lines",
+    "rule_id" : "type_body_length",
+    "severity" : "Error",
+    "type" : "Type Body Length"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/HTTPClientTests.swift",
+    "line" : 32,
+    "reason" : "Variable name 'fd' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 54,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/HTTPClientTests.swift",
+    "line" : 202,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 54,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/HTTPClientTests.swift",
+    "line" : 248,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/MCPServer.swift",
+    "line" : 14,
+    "reason" : "Function body should span 100 lines or less excluding comments and whitespace: currently spans 115 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Error",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 22,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/MCPServer.swift",
+    "line" : 111,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 53,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/main.swift",
+    "line" : 23,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 91,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/main.swift",
+    "line" : 41,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 62,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/main.swift",
+    "line" : 50,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 31,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/main.swift",
+    "line" : 124,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift",
+    "line" : 13,
+    "reason" : "Line should be 120 characters or less; currently it has 160 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift",
+    "line" : 14,
+    "reason" : "Line should be 120 characters or less; currently it has 124 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift",
+    "line" : 15,
+    "reason" : "Line should be 120 characters or less; currently it has 142 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift",
+    "line" : 83,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 21,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift",
+    "line" : 65,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 75,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift",
+    "line" : 99,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 14,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift",
+    "line" : 100,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 69,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift",
+    "line" : 117,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 97,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift",
+    "line" : 296,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ProviderContractTests.swift",
+    "line" : 1453,
+    "reason" : "File should contain 1000 lines or less: currently contains 1453",
+    "rule_id" : "file_length",
+    "severity" : "Error",
+    "type" : "File Length"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ProviderContractTests.swift",
+    "line" : 55,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 86 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ProviderContractTests.swift",
+    "line" : 750,
+    "reason" : "Line should be 120 characters or less; currently it has 122 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ProviderContractTests.swift",
+    "line" : 984,
+    "reason" : "Line should be 120 characters or less; currently it has 126 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ProviderContractTests.swift",
+    "line" : 1137,
+    "reason" : "Line should be 120 characters or less; currently it has 171 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ProviderContractTests.swift",
+    "line" : 1147,
+    "reason" : "Line should be 120 characters or less; currently it has 165 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ProviderContractTests.swift",
+    "line" : 1200,
+    "reason" : "Line should be 200 characters or less; currently it has 282 characters",
+    "rule_id" : "line_length",
+    "severity" : "Error",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 24,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ProviderContractTests.swift",
+    "line" : 1264,
+    "reason" : "Prefer failable `String(bytes:encoding:)` initializer when converting `Data` to `String`",
+    "rule_id" : "optional_data_string_conversion",
+    "severity" : "Warning",
+    "type" : "Optional Data -> String Conversion"
+  },
+  {
+    "character" : 78,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ProviderContractTests.swift",
+    "line" : 341,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 74,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ProviderContractTests.swift",
+    "line" : 989,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 68,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ProviderContractTests.swift",
+    "line" : 1185,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 67,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ProviderContractTests.swift",
+    "line" : 1257,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 18,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ProviderContractTests.swift",
+    "line" : 1261,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 63,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ProviderContractTests.swift",
+    "line" : 1313,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 32,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ProviderContractTests.swift",
+    "line" : 1339,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 7,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/ProviderContractTests.swift",
+    "line" : 10,
+    "reason" : "Class body should span 350 lines or less excluding comments and whitespace: currently spans 1229 lines",
+    "rule_id" : "type_body_length",
+    "severity" : "Error",
+    "type" : "Type Body Length"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Monitor/Terminal.swift",
+    "line" : 123,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 5,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/MCPSMonitor/main.swift",
+    "line" : 114,
+    "reason" : "Function should have complexity 10 or less; currently complexity is 18",
+    "rule_id" : "cyclomatic_complexity",
+    "severity" : "Warning",
+    "type" : "Cyclomatic Complexity"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/MCPSMonitor/main.swift",
+    "line" : 581,
+    "reason" : "File should contain 400 lines or less: currently contains 581",
+    "rule_id" : "file_length",
+    "severity" : "Warning",
+    "type" : "File Length"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/MCPSMonitor/main.swift",
+    "line" : 114,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 85 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 14,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/MCPSMonitor/main.swift",
+    "line" : 110,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Monitor/NodeProbe.swift",
+    "line" : 41,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 92 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Monitor/NodeProbe.swift",
+    "line" : 153,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Monitor/NodeProbe.swift",
+    "line" : 158,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 56,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Monitor/NodeProbe.swift",
+    "line" : 59,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 931,
+    "reason" : "File should contain 400 lines or less: currently contains 931",
+    "rule_id" : "file_length",
+    "severity" : "Warning",
+    "type" : "File Length"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 887,
+    "reason" : "`where` clauses are preferred over a single `if` inside a `for`",
+    "rule_id" : "for_where",
+    "severity" : "Warning",
+    "type" : "Prefer For-Where"
+  },
+  {
+    "character" : 5,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 304,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 69 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 90,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 48,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 70,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 63,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 61,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 67,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 19,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 68,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 54,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 82,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 19,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 83,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 65,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 97,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 18,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 118,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 88,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 138,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 80,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 176,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 80,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 198,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 84,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 216,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 18,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 337,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 91,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 345,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 88,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 399,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 46,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 435,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 46,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 485,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 96,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 507,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 74,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 542,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 7,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift",
+    "line" : 11,
+    "reason" : "Class body should span 350 lines or less excluding comments and whitespace: currently spans 426 lines",
+    "rule_id" : "type_body_length",
+    "severity" : "Error",
+    "type" : "Type Body Length"
+  },
+  {
+    "character" : 5,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolHandlers.swift",
+    "line" : 173,
+    "reason" : "Function should have complexity 10 or less; currently complexity is 15",
+    "rule_id" : "cyclomatic_complexity",
+    "severity" : "Warning",
+    "type" : "Cyclomatic Complexity"
+  },
+  {
+    "character" : 5,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolHandlers.swift",
+    "line" : 359,
+    "reason" : "Function should have complexity 10 or less; currently complexity is 13",
+    "rule_id" : "cyclomatic_complexity",
+    "severity" : "Warning",
+    "type" : "Cyclomatic Complexity"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolHandlers.swift",
+    "line" : 428,
+    "reason" : "File should contain 400 lines or less: currently contains 428",
+    "rule_id" : "file_length",
+    "severity" : "Warning",
+    "type" : "File Length"
+  },
+  {
+    "character" : 5,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolHandlers.swift",
+    "line" : 21,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 76 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 5,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolHandlers.swift",
+    "line" : 173,
+    "reason" : "Function body should span 100 lines or less excluding comments and whitespace: currently spans 115 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Error",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 56,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolHandlers.swift",
+    "line" : 99,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 56,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolHandlers.swift",
+    "line" : 149,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 56,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolHandlers.swift",
+    "line" : 244,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolHandlers.swift",
+    "line" : 10,
+    "reason" : "Struct body should span 250 lines or less excluding comments and whitespace: currently spans 327 lines",
+    "rule_id" : "type_body_length",
+    "severity" : "Warning",
+    "type" : "Type Body Length"
+  },
+  {
+    "character" : 5,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolHandlers.swift",
+    "line" : 14,
+    "reason" : "This memberwise initializer would be synthesized automatically - you do not need to define it",
+    "rule_id" : "unneeded_synthesized_initializer",
+    "severity" : "Warning",
+    "type" : "Unneeded Synthesized Initializer"
+  },
+  {
+    "character" : 33,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Monitor/ProviderProbe.swift",
+    "line" : 122,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/HTTPMCPHost.swift",
+    "line" : 513,
+    "reason" : "File should contain 400 lines or less: currently contains 513",
+    "rule_id" : "file_length",
+    "severity" : "Warning",
+    "type" : "File Length"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/HTTPMCPHost.swift",
+    "line" : 319,
+    "reason" : "`where` clauses are preferred over a single `if` inside a `for`",
+    "rule_id" : "for_where",
+    "severity" : "Warning",
+    "type" : "Prefer For-Where"
+  },
+  {
+    "character" : 5,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/HTTPMCPHost.swift",
+    "line" : 157,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 59 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/HTTPMCPHost.swift",
+    "line" : 167,
+    "reason" : "Line should be 120 characters or less; currently it has 122 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 63,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/HTTPMCPHost.swift",
+    "line" : 93,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 38,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/HTTPMCPHost.swift",
+    "line" : 295,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/DuckDuckGoProvider.swift",
+    "line" : 54,
+    "reason" : "Function should have complexity 10 or less; currently complexity is 12",
+    "rule_id" : "cyclomatic_complexity",
+    "severity" : "Warning",
+    "type" : "Cyclomatic Complexity"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/DuckDuckGoProvider.swift",
+    "line" : 54,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 81 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 16,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/DuckDuckGoProvider.swift",
+    "line" : 72,
+    "reason" : "Variable name 'df' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 47,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/DuckDuckGoProvider.swift",
+    "line" : 30,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 80,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/DuckDuckGoProvider.swift",
+    "line" : 33,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 58,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/DuckDuckGoProvider.swift",
+    "line" : 37,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 56,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/DuckDuckGoProvider.swift",
+    "line" : 86,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/BraveProvider.swift",
+    "line" : 43,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 86 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/BraveProvider.swift",
+    "line" : 218,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/BraveProvider.swift",
+    "line" : 222,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/BraveProvider.swift",
+    "line" : 227,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/BraveProvider.swift",
+    "line" : 230,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 17,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/BraveProvider.swift",
+    "line" : 241,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/BraveProvider.swift",
+    "line" : 254,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/BraveProvider.swift",
+    "line" : 261,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/BraveProvider.swift",
+    "line" : 197,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 67,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/BraveProvider.swift",
+    "line" : 68,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 44,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/BraveProvider.swift",
+    "line" : 93,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ScraperSupport.swift",
+    "line" : 89,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 54 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ScraperSupport.swift",
+    "line" : 89,
+    "reason" : "Function should have 5 parameters or less: it currently has 7",
+    "rule_id" : "function_parameter_count",
+    "severity" : "Warning",
+    "type" : "Function Parameter Count"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ScraperSupport.swift",
+    "line" : 67,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 53,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ScraperSupport.swift",
+    "line" : 43,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 14,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Monitor/MonitorModel.swift",
+    "line" : 45,
+    "reason" : "Enum element name 'up' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/OpenWebSearchProvider.swift",
+    "line" : 53,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 88 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/OpenWebSearchProvider.swift",
+    "line" : 181,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/OpenWebSearchProvider.swift",
+    "line" : 222,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ExaProvider.swift",
+    "line" : 131,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ExaProvider.swift",
+    "line" : 135,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ExaProvider.swift",
+    "line" : 179,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 49,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ExaProvider.swift",
+    "line" : 46,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Monitor/Renderer.swift",
+    "line" : 260,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 58 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Monitor/Renderer.swift",
+    "line" : 198,
+    "reason" : "Function should have 5 parameters or less: it currently has 8",
+    "rule_id" : "function_parameter_count",
+    "severity" : "Warning",
+    "type" : "Function Parameter Count"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Monitor/Renderer.swift",
+    "line" : 172,
+    "reason" : "Variable name 'ok' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 49,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Monitor/Renderer.swift",
+    "line" : 246,
+    "reason" : "Variable name 'at' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Monitor/Renderer.swift",
+    "line" : 263,
+    "reason" : "Variable name 'up' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 17,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Monitor/Renderer.swift",
+    "line" : 299,
+    "reason" : "Variable name 'ok' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Monitor/Renderer.swift",
+    "line" : 364,
+    "reason" : "Variable name 'ms' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 41,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Monitor/Renderer.swift",
+    "line" : 178,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 107,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Monitor/Renderer.swift",
+    "line" : 267,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 26,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Monitor/Renderer.swift",
+    "line" : 341,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 8,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Monitor/Renderer.swift",
+    "line" : 7,
+    "reason" : "Struct body should span 250 lines or less excluding comments and whitespace: currently spans 299 lines",
+    "rule_id" : "type_body_length",
+    "severity" : "Warning",
+    "type" : "Type Body Length"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/TavilyProvider.swift",
+    "line" : 40,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 56 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/TavilyProvider.swift",
+    "line" : 128,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/TavilyProvider.swift",
+    "line" : 169,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/TavilyProvider.swift",
+    "line" : 178,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 45,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/TavilyProvider.swift",
+    "line" : 51,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/MojeekProvider.swift",
+    "line" : 42,
+    "reason" : "Function should have complexity 10 or less; currently complexity is 11",
+    "rule_id" : "cyclomatic_complexity",
+    "severity" : "Warning",
+    "type" : "Cyclomatic Complexity"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/MojeekProvider.swift",
+    "line" : 42,
+    "reason" : "Function body should span 100 lines or less excluding comments and whitespace: currently spans 105 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Error",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/MojeekProvider.swift",
+    "line" : 214,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/MojeekProvider.swift",
+    "line" : 219,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/MojeekProvider.swift",
+    "line" : 225,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 51,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/MojeekProvider.swift",
+    "line" : 66,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 44,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/SearchCache.swift",
+    "line" : 31,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/StartpageProvider.swift",
+    "line" : 51,
+    "reason" : "Function should have complexity 10 or less; currently complexity is 12",
+    "rule_id" : "cyclomatic_complexity",
+    "severity" : "Warning",
+    "type" : "Cyclomatic Complexity"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/StartpageProvider.swift",
+    "line" : 51,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 82 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 55,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/StartpageProvider.swift",
+    "line" : 27,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 82,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/StartpageProvider.swift",
+    "line" : 30,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 59,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/StartpageProvider.swift",
+    "line" : 34,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 56,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/StartpageProvider.swift",
+    "line" : 82,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 855,
+    "reason" : "File should contain 400 lines or less: currently contains 855",
+    "rule_id" : "file_length",
+    "severity" : "Warning",
+    "type" : "File Length"
+  },
+  {
+    "character" : 82,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 51,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 96,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 60,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 78,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 65,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 88,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 71,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 89,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 77,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 76,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 81,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 81,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 87,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 22,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 92,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 22,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 100,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 18,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 101,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 45,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 105,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 42,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 107,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 86,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 138,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 89,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 141,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 54,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 143,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 22,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 144,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 58,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 154,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 54,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 157,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 22,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 158,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 57,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 163,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 66,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 167,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 42,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 169,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 90,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 184,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 22,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 192,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 18,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 193,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 42,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 196,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 75,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 217,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 80,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 221,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 42,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 223,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 85,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 241,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 101,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 247,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 78,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 252,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 89,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 258,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 90,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 264,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 76,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 268,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 89,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 273,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 22,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 280,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 18,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 281,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 45,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 285,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 42,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 287,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 86,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 311,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 54,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 314,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 22,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 315,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 58,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 327,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 54,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 330,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 22,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 331,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 57,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 337,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 82,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 342,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 42,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 344,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 42,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 356,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 65,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 384,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 54,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 391,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 54,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 393,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 22,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 394,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 59,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 402,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 50,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 405,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 81,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 409,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 33,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 413,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 42,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 415,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 84,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 576,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 56,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 591,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 65,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 604,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 94,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 688,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 56,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 701,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 65,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 732,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 73,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 772,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 69,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 806,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 69,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 815,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 14,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 825,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 8,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 37,
+    "reason" : "Enum body should span 250 lines or less excluding comments and whitespace: currently spans 328 lines",
+    "rule_id" : "type_body_length",
+    "severity" : "Warning",
+    "type" : "Type Body Length"
+  },
+  {
+    "character" : 8,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/SwiftWebSearchMCP/ToolSchemas.swift",
+    "line" : 511,
+    "reason" : "Enum body should span 250 lines or less excluding comments and whitespace: currently spans 285 lines",
+    "rule_id" : "type_body_length",
+    "severity" : "Warning",
+    "type" : "Type Body Length"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/SearXNGProvider.swift",
+    "line" : 45,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 89 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/SearXNGProvider.swift",
+    "line" : 185,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/SearXNGProvider.swift",
+    "line" : 190,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 57,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/SearXNGProvider.swift",
+    "line" : 58,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 43,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/SearXNGProvider.swift",
+    "line" : 145,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ParallelMCPProvider.swift",
+    "line" : 436,
+    "reason" : "File should contain 400 lines or less: currently contains 436",
+    "rule_id" : "file_length",
+    "severity" : "Warning",
+    "type" : "File Length"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ParallelMCPProvider.swift",
+    "line" : 347,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ParallelMCPProvider.swift",
+    "line" : 355,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ParallelMCPProvider.swift",
+    "line" : 371,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 17,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ParallelMCPProvider.swift",
+    "line" : 387,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 56,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ParallelMCPProvider.swift",
+    "line" : 119,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 43,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ParallelMCPProvider.swift",
+    "line" : 137,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 80,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ParallelMCPProvider.swift",
+    "line" : 171,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 60,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ParallelMCPProvider.swift",
+    "line" : 208,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 60,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ParallelMCPProvider.swift",
+    "line" : 253,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 33,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ParallelMCPProvider.swift",
+    "line" : 329,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 8,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Providers/ParallelMCPProvider.swift",
+    "line" : 19,
+    "reason" : "Actor body should span 250 lines or less excluding comments and whitespace: currently spans 306 lines",
+    "rule_id" : "type_body_length",
+    "severity" : "Warning",
+    "type" : "Type Body Length"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/AnswerSynthesizer.swift",
+    "line" : 589,
+    "reason" : "File should contain 400 lines or less: currently contains 589",
+    "rule_id" : "file_length",
+    "severity" : "Warning",
+    "type" : "File Length"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/AnswerSynthesizer.swift",
+    "line" : 195,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 63 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/AnswerSynthesizer.swift",
+    "line" : 286,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 65 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/AnswerSynthesizer.swift",
+    "line" : 455,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 53 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/AnswerSynthesizer.swift",
+    "line" : 552,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/AnswerSynthesizer.swift",
+    "line" : 556,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/AnswerSynthesizer.swift",
+    "line" : 565,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/AnswerSynthesizer.swift",
+    "line" : 575,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 43,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/AnswerSynthesizer.swift",
+    "line" : 254,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 53,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/AnswerSynthesizer.swift",
+    "line" : 307,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 52,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/AnswerSynthesizer.swift",
+    "line" : 376,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 74,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/AnswerSynthesizer.swift",
+    "line" : 383,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 8,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/AnswerSynthesizer.swift",
+    "line" : 106,
+    "reason" : "Struct body should span 250 lines or less excluding comments and whitespace: currently spans 350 lines",
+    "rule_id" : "type_body_length",
+    "severity" : "Warning",
+    "type" : "Type Body Length"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/ProviderHealth.swift",
+    "line" : 231,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 63 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/URLCanonicalizer.swift",
+    "line" : 39,
+    "reason" : "Function should have complexity 10 or less; currently complexity is 11",
+    "rule_id" : "cyclomatic_complexity",
+    "severity" : "Warning",
+    "type" : "Cyclomatic Complexity"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/URLCanonicalizer.swift",
+    "line" : 123,
+    "reason" : "Variable name 'h' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/URLCanonicalizer.swift",
+    "line" : 124,
+    "reason" : "Variable name 'd' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 42,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/URLCanonicalizer.swift",
+    "line" : 27,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 77,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/URLCanonicalizer.swift",
+    "line" : 34,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 19,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/SearchPipelineFactory.swift",
+    "line" : 24,
+    "reason" : "Function body should span 100 lines or less excluding comments and whitespace: currently spans 164 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Error",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/WebFetcher.swift",
+    "line" : 72,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 66 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/WebFetcher.swift",
+    "line" : 97,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 60,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/WebFetcher.swift",
+    "line" : 50,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 19,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/ResultNormalizer.swift",
+    "line" : 15,
+    "reason" : "Function should have 5 parameters or less: it currently has 7",
+    "rule_id" : "function_parameter_count",
+    "severity" : "Warning",
+    "type" : "Function Parameter Count"
+  },
+  {
+    "character" : 47,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/ResultNormalizer.swift",
+    "line" : 153,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/RankFusion.swift",
+    "line" : 92,
+    "reason" : "Function should have complexity 10 or less; currently complexity is 17",
+    "rule_id" : "cyclomatic_complexity",
+    "severity" : "Warning",
+    "type" : "Cyclomatic Complexity"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/RankFusion.swift",
+    "line" : 473,
+    "reason" : "File should contain 400 lines or less: currently contains 473",
+    "rule_id" : "file_length",
+    "severity" : "Warning",
+    "type" : "File Length"
+  },
+  {
+    "character" : 19,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/RankFusion.swift",
+    "line" : 92,
+    "reason" : "Function body should span 100 lines or less excluding comments and whitespace: currently spans 120 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Error",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 20,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/RankFusion.swift",
+    "line" : 24,
+    "reason" : "Variable name 'k' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/RankFusion.swift",
+    "line" : 55,
+    "reason" : "Variable name 'k' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 22,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/RankFusion.swift",
+    "line" : 169,
+    "reason" : "Tuples should have at most 2 members",
+    "rule_id" : "large_tuple",
+    "severity" : "Warning",
+    "type" : "Large Tuple"
+  },
+  {
+    "character" : 17,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/RankFusion.swift",
+    "line" : 251,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/RankFusion.swift",
+    "line" : 282,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/RankFusion.swift",
+    "line" : 309,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 8,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/RankFusion.swift",
+    "line" : 17,
+    "reason" : "Enum body should span 250 lines or less excluding comments and whitespace: currently spans 312 lines",
+    "rule_id" : "type_body_length",
+    "severity" : "Warning",
+    "type" : "Type Body Length"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift",
+    "line" : 37,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 70 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift",
+    "line" : 163,
+    "reason" : "Types should be nested at most 1 level deep",
+    "rule_id" : "nesting",
+    "severity" : "Warning",
+    "type" : "Nesting"
+  },
+  {
+    "character" : 84,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift",
+    "line" : 56,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/SearchOrchestrator.swift",
+    "line" : 38,
+    "reason" : "Function should have complexity 10 or less; currently complexity is 17",
+    "rule_id" : "cyclomatic_complexity",
+    "severity" : "Warning",
+    "type" : "Cyclomatic Complexity"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/SearchOrchestrator.swift",
+    "line" : 586,
+    "reason" : "File should contain 400 lines or less: currently contains 586",
+    "rule_id" : "file_length",
+    "severity" : "Warning",
+    "type" : "File Length"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/SearchOrchestrator.swift",
+    "line" : 38,
+    "reason" : "Function body should span 100 lines or less excluding comments and whitespace: currently spans 165 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Error",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/SearchOrchestrator.swift",
+    "line" : 291,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 60 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/SearchOrchestrator.swift",
+    "line" : 446,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 54 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/SearchOrchestrator.swift",
+    "line" : 112,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/SearchOrchestrator.swift",
+    "line" : 175,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/SearchOrchestrator.swift",
+    "line" : 558,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 57,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/SearchOrchestrator.swift",
+    "line" : 60,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 82,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/SearchOrchestrator.swift",
+    "line" : 117,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 43,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/SearchOrchestrator.swift",
+    "line" : 263,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 57,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/SearchOrchestrator.swift",
+    "line" : 468,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 58,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/SearchOrchestrator.swift",
+    "line" : 498,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 8,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Search/SearchOrchestrator.swift",
+    "line" : 8,
+    "reason" : "Actor body should span 350 lines or less excluding comments and whitespace: currently spans 429 lines",
+    "rule_id" : "type_body_length",
+    "severity" : "Error",
+    "type" : "Type Body Length"
+  },
+  {
+    "character" : 5,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/HTMLExtractor.swift",
+    "line" : 178,
+    "reason" : "Function should have complexity 10 or less; currently complexity is 12",
+    "rule_id" : "cyclomatic_complexity",
+    "severity" : "Warning",
+    "type" : "Cyclomatic Complexity"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/HTMLExtractor.swift",
+    "line" : 64,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/HTMLExtractor.swift",
+    "line" : 195,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 61,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/HTMLExtractor.swift",
+    "line" : 31,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 79,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/HTMLExtractor.swift",
+    "line" : 41,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 30,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/HTMLExtractor.swift",
+    "line" : 75,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 76,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/HTMLExtractor.swift",
+    "line" : 173,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 58,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Support/JSONCoding.swift",
+    "line" : 63,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 40,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Support/JSONCoding.swift",
+    "line" : 84,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift",
+    "line" : 50,
+    "reason" : "Function should have complexity 10 or less; currently complexity is 11",
+    "rule_id" : "cyclomatic_complexity",
+    "severity" : "Warning",
+    "type" : "Cyclomatic Complexity"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift",
+    "line" : 50,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 89 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift",
+    "line" : 84,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift",
+    "line" : 240,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 56,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift",
+    "line" : 74,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/URLPolicy.swift",
+    "line" : 166,
+    "reason" : "Function should have complexity 10 or less; currently complexity is 12",
+    "rule_id" : "cyclomatic_complexity",
+    "severity" : "Warning",
+    "type" : "Cyclomatic Complexity"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/URLPolicy.swift",
+    "line" : 507,
+    "reason" : "File should contain 400 lines or less: currently contains 507",
+    "rule_id" : "file_length",
+    "severity" : "Warning",
+    "type" : "File Length"
+  },
+  {
+    "character" : 10,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/URLPolicy.swift",
+    "line" : 249,
+    "reason" : "Enum element name 'v4' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 10,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/URLPolicy.swift",
+    "line" : 250,
+    "reason" : "Enum element name 'v6' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 17,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/URLPolicy.swift",
+    "line" : 357,
+    "reason" : "Variable name 'a' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 17,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/URLPolicy.swift",
+    "line" : 358,
+    "reason" : "Variable name 'b' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 17,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/URLPolicy.swift",
+    "line" : 374,
+    "reason" : "Variable name 'a' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 17,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/URLPolicy.swift",
+    "line" : 375,
+    "reason" : "Variable name 'b' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 17,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/URLPolicy.swift",
+    "line" : 431,
+    "reason" : "Variable name 'a' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 17,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/URLPolicy.swift",
+    "line" : 432,
+    "reason" : "Variable name 'b' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Error",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/URLPolicy.swift",
+    "line" : 490,
+    "reason" : "Line should be 120 characters or less; currently it has 126 characters",
+    "rule_id" : "line_length",
+    "severity" : "Warning",
+    "type" : "Line Length"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/URLPolicy.swift",
+    "line" : 329,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 9,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/URLPolicy.swift",
+    "line" : 339,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 40,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/URLPolicy.swift",
+    "line" : 490,
+    "reason" : "Prefer failable `String(bytes:encoding:)` initializer when converting `Data` to `String`",
+    "rule_id" : "optional_data_string_conversion",
+    "severity" : "Warning",
+    "type" : "Optional Data -> String Conversion"
+  },
+  {
+    "character" : 46,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/URLPolicy.swift",
+    "line" : 44,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 27,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/URLPolicy.swift",
+    "line" : 50,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 64,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Fetch/URLPolicy.swift",
+    "line" : 274,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Support/TransportConfiguration.swift",
+    "line" : 83,
+    "reason" : "Function should have complexity 10 or less; currently complexity is 17",
+    "rule_id" : "cyclomatic_complexity",
+    "severity" : "Warning",
+    "type" : "Cyclomatic Complexity"
+  },
+  {
+    "character" : 19,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Support/TransportConfiguration.swift",
+    "line" : 83,
+    "reason" : "Function body should span 50 lines or less excluding comments and whitespace: currently spans 82 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Warning",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Support/HTTPClient.swift",
+    "line" : 364,
+    "reason" : "Function should have complexity 10 or less; currently complexity is 20",
+    "rule_id" : "cyclomatic_complexity",
+    "severity" : "Warning",
+    "type" : "Cyclomatic Complexity"
+  },
+  {
+    "character" : 17,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Support/HTTPClient.swift",
+    "line" : 242,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 74,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Support/HTTPClient.swift",
+    "line" : 255,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 60,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Support/HTTPClient.swift",
+    "line" : 275,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  },
+  {
+    "character" : 12,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Support/AppConfiguration.swift",
+    "line" : 275,
+    "reason" : "Function should have complexity 10 or less; currently complexity is 26",
+    "rule_id" : "cyclomatic_complexity",
+    "severity" : "Error",
+    "type" : "Cyclomatic Complexity"
+  },
+  {
+    "character" : 1,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Support/AppConfiguration.swift",
+    "line" : 421,
+    "reason" : "File should contain 400 lines or less: currently contains 421",
+    "rule_id" : "file_length",
+    "severity" : "Warning",
+    "type" : "File Length"
+  },
+  {
+    "character" : 19,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Support/AppConfiguration.swift",
+    "line" : 275,
+    "reason" : "Function body should span 100 lines or less excluding comments and whitespace: currently spans 102 lines",
+    "rule_id" : "function_body_length",
+    "severity" : "Error",
+    "type" : "Function Body Length"
+  },
+  {
+    "character" : 16,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Support/AppConfiguration.swift",
+    "line" : 367,
+    "reason" : "Variable name 'ms' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 16,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Support/AppConfiguration.swift",
+    "line" : 368,
+    "reason" : "Variable name 'ms' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 16,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Support/AppConfiguration.swift",
+    "line" : 371,
+    "reason" : "Variable name 'ms' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 16,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Support/AppConfiguration.swift",
+    "line" : 380,
+    "reason" : "Variable name 'ms' should be between 3 and 40 characters long",
+    "rule_id" : "identifier_name",
+    "severity" : "Warning",
+    "type" : "Identifier Name"
+  },
+  {
+    "character" : 13,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Support/AppConfiguration.swift",
+    "line" : 412,
+    "reason" : "Opening braces should be preceded by a single space and on the same line as the declaration",
+    "rule_id" : "opening_brace",
+    "severity" : "Warning",
+    "type" : "Opening Brace Spacing"
+  },
+  {
+    "character" : 18,
+    "file" : "/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Sources/WebSearchCore/Support/AppConfiguration.swift",
+    "line" : 167,
+    "reason" : "Collection literals should not have trailing commas",
+    "rule_id" : "trailing_comma",
+    "severity" : "Warning",
+    "type" : "Trailing Comma"
+  }
+]

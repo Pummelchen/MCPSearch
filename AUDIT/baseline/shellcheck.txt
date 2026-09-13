@@ -1,0 +1,13 @@
+
+In deploy/provision-node.sh line 83:
+    printf '\neval "$(%s/bin/brew shellenv)"\n' "$(brew --prefix)" >> "${HOME}/.zprofile"
+           ^-- SC2016 (info): Expressions don't expand in single quotes, use double quotes for that.
+
+
+In deploy/provision-node.sh line 290:
+        && say "colima registered to start at login" \
+        ^-- SC2015 (info): Note that A && B || C is not if-then-else. C may run when A is true.
+
+For more information:
+  https://www.shellcheck.net/wiki/SC2015 -- Note that A && B || C is not if-t...
+  https://www.shellcheck.net/wiki/SC2016 -- Expressions don't expand in singl...
