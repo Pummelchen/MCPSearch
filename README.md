@@ -187,4 +187,4 @@ present to prove the suite is hermetic.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Pummelchen.
+MIT — see [LICENSE](LICENSE). Copyright (c) 2026 André Borchert.
