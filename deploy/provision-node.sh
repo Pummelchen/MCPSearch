@@ -391,21 +391,91 @@ fi
 docker rm -f mcps-searxng-canary >/dev/null 2>&1
 say "canary answered JSON; replacing the running instance"
 
-docker rm -f mcps-searxng >/dev/null 2>&1
+# ---------------------------------------------------------------------------
+# 4b. Replace the running instance without a point of no return
+# ---------------------------------------------------------------------------
+# The canary above proved the *image* on a spare loopback port, but the canary is not the
+# production binding: `-p ${SEARXNG_PORT}:8080` is what fails when something already holds
+# ${SEARXNG_PORT}, and a container can start and still never answer JSON on that port.
+# Removing the running container first, as this script did, made every one of those failures
+# final — the node keeps no compose file, tag or image for the old container, so there was
+# nothing to restore and the only recovery was to edit the script and re-run it (ledger B50).
+#
+# The old container is therefore renamed aside and *stopped* — which frees the port but keeps
+# its configuration — and the replacement is run and proven under the production name and
+# port. Only then is the previous container removed. Any failure in between is rolled back:
+# the partial replacement is removed, the previous container is renamed back and started, and
+# the node keeps serving what it served before the run. Extracted as functions so the
+# rollback can be exercised without provisioning a node.
+PREVIOUS_CONTAINER_NAME="mcps-searxng-previous"
+# Non-empty only while a previous container is aside awaiting proof or rollback, so a first
+# provisioning run — which has nothing to restore — takes the same failure paths as before.
+SWAP_PREVIOUS_NAME=""
+# The digest the previous container ran, kept for the READY output so a rollback after this
+# run is one command rather than an archaeology exercise (ledger B50).
+PREVIOUS_IMAGE=""
 
-# Bound to all interfaces on the node so the main machine can reach it over the LAN.
-# The node itself is on a private network and the instance has no authentication, so
-# this is a LAN-only exposure by design: no port forwarding, no public DNS.
-docker run -d \
-    --name mcps-searxng \
-    --restart unless-stopped \
-    -p "${SEARXNG_PORT}:8080" \
-    -v "${INSTALL_DIR}/searxng/settings.yml:/etc/searxng/settings.yml:ro" \
-    "${SEARXNG_IMAGE}" > "${PROVISION_TMP}/docker-run.log" 2>&1 \
-    || fail "docker run failed; see ${PROVISION_TMP}/docker-run.log"
+# Put the previous container back under its canonical name and start it. A no-op when no
+# container is aside, so callers need not track that themselves. It reports rather than
+# fails: it runs on the way to the real error, and `fail` here would hide that error
+# (ledger B50).
+restore_previous_instance() {
+    [ -n "${SWAP_PREVIOUS_NAME}" ] || return 0
+    docker rm -f mcps-searxng >/dev/null 2>&1
+    docker rename "${SWAP_PREVIOUS_NAME}" mcps-searxng \
+        || say "could not rename ${SWAP_PREVIOUS_NAME} back to mcps-searxng"
+    docker start mcps-searxng > "${PROVISION_TMP}/docker-restore.log" 2>&1 \
+        || say "could not restart mcps-searxng; see ${PROVISION_TMP}/docker-restore.log"
+    say "restored the previous mcps-searxng container"
+    SWAP_PREVIOUS_NAME=""
+}
 
-say "waiting for searxng to answer JSON"
-wait_for_json "${SEARXNG_PORT}" || fail "searxng did not answer JSON on port ${SEARXNG_PORT}"
+# Every failure inside the swap goes through here: the node is left as it was found, then the
+# run stops with the message the failure would have produced before (ledger B50).
+swap_fail() {
+    restore_previous_instance
+    fail "$*"
+}
+
+replace_running_instance() {
+    if docker container inspect mcps-searxng >/dev/null 2>&1; then
+        PREVIOUS_IMAGE="$(docker inspect --format '{{.Config.Image}}' mcps-searxng 2>/dev/null)"
+        # Renamed aside, never removed: this container is the only record of how the node was
+        # serving, and it is what a rollback restores (ledger B50).
+        docker rm -f "${PREVIOUS_CONTAINER_NAME}" >/dev/null 2>&1
+        docker rename mcps-searxng "${PREVIOUS_CONTAINER_NAME}" \
+            || fail "could not rename the running container aside; it is still serving on port ${SEARXNG_PORT}"
+        SWAP_PREVIOUS_NAME="${PREVIOUS_CONTAINER_NAME}"
+        # `stop` frees the production port without destroying the configuration; `--restart
+        # unless-stopped` will not bring it back while it is stopped by hand.
+        docker stop "${PREVIOUS_CONTAINER_NAME}" > "${PROVISION_TMP}/docker-stop.log" 2>&1 \
+            || swap_fail "could not stop the previous container; see ${PROVISION_TMP}/docker-stop.log"
+    fi
+
+    docker rm -f mcps-searxng >/dev/null 2>&1
+
+    # Bound to all interfaces on the node so the main machine can reach it over the LAN.
+    # The node itself is on a private network and the instance has no authentication, so
+    # this is a LAN-only exposure by design: no port forwarding, no public DNS.
+    docker run -d \
+        --name mcps-searxng \
+        --restart unless-stopped \
+        -p "${SEARXNG_PORT}:8080" \
+        -v "${INSTALL_DIR}/searxng/settings.yml:/etc/searxng/settings.yml:ro" \
+        "${SEARXNG_IMAGE}" > "${PROVISION_TMP}/docker-run.log" 2>&1 \
+        || swap_fail "docker run failed; see ${PROVISION_TMP}/docker-run.log"
+
+    say "waiting for searxng to answer JSON"
+    wait_for_json "${SEARXNG_PORT}" || swap_fail "searxng did not answer JSON on port ${SEARXNG_PORT}"
+
+    # Proven on the production port: only now is the previous container expendable.
+    if [ -n "${SWAP_PREVIOUS_NAME}" ]; then
+        docker rm -f "${SWAP_PREVIOUS_NAME}" >/dev/null 2>&1
+        SWAP_PREVIOUS_NAME=""
+    fi
+}
+
+replace_running_instance
 
 # Survive a reboot. The container has `--restart unless-stopped`, but that only helps
 # once the Docker daemon is running, and the Colima VM does not start itself.
@@ -462,5 +532,11 @@ else
         say "searxng is listening on port ${SEARXNG_PORT}, but neither tailscale nor a LAN"
         say "address could be determined; set SEARXNG_BASE_URL to http://<node>:${SEARXNG_PORT}"
     fi
+fi
+# The previous container has been removed by now, so its digest is not on the node in any
+# form the operator can discover; printing it here is what makes a rollback one command
+# (ledger B50).
+if [ -n "${PREVIOUS_IMAGE}" ] && [ "${PREVIOUS_IMAGE}" != "${SEARXNG_IMAGE}" ]; then
+    say "previous image digest (rollback): ${PREVIOUS_IMAGE}"
 fi
 say "container: $(docker ps --filter name=mcps-searxng --format '{{.Status}}')"

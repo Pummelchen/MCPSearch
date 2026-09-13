@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 129 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 94 |
-| START (reproduced, expected behaviour written) | 35 |
+| DONE | 95 |
+| START (reproduced, expected behaviour written) | 34 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 84** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 49 are DONE and 35 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 50 are DONE and 34 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -103,7 +103,7 @@ waived in writing.
 | B47 | S3 | `example.env` vs `deploy/` | `example.env:35-39` | `example.env` tells the operator to fix a SearXNG setting that the shipped files already set | docs | DONE | this Mac (arm64) | Phase B L7-9 |
 | B48 | S3 | `deploy/provision-node.sh` | `deploy/provision-node.sh:296-297` | `provision-node.sh` cannot find a Homebrew-installed Tailscale CLI on Apple Silicon | bug | DONE | this Mac (arm64) | Phase B L7-11 |
 | B49 | S3 | `deploy/provision-node.sh` | `deploy/provision-node.sh:192-199`, `:203-235` | The generated SearXNG `settings.yml` inherits the umask, so the per-node secret key is world-readable | unsafe | DONE | this Mac (arm64) | Phase B L7-12 |
-| B50 | S3 | `deploy/provision-node.sh` | `deploy/provision-node.sh:255-284` | Provisioning destroys the working instance before its replacement is proven on the production port, with no rollback | incomplete | START | this Mac (arm64) | Phase B L7-13 |
+| B50 | S3 | `deploy/provision-node.sh` | `deploy/provision-node.sh:255-284` | Provisioning destroys the working instance before its replacement is proven on the production port, with no rollback | incomplete | DONE | this Mac (arm64) | Phase B L7-13 |
 | B51 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:119` | `Log.escape` leaves every control character except `\n`, `\r` and `\t`, so a query can inject terminal escapes into stderr | unsafe | DONE | this Mac (arm64) | Phase B L4-8 |
 | B52 | S3 | WebSearchCore (Search) | `Sources/WebSearchCore/Search/SearchOrchestrator.swift:501` | A claimed half-open probe is never released when a request ends in a bare `CancellationError` | bug | DONE | this Mac (arm64) | Phase B L2-2 |
 | B53 | S3 | WebSearchCore (Monitor) | `Sources/WebSearchCore/Monitor/Terminal.swift:96` | `Terminal.truncate` counts ANSI escape characters as display width, so truncating styled text can drop the SGR reset | bug | DONE | this Mac (arm64) | Phase B L2-9 |
@@ -215,6 +215,41 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B50 — provisioning destroyed the working instance before its replacement was proven
+
+**Severity S3** (recorded) · **category** incomplete · **status** DONE · **host** node1 (arm64)
+
+**What was wrong, and whether the residue is real.** The canary validates the image and settings
+on a spare loopback port, so the original "a bad pull bricks the node" window is narrowed - but the
+canary never exercises the production `-p ${SEARXNG_PORT}:8080` binding. A port conflict, a
+`docker run` error, or a container that starts and never answers JSON on the production port all
+land **after** `docker rm -f mcps-searxng`, and the node keeps no compose file, tag or retained
+image for the old container. `fail` then leaves it serving nothing with no in-place recovery. The
+residue is real, not theoretical.
+
+**The fix shape, and why not the alternatives.** A "temporary port" would repeat the canary's
+mistake of never exercising the production binding, and a "temporary name" on the production port
+cannot coexist with the old container still holding it. The only shape that proves the production
+binding is to vacate the port **reversibly**: rename the old container aside and `stop` it (frees
+the port, keeps the configuration), run the replacement under the canonical name on the production
+port, and `rm` the old one only after the production-port health check passes. Every fallible step
+routes through `swap_fail`, which removes a partial replacement, renames the old container back and
+starts it. A first provision has no previous container, so the restore is a no-op and old behaviour
+is unchanged.
+
+**Verification.** A harness extracts the swap functions verbatim (fixed) and the inline block
+verbatim from the previous commit (unfixed), and stubs `docker` so that `rm` deletes configuration
+while `stop` only clears a running marker - that asymmetry is what makes the test meaningful. RED:
+3 of 6 cases fail, `run-fail-after-rm` leaving no container at all and `health-fail-after-rm`
+leaving the unproven replacement holding the port. GREEN: 6 of 6. `bash -n` passes; shellcheck's
+finding set is unchanged; the B86 and B48 harnesses still pass 10/10 and 6/6, so the earlier fixes
+are composed with rather than undone. Provisioning was not run. Artifact:
+`AUDIT/evidence/B50-provision-rollback.txt`.
+
+**Noted, not fixed.** A SIGKILL between the `stop` and the rollback leaves the old container
+stopped and renamed aside - configuration still on the node, one rename and start from serving. The
+EXIT trap was deliberately not extended, because doing so would break B86's verified trap.
 
 ## B112 — `statusInput` was the only object schema that omitted `required`
 
