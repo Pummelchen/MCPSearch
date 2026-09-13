@@ -200,6 +200,16 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
                 // outbound request — the Jina fallback — for a caller that has gone away
                 // (ledger B04).
                 throw CancellationError()
+            case .fileDoesNotExist, .fileIsDirectory, .noPermissionsToReadFile:
+                // A redirect to `file://` never reaches the manual loop: `URLSession` does not
+                // consult `willPerformHTTPRedirection` for a cross-scheme hop, so it refuses it
+                // internally and reports one of the file-system codes. Name the policy position
+                // instead of leaking the opaque code, and never report local content. The
+                // limitation is documented on `URLPolicy` (ledger B102).
+                throw SearchError.fetchFailed(
+                    request.url,
+                    reason: "the server redirected to a local file, which is not fetched"
+                )
             default:
                 throw SearchError.fetchFailed(
                     request.url,

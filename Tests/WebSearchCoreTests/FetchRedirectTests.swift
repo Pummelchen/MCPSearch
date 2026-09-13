@@ -127,12 +127,11 @@ final class FetchRedirectTests: XCTestCase {
         XCTAssertEqual(target.requestCount, 0, "the credentialed hop must never reach the target")
     }
 
-    /// Verified behaviour, not an assumption: a redirect to a different scheme never reaches the
-    /// manual loop at all — `URLSession` refuses it internally, without consulting
-    /// `NoRedirectDelegate` — so the caller sees a transport failure instead of a policy denial.
-    /// The check that matters is that no local content comes back: the probe used a readable
-    /// `/etc/hosts` and no part of it was returned. `B102` tracks the misleading diagnosis and
-    /// the fact that this safety property rests on transport behaviour rather than on our policy.
+    /// A redirect to a different scheme never reaches the manual loop at all — `URLSession`
+    /// refuses it internally, without consulting `NoRedirectDelegate` — so the refusal cannot
+    /// come from `URLPolicy`'s per-hop call. `DirectHTTPFetcher` therefore names the policy
+    /// position for the file-system transport codes instead of surfacing the opaque code, and
+    /// the check that matters stays the same: no local content comes back (ledger B102).
     func testARedirectToAFileURLIsRefusedWithoutReadingTheFile() async throws {
         let readable = URL(fileURLWithPath: "/etc/hosts")
         XCTAssertTrue(
@@ -147,10 +146,19 @@ final class FetchRedirectTests: XCTestCase {
             let result = try await fetch(server.baseURL)
             XCTFail("a cross-scheme redirect must not produce a page: \(result.text.prefix(80))")
         } catch let error as SearchError {
-            guard case .fetchFailed = error else {
+            guard case .fetchFailed(_, let reason) = error else {
                 return XCTFail("expected a transport-level fetch failure, got \(error)")
             }
+            XCTAssertEqual(
+                reason,
+                "the server redirected to a local file, which is not fetched",
+                "the refusal must be legible, not an opaque transport code"
+            )
             XCTAssertFalse("\(error)".contains("localhost"), "no file content may appear in the error")
+            XCTAssertFalse(
+                reason.contains("transport reported error"),
+                "the raw URLError code must not reach the caller: \(reason)"
+            )
         }
         XCTAssertEqual(server.requestCount, 1)
     }

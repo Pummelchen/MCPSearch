@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 131 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 108 |
-| START (reproduced, expected behaviour written) | 23 |
+| DONE | 109 |
+| START (reproduced, expected behaviour written) | 22 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 86** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 86 S3 tasks 63 are DONE and 23 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 86 S3 tasks 64 are DONE and 22 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -217,6 +217,44 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B102 — a cross-scheme redirect surfaced as an opaque transport error
+
+**Severity S3** · **category** bug · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** `DirectHTTPFetcher` follows redirects manually so every hop is
+re-validated, but a redirect that changes scheme never reaches that loop: `URLSession` does not
+consult `NoRedirectDelegate.willPerformHTTPRedirection` for a cross-scheme hop, refuses it
+internally against `file:///etc/hosts` and reports the file-system `URLError` `-1102`. The
+catch-all mapping turned that into `fetchFailed(entryURL, reason: "the transport reported error
+-1102")`. The security outcome was already correct — no local content was returned even for a
+readable file — but the diagnosis was opaque and the safety property rested on undocumented
+transport behaviour.
+
+**The fix, and its limit.** The three file-system codes (`-1100 fileDoesNotExist`,
+`-1101 fileIsDirectory`, `-1102 noPermissionsToReadFile`) now map to
+`"the server redirected to a local file, which is not fetched"`, and `URLPolicy`'s doc comment
+records that a cross-scheme hop is refused beneath the policy without producing a `Decision`.
+The task brief asked for the refusal to come from policy; it cannot literally do so, because the
+transport never surfaces the redirect target, so `policy.validate` is never called with it. The
+only alternatives were probing the target ourselves first (duplicating the request and its policy
+hop) or replacing `URLSession`'s redirect handling entirely — both larger than this finding. The
+fix therefore delivers a legible, policy-shaped reason and a documented limitation. It stays a
+`fetchFailed` rather than a `blockedURL`: the blocked URL is the `file:` target we never see, so
+`blockedURL(currentURL)` would name the entry URL and claim a decision never made about it, and
+`blockedURL` would also suppress the Jina fallback; the ledger's candidate fix asks for the
+diagnosis change and to keep the regression test's observable outcome.
+
+**Verification.** The existing `FetchRedirectTests.testARedirectToAFileURLIsRefusedWithoutReadingTheFile`
+now asserts the exact reason, still asserts that no `localhost` (`/etc/hosts`) text appears in the
+error, and asserts the opaque `transport reported error` text is gone. **Falsification.** Removing
+the three-code case restores the pre-fix mapping and reddens the test with the original message
+verbatim (`the transport reported error -1102`, 2 failures), which also confirms the environment
+really takes the new branch. The file was restored byte-identical (`diff` empty, SHA-256
+`1f651367…c5308e`). Debug and release builds are 0 warnings under `-warnings-as-errors`; the suite
+is 508 tests, 6 skipped, 0 failures (unchanged from B92 — this strengthens an existing test);
+`swift-format --strict` and `swiftlint --strict` are clean (85 files); `third_party_notices.py` is
+clean. Evidence: `AUDIT/evidence/B102-cross-scheme-redirect-refusal.txt`.
 
 ## B92 — `web_open`'s Jina path hard-set `final_url` to the requested URL
 
@@ -1342,7 +1380,7 @@ audit tooling):
 | --- | --- | --- | --- |
 | A | `ScraperSupport.parse` on the same 23-byte junk body | synchronous test (main thread) | **ok** |
 | B | `DuckDuckGoProvider.search` with HTTP 200 + junk body | `async` (cooperative task) | **CRASH** |
-| B102 | S3 | `WebSearchCore` (fetch) | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:245-256` (delegate), `Sources/WebSearchCore/Support/HTTPClient.swift:386` (message) | A cross-scheme redirect is refused by the transport, not by our policy, and surfaces as an opaque transport error | bug | START | this Mac (arm64) | Phase D (found while fixing B02) |
+| B102 | S3 | `WebSearchCore` (fetch) | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:245-256` (delegate), `Sources/WebSearchCore/Support/HTTPClient.swift:386` (message) | A cross-scheme redirect is refused by the transport, not by our policy, and surfaces as an opaque transport error | bug | DONE | this Mac (arm64) | Phase D (found while fixing B02) |
 | B103 | S3 | `SwiftWebSearchMCP` (tools) | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:91-93`, `:142-143`, `:237-238`, `:262-263` | The tool-layer cancellation branches are still not exercised by any test | test | START | this Mac (arm64) | Phase D (found while fixing B04) |
 | B104 | S3 | build/environment | `AppConfiguration.swift` + the audit scratch tree | `mcps-mon` appeared to crash on startup in a debug build: a stale incremental build, not a code defect | bug | DONE | this Mac | Phase D (found while testing B10) |
 | B105 | S3 | repository hygiene | `scripts/__pycache__/*.pyc` (4 files) | Generated Python byte-code was committed to the branch | style | DONE | this Mac | Phase D (found while restoring the tree) |
