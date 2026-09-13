@@ -39,3 +39,33 @@ step and running the probe above; the first bad commit is the cause. Then fold t
 `scripts/monitor_tty_smoke.py` as a "must not crash" check so it cannot regress silently — the
 existing harness only notices because the first frame never arrives, which reports as a timeout
 rather than a crash.
+
+## Bisect result (next round)
+
+Building only the `MCPSMonitor` target with
+`Sources/WebSearchCore/Support/AppConfiguration.swift` replaced by its version at `f3dd8d9` (main):
+
+```
+AppConfiguration now at main's version
+swift build --target MCPSMonitor    0 errors
+probe: crashed: False | bytes: 10
+```
+
+Restoring the branch's committed `AppConfiguration.swift` brings the crash back. **The trigger is the
+B09 change**, not B10 (whose files were reverted in the same experiment) and not the pre-audit
+baseline.
+
+Two further observations:
+
+* The crash is **intermittent**: an 8-second probe of the crashing build produced no crash message
+  at all, while three shorter probes did. That is the signature of memory corruption rather than a
+  deterministic trap.
+* The earlier "not AppConfiguration" experiment in B10's session was **invalid** and is corrected
+  here: `HEAD` was already the B09 commit, so `git show HEAD:…AppConfiguration.swift` restored the
+  crashing version rather than main's.
+
+Next step: review the B09 diff for the specific defect — the structural change is that `parse()`'s
+nested helpers now capture a mutable local `issues` array — or reimplement the diagnostics without
+captured mutable state, and make the PTY probe a "must not crash" check in
+`scripts/monitor_tty_smoke.py` so an intermittent crash reports as a crash rather than a first-frame
+timeout.
