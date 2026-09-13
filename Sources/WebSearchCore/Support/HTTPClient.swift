@@ -213,10 +213,8 @@ public final class URLSessionHTTPClient: HTTPClient, @unchecked Sendable {
             let sessionConfiguration = URLSessionConfiguration.ephemeral
             sessionConfiguration.timeoutIntervalForRequest =
                 configuration.requestTimeout.seconds
-            sessionConfiguration.timeoutIntervalForResource = max(
-                configuration.requestTimeout.seconds * 2,
-                30
-            )
+            sessionConfiguration.timeoutIntervalForResource =
+                URLSessionHTTPClient.resourceTimeout(for: configuration)
             // Use the platform proxy/credential machinery but never a shared cookie jar:
             // this process must not carry state between unrelated searches.
             sessionConfiguration.httpCookieAcceptPolicy = .never
@@ -224,6 +222,27 @@ public final class URLSessionHTTPClient: HTTPClient, @unchecked Sendable {
             sessionConfiguration.requestCachePolicy = .reloadIgnoringLocalCacheData
             self.session = URLSession(configuration: sessionConfiguration)
         }
+    }
+
+    /// Total time one response may take, from the longest per-request budget this client can be
+    /// asked to honour.
+    ///
+    /// `timeoutIntervalForResource` is a *total* cap, not an inactivity one, so deriving it from
+    /// the ordinary request timeout meant it silently cut off every longer override: the 45 s
+    /// synthesis budget died at 30 s, and `SEARCH_SYNTHESIS_TIMEOUT_MS` above 30 000 had no
+    /// effect at all (ledger B13). The inactivity timeout still bounds a stalled transfer; this
+    /// one only has to clear the largest budget the caller can ask for.
+    ///
+    /// Exposed as a pure function so the relationship is testable without waiting 30 seconds.
+    public static func resourceTimeout(for configuration: AppConfiguration) -> TimeInterval {
+        let longestBudget = max(
+            configuration.requestTimeout.seconds,
+            configuration.synthesisTimeout.seconds
+        )
+        // Twice the budget plus a fixed margin: one budget for the request itself, room for a
+        // retry to finish inside the same cap, and enough slack that a slow but healthy
+        // response is never mistaken for a hang.
+        return longestBudget * 2 + 30
     }
 
     public func send(_ request: HTTPRequest, maxBytes: Int) async throws -> HTTPResponse {

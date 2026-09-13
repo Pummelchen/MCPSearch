@@ -231,6 +231,31 @@ final class HTTPClientTests: XCTestCase {
         return URLSessionHTTPClient(configuration: configured, log: .disabled)
     }
 
+    /// The session's resource timeout is a *total* cap, so it has to clear the largest
+    /// per-request budget the client can be asked to honour. It used to be
+    /// `max(2 × requestTimeout, 30)`, which silently cut the 45 s synthesis budget off at 30 s
+    /// and made `SEARCH_SYNTHESIS_TIMEOUT_MS` above 30 000 inert (ledger B13).
+    func testTheResourceTimeoutClearsEveryPerRequestBudget() {
+        let shipped = AppConfiguration()
+        XCTAssertGreaterThan(
+            URLSessionHTTPClient.resourceTimeout(for: shipped),
+            shipped.synthesisTimeout.seconds,
+            "the default resource timeout must not cap the synthesis budget"
+        )
+
+        // A deployment that raises either budget gets a resource timeout that clears it.
+        var raised = AppConfiguration()
+        raised.synthesisTimeout = .seconds(120)
+        XCTAssertGreaterThan(URLSessionHTTPClient.resourceTimeout(for: raised), 120)
+
+        var slowRequests = AppConfiguration()
+        slowRequests.requestTimeout = .seconds(300)
+        XCTAssertGreaterThan(URLSessionHTTPClient.resourceTimeout(for: slowRequests), 300)
+
+        // And the ordinary case stays bounded rather than becoming unbounded.
+        XCTAssertLessThan(URLSessionHTTPClient.resourceTimeout(for: shipped), 600)
+    }
+
     func testSucceedsOnFirstAttemptWithoutRetrying() async throws {
         let server = try LoopbackServer(responses: [.init(status: 200, body: #"{"ok":true}"#)])
         let client = makeClient(configuration: Fixtures.configuration(), maxRetries: 2)

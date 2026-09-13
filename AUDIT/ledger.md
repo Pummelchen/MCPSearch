@@ -18,8 +18,8 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 115 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102 and B103 found in Phase D) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 22 |
-| START (reproduced, expected behaviour written) | 93 |
+| DONE | 23 |
+| START (reproduced, expected behaviour written) | 92 |
 | BLOCKED | 0 |
 
 Severity of the folded set: S0 2, S1 6, S2 27, S3 66.
@@ -59,7 +59,7 @@ waived in writing.
 | B10 | S2 | `MCPSMonitor` + `Monitor/Terminal.swift` | `Sources/WebSearchCore/Monitor/Terminal.swift:156-157`, `:165-171`, `:187-189`; `Sources/MCPSMonitor/main.swift:508`, `:571-574` | Ctrl-C (or SIGTERM) leaves the dashboard's terminal in raw mode with the cursor hidden, and the Ctrl-C key branch is unreachable | bug | START | this Mac (arm64) | Phase B L7-2 |
 | B11 | S2 | WebSearchCore (Search) | `Sources/WebSearchCore/Search/ProviderHealth.swift:143` | A half-open breaker authorises an unbounded number of requests: `authorize` discards the probe refusal | bug | START | this Mac (arm64) | Phase B L2-1 |
 | B12 | S2 | WebSearchCore (Search) | `Sources/WebSearchCore/Search/SearchOrchestrator.swift:384` | Providers that already reported a failure are charged a second, synthetic deadline failure | bug | DONE | this Mac (arm64) | Phase B L2-3 |
-| B13 | S2 | WebSearchCore (Support) | `Sources/WebSearchCore/Support/HTTPClient.swift:216` | The session resource timeout silently caps every per-request timeout override, including the 45 s synthesis budget | bug | START | this Mac (arm64) | Phase B L2-4 |
+| B13 | S2 | WebSearchCore (Support) | `Sources/WebSearchCore/Support/HTTPClient.swift:216` | The session resource timeout silently caps every per-request timeout override, including the 45 s synthesis budget | bug | DONE | this Mac (arm64) | Phase B L2-4 |
 | B14 | S2 | WebSearchCore (Fetch) | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:37` | `web_open` has no total deadline: a slow-drip server holds the tool call open indefinitely | unsafe | START | this Mac (arm64) | Phase B L2-5 |
 | B15 | S2 | WebSearchCore (Fetch) | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:43` | The Jina Reader target is percent-encoded into a *path*, so URLs with a query or fragment fetch the wrong resource | bug | DONE | this Mac (arm64) | Phase B L2-7 |
 | B16 | S2 | WebSearchCore (Fetch) | `Sources/WebSearchCore/Fetch/WebFetcher.swift:50` | PDFs are on the allowed content-type list but are decoded as Latin-1 text, so `web_open` returns binary mojibake as "readable text" | bug | START | this Mac (arm64) | Phase B L2-8 |
