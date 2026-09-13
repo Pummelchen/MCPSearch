@@ -82,6 +82,19 @@ jobs:
           fi
           echo "Swift $version satisfies swift-tools-version 6.3"
 
+          # The exact toolchain is whatever the runner image ships, and this workflow does **not**
+          # pin it: the image rotates, and a hard `DEVELOPER_DIR=/Applications/Xcode_<n>.app` fails
+          # the build for a reason unrelated to the change under test. Reproducibility is therefore
+          # not guaranteed here — the floor above is enforced, and the version that actually ran is
+          # published in the run summary so a green run names its compiler (ledger B39).
+          {
+            echo "### Swift toolchain"
+            echo ""
+            echo '```'
+            swift --version
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
       # Cache the resolved dependency graph and its build products. A cold graph
       # (swift-sdk, swift-nio, SwiftSoup) plus a debug *and* a release build is the
       # difference between a few minutes and the 30-minute budget, and the lockfile
