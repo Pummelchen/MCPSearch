@@ -122,6 +122,46 @@ final class FetchFallbackTests: XCTestCase {
         XCTAssertTrue(request.url.absoluteString.contains("reader.invalid"))
     }
 
+    /// The reader is asked for the *target* URL appended verbatim. `appendingPathComponent`
+    /// percent-encoded `?` and `#` into the path, so a URL with a query reached the reader as
+    /// `/page%3Fq=…` — a different resource, usually a 404 (ledger B15).
+    func testTheReaderIsGivenTheTargetURLVerbatim() async throws {
+        let server = try htmlServer(thinHTML())
+        let jinaHTTP = MockHTTPClient()
+        let rendered = renderedText()
+        jinaHTTP.on("jina.reader") { request in
+            HTTPResponse(
+                statusCode: 200,
+                headers: ["content-type": "text/plain; charset=utf-8"],
+                body: Data("Title: Verbatim\n\n\(rendered)".utf8),
+                url: request.url
+            )
+        }
+        let fetcher = WebFetcher(
+            direct: directFetcher(allowPrivateNetwork: true),
+            jina: jinaFetcher(jinaHTTP),
+            log: .disabled
+        )
+
+        let target = try XCTUnwrap(
+            URL(string: server.baseURL.absoluteString + "page?q=swift+concurrency&lang=en#results")
+        )
+        _ = try await fetcher.open(FetchRequest(url: target))
+
+        let request = try XCTUnwrap(jinaHTTP.requests.first)
+        let readerURL = request.url.absoluteString
+        XCTAssertTrue(readerURL.hasPrefix("https://reader.invalid/"), readerURL)
+        XCTAssertTrue(
+            readerURL.contains("page?q=swift+concurrency&lang=en"),
+            "the query must reach the reader intact: \(readerURL)"
+        )
+        XCTAssertFalse(
+            readerURL.contains("%3F"),
+            "the query must not be percent-encoded into the path: \(readerURL)"
+        )
+        XCTAssertFalse(readerURL.contains("%23"), "nor the fragment: \(readerURL)")
+    }
+
     /// `SEARCH_ENABLE_JINA_READER=false` reaches `WebFetcher` as `jina: nil`, so a thin
     /// page is returned as-is with a warning rather than silently spending a reader call.
     func testReaderDisabledReturnsTheThinNativeExtractionWithAWarning() async throws {

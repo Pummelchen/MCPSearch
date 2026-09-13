@@ -40,7 +40,15 @@ public struct JinaReaderFetcher: Sendable {
     ) async throws -> FetchResult {
         let started = DispatchTime.now().uptimeNanoseconds
 
-        let target = baseURL.appendingPathComponent(request.url.absoluteString)
+        // The reader takes the target URL as the *rest of the path*, so it must be appended
+        // verbatim. `appendingPathComponent` percent-encodes `?` and `#` into the path, which
+        // asked the reader for a different resource — `/page%3Fq=1` instead of `/page?q=1`
+        // (ledger B15).
+        var readerURL = baseURL.absoluteString
+        if !readerURL.hasSuffix("/") { readerURL += "/" }
+        guard let target = URL(string: readerURL + request.url.absoluteString) else {
+            throw SearchError.invalidRequest("could not build a reader URL for \(request.url)")
+        }
 
         var headers: [String: String] = [
             // Markdown is the most useful shape for a model's context.
