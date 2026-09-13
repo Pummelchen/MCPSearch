@@ -91,6 +91,12 @@ Found the hard way while investigating B104. Two traps, both of which cost a rou
 Rule: when a crash is the thing being investigated, build the **product** into a **fresh scratch
 path** before drawing any conclusion. `swift build --product <name> --scratch-path <new directory>`.
 
+A third trap, from A05: **`swift package resolve` without `--scratch-path` writes a full checkout
+and build tree into the repository's own `.build`.** This repository lives inside Dropbox, so that
+was 974 MB created in a synced folder in a few seconds. Every SwiftPM command in this audit passes
+`--scratch-path ~/Library/Caches/MCPSearch/audit-a01`; `.build` is git-ignored and carries a
+`com.dropbox.ignored` marker so Dropbox leaves it alone, and it must stay empty.
+
 ### How the secret scan is run (and why it is `detect`, not `dir`)
 
 `gitleaks detect --source . --log-opts=--all` scans git-tracked content and its history; that is

@@ -28,9 +28,17 @@ let package = Package(
         // Used by the optional Streamable HTTP transport. The MCP SDK already depends
         // on swift-nio, so this adds no new download to the graph; it is declared
         // directly because the HTTP server that fronts the SDK's transport needs it.
+        //
+        // Pinned exactly, like the other two direct dependencies (ledger A05). A production
+        // server must ship the dependency graph that was tested: `Package.resolved` already
+        // fixes the version for a checked-out build, but a `from:` range lets a fresh resolve
+        // or `swift package update` move the HTTP transport to an untested release without any
+        // change to this repository. Updating is then a reviewed change to this file (a
+        // Dependabot bump, or `swift package update` plus a lockfile diff), which is what the
+        // other two dependencies already require.
         .package(
             url: "https://github.com/apple/swift-nio.git",
-            from: "2.65.0"
+            exact: "2.102.0"
         ),
     ],
     targets: [
