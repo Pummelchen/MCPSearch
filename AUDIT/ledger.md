@@ -18,8 +18,8 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 114 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102 found in Phase D) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 4 |
-| START (reproduced, expected behaviour written) | 110 |
+| DONE | 5 |
+| START (reproduced, expected behaviour written) | 109 |
 | BLOCKED | 0 |
 
 Severity of the folded set: S0 2, S1 6, S2 27, S3 66.
@@ -52,7 +52,7 @@ waived in writing.
 | B03 | S1 | `SwiftWebSearchMCP` (HTTP transport wiring) | `Sources/SwiftWebSearchMCP/main.swift:118` (one transport per process), `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:290` (non-POST refused before the | The HTTP transport serves exactly one MCP session per process, and that session can never be released | bug | START | this Mac (arm64) | Phase B L3-25 |
 | B04 | S1 | `Sources/WebSearchCore/Search/SearchOrchestrator.swift`, `Sources/SwiftWebSearchMCP/ToolHandlers.swift` | `Sources/WebSearchCore/Search/SearchOrchestrator.swift:91` | Caller cancellation is never tested, and mid-flight cancellation is observably swallowed | test | START | this Mac (arm64) | Phase B L6-3 |
 | B05 | S1 | `Tests/WebSearchCoreTests/AUDITDiagnosticsTests.swift` | `Tests/WebSearchCoreTests/AUDITDiagnosticsTests.swift:6` (also `:11`, `:83`, `:111`) | TEMPORARY audit tooling is committed to the go-live test target and can abort the whole suite | placeholder | DONE | MacBook-AB.local (arm64, macOS 26.6.2, Swift 6.3.3) | Phase B PLACEHOLDER-1 |
-| B06 | S1 | `WebSearchCore` / `Support` + `Fetch` | `Sources/WebSearchCore/Support/Logging.swift:136` (second site: `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:142`) | `Retry-After` is converted from `Double` to `Int` without a range check, so a hostile upstream response traps the whole process | unsafe | START | this Mac (arm64) | Phase B L4-1 |
+| B06 | **S1** | `WebSearchCore` / `Support` + `Fetch`, `MCPSMonitor` | `Sources/WebSearchCore/Support/Logging.swift:128`, `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:142`, `Sources/MCPSMonitor/main.swift:171` | Untrusted seconds are converted `Double`->`Int` without a range check, so a hostile value traps the whole process | unsafe | DONE | this Mac (arm64) | Phase B L4-1 + L3-3 |
 | B07 | S1 | `WebSearchCore` / `Support` + `Fetch` | `Sources/WebSearchCore/Support/HTTPClient.swift:323` (same defect: `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:202`) | Response bodies are fully buffered in memory before the byte cap is applied, so one hostile page exhausts the process | perf | START | this Mac (arm64) | Phase B L5-1 |
 | B08 | S1 | `Sources/SwiftWebSearchMCP/ToolHandlers.swift` (`webOpen`), `Sources/SwiftWebSearchMCP/ToolSchemas.swift` (`To | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:134` | `web_open`'s success path through the MCP tool is untested end to end | test | START | this Mac (arm64) | Phase B L6-2 |
 | B09 | S2 | `WebSearchCore` — `Support/AppConfiguration.swift`, `SwiftWebSearchMCP/main.swift` | `Sources/WebSearchCore/Support/AppConfiguration.swift:252-261`, `:283-300`, `:389-391` | Nothing validates configuration at startup: a mistyped value or config path is silently discarded | incomplete | START | this Mac (arm64) | Phase B L7-1 |
@@ -216,6 +216,43 @@ verification used a separate container on port 18888, which was removed afterwar
 **Still open (`B02`-adjacent, not this task).** `deploy/provision-node.sh` writes a *generated*
 per-node key into its own `settings.yml` (unchanged here) and its unchecked `sed` is tracked
 separately; the file mode of that generated settings file is `L7-12`/`L4-11`.
+
+## B06 — untrusted seconds were converted `Double` → `Int` without a range check
+
+**Severity S1** · **category** unsafe · **status** DONE · merges `L4-1` (Retry-After) and `L3-3` (`mcps-mon --interval`)
+
+**What was wrong.** Three sites turned a number from an untrusted source into `Int` milliseconds
+with `Int(max(0, seconds) * 1000)`: `RetryAfter.parse` (the `Retry-After` header, reachable from
+any provider 429 through `HTTPStatusMapper.validate`, from an idempotent retry inside
+`URLSessionHTTPClient`, and from Jina Reader), `JinaReaderFetcher.retryAfterFromBody` (a
+`{"retryAfter": 1e33}` body), and `Options.parse`'s `--interval` (a command line argument).
+`Double` → `Int` **traps** past `Int.max`, and `inf`/`nan` trap too, so `Retry-After: 1e30` or
+`--interval inf` killed the process: every connected MCP client lost service, or the monitor died
+before its first frame.
+
+**Fix.**
+
+* `RetryAfter.boundedDuration(seconds:)` is now the single conversion both `Retry-After` callers
+  use. Non-finite input returns nil, so the caller falls back to its own backoff; finite input is
+  clamped into `0...RetryAfter.maximumSeconds` (24 h) *before* the multiply.
+* Callers still clamp to their own policy (`HTTPPolicy.maxRetryAfter`, 5 s by default), so
+  ordinary retry timing is unchanged — the bound is about arithmetic, not about behaviour.
+* `Options.parse` requires `isFinite` and `1...Options.maximumInterval.seconds` (86 400 s), and
+  the usage text now names the range.
+
+**Evidence** ([`evidence/B06-retry-after.txt`](evidence/B06-retry-after.txt)) — with the pre-fix
+conversions restored temporarily, the new tests kill the runner:
+
+| Restored pre-fix code | Result |
+| --- | --- |
+| `Int(max(0, seconds) * 1000)` in `RetryAfter` | signal 5, `Fatal error: Double value cannot be converted to Int because the result would be greater than Int.max` |
+| `guard let seconds = Double(raw), seconds >= 1` for `--interval` | signal 5, `Fatal error: Double value cannot be converted to Int because it is either infinite or NaN` |
+
+After: `DurationTests`, `FetchFallbackTests` and `HTTPClientTests` → 28 tests, 0 failures;
+`MonitorOptionsTests` → 18 tests, 0 failures; full suite **401 tests, 6 skipped, 0 failures**;
+debug and release builds 0 warnings. Both pre-fix experiments were reverted.
+
+---
 
 ---
 

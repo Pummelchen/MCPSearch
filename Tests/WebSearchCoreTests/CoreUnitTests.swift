@@ -359,6 +359,36 @@ final class DurationTests: XCTestCase {
         let past = RetryAfter.parse("Wed, 21 Oct 2015 07:28:00 GMT")
         XCTAssertEqual(past?.milliseconds, 0)
     }
+
+    /// `Retry-After` comes from an upstream response, so it is untrusted input. A value large
+    /// enough to overflow `Int` used to trap the process in `Int(seconds * 1000)` (ledger B06):
+    /// `Retry-After: 1e30` from any provider, or from a rate-limited Jina response, killed every
+    /// connected client. Finite values are clamped, non-finite ones are treated as absent so the
+    /// caller falls back to its own backoff.
+    func testRetryAfterBoundsHostileValuesInsteadOfTrapping() {
+        XCTAssertEqual(RetryAfter.parse("1e30")?.milliseconds, 86_400_000)
+        XCTAssertEqual(RetryAfter.parse("\(RetryAfter.maximumSeconds * 2)")?.milliseconds, 86_400_000)
+        XCTAssertNil(RetryAfter.parse("inf"))
+        XCTAssertNil(RetryAfter.parse("-inf"))
+        XCTAssertNil(RetryAfter.parse("nan"))
+        // A negative delta was already clamped to zero; it must stay there.
+        XCTAssertEqual(RetryAfter.parse("-5")?.milliseconds, 0)
+        // The ordinary case is unchanged.
+        XCTAssertEqual(RetryAfter.parse("7")?.milliseconds, 7000)
+    }
+
+    func testJinaRetryAfterBodyIsBoundedByTheSameRule() {
+        XCTAssertNil(JinaReaderFetcher.retryAfterFromBody(Data(#"{"retryAfter": "soon"}"#.utf8)))
+        XCTAssertNil(JinaReaderFetcher.retryAfterFromBody(Data(#"{"retryAfter": null}"#.utf8)))
+        XCTAssertEqual(
+            JinaReaderFetcher.retryAfterFromBody(Data(#"{"retryAfter": 1e33}"#.utf8))?.milliseconds,
+            86_400_000
+        )
+        XCTAssertEqual(
+            JinaReaderFetcher.retryAfterFromBody(Data(#"{"retryAfter": 3}"#.utf8))?.milliseconds,
+            3000
+        )
+    }
 }
 
 /// Logging must never contaminate stdout.

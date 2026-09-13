@@ -128,19 +128,38 @@ public struct Log: Sendable {
 /// Parses the `Retry-After` header, which may be either delta-seconds or an
 /// HTTP-date. Returns nil when absent or unparseable.
 public enum RetryAfter {
+    /// Longest delay this type will represent: one day.
+    ///
+    /// Callers clamp further for their own policy (`HTTPPolicy.maxRetryAfter` defaults to five
+    /// seconds), so this bound is not the usable limit — it exists because the value arrives
+    /// from an upstream response and `Int(seconds * 1000)` traps on a large or non-finite
+    /// `Double`. `Retry-After: 1e30`, or a JSON body field of `1e33`, killed the process before
+    /// this check.
+    public static let maximumSeconds: TimeInterval = 24 * 60 * 60
+
     public static func parse(_ value: String?) -> Duration? {
         guard let raw = value?.trimmingCharacters(in: .whitespaces), !raw.isEmpty else {
             return nil
         }
         if let seconds = Double(raw) {
-            return .milliseconds(Int(max(0, seconds) * 1000))
+            return boundedDuration(seconds: seconds)
         }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(identifier: "GMT")
         formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
         guard let date = formatter.date(from: raw) else { return nil }
-        let interval = date.timeIntervalSinceNow
-        return .milliseconds(Int(max(0, interval) * 1000))
+        return boundedDuration(seconds: date.timeIntervalSinceNow)
+    }
+
+    /// Convert seconds from an untrusted source into a `Duration`, or nil when meaningless.
+    ///
+    /// Non-finite input (`inf`, `nan`) has no sensible delay and is reported as absent, which
+    /// makes the caller fall back to its own backoff. Finite input is clamped into
+    /// `0...maximumSeconds` before the multiply, so the `Int` conversion cannot trap.
+    static func boundedDuration(seconds: TimeInterval) -> Duration? {
+        guard seconds.isFinite else { return nil }
+        let clamped = min(max(0, seconds), maximumSeconds)
+        return .milliseconds(Int(clamped * 1000))
     }
 }

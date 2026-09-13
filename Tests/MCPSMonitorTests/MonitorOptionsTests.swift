@@ -168,4 +168,32 @@ final class MonitorOptionsTests: XCTestCase {
             "the p key asks for one probe"
         )
     }
+
+    /// `--interval` is converted to milliseconds with `Int(seconds * 1000)`, and the value comes
+    /// straight from the command line. `inf` parsed, passed the `>= 1` check and trapped the
+    /// process before the first frame; `1e30` did the same (ledger B06, reported as L3-3).
+    func testHostileIntervalsAreRejectedInsteadOfTrapping() {
+        let hostile = ["inf", "-inf", "infinity", "1e30", "nan", "0", "-5", "0.5", "99999999999999999999"]
+        for raw in hostile {
+            XCTAssertThrowsError(try Options.parse(["--interval", raw]), "\(raw) must be rejected") { error in
+                guard case Options.OptionError.invalidValue(let flag, _, let expected) = error else {
+                    return XCTFail("expected invalidValue for \(raw), got \(error)")
+                }
+                XCTAssertEqual(flag, "--interval")
+                XCTAssertTrue(expected.contains("86400"), expected)
+            }
+        }
+    }
+
+    func testTheLongestAcceptedIntervalIsTheDocumentedMaximum() throws {
+        let maximum = Int(Options.maximumInterval.seconds)
+        XCTAssertEqual(maximum, 86_400)
+        XCTAssertEqual(
+            try Options.parse(["--interval", "\(maximum)"]).interval.seconds,
+            Double(maximum)
+        )
+        XCTAssertThrowsError(try Options.parse(["--interval", "\(maximum + 1)"]))
+        // A whole-number value still works exactly as before.
+        XCTAssertEqual(try Options.parse(["--interval", "45"]).interval, .seconds(45))
+    }
 }

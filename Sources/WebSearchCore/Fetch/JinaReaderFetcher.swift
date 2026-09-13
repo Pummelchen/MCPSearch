@@ -135,11 +135,15 @@ public struct JinaReaderFetcher: Sendable {
     }
 
     /// Extract `retryAfter` (seconds) from Reader's rate-limit body.
+    ///
+    /// The value is attacker-influenced (it comes from a third-party service), so it goes
+    /// through the same bounded conversion as the `Retry-After` header: a body of
+    /// `{"retryAfter": 1e33}` used to trap on the `Double` → `Int` conversion.
     static func retryAfterFromBody(_ body: Data) -> Duration? {
         guard let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
               let seconds = object["retryAfter"] as? Double
         else { return nil }
-        return .milliseconds(Int(max(0, seconds) * 1000))
+        return RetryAfter.boundedDuration(seconds: seconds)
     }
 
     /// Reader prefixes markdown output with a `Title: ...` line.

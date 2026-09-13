@@ -26,6 +26,14 @@ struct Options: Sendable {
     /// Shortest probe interval allowed without an explicit override.
     static let minimumProbeInterval = Duration.seconds(60)
 
+    /// Longest refresh interval `--interval` accepts.
+    ///
+    /// A bound on arithmetic rather than a product decision: the value is converted to
+    /// milliseconds with `Int(seconds * 1000)`, and `--interval inf` (or `1e30`) used to trap
+    /// there before a single frame was drawn. A day is far longer than any real refresh, and it
+    /// keeps that conversion inside `Int` for every accepted value.
+    static let maximumInterval = Duration.seconds(24 * 60 * 60)
+
     /// Whether a refresh should probe providers.
     ///
     /// Probed on the first pass so the dashboard is populated immediately, then only when
@@ -52,7 +60,7 @@ struct Options: Sendable {
           --node <name=url>      Add a SearXNG node (repeatable). Defaults to this
                                  machine plus the cluster nodes if reachable.
           --no-nodes             Skip node probing entirely.
-          --interval <seconds>   Refresh interval. Default 10.
+          --interval <seconds>   Refresh interval, 1 to 86400. Default 10.
           --probe                Also probe providers with a real search. This spends
                                  provider credits, so it is opt-in. The interval is
                                  raised to 60s while probing, because a keyed provider
@@ -163,9 +171,14 @@ struct Options: Sendable {
 
             case argument == "--interval" || argument.hasPrefix("--interval="):
                 let raw = try value(for: "--interval")
-                guard let seconds = Double(raw), seconds >= 1 else {
+                // `isFinite` is the part that matters: `Double("inf")` parses, satisfies
+                // `>= 1`, and would trap in the conversion below.
+                guard let seconds = Double(raw), seconds.isFinite,
+                      seconds >= 1, seconds <= Options.maximumInterval.seconds
+                else {
                     throw OptionError.invalidValue(
-                        flag: "--interval", value: raw, expected: "seconds (>= 1)"
+                        flag: "--interval", value: raw,
+                        expected: "seconds between 1 and \(Int(Options.maximumInterval.seconds))"
                     )
                 }
                 options.interval = Duration.milliseconds(Int(seconds * 1000))
