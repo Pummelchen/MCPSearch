@@ -24,10 +24,11 @@ person remembered to run it.
 | Secrets | `gitleaks detect --source . --log-opts=--all --redact` | exit 0, 0 findings |
 | Dependencies | `osv-scanner scan source -r .` | No issues found |
 
-The gates are configured by files in the repository (, ,
-, , ) rather than by command-line flags, so a
-change to the standard is a reviewable diff.  runs as a second job in parallel
-with the build so a formatting failure is reported in minutes, not behind a 30-minute build.
+The gates are configured by files in the repository (`.swift-format`, `.swiftlint.yml`,
+`ruff.toml`, `pyrightconfig.json`, `.gitleaks.toml`) rather than by command-line flags, so a
+change to the standard is a reviewable diff. `static-analysis` runs as a second job in parallel
+with the build, so a formatting failure is reported in minutes rather than behind a 30-minute
+build.
 
 ## The coverage floor is a real check, not a number in a log
 
