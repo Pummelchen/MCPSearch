@@ -18,8 +18,8 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 115 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102 and B103 found in Phase D) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 15 |
-| START (reproduced, expected behaviour written) | 100 |
+| DONE | 16 |
+| START (reproduced, expected behaviour written) | 99 |
 | BLOCKED | 0 |
 
 Severity of the folded set: S0 2, S1 6, S2 27, S3 66.
@@ -44,7 +44,7 @@ waived in writing.
 | A07 | S3 | deploy | `deploy/provision-node.sh:69` | Homebrew installed by piping a remote script into bash (supply chain) | unsafe | DONE | this Mac | audit baseline (semgrep) |
 | A08 | S3 | scripts | `scripts/mcp_smoke.py:335`, `scripts/searxng_health.py:36` | `dynamic-urllib-use`: URLs built at runtime without an explicit scheme/host guard | unsafe | DONE | this Mac | audit baseline (semgrep) |
 | A09 | S3 | tests | `Tests/WebSearchCoreTests/URLPolicyTests.swift:46` | `detect-insecure-websocket` fires on the *rejection* fixture (false positive) | style | DONE | this Mac | audit baseline (semgrep) |
-| A10 | S1 | CI | `.github/workflows/ci.yml` | No gate for warnings-as-errors, formatter, linter, type checker, coverage floor, or scanners | test | START | this Mac | audit baseline |
+| A10 | **S1** | CI | `.github/workflows/ci.yml`, `scripts/coverage_floor.py` | No gate for warnings-as-errors, formatter, linter, type checker, coverage floor or scanners | test | DONE | this Mac | audit baseline |
 | A11 | S2 | scripts | `ruff.toml` (new), `pyrightconfig.json` (new), `scripts/*.py` | Python is 3.14 with no strict type-checking config and no annotations | style | DONE | this Mac | audit baseline (pyright) |
 | A12 | S2 | cross-unit contracts | `Support/AppConfiguration.swift`, `scripts/*`, `deploy/*`, CI | Env-var contracts between units have no automated consistency check | logic | START | this Mac | scope discovery |
 | B01 | **S0** | `deploy/docker-compose.yml` (with `deploy/searxng/settings.yml`, `deploy/.env.example`) | `deploy/docker-compose.yml:33`, `deploy/searxng/settings.yml:13-22` | The documented compose secret-key override is the wrong variable, so the tracked placeholder is what signs the instance | placeholder | DONE | this Mac (arm64) | Phase B PLACEHOLDER-3 + L7-10 |

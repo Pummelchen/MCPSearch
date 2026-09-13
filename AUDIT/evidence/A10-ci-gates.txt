@@ -1,0 +1,54 @@
+# A10 — CI gates, evidence after the fix
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## Before
+
+The workflow built and tested, and nothing else: no warnings gate, no formatter, no linter, no
+type checker, no coverage floor, no scanner. Every one of those checks existed only because a
+person remembered to run it.
+
+## After: every gate, and the exact command CI runs
+
+| Gate | Command | Result |
+| --- | --- | --- |
+| Warnings | `swift build --build-tests -Xswiftc -warnings-as-errors` | exit 0, 0 warnings |
+| Warnings (release) | `swift build -c release -Xswiftc -warnings-as-errors` | exit 0 |
+| Coverage floor | `swift test --enable-code-coverage` + `xcrun llvm-cov export` + `scripts/coverage_floor.py "$PWD/Sources/" 80 coverage.json` | 6864/8062 = **85.1 %** ≥ 80 % |
+| Formatter | `swift-format lint --recursive --strict Sources Tests Package.swift` | 0 diagnostics |
+| Linter | `swiftlint lint --strict` | exit 0, no output |
+| Python lint/format | `ruff check scripts` / `ruff format --check scripts` | clean |
+| Type checker | `npx --yes pyright@1.1.414` | 0 errors (`strict`) |
+| Security patterns | `semgrep scan --config=p/default --error --metrics=off` | 0 findings |
+| Shell | `shellcheck -S warning deploy/provision-node.sh` | exit 0 |
+| Secrets | `gitleaks detect --source . --log-opts=--all --redact` | exit 0, 0 findings |
+| Dependencies | `osv-scanner scan source -r .` | No issues found |
+
+The gates are configured by files in the repository (, ,
+, , ) rather than by command-line flags, so a
+change to the standard is a reviewable diff.  runs as a second job in parallel
+with the build so a formatting failure is reported in minutes, not behind a 30-minute build.
+
+## The coverage floor is a real check, not a number in a log
+
+```
+$ python3 scripts/coverage_floor.py "$PWD/Sources/" 80 coverage.json
+Sources/ line coverage: 6864/8062 = 85.1 % (floor 80 %)   exit 0
+
+$ python3 scripts/coverage_floor.py "$PWD/Sources/" 90 coverage.json
+::error::Sources/ line coverage is 85.1 %, below the 90 % floor. …   exit 1
+```
+
+`scripts/coverage_floor.py` counts only paths under this repository's own `Sources/`: SwiftPM
+instruments the dependency checkouts too, so an unfiltered total reads 40 % against 85.1 % for
+the code this repository owns. It is linted and type-checked like the other scripts, so it
+cannot rot unnoticed.
+
+## Verification
+
+* Local: every command in the table above was run on this Mac with the result shown.
+* YAML: the workflow parses, with jobs `build-and-test` (11 steps) and `static-analysis` (10 steps).
+* The workflow is dispatched on the branch itself (see the ledger for the run id and result).
+
+**Not claimed:** a green CI run at the time this file was written. The dispatch result is
+recorded in `AUDIT/ledger.md` as soon as the run finishes; until then the evidence is local.

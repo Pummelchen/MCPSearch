@@ -86,14 +86,31 @@ jobs:
       # Deliberately no provider credentials are configured. The suite is hermetic and
       # must pass with no network access to any search vendor; if a test ever starts
       # depending on a real provider this job will fail and surface it.
-      - name: Build (debug)
-        run: swift build --build-tests
+      #
+      # `-warnings-as-errors` is the warnings gate: this repository builds with zero
+      # warnings, so a new one is a failure rather than something to notice in a log.
+      - name: Build (debug, warnings are errors)
+        run: swift build --build-tests -Xswiftc -warnings-as-errors
 
-      - name: Test
-        run: swift test
+      # Coverage is collected here rather than in a separate job so the profile comes from
+      # the same build the tests ran against.
+      - name: Test (with coverage)
+        run: swift test --enable-code-coverage
 
-      - name: Build (release)
-        run: swift build -c release
+      - name: Coverage floor (Sources/)
+        run: |
+          set -euo pipefail
+          BIN="$(swift build --show-bin-path)"
+          XCTEST="$BIN/SwiftWebSearchMCPPackageTests.xctest/Contents/MacOS/SwiftWebSearchMCPPackageTests"
+          xcrun llvm-cov export "$XCTEST" \
+            -instr-profile "$BIN/codecov/default.profdata" > coverage.json
+          # 80 % against 85.1 % measured when the floor was introduced: enough headroom for a
+          # toolchain difference, tight enough that losing a tested path fails the build.
+          # Only this repository's own Sources/ counts — see the script for why.
+          python3 scripts/coverage_floor.py "$PWD/Sources/" 80 coverage.json
+
+      - name: Build (release, warnings are errors)
+        run: swift build -c release -Xswiftc -warnings-as-errors
 
       # Drives the built executable through a real MCP handshake and asserts that
       # stdout carries only valid JSON-RPC. A stray print anywhere in the server would
@@ -125,3 +142,72 @@ jobs:
           BRAVE_SEARCH_API_KEY: ci-placeholder-not-a-real-key
           SEARXNG_BASE_URL: https://searx.invalid
         run: swift test
+
+  # The gates that do not need an Xcode build. They run in parallel with `build-and-test` so
+  # a formatting or lint failure is reported in a couple of minutes instead of behind a
+  # 30-minute build, and so the build job's budget stays for the build.
+  #
+  # Every tool here is run at the strictest setting it supports, and each is configured by a
+  # file in this repository (`.swift-format`, `.swiftlint.yml`, `ruff.toml`, `pyrightconfig.json`,
+  # `.gitleaks.toml`) rather than by command-line flags, so the standard is reviewable in a diff.
+  static-analysis:
+    runs-on: macos-26
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+
+      - name: Install analysis tools
+        run: |
+          set -euo pipefail
+          brew install swift-format swiftlint shellcheck gitleaks osv-scanner ruff semgrep
+          # Print what was installed: the rule *sets* are pinned by the config files above, but
+          # a tool upgrade is still the explanation to look for when a rule fires differently.
+          swift-format --version
+          swiftlint version
+          shellcheck --version | head -2
+          gitleaks version
+          osv-scanner --version
+          ruff --version
+          semgrep --version
+
+      # swift-format owns formatting (audit task A02): 4-space indentation, 120 columns, and
+      # `--strict` so a warning is a failure.
+      - name: Swift formatting
+        run: swift-format lint --recursive --strict Sources Tests Package.swift
+
+      # SwiftLint owns the rules swift-format does not (audit task A03), with its thresholds
+      # and its generated-code exclusion in `.swiftlint.yml`.
+      - name: SwiftLint
+        run: swiftlint lint --strict
+
+      - name: Python lint and formatting
+        run: |
+          set -euo pipefail
+          ruff check scripts
+          ruff format --check scripts
+
+      # pyright is pinned here because it is installed through npx: `typeCheckingMode` is
+      # `strict` in `pyrightconfig.json`.
+      - name: Python types
+        run: npx --yes pyright@1.1.414
+
+      # The default registry ruleset, deliberately not vendored: a new rule should be able to
+      # fail this job, and `--metrics=off` keeps the scan local.
+      - name: Python security patterns
+        run: semgrep scan --config=p/default --error --metrics=off
+
+      # `-S warning`: the two SC2015/SC2016 notes that remain are deliberate shell idioms
+      # (`eval` of a generated shellenv line, and `A && B || C`), so they are informational.
+      - name: Shell scripts
+        run: shellcheck -S warning deploy/provision-node.sh
+
+      # Full history, not just the working tree: `gitleaks dir` would also read the operator's
+      # git-ignored `config.env` and prove nothing about the repository (audit task A06).
+      - name: Secret scan (full history)
+        run: gitleaks detect --source . --log-opts=--all --redact
+
+      # Scans Package.resolved against the OSV database: the dependency half of the audit.
+      - name: Dependency vulnerabilities
+        run: osv-scanner scan source -r .
