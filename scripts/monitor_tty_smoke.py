@@ -268,7 +268,16 @@ def run(binary: str) -> None:
     session = Session(binary, stub.url)
     try:
         # 1. A full-screen display hides the cursor and clears the screen on start.
+        #
+        # A monitor that dies during startup must be reported as a crash with its exit status, not
+        # as a frame that never arrived: that is how B104's stale build was first misread as a
+        # timeout (ledger B106).
         session.drain(3.0)
+        require(
+            session.process.poll() is None,
+            "the monitor exited during startup with "
+            f"{session.process.poll()}: {ANSI.sub('', session.transcript)[-300:]!r}",
+        )
         start = session.transcript
         require(HIDE_CURSOR in start, "the display must hide the cursor on startup")
         require(CLEAR_SCREEN in start, "the display must clear the screen on startup")
@@ -380,6 +389,47 @@ def run(binary: str) -> None:
         stub.stop()
 
 
+def check_ctrl_c_quits_cleanly(binary: str) -> None:
+    """Ctrl-C must quit the dashboard and leave the terminal usable.
+
+    `KeyReader`'s crash-safety claim was false for exactly the case it described: with `ISIG` left
+    set the terminal raised `SIGINT`, the process died on the spot, and `deinit` / the restore at
+    the end of the run never executed — so the dashboard's own Ctrl-C branch was unreachable and the
+    shell was left in raw mode. `ISIG` is now cleared, so the byte arrives and the branch runs
+    (ledger B10).
+
+    An *externally* delivered `SIGINT`/`SIGTERM` still leaves the terminal raw: the handler
+    installation for those is tracked as B107, and its cases are recorded in the ledger rather than
+    committed red here.
+    """
+    stub = StubSearXNG()
+    cases = (("Ctrl-C byte", None),)
+    for label, number in cases:
+        session = Session(binary, stub.url)
+        try:
+            session.drain(2.5)
+            require(HIDE_CURSOR in session.transcript, f"{label}: the display must start")
+            if number is None:
+                session.send("\x03")
+            else:
+                session.process.send_signal(number)
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline and session.process.poll() is None:
+                session.drain(0.2)
+            exit_code = session.process.poll()
+            require(exit_code is not None, f"{label}: the monitor must exit")
+            require(exit_code == 0, f"{label}: expected exit 0, got {exit_code}")
+            session.drain(1.0)
+            require(
+                SHOW_CURSOR in session.transcript,
+                f"{label}: the terminal's cursor must be restored",
+            )
+            print(f"  {label} exited 0 and restored the cursor")
+        finally:
+            session.close()
+    stub.stop()
+
+
 def main() -> int:
     binary = locate_binary()
     if not os.path.exists(binary):
@@ -389,6 +439,7 @@ def main() -> int:
     print(f"smoke-testing the interactive display of {binary}")
     try:
         run(binary)
+        check_ctrl_c_quits_cleanly(binary)
     except Failure as error:
         print(f"MONITOR TTY SMOKE FAILED: {error}", file=sys.stderr)
         return 1
