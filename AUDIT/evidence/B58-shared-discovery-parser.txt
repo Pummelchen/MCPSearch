@@ -1,0 +1,147 @@
+# B58 — the duplicated discovery parser, after B110 had already closed the schema drift
+
+Host: this Mac (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## The premise, checked first — half of it was already closed
+
+**The parser duplication is real.** `web_search` and `web_answer` ran the same block verbatim:
+
+```
+$ git show HEAD:Sources/SwiftWebSearchMCP/ToolHandlers.swift | grep -c 'requiredString("query")'
+2
+$ git show HEAD:Sources/SwiftWebSearchMCP/ToolHandlers.swift | sed -n '28,62p'
+        do {
+            query = try args.requiredString("query")
+            maxResults = min(max(1, try args.int("max_results") ?? …), 20)
+            recency = try args.enumValue("recency", default: .any)
+            includeDomains = try args.stringArray("include_domains", maxItems: 20)
+            excludeDomains = try args.stringArray("exclude_domains", maxItems: 20)
+            mode = try args.enumValue("mode", default: .balanced)
+            … locale … provider …
+```
+
+**The schema-drift half is no longer true.** It was fixed by **B110** (`a3bf795`), which made
+`web_search.provider` and `web_answer.provider` reference one `providerDiscoverySchema` derived
+from `ProviderID.allCases`, and strengthened `SchemaCompatibilityTests.violations` to compare
+`web_answer.inputSchema` against `web_search`'s argument by argument — the declared key set and
+every value-constraining keyword (`type`, `enum`, `minimum`, `maximum`, `maxItems`, `items`),
+with `provider` held to the whole property and each tool's prose exempt. That lint is green at
+HEAD, so there is no remaining constraint drift to repair: the only schema gap left was the
+one B110 explicitly noted as B58's — `testDefaultsAreDocumentedInDescriptions` read
+`web_search` only, and the parity walk exempts `description`, so `web_answer`'s copy could stop
+documenting a default unnoticed.
+
+Following the guidance, this task extends B110's approach rather than inventing a second
+mechanism: one shared definition for the handlers (the parser), and the existing parity lint
+for the schemas.
+
+## The fix: one parser, not two copies
+
+`ToolHandlers` gained a `DiscoveryArguments` value and one
+`parseDiscoveryArguments(_:) -> Result<DiscoveryArguments, DiscoveryError>`:
+
+```
+$ git diff --stat -- Sources/SwiftWebSearchMCP/ToolHandlers.swift
+ Sources/SwiftWebSearchMCP/ToolHandlers.swift | 176 ++++++++++++----------
+```
+
+* `DiscoveryArguments` carries `query`, `maxResults`, `recency`, `includeDomains`,
+  `excludeDomains`, `locale`, `provider`, `mode`, and builds the `SearchRequest` itself, so the
+  two tools cannot assemble different requests from the same arguments either.
+* `parseDiscoveryArguments` owns the clamp (`1...20`), the two `enumValue` parses, the two
+  `stringArray` bounds, the locale parse and the `auto`/`ProviderID` resolution. The failure
+  case carries the exact message the tool returns, so the parse-error path is one path.
+* `webSearch` and `webAnswer` both begin with the same three-line `switch`; the rest of each
+  handler is unchanged. The duplication is now one copy:
+
+```
+$ grep -c 'requiredString("query")' Sources/SwiftWebSearchMCP/ToolHandlers.swift
+1
+```
+
+No public API signature changed. `DiscoveryArguments` and `DiscoveryError` are internal to the
+executable target; `parseDiscoveryArguments` is internal and used only by the two handlers.
+
+The schemas were deliberately **not** restructured further. B110's parity lint already requires
+the shared constraints to be identical, and the differing `description` prose is legitimate —
+`web_search` returns results and `web_answer` grounds an answer in them. Unifying the property
+literals would have forced one tool to describe the other's behaviour.
+
+## The tests
+
+* `StdioServerTests.testTheTwoSearchToolsParseTheirSharedArgumentsIdentically` — sends the same
+  rejected value to both tools for all seven shared arguments (unknown `provider`, degenerate
+  `locale`, unknown `recency` and `mode`, non-integer `max_results`, non-array
+  `include_domains`, over-long `exclude_domains`) and requires the same error text back, so one
+  handler can no longer be changed without the other. This is the behavioural half the schema
+  lint cannot see.
+* `SchemaCompatibilityTests.testDefaultsAreDocumentedInDescriptions` now loops over
+  `web_search` **and** `web_answer` and asserts each documents `8`/`any`/`auto`/`balanced`,
+  which closes B110's recorded residual. No assertion was weakened; the `web_search` half is
+  unchanged apart from being inside the loop.
+
+## Proof the tests can fail (two mutations, each restored byte-identical)
+
+**M1 — `web_answer` parses on its own again.** Its call site was pointed at a divergent
+wrapper (an error-message suffix), which is the shape of the defect: a second parse path that
+can be changed alone.
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter 'StdioServerTests/testTheTwoSearchToolsParseTheirSharedArgumentsIdentically'
+StdioServerTests.swift:1257: error: … XCTAssertEqual failed: ("`provider` must be one of: auto, tavily, … parallel (web_answer)") is not equal to ("`provider` must be one of: auto, tavily, … parallel") - web_answer must give the same parse error as web_search for provider=bogus
+StdioServerTests.swift:1257: error: … XCTAssertEqual failed: ("`locale` must look like en-US or de-DE (web_answer)") … - web_answer must give the same parse error as web_search for locale=-
+StdioServerTests.swift:1257: error: … ("`recency` must be one of the documented values (web_answer)") … for recency=yesterday
+StdioServerTests.swift:1257: error: … ("`mode` must be one of the documented values (web_answer)") … for mode=quick
+StdioServerTests.swift:1257: error: … ("`max_results` must be an integer (web_answer)") … for max_results=many
+StdioServerTests.swift:1257: error: … ("`include_domains` must be an array of strings (web_answer)") … for include_domains=not-an-array
+StdioServerTests.swift:1257: error: … ("`exclude_domains` accepts at most 20 entries (web_answer)") … for exclude_domains=[…]
+	 Executed 1 test, with 7 failures (0 unexpected)
+```
+
+Restored: `diff -q` empty, SHA-256 `c846dd21…`.
+
+**M2 — `web_answer.max_results` stops documenting its default.** The description in
+`webAnswerInput` lost `, default 8`:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter 'SchemaCompatibilityTests/testDefaultsAreDocumentedInDescriptions'
+SchemaCompatibilityTests.swift:464: error: … XCTAssertTrue failed - web_answer.max_results description must document its default (8): Maximum search results to ground the answer in; 1-20
+	 Executed 1 test, with 1 failure (0 unexpected)
+```
+
+The pre-B58 test could not have seen this: it looked up `web_search` only. Restored:
+`diff -q` empty, SHA-256 `e62e9262…`.
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (8.20s)                                                     0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+	 Executed 541 tests, with 6 tests skipped and 0 failures (0 unexpected) in 26.087 (26.129) seconds
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (21.74s)                                                    0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+0 diagnostics                                                               exit=0
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 86 files.                    exit=0
+
+$ python3 scripts/third_party_notices.py
+THIRD-PARTY-NOTICES.md covers all 8 resolved packages at the pinned versions
+```
+
+541 is 540 at HEAD plus the one new parity test; the defaults-coverage change strengthens an
+existing test. The 6 skips are the pre-existing environment-gated ones.
+
+## Deviation from the spec
+
+The expected-correct's first half — "both input schemas constrained identically for `provider`"
+— was already satisfied by B110 and needed no change; the ledger record is corrected to say so.
+Its second half — one shared parser — is implemented as above, and
+`testDefaultsAreDocumentedInDescriptions` now covers `web_answer`, which was the residual B110
+recorded. No schema literal was restructured, because B110's parity lint is the mechanism the
+guidance asked to extend.

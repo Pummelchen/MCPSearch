@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 132 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 117 |
-| START (reproduced, expected behaviour written) | 15 |
+| DONE | 118 |
+| START (reproduced, expected behaviour written) | 14 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 87** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 72 are DONE and 15 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 73 are DONE and 14 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -111,7 +111,7 @@ waived in writing.
 | B55 | S3 | WebSearchCore (Search) | `Sources/WebSearchCore/Search/ProviderHealth.swift:119` | `ProviderHealth.setNote` is dead public API | dead | DONE | this Mac (arm64) | Phase B L2-11 |
 | B56 | S3 | WebSearchCore (Providers) | `Sources/WebSearchCore/Providers/ScraperSupport.swift:24` | `ScraperSupport.BlockKind.noResults` is never produced, so an empty result page is reported as unparseable | dead | DONE | this Mac (arm64) | Phase B L2-12 |
 | B57 | S3 | SwiftWebSearchMCP (with WebSearchCore) | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:407` | The per-provider "which variable enables me" contract is triplicated across units and already wrong for `parallel` | logic | DONE | this Mac (arm64) | Phase B L1-1 |
-| B58 | S3 | SwiftWebSearchMCP | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:186` | `web_search` and `web_answer` duplicate their argument parsing, and the two schemas have already drifted | style | START | this Mac (arm64) | Phase B L1-2 |
+| B58 | S3 | SwiftWebSearchMCP | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:186` | `web_search` and `web_answer` duplicate their argument parsing, and the two schemas have already drifted | style | DONE | this Mac (arm64) | Phase B L1-2 |
 | B59 | S3 | `WebSearchCore/Support/AppConfiguration.swift` | `Sources/WebSearchCore/Support/AppConfiguration.swift:330` | `PARALLEL_MCP_URL=` cannot clear the default endpoint: the branch is unreachable in production | dead | DONE | this Mac (arm64) | Phase B L3-7 |
 | B60 | S3 | `WebSearchCore/Providers/DuckDuckGoProvider.swift` | `Sources/WebSearchCore/Providers/DuckDuckGoProvider.swift:70` | DuckDuckGo region hint sends the region twice instead of region-language | bug | DONE | this Mac (arm64) | Phase B L3-8 |
 | B61 | S3 | `WebSearchCore/Fetch/HTMLExtractor.swift` | `Sources/WebSearchCore/Fetch/HTMLExtractor.swift:63` (markers at `:36`, `:40`) | Hyphenated boilerplate markers are inert, and the prefix clause is unreachable | logic | DONE | this Mac (arm64) | Phase B L3-9 |
@@ -218,6 +218,20 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B58 — the discovery parser is shared, not copied
+
+**Severity S3** · **category** style · **status** DONE · **host** node1 (arm64)
+
+**Premise: half stale.** The parser duplication was real — `git show HEAD:…/ToolHandlers.swift | grep -c 'requiredString("query")'` was 2, and the two blocks were byte-identical. The schema-drift half was **already fixed by B110** (`a3bf795`): `provider` is one `providerDiscoverySchema` derived from `ProviderID.allCases` for both tools, and `SchemaCompatibilityTests.violations` compares `web_answer.inputSchema` with `web_search`'s declared key set and every value-constraining keyword, holding `provider` to the whole property. That lint is green at HEAD, so no schema constraint remains drifted. B110's own record named B58's residual: `testDefaultsAreDocumentedInDescriptions` read `web_search` only, and the parity walk exempts `description`.
+
+**What changed.** `ToolHandlers` gained an internal `DiscoveryArguments` value (which builds the `SearchRequest`) and one `parseDiscoveryArguments(_:) -> Result<DiscoveryArguments, DiscoveryError>` covering the clamp, the enum parses, the array bounds, the locale parse and the provider/auto resolution. Both handlers start with the same three-line switch, so the parse-error path is one path. No public signature changed.
+
+**Schemas untouched on purpose.** B110's lint is the mechanism the guidance asked to extend, and the differing prose is legitimate (`web_search` returns results; `web_answer` grounds an answer in them), so unifying the literals would have forced one tool to describe the other's behaviour. Instead the behavioural parity is pinned at the stdio boundary: `testTheTwoSearchToolsParseTheirSharedArgumentsIdentically` rejects the same value for all seven shared arguments in both tools and requires identical text.
+
+**Falsification.** M1 points `web_answer` at a divergent wrapper (a second parse path, the shape of the defect) and reddens the parity test with 7 failures naming each argument. M2 drops `, default 8` from `web_answer.max_results` and reddens the extended defaults test, which the pre-B58 web_search-only assertion could not see. Both files restored byte-identical (`diff` empty; SHA-256 `c846dd21…` and `e62e9262…`).
+
+**Noted.** The ledger's expected-correct said to constrain both schemas identically for `provider`; that was B110's work. No further schema change was made.
 
 ## B57 — one authority for provider enablement, and the `parallel` hint
 

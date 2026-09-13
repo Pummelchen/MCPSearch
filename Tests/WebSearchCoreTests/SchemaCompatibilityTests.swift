@@ -440,19 +440,33 @@ final class SchemaCompatibilityTests: XCTestCase {
     /// keyword for strict consumers.
     func testDefaultsAreDocumentedInDescriptions() throws {
         let tools = try advertisedTools()
-        let search = try XCTUnwrap(tools.first { $0["name"] as? String == "web_search" })
-        let schema = try XCTUnwrap(search["inputSchema"] as? [String: Any])
-        let properties = try XCTUnwrap(schema["properties"] as? [String: Any])
-
-        for (key, expected) in [
-            ("max_results", "8"), ("recency", "any"), ("provider", "auto"), ("mode", "balanced"),
-        ] {
-            let property = try XCTUnwrap(properties[key] as? [String: Any], key)
-            let description = try XCTUnwrap(property["description"] as? String, key)
-            XCTAssertTrue(
-                description.contains(expected),
-                "\(key) description must document its default (\(expected)): \(description)"
+        // Both search tools: the parity walk deliberately exempts `description`, so a copy
+        // of the schema whose prose stopped documenting a default would pass it. The
+        // assertion used to read `web_search` only, which left `web_answer`'s copy
+        // unguarded (ledger B58).
+        for name in ["web_search", "web_answer"] {
+            let tool = try XCTUnwrap(
+                tools.first { $0["name"] as? String == name },
+                "\(name) is not advertised"
             )
+            let schema = try XCTUnwrap(tool["inputSchema"] as? [String: Any])
+            let properties = try XCTUnwrap(schema["properties"] as? [String: Any])
+
+            for (key, expected) in [
+                ("max_results", "8"), ("recency", "any"), ("provider", "auto"),
+                ("mode", "balanced"),
+            ] {
+                let property = try XCTUnwrap(properties[key] as? [String: Any], "\(name).\(key)")
+                let description = try XCTUnwrap(
+                    property["description"] as? String,
+                    "\(name).\(key)"
+                )
+                XCTAssertTrue(
+                    description.contains(expected),
+                    "\(name).\(key) description must document its default (\(expected)): "
+                        + description
+                )
+            }
         }
     }
 

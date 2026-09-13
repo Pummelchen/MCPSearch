@@ -11,11 +11,16 @@ struct ToolHandlers: Sendable {
     let pipeline: SearchPipelineFactory.Pipeline
     let log: Log
 
-    // MARK: - web_search
+    // MARK: - Shared discovery arguments
 
-    func webSearch(_ arguments: [String: Value]?) async -> CallTool.Result {
-        let args = ToolArguments(arguments)
-
+    /// The discovery arguments `web_search` and `web_answer` both take, parsed once.
+    ///
+    /// The two tools ran byte-identical copies of the parsing block, so nothing stopped one
+    /// from being fixed and the other left behind while the schema parity lint — which only
+    /// compares the *advertised* constraints — stayed green (ledger B58). `SearchRequest` is
+    /// built from this value so neither tool can assemble a different request from the same
+    /// arguments.
+    struct DiscoveryArguments: Sendable {
         let query: String
         let maxResults: Int
         let recency: Recency
@@ -25,56 +30,102 @@ struct ToolHandlers: Sendable {
         let provider: ProviderID?
         let mode: SearchMode
 
-        do {
-            query = try args.requiredString("query")
-            // Clamp rather than reject: a client asking for 50 results still gets a
-            // useful answer, capped at the documented maximum.
-            maxResults = min(max(1, try args.int("max_results") ?? pipeline.configuration.defaultMaxResults), 20)
-            recency = try args.enumValue("recency", default: .any)
-            includeDomains = try args.stringArray("include_domains", maxItems: 20)
-            excludeDomains = try args.stringArray("exclude_domains", maxItems: 20)
-            mode = try args.enumValue("mode", default: .balanced)
+        var request: SearchRequest {
+            SearchRequest(
+                query: query,
+                maxResults: maxResults,
+                recency: recency,
+                includeDomains: includeDomains,
+                excludeDomains: excludeDomains,
+                locale: locale,
+                mode: mode
+            )
+        }
+    }
 
+    /// A rejected discovery argument, carrying the message the tool returns.
+    struct DiscoveryError: Error, Sendable {
+        let message: String
+    }
+
+    /// Parse the shared discovery arguments, or return the message for the tool error.
+    func parseDiscoveryArguments(
+        _ arguments: [String: Value]?
+    ) -> Result<DiscoveryArguments, DiscoveryError> {
+        let args = ToolArguments(arguments)
+        do {
+            let query = try args.requiredString("query")
+            // Clamp rather than reject: a client asking for 50 results still gets a
+            // useful answer, capped at the documented maximum. The bound is 20 in both
+            // tools and in both schemas (ledger B58).
+            let maxResults = min(
+                max(1, try args.int("max_results") ?? pipeline.configuration.defaultMaxResults),
+                20
+            )
+            let recency = try args.enumValue("recency", default: Recency.any)
+            let includeDomains = try args.stringArray("include_domains", maxItems: 20)
+            let excludeDomains = try args.stringArray("exclude_domains", maxItems: 20)
+            let mode = try args.enumValue("mode", default: SearchMode.balanced)
+
+            let locale: LocaleHint?
             if let rawLocale = try args.string("locale") {
                 guard let parsed = LocaleHint(rawLocale) else {
-                    return Self.error("`locale` must look like en-US or de-DE")
+                    return .failure(DiscoveryError(message: "`locale` must look like en-US or de-DE"))
                 }
                 locale = parsed
             } else {
                 locale = nil
             }
 
+            let provider: ProviderID?
             let rawProvider = try args.string("provider") ?? "auto"
             if rawProvider.lowercased() == "auto" {
                 provider = nil
             } else if let parsed = ProviderID(rawValue: rawProvider.lowercased()) {
                 provider = parsed
             } else {
-                return Self.error(
-                    "`provider` must be one of: auto, "
-                        + ProviderID.allCases.map(\.rawValue).joined(separator: ", ")
+                return .failure(
+                    DiscoveryError(
+                        message: "`provider` must be one of: auto, "
+                            + ProviderID.allCases.map(\.rawValue).joined(separator: ", ")
+                    )
                 )
             }
+
+            return .success(
+                DiscoveryArguments(
+                    query: query,
+                    maxResults: maxResults,
+                    recency: recency,
+                    includeDomains: includeDomains,
+                    excludeDomains: excludeDomains,
+                    locale: locale,
+                    provider: provider,
+                    mode: mode
+                )
+            )
         } catch let error as ToolArguments.ArgumentError {
-            return Self.error(error.message)
+            return .failure(DiscoveryError(message: error.message))
         } catch {
-            return Self.error("Invalid arguments.")
+            return .failure(DiscoveryError(message: "Invalid arguments."))
+        }
+    }
+
+    // MARK: - web_search
+
+    func webSearch(_ arguments: [String: Value]?) async -> CallTool.Result {
+        let discovery: DiscoveryArguments
+        switch parseDiscoveryArguments(arguments) {
+        case .success(let parsed): discovery = parsed
+        case .failure(let error): return Self.error(error.message)
         }
 
-        let request = SearchRequest(
-            query: query,
-            maxResults: maxResults,
-            recency: recency,
-            includeDomains: includeDomains,
-            excludeDomains: excludeDomains,
-            locale: locale,
-            mode: mode
-        )
+        let request = discovery.request
 
         do {
             let response = try await pipeline.orchestrator.search(
                 request,
-                requestedProvider: provider
+                requestedProvider: discovery.provider
             )
             // The payload is built as an explicitly typed `Value` and routed through
             // `Self.success`; see that helper for why this cannot be spelled with the
@@ -90,7 +141,7 @@ struct ToolHandlers: Sendable {
             log.warning(
                 "web_search failed",
                 metadata: [
-                    "query": log.queryDescription(query),
+                    "query": log.queryDescription(discovery.query),
                     "category": error.category.rawValue,
                 ]
             )
@@ -166,68 +217,23 @@ struct ToolHandlers: Sendable {
     /// returned, marked as unanswerable, because a caller can act on documents even
     /// when no prose summary could be produced.
     func webAnswer(_ arguments: [String: Value]?) async -> CallTool.Result {
-        let args = ToolArguments(arguments)
-
-        let query: String
-        let maxResults: Int
-        let recency: Recency
-        let includeDomains: [String]
-        let excludeDomains: [String]
-        let locale: LocaleHint?
-        let provider: ProviderID?
-        let mode: SearchMode
-
-        do {
-            query = try args.requiredString("query")
-            maxResults = min(max(1, try args.int("max_results") ?? pipeline.configuration.defaultMaxResults), 20)
-            recency = try args.enumValue("recency", default: .any)
-            includeDomains = try args.stringArray("include_domains", maxItems: 20)
-            excludeDomains = try args.stringArray("exclude_domains", maxItems: 20)
-            mode = try args.enumValue("mode", default: .balanced)
-
-            if let rawLocale = try args.string("locale") {
-                guard let parsed = LocaleHint(rawLocale) else {
-                    return Self.error("`locale` must look like en-US or de-DE")
-                }
-                locale = parsed
-            } else {
-                locale = nil
-            }
-
-            let rawProvider = try args.string("provider") ?? "auto"
-            if rawProvider.lowercased() == "auto" {
-                provider = nil
-            } else if let parsed = ProviderID(rawValue: rawProvider.lowercased()) {
-                provider = parsed
-            } else {
-                return Self.error(
-                    "`provider` must be one of: auto, "
-                        + ProviderID.allCases.map(\.rawValue).joined(separator: ", ")
-                )
-            }
-        } catch let error as ToolArguments.ArgumentError {
-            return Self.error(error.message)
-        } catch {
-            return Self.error("Invalid arguments.")
+        // The same parser `web_search` uses, so the two tools cannot accept different
+        // arguments while advertising the same ones (ledger B58).
+        let discovery: DiscoveryArguments
+        switch parseDiscoveryArguments(arguments) {
+        case .success(let parsed): discovery = parsed
+        case .failure(let error): return Self.error(error.message)
         }
 
         let started = DispatchTime.now().uptimeNanoseconds
-        let request = SearchRequest(
-            query: query,
-            maxResults: maxResults,
-            recency: recency,
-            includeDomains: includeDomains,
-            excludeDomains: excludeDomains,
-            locale: locale,
-            mode: mode
-        )
+        let request = discovery.request
 
         // Search first. Failures here are ordinary search failures.
         let response: SearchResponse
         do {
             response = try await pipeline.orchestrator.search(
                 request,
-                requestedProvider: provider
+                requestedProvider: discovery.provider
             )
         } catch is CancellationError {
             return Self.error("Search cancelled.")
@@ -235,7 +241,7 @@ struct ToolHandlers: Sendable {
             log.warning(
                 "web_answer search phase failed",
                 metadata: [
-                    "query": log.queryDescription(query),
+                    "query": log.queryDescription(discovery.query),
                     "category": error.category.rawValue,
                 ]
             )
@@ -250,16 +256,16 @@ struct ToolHandlers: Sendable {
         if pipeline.synthesizer.isConfigured {
             do {
                 answer = try await pipeline.synthesizer.synthesize(
-                    query: query,
+                    query: discovery.query,
                     results: response.results,
-                    locale: locale?.identifier
+                    locale: discovery.locale?.identifier
                 )
             } catch is CancellationError {
                 return Self.error("Answer synthesis cancelled.")
             } catch let error as SearchError {
                 log.warning(
                     "web_answer synthesis failed",
-                    metadata: ["query": log.queryDescription(query)]
+                    metadata: ["query": log.queryDescription(discovery.query)]
                 )
                 // Keep the search results; only the prose is missing.
                 synthesisWarning = error.safeDescription

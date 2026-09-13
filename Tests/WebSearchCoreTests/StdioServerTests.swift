@@ -1212,6 +1212,57 @@ final class StdioServerTests: XCTestCase {
         }
     }
 
+    /// `web_search` and `web_answer` must parse their shared arguments with one parser.
+    ///
+    /// The two handlers ran byte-identical *copies* of the discovery block, so one could be
+    /// changed and the other left behind without the schema parity lint noticing: that lint
+    /// compares the advertised constraints, not the handlers behind them (ledger B58). This
+    /// sends the same rejected value to both tools and requires the same error text back.
+    func testTheTwoSearchToolsParseTheirSharedArgumentsIdentically() throws {
+        let server = try startInitializedServer(environment: [:])
+        defer { server.stop() }
+
+        let cases: [(id: Int, argument: String, value: Any, expected: String)] = [
+            (60, "provider", "bogus", "`provider` must be one of"),
+            (62, "locale", "-", "`locale` must look like"),
+            (64, "recency", "yesterday", "recency"),
+            (66, "mode", "quick", "mode"),
+            (68, "max_results", "many", "max_results"),
+            (70, "include_domains", "not-an-array", "include_domains"),
+            (72, "exclude_domains", (0..<21).map { "d\($0).example" }, "exclude_domains"),
+        ]
+        for testCase in cases {
+            var arguments: [String: Any] = ["query": "swift concurrency"]
+            arguments[testCase.argument] = testCase.value
+
+            let search = try callTool(
+                server,
+                id: testCase.id,
+                name: "web_search",
+                arguments: arguments
+            )
+            let answer = try callTool(
+                server,
+                id: testCase.id + 1,
+                name: "web_answer",
+                arguments: arguments
+            )
+
+            XCTAssertTrue(search.isError, "web_search must refuse \(testCase.value)")
+            XCTAssertTrue(answer.isError, "web_answer must refuse \(testCase.value)")
+            XCTAssertTrue(
+                search.text.contains(testCase.expected),
+                "the shared parser must name \(testCase.expected), got: \(search.text)"
+            )
+            XCTAssertEqual(
+                answer.text,
+                search.text,
+                "web_answer must give the same parse error as web_search for "
+                    + "\(testCase.argument)=\(testCase.value)"
+            )
+        }
+    }
+
     /// The documented clamps are part of the tool contract.
     ///
     /// `max_results` is capped at 20 and floored at 1, and `max_characters` is floored at 1 000.
