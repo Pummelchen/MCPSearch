@@ -114,7 +114,8 @@ public enum RankFusion {
             let base = providerWeights[provider] ?? 1.0
             // Reservations are decided per result as well as per response: an instance can
             // serve one page from Brave and another from Google, and only the resold one
-            // should lose the aggregator vote.
+            // should lose the aggregator vote. The response-level answer below is only the
+            // fallback for an adapter that cannot attribute engines per result.
             let responseResellsOwnedIndex = RankFusion.resellsIndexAlreadyOwned(
                 response: response,
                 ownedFamilies: ownedFamilies
@@ -149,6 +150,19 @@ public enum RankFusion {
                 )
                 let contributionFamily = resoldFamily ?? family
 
+                // A result that carries its own engine attribution is judged on that
+                // attribution alone; the response-level list is consulted only when the
+                // adapter could not say where this particular result came from. ORing the
+                // two asked "did *any* page of this response resell an owned index?", which
+                // discounted every sibling of one resold page and defeated the per-result
+                // refinement the comment above describes (ledger B109).
+                let duplicatedOwnedIndex: Bool
+                if result.upstreamEngines == nil {
+                    duplicatedOwnedIndex = responseResellsOwnedIndex
+                } else {
+                    duplicatedOwnedIndex = resoldFamily != nil
+                }
+
                 cluster.add(
                     result: result,
                     provider: provider,
@@ -158,8 +172,7 @@ public enum RankFusion {
                         for: contributionFamily,
                         provider: provider,
                         base: base,
-                        duplicatedOwnedIndex: responseResellsOwnedIndex
-                            || resoldFamily != nil,
+                        duplicatedOwnedIndex: duplicatedOwnedIndex,
                         configuration: configuration
                     )
                 )
@@ -274,6 +287,11 @@ public enum RankFusion {
     /// name against the `SourceFamily` they belong to, so an instance that internally
     /// queried Brave is recognised as duplicating a directly-configured Brave, while an
     /// instance querying engines nobody else covers is not penalised.
+    ///
+    /// This must agree with `resoldFamily`, including its `isIndependentIndex` guard: a
+    /// response that only resold a non-independent family (Google, DuckDuckGo) is not
+    /// duplicating an owned index, and whether that is noticed must not depend on which
+    /// level the adapter happened to report engines at (ledger B109).
     static func resellsIndexAlreadyOwned(
         response: ProviderSearchResponse,
         ownedFamilies: Set<SourceFamily>
@@ -281,6 +299,7 @@ public enum RankFusion {
         guard response.provider.isAggregator, !ownedFamilies.isEmpty else { return false }
         for engine in response.upstreamEngines {
             if let family = RankFusion.family(forUpstreamEngine: engine),
+                family.isIndependentIndex,
                 ownedFamilies.contains(family)
             {
                 return true

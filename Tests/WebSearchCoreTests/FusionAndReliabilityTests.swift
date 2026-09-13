@@ -390,6 +390,182 @@ final class RankFusionTests: XCTestCase {
         )
     }
 
+    /// The response-level engine list is a fallback, not an override.
+    ///
+    /// A response can name an owned index at the response level while its individual results
+    /// carry their own attribution, and only one of them resold that index. ORing the two levels
+    /// discounted every sibling of the one resold page, so two results with different provenance
+    /// got the same weight. The per-result attribution must win (ledger B109).
+    func testAggregatorDiscountIsPerResultEvenWhenTheResponseNamesAnOwnedIndex() {
+        func aggregatorResult(url: String, rank: Int, engines: [String]?) -> SearchResult {
+            SearchResult(
+                title: "T",
+                url: URL(string: url)!,
+                provider: .searxng,
+                providerRank: rank,
+                upstreamEngines: engines
+            )
+        }
+
+        let brave = ProviderSearchResponse(
+            provider: .brave,
+            results: [
+                SearchResult(
+                    title: "Resold",
+                    url: URL(string: "https://resold.example.com/")!,
+                    provider: .brave,
+                    providerRank: 1
+                )
+            ]
+        )
+        // The response-level list names Brave, so the whole-response answer is "yes"; the
+        // per-result attribution says the second page came from an engine nobody owns.
+        let aggregator = ProviderSearchResponse(
+            provider: .searxng,
+            results: [
+                aggregatorResult(url: "https://resold.example.com/", rank: 1, engines: ["brave"]),
+                aggregatorResult(
+                    url: "https://fresh.example.com/",
+                    rank: 2,
+                    engines: ["wikipedia"]
+                ),
+            ],
+            upstreamEngines: ["brave"]
+        )
+
+        let fused = RankFusion.fuse(
+            responses: [brave, aggregator],
+            limit: 10,
+            configuration: RankFusion.Configuration(maxResultsPerDomain: 0)
+        )
+        let scores = Dictionary(
+            uniqueKeysWithValues: fused.diagnostics.map {
+                ($0.canonicalURL.absoluteString, $0.score)
+            }
+        )
+
+        // Brave's own vote plus SearXNG's discounted one.
+        XCTAssertEqual(
+            scores["https://resold.example.com/"] ?? 0,
+            (1.0 / 61.0) + (0.7 / 61.0),
+            accuracy: 0.0001,
+            "the page whose own engines name an owned index must be discounted"
+        )
+        // The sibling keeps the full aggregator vote: nothing in *its* attribution is owned.
+        XCTAssertEqual(
+            scores["https://fresh.example.com/"] ?? 0,
+            1.0 / 62.0,
+            accuracy: 0.0001,
+            "a result whose own engines name nobody else's index must keep the full vote"
+        )
+    }
+
+    /// The response-level list still decides when results carry no attribution at all.
+    ///
+    /// Adapters that report engines only for the whole response have no finer signal to offer,
+    /// so the fallback must remain; otherwise their aggregator vote would never be discounted
+    /// (ledger B109).
+    func testAggregatorDiscountFallsBackToResponseLevelWithoutPerResultEngines() {
+        let brave = ProviderSearchResponse(
+            provider: .brave,
+            results: [
+                SearchResult(
+                    title: "Resold",
+                    url: URL(string: "https://resold.example.com/")!,
+                    provider: .brave,
+                    providerRank: 1
+                )
+            ]
+        )
+        let aggregator = ProviderSearchResponse(
+            provider: .searxng,
+            results: [
+                SearchResult(
+                    title: "Resold",
+                    url: URL(string: "https://resold.example.com/")!,
+                    provider: .searxng,
+                    providerRank: 1
+                ),
+                SearchResult(
+                    title: "Fresh",
+                    url: URL(string: "https://fresh.example.com/")!,
+                    provider: .searxng,
+                    providerRank: 2
+                ),
+            ],
+            upstreamEngines: ["brave"]
+        )
+
+        let fused = RankFusion.fuse(
+            responses: [brave, aggregator],
+            limit: 10,
+            configuration: RankFusion.Configuration(maxResultsPerDomain: 0)
+        )
+        let scores = Dictionary(
+            uniqueKeysWithValues: fused.diagnostics.map {
+                ($0.canonicalURL.absoluteString, $0.score)
+            }
+        )
+
+        XCTAssertEqual(
+            scores["https://resold.example.com/"] ?? 0,
+            (1.0 / 61.0) + (0.7 / 61.0),
+            accuracy: 0.0001,
+            "without per-result engines the response-level list discounts the resold page"
+        )
+        XCTAssertEqual(
+            scores["https://fresh.example.com/"] ?? 0,
+            0.7 / 62.0,
+            accuracy: 0.0001,
+            "without per-result engines the response-level list applies to every result"
+        )
+    }
+
+    /// Reselling a family that is not an independent index is not duplicating an owned index.
+    ///
+    /// Startpage and DuckDuckGo are themselves resellers, so a SearXNG response that only used
+    /// Google has not duplicated an index the way a second Brave would. The per-result path has
+    /// always required `isIndependentIndex`; the response-level fallback must agree, or the
+    /// answer depends on which level the adapter happened to report engines at (ledger B109).
+    func testResponseLevelDiscountIgnoresNonIndependentFamilies() {
+        let startpage = ProviderSearchResponse(
+            provider: .startpage,
+            results: [
+                SearchResult(
+                    title: "Google page",
+                    url: URL(string: "https://g.example.com/")!,
+                    provider: .startpage,
+                    providerRank: 1
+                )
+            ]
+        )
+        let aggregator = ProviderSearchResponse(
+            provider: .searxng,
+            results: [
+                SearchResult(
+                    title: "Fresh",
+                    url: URL(string: "https://fresh.example.com/")!,
+                    provider: .searxng,
+                    providerRank: 1
+                )
+            ],
+            upstreamEngines: ["google"]
+        )
+
+        let fused = RankFusion.fuse(
+            responses: [startpage, aggregator],
+            limit: 10,
+            configuration: RankFusion.Configuration(maxResultsPerDomain: 0)
+        )
+        XCTAssertEqual(
+            fused.diagnostics.first { $0.canonicalURL.absoluteString == "https://fresh.example.com/" }?
+                .score ?? 0,
+            1.0 / 61.0,
+            accuracy: 0.0001,
+            "reselling a non-independent family must not discount the aggregator"
+        )
+    }
+
     /// Duplication is detected from the upstream engines an aggregator reports.
     func testUpstreamEngineMappingDetectsDuplication() {
         XCTAssertEqual(RankFusion.family(forUpstreamEngine: "brave"), .brave)
@@ -418,6 +594,20 @@ final class RankFusionTests: XCTestCase {
         let solo = response(.searxng, [("S", "https://s.example.com/1")], upstream: ["wikipedia"])
         XCTAssertFalse(
             RankFusion.resellsIndexAlreadyOwned(response: solo, ownedFamilies: owned)
+        )
+
+        // A response-level hit on a family that is not an independent index is not a
+        // duplicated owned index, matching the per-result test (ledger B109).
+        let nonIndependent = response(
+            .searxng,
+            [("S", "https://s.example.com/1")],
+            upstream: ["google"]
+        )
+        XCTAssertFalse(
+            RankFusion.resellsIndexAlreadyOwned(
+                response: nonIndependent,
+                ownedFamilies: [.google]
+            )
         )
 
         // A non-aggregator is never treated as duplicating.
