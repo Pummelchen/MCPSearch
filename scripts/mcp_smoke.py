@@ -316,35 +316,38 @@ def http_exchange(
                 break
             raw += chunk
 
-    text = raw.decode("utf-8", "replace")
-    head, _, rest = text.partition("\r\n\r\n")
-    status_line = head.split("\r\n")[0]
+    head, _, raw_body = raw.partition(b"\r\n\r\n")
+    head_text = head.decode("utf-8", "replace")
+    status_line = head_text.split("\r\n")[0]
     status = int(status_line.split()[1]) if len(status_line.split()) > 1 else 0
 
     headers: dict[str, str] = {}
-    for line in head.split("\r\n")[1:]:
+    for line in head_text.split("\r\n")[1:]:
         if ":" in line:
             name, value = line.split(":", 1)
             headers[name.strip().lower()] = value.strip()
 
-    # De-chunk if the body is chunked.
+    # De-chunk the raw bytes, before decoding: a chunk header carries a *byte* count, so
+    # framing a decoded ``str`` lets any multi-byte character in the body shift every later
+    # boundary and truncate or corrupt the recovered stream (ledger B81).
     if headers.get("transfer-encoding", "").lower() == "chunked":
-        pieces: list[str] = []
-        remaining = rest
+        pieces: list[bytes] = []
+        remaining = raw_body
         while True:
-            index = remaining.find("\r\n")
+            index = remaining.find(b"\r\n")
             if index < 0:
                 break
             try:
-                size = int(remaining[:index].split(";")[0], 16)
+                size = int(remaining[:index].split(b";")[0], 16)
             except ValueError:
                 break
             if size == 0:
                 break
             pieces.append(remaining[index + 2 : index + 2 + size])
             remaining = remaining[index + 2 + size + 2 :]
-        rest = "".join(pieces)
+        raw_body = b"".join(pieces)
 
+    rest = raw_body.decode("utf-8", "replace")
     messages: list[Any] = [
         json.loads(m) for m in re.findall(r"^data: (\{.*\})$", rest, re.MULTILINE)
     ]

@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 127 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 83 |
-| START (reproduced, expected behaviour written) | 44 |
+| DONE | 84 |
+| START (reproduced, expected behaviour written) | 43 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 82** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 82 S3 tasks 38 are DONE and 44 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 82 S3 tasks 39 are DONE and 43 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -134,7 +134,7 @@ waived in writing.
 | B78 | S3 | `MCPSMonitor` view state; `WebSearchCore/Monitor/Renderer.swift` | `Sources/WebSearchCore/Monitor/MonitorModel.swift:127` and `:134` | `ProviderStatus.State.probing` and `.unavailable` can never be produced, so their renderer branches are unreachable | dead | START | this Mac (arm64) | Phase B L3-34 |
 | B79 | S3 | `SwiftWebSearchMCP` (HTTP host body cap) | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:167` | A request-head `Content-Length` reserves up to 1 MiB per connection before any body arrives | unsafe | START | this Mac (arm64) | Phase B L3-36 |
 | B80 | S3 | `scripts/soak.py` | `scripts/soak.py:170` (used at `:183`) | `soak.py` conflates EOF with a malformed stdout line and discards the line | bug | DONE | this Mac (arm64) | Phase B L3-38 |
-| B81 | S3 | `scripts/mcp_smoke.py` | `scripts/mcp_smoke.py:315` (decode at `:296`) | `mcp_smoke.py` de-chunks an SSE body after decoding it to `str` | bug | START | this Mac (arm64) | Phase B L3-39 |
+| B81 | S3 | `scripts/mcp_smoke.py` | `scripts/mcp_smoke.py:315` (decode at `:296`) | `mcp_smoke.py` de-chunks an SSE body after decoding it to `str` | bug | DONE | this Mac (arm64) | Phase B L3-39 |
 | B82 | S3 | `scripts/soak.py` | `scripts/soak.py:327` (argument at `:301`) | A negative `--queries` silently truncates the query list from the end | bug | START | this Mac (arm64) | Phase B L3-40 |
 | B83 | S3 | `scripts/mcp_smoke.py` | `scripts/mcp_smoke.py:345-353` (port at `:350-357`, stderr only read at `:458`) | HTTP smoke can wait 20 s on a dead server and never checks that it is alive | bug | START | this Mac (arm64) | Phase B L3-41 |
 | B84 | S3 | `WebSearchCore` / `Fetch` (`URLPolicy`) | `Sources/WebSearchCore/Fetch/URLPolicy.swift:289` | `IPAddress.v6` is a public case that accepts any byte count, and its accessors index 16 bytes unconditionally | unsafe | START | this Mac (arm64) | Phase B L4-9 |
@@ -213,6 +213,31 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B81 — `mcp_smoke.py` de-chunked an SSE body after decoding it to `str`
+
+**Severity S3** (recorded) · **category** bug · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** `http_exchange` decoded the whole response to `str` and *then* de-chunked it.
+A chunk header carries a **byte** count, so framing the decoded text applies that count to
+character offsets: any multi-byte character in the body shifts every later boundary, truncating or
+corrupting the recovered stream. The harness would then report a protocol failure that the server
+did not cause - the worst kind of false negative in the smoke test that exists to prove the
+transport works.
+
+**The fix.** The head/body split, the status line and the header loop read a decoded head, while
+the de-chunk loop is framed on the raw bytes; the body is decoded once, at the end. `raw_body` is
+used rather than `body` because the latter is the existing request-parameter name - pyright strict
+caught the shadowing on the first attempt.
+
+**Verification.** A check drives the real `http_exchange` with `socket.create_connection` stubbed
+to return one chunked SSE response whose `note` is `é日本語` with the chunk boundary inside a
+multi-byte character. Against the reverted framing it fails with `AssertionError: corrupted: []`
+(exit 1); with the fix it recovers the exact string (exit 0). Two payload shapes are red - one
+losing the whole message, one corrupting it - so the check is not tuned to a single symptom. ruff,
+`ruff format --check` and pyright strict are clean. The real `--http` smoke needs the Swift binary
+and was not run; the framing helper itself is exercised end to end. Artifact:
+`AUDIT/evidence/B81-sse-dechunk.txt`.
 
 ## B108 — the pinned actions targeted the deprecated Node 20 runtime
 
