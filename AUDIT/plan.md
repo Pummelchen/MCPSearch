@@ -53,7 +53,7 @@ Notes that matter for later comparisons:
 
 ---
 
-## Phase B — audit passes (in progress)
+## Phase B — audit passes ✅ complete (121 raw findings, all enumerated)
 
 Passes to run, each producing candidate findings that are verified before they enter the
 ledger. Swift/Apple work on this Mac or the fleet; Linux/x86 work (none identified yet)
@@ -61,19 +61,21 @@ would go to the VPS only after asking.
 
 | Pass | Scope | Status |
 | --- | --- | --- |
-| L0 repository | reproducibility, pins, lockfile, CI config, `.gitignore`, committed artifacts, history leaks, licensing | in progress |
-| L1 architecture | boundaries, layering, duplication, cross-unit contracts, error strategy, config management | in progress |
-| L2 module | public API, invariants, resource lifecycle, concurrency, cancellation, timeouts, retries, backpressure, idempotency | in progress |
-| L3 line | logic, off-by-one, wrong branch, unreachable code, truncation/overflow, timezone/encoding, unchecked returns, dead params, magic numbers, copy-paste divergence | in progress |
-| L4 security | injection, deserialization, SSRF, TOCTOU, temp files, file modes, weak crypto/randomness, authn/authz, secrets, unvalidated external/LLM output, prompt injection, memory safety | in progress (SSRF history known) |
-| L5 performance | hot paths, repeated I/O, unbounded memory, pagination/streaming, blocking on async paths, allocation, caching, complexity | in progress |
-| L6 tests | critical-path gaps, assertions that assert nothing, flakiness, implementation coupling, failure/boundary paths, integration | in progress |
-| L7 ops | logging, structured errors, health checks, shutdown, config validation, runbook accuracy, rollback | in progress |
-| §5 placeholders | TODO/FIXME/STUB/dummy markers, stub returns, always-true validators, canned data on production paths, sleeps, dead feature flags, localhost defaults | in progress |
+| L0 repository | reproducibility, pins, lockfile, CI config, `.gitignore`, committed artifacts, history leaks, licensing | ✅ 6 findings |
+| L1 architecture | boundaries, layering, duplication, cross-unit contracts, error strategy, config management | ✅ 2 findings |
+| L2 module | public API, invariants, resource lifecycle, concurrency, cancellation, timeouts, retries, backpressure, idempotency | ✅ 12 findings |
+| L3 line | logic, off-by-one, wrong branch, unreachable code, truncation/overflow, timezone/encoding, unchecked returns, dead params, magic numbers, copy-paste divergence | ✅ 41 findings |
+| L4 security | injection, deserialization, SSRF, TOCTOU, temp files, file modes, weak crypto/randomness, authn/authz, secrets, unvalidated external/LLM output, prompt injection, memory safety | ✅ 14 findings (SSRF history known) |
+| L5 performance | hot paths, repeated I/O, unbounded memory, pagination/streaming, blocking on async paths, allocation, caching, complexity | ✅ 7 findings |
+| L6 tests | critical-path gaps, assertions that assert nothing, flakiness, implementation coupling, failure/boundary paths, integration | ✅ 21 findings |
+| L7 ops | logging, structured errors, health checks, shutdown, config validation, runbook accuracy, rollback | ✅ 14 findings |
+| §5 placeholders | TODO/FIXME/STUB/dummy markers, stub returns, always-true validators, canned data on production paths, sleeps, dead feature flags, localhost defaults | ✅ 3 concept-level; 0 literal markers |
 
-**Phase B is not finished.** Findings discovered so far are enumerated in `ledger.md`; the
-remainder of the passes are being executed and will be appended before any fix begins, as
-the brief requires ("enumerate ALL findings first, commit the plan before fixing anything").
+**Phase B is complete.** Five passes (L0+L7, L1+L2, L3+placeholders, L4+L5, L6) produced 121
+findings, one committed record per finding in `findings/`. Phase D folded them into the ledger
+as `B01`-`B101` (17 duplicate reports merged); the enumeration, dedup notes and fix order are in
+`ledger.md`. Fixing then began in severity order, as the brief requires — A01 was already fixed
+in `199a962`.
 
 ### Known findings already carried in from the pre-audit session
 
@@ -87,14 +89,14 @@ are in the baseline suite. They are recorded in `ledger.md` as context, not as o
 
 ---
 
-## Phase C — fix → test → audit (not started)
+## Phase C — fix → test → audit (in progress)
 
 Work order: all **S0**, then S1, then S2, then S3. One task = one commit on
 `audit/2026-09-13`, message `audit(<id>): <title>`. Each task needs: a test that fails
 before and passes after, the full suite green on the correct host class, no new warnings
 versus baseline, then a cold re-read plus re-run of linters/scanners before DONE.
 
-## Phase D — new findings (continuous)
+## Phase D — new findings (continuous) ✅ folded once; repeats on new findings
 
 Any finding discovered at any time gets a new ledger id and the same treatment.
 
