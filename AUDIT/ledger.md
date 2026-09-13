@@ -18,8 +18,8 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 120 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 61 |
-| START (reproduced, expected behaviour written) | 59 |
+| DONE | 62 |
+| START (reproduced, expected behaviour written) | 58 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
@@ -88,7 +88,7 @@ waived in writing.
 | B37 | S3 | `AUDIT/baseline/**` | `AUDIT/baseline/swiftlint.json:4` (first of 491 such lines), `AUDIT/baseline/swift-test-asan.log:58`, `AUDIT/baseline/swift-test.log:4`, `AUDIT/baseli | Committed baseline evidence embeds the auditor's absolute home path (491 lines) and 2.5 MB of generated output | unsafe | START | this Mac (arm64) | Phase B L0-2 |
 | B38 | S3 | `.github/workflows/ci.yml` | `.github/workflows/ci.yml:1-31` | The CI workflow declares no `permissions:`, so the job token keeps the default scope | unsafe | DONE | this Mac (arm64) | Phase B L0-3 |
 | B39 | S3 | `.github/workflows/ci.yml` | `.github/workflows/ci.yml:40-70` | CI does not pin the Swift toolchain, so "Swift 6.3" is whatever the runner image has | deps | START | this Mac (arm64) | Phase B L0-4 |
-| B40 | S3 | `Package.swift`, `Package.resolved`, CI | `Package.swift:31-34`, `.github/workflows/ci.yml:89-96` | Nothing detects that `Package.resolved` has drifted from the manifests | deps | START | this Mac (arm64) | Phase B L0-5 |
+| B40 | S3 | `Package.swift`, `Package.resolved`, CI | `Package.swift:31-34`, `.github/workflows/ci.yml:89-96` | Nothing detects that `Package.resolved` has drifted from the manifests | deps | DONE | this Mac (arm64) | Phase B L0-5 |
 | B41 | S3 | `Package.swift`, repository root | `Package.swift:31-34` | Apache-2.0 `NOTICE` files of two dependencies are not carried with any distributed binary | deps | START | this Mac (arm64) | Phase B L0-6 |
 | B42 | S3 | `SwiftWebSearchMCP` (`HTTPMCPHost`) | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:448` | The hand-rolled `Origin` check accepts any host starting with `127.`, which is a bypass of the check it pretends to be | logic | DONE | this Mac (arm64) | Phase B L4-7 |
 | B43 | S3 | `AUDIT/plan.md` vs `AUDIT/baseline/` | `AUDIT/plan.md:38` | The baseline evidence table cites `gitleaks.json`, which is not in the repository | docs | DONE | this Mac (arm64) | Phase B L7-5 |

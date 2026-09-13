@@ -96,6 +96,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-swiftpm-
 
+      # `Package.resolved` must match the manifests. A dependency added or re-ranged without
+      # updating the lockfile means the build resolves a graph nobody reviewed, and the rewrite
+      # happens silently; resolving first and diffing the lockfile turns that into a failure
+      # (ledger B40). The cache above keys off this file, so drift also invalidates the build
+      # products for everyone else.
+      - name: Lockfile matches the manifests
+        run: |
+          set -euo pipefail
+          swift package resolve
+          if ! git diff --exit-code -- Package.resolved; then
+            echo "::error::Package.resolved is out of date; run 'swift package resolve' and commit it"
+            exit 1
+          fi
+
       # Deliberately no provider credentials are configured. The suite is hermetic and
       # must pass with no network access to any search vendor; if a test ever starts
       # depending on a real provider this job will fail and surface it.
