@@ -254,15 +254,15 @@
       "severity": "S0",
       "project": "Sources",
       "module": "`Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift` (fetch redirect branch), `Tests/WebSearchCoreTests/FetchBehaviorTests.swift`",
-      "file_line": "`Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:82`",
+      "file_line": "Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:81-101, Tests/WebSearchCoreTests/FetchRedirectTests.swift",
       "title": "The manual redirect loop is the SSRF boundary for redirects and has no test at all",
       "category": "test",
-      "status": "START",
-      "host_used": "",
+      "status": "DONE",
+      "host_used": "MacBook-AB.local (arm64, macOS 26.6.2, Swift 6.3.3)",
       "discovered_by": "Phase B pass L6-tests (L6-1)",
       "evidence_before": "The fetcher deliberately disables `URLSession` redirect-following and re-validates every hop:\n\n  ```swift\n  // DirectHTTPFetcher.swift:82-102\n  if (300..<400).contains(response.statusCode),\n     let location = response.header(\"Location\")\n  {\n      guard redirectsFollowed < maxRedirects else {\n          throw SearchError.extractionFailed(request.url)\n      }\n      guard let nextURL = URL(string: location, relativeTo: currentURL)?.absoluteURL\n      else { throw SearchError.extractionFailed(request.url) }\n      let hopDecision = await policy.validate(nextURL)\n      guard hopDecision.allowed else { throw SearchError.blockedURL(nextURL) }\n      redirectNotes.append(\"Followed redirect to \\(nextURL.host() ?? \"unknown host\").\")\n      currentURL = nextURL\n      redirectsFollowed += 1\n      continue\n  }\n  ```\n\n  No test in `Tests/**` ever returns a `3xx`. `grep -rni \"redirect\\|Location\" Tests/` matches only the\n  DDG `unwrapRedirect` helper tests and `MonitorTests`' *rendering* test names. `FetchBehaviorTests`\n  exercises 403, 404 and 200 only (`FetchBehaviorTests.swift:34-93`); the only fetch-level denial test\n  is for the **initial** URL (`FetchFallbackTests.swift:197-220`). `LoopbackServer.Response` already\n  supports `status` and `headers` (`HTTPClientTests.swift:12-18`), so the missing coverage is not a\n  harness limitation.",
-      "fix_summary": "",
-      "evidence_after": "",
+      "fix_summary": "Added Tests/WebSearchCoreTests/FetchRedirectTests.swift with 7 tests over a real loopback socket: a hop is followed and reported; a relative Location resolves against the current URL; maxRedirects is enforced (exactly maxRedirects+1 requests, then extractionFailed); a hop carrying credentials is refused by URLPolicy and never requested; a file:// redirect returns no content; a 3xx without Location is a fetch failure; and URLPolicy itself refuses a link-local metadata address.",
+      "evidence_after": "swift test --filter FetchRedirectTests => 7 tests, 0 failures. Mutation evidence: deleting the redirect handling makes testARedirectIsFollowedAndReported and testARelativeLocationIsResolvedAgainstTheCurrentURL fail with 'upstream returned HTTP 302/301'; validating only the first hop makes testARedirectToACredentialedURLIsRefusedByTheHopPolicy fail while the other six stay green. Both mutations reverted, DirectHTTPFetcher.swift byte-identical to HEAD. Full suite 397 tests / 6 skipped / 0 failures (baseline 371); debug 0 warnings. Artifact: AUDIT/evidence/B02-redirect-tests.txt",
       "commit_sha": "",
       "notes": "raw record: AUDIT/findings/L6-tests.md L6-1 \u00b7 expected-correct: Add `DirectHTTPFetcherTests` over `LoopbackServer` that assert: (a) a 302 whose\n  `Location` is a blocked destination (`http://169.254.169.254/`, `allowPrivateNetwork: false`)\n  throws `.blockedURL`, and the blocked host is never contacted; (b) with `allowPrivateNetwork: true`,\n  a 302 to a second loopback server is followed \u2014 `FetchResult.finalURL` is the target and\n  `warnings` contains `Followed redirect to \u2026`; (c) a chain of `maxRedirects + 1` redirects throws\n  `.extractionFailed`; (d) a relative `Location: /next` resolves against the current URL; (e) a 3xx\n  with no `Location` is treated as a non-success status (currently `fetchFailed`/`extractionFailed`). \u00b7 confidence: certain",
       "blocked_reason": "",
@@ -2567,6 +2567,24 @@
         "L6-21"
       ],
       "raw_file": "L6-tests.md"
+    },
+    {
+      "id": "B102",
+      "severity": "S3",
+      "project": "WebSearchCore",
+      "module": "Fetch (redirect handling)",
+      "file_line": "Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:245-256 (NoRedirectDelegate), Sources/WebSearchCore/Support/HTTPClient.swift:386 (message)",
+      "title": "A cross-scheme redirect is refused by the transport, not by our policy, and surfaces as an opaque transport error",
+      "category": "bug",
+      "status": "START",
+      "host_used": "",
+      "discovered_by": "Phase D, found while fixing B02 (probe with a readable /etc/hosts)",
+      "evidence_before": "Probe: a loopback server answers 302 with Location: file:///etc/hosts. FileManager.isReadableFile(/etc/hosts) == true. The fetcher throws fetchFailed(entryURL, reason: 'the transport reported error -1102') \u2014 no file content is returned, and no .blockedURL is produced. URLSession/CFNetwork does not consult NoRedirectDelegate (willPerformHTTPRedirection) for a cross-scheme redirect, so it is refused (or attempted) below the manual loop and the manual loop's per-hop URLPolicy check never sees the hop. Same outcome for a readable temp file.",
+      "fix_summary": "",
+      "evidence_after": "",
+      "commit_sha": "",
+      "notes": "Impact: the observable security outcome is correct (verified: no local content is returned even for a readable file), but the caller gets an opaque transport error instead of a policy denial, and the safety property rests on undocumented CFNetwork behaviour rather than on our policy. Candidate fix: curate the file-system transport codes in DirectHTTPFetcher's error mapping (-1100/-1101/-1102 => 'the server redirected to a local file, which is not fetched'), and state in URLPolicy's documentation that cross-scheme redirects are refused beneath us; keep the regression test that pins the observable outcome. raw record: found during B02 (not in a Phase B pass)",
+      "blocked_reason": ""
     }
   ]
 }

@@ -16,9 +16,9 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 
 | Metric | Count |
 | --- | --- |
-| Tasks enumerated | 113 (A01-A12 from Phase A/B, B01-B101 folded in Phase D) |
+| Tasks enumerated | 114 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102 found in Phase D) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 3 |
+| DONE | 4 |
 | START (reproduced, expected behaviour written) | 110 |
 | BLOCKED | 0 |
 
@@ -48,7 +48,7 @@ waived in writing.
 | A11 | S2 | scripts | `scripts/*.py` (4 files) | Python is 3.14 with no strict type-checking config and no annotations | style | START | this Mac | audit baseline (pyright) |
 | A12 | S2 | cross-unit contracts | `Support/AppConfiguration.swift`, `scripts/*`, `deploy/*`, CI | Env-var contracts between units have no automated consistency check | logic | START | this Mac | scope discovery |
 | B01 | **S0** | `deploy/docker-compose.yml` (with `deploy/searxng/settings.yml`, `deploy/.env.example`) | `deploy/docker-compose.yml:33`, `deploy/searxng/settings.yml:13-22` | The documented compose secret-key override is the wrong variable, so the tracked placeholder is what signs the instance | placeholder | DONE | this Mac (arm64) | Phase B PLACEHOLDER-3 + L7-10 |
-| B02 | S0 | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift` (fetch redirect branch), `Tests/WebSearchCoreTests/Fetch | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:82` | The manual redirect loop is the SSRF boundary for redirects and has no test at all | test | START | this Mac (arm64) | Phase B L6-1 |
+| B02 | **S0** | `DirectHTTPFetcher` (redirect branch), `Tests/WebSearchCoreTests/FetchRedirectTests.swift` | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:81-101` | The manual redirect loop is the SSRF boundary for redirects and has no test at all | test | DONE | this Mac (arm64) | Phase B L6-1 |
 | B03 | S1 | `SwiftWebSearchMCP` (HTTP transport wiring) | `Sources/SwiftWebSearchMCP/main.swift:118` (one transport per process), `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:290` (non-POST refused before the | The HTTP transport serves exactly one MCP session per process, and that session can never be released | bug | START | this Mac (arm64) | Phase B L3-25 |
 | B04 | S1 | `Sources/WebSearchCore/Search/SearchOrchestrator.swift`, `Sources/SwiftWebSearchMCP/ToolHandlers.swift` | `Sources/WebSearchCore/Search/SearchOrchestrator.swift:91` | Caller cancellation is never tested, and mid-flight cancellation is observably swallowed | test | START | this Mac (arm64) | Phase B L6-3 |
 | B05 | S1 | `Tests/WebSearchCoreTests/AUDITDiagnosticsTests.swift` | `Tests/WebSearchCoreTests/AUDITDiagnosticsTests.swift:6` (also `:11`, `:83`, `:111`) | TEMPORARY audit tooling is committed to the go-live test target and can abort the whole suite | placeholder | DONE | MacBook-AB.local (arm64, macOS 26.6.2, Swift 6.3.3) | Phase B PLACEHOLDER-1 |
@@ -219,6 +219,47 @@ separately; the file mode of that generated settings file is `L7-12`/`L4-11`.
 
 ---
 
+## B02 — the redirect loop is the SSRF boundary for redirects and had no test at all
+
+**Severity S0** (as recorded by the L6 pass) · **category** test · **status** DONE
+
+**What was wrong.** No test in the suite ever returned a 3xx. `DirectHTTPFetcher` disables
+`URLSession`'s own redirect following and walks redirects itself, re-validating every hop through
+`URLPolicy` — that loop is the entire SSRF boundary for redirects, and it could have been deleted,
+or had its hop validation removed, with every other test still green.
+
+**Fix.** `Tests/WebSearchCoreTests/FetchRedirectTests.swift` (7 tests): a hop is followed and
+reported (`finalURL`, warning, one request each), a relative `Location` resolves against the
+current URL (`requestPaths == ["/", "/final"]`), `maxRedirects` is enforced (exactly
+`maxRedirects + 1` requests, then `extractionFailed`), a hop carrying credentials is refused by
+the policy and never requested, a `file://` redirect returns no content, a 3xx without `Location`
+is a fetch failure rather than a page, and the policy itself refuses a link-local metadata
+address.
+
+**Mutation evidence** ([`evidence/B02-redirect-tests.txt`](evidence/B02-redirect-tests.txt)) — the
+finding's claim, tested rather than asserted:
+
+| Mutation | Result |
+| --- | --- |
+| redirect handling deleted from `fetch` | `testARedirectIsFollowedAndReported` and `testARelativeLocationIsResolvedAgainstTheCurrentURL` fail with `upstream returned HTTP 302/301` |
+| only the first hop validated, in-loop hop check removed | `testARedirectToACredentialedURLIsRefusedByTheHopPolicy` fails (the credentialed hop is requested); the other six stay green, so that test is the one pinning per-hop re-validation |
+
+Both mutations were reverted and `DirectHTTPFetcher.swift` was verified byte-identical to HEAD
+(`git show HEAD:<path> | diff - <path>`).
+
+**Evidence after.** `swift test --filter FetchRedirectTests` → 7 tests, 0 failures; full suite
+**397 tests, 6 skipped, 0 failures** (baseline 371); debug build 0 warnings.
+
+**A boundary found while testing, recorded as `B102`, not fixed here.** A redirect to a different
+scheme never reaches the manual loop: `URLSession`/CFNetwork refuses it internally without
+consulting `NoRedirectDelegate`, so the caller sees "the transport reported error -1102" instead
+of a policy denial. The probe used a *readable* `/etc/hosts` and confirmed no part of it is
+returned, so this is a diagnosis and robustness gap (the guarantee rests on transport behaviour
+rather than on our policy), not a leak. It is S3 and tracked separately so this task's scope stays
+the redirect loop.
+
+---
+
 ---
 
 ## A01 — HTML parse on a cooperative task stack exhausts the stack and kills the process
@@ -276,6 +317,7 @@ audit tooling):
 | --- | --- | --- | --- |
 | A | `ScraperSupport.parse` on the same 23-byte junk body | synchronous test (main thread) | **ok** |
 | B | `DuckDuckGoProvider.search` with HTTP 200 + junk body | `async` (cooperative task) | **CRASH** |
+| B102 | S3 | `WebSearchCore` (fetch) | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:245-256` (delegate), `Sources/WebSearchCore/Support/HTTPClient.swift:386` (message) | A cross-scheme redirect is refused by the transport, not by our policy, and surfaces as an opaque transport error | bug | START | this Mac (arm64) | Phase D (found while fixing B02) |
 | C | `DuckDuckGoProvider.search` with HTTP 200 + well-formed empty HTML | `async` (cooperative task) | **ok** |
 
 Also: `HTMLExtractorTests` (SwiftSoup-heavy) ok, `testDuckDuckGoScraperEndToEnd` (real DDG
