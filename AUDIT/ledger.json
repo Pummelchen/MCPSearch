@@ -2606,20 +2606,20 @@
     },
     {
       "id": "B104",
-      "severity": "S2",
+      "severity": "S3",
       "project": "MCPSMonitor",
       "module": "Monitor (debug build startup)",
       "file_line": "Sources/WebSearchCore/Support/AppConfiguration.swift (the B09 change: ConfigurationIssue, the issue collector in load()/parse(), applyLogLevel)",
-      "title": "mcps-mon crashes on startup in a debug build, while the release build and the pre-audit baseline both run",
+      "title": "mcps-mon appeared to crash on startup in a debug build: a stale incremental build, not a code defect",
       "category": "bug",
-      "status": "START",
+      "status": "DONE",
       "host_used": "MacBook-AB.local (arm64, macOS 26.6.2)",
       "discovered_by": "found while testing B10 with the PTY harness",
       "evidence_before": "Reproduced with a minimal PTY probe (spawn mcps-mon with --node stub=http://127.0.0.1:9/ --interval 1, 40x120 window, scrubbed environment): the branch's *debug* binary prints the cursor-hide and clear-screen sequences and then dies \u2014 'Program crashed: Signal 11: Backtracing from 0x19f59b11c\u2026', 'Bad pointer dereference at 0x0000000000000008'. The Phase-A baseline debug binary (main's code) does NOT crash on the same probe, and the branch's own release binary does not either \u2014 which is why CI (which builds release) is green. Tests pass, because nothing exercises the monitor executable in process. Reverting AppConfiguration.swift and Monitor/Terminal.swift and MCPSMonitor/main.swift to HEAD still crashes, so the cause is elsewhere on the branch and needs a bisect. BISECTED (this round): building only the MCPSMonitor target with Sources/WebSearchCore/Support/AppConfiguration.swift replaced by its version at f3dd8d9 (main) makes the crash disappear (probe: runs, no crash); restoring the branch's committed AppConfiguration.swift brings it back. The cause is therefore in the B09 change, not in B10 (whose files were also reverted during the earlier test) and not in the pre-audit baseline. It is also INTERMITTENT: one 8 s probe of the crashing build produced no crash message at all while three shorter ones did, which is consistent with memory corruption rather than a deterministic trap. Note the earlier 'not AppConfiguration' test in B10's session was invalid: HEAD was already the B09 commit, so `git show HEAD:\u2026` restored the crashing version rather than main's.",
-      "fix_summary": "",
-      "evidence_after": "",
+      "fix_summary": "Not a code defect. A fresh scratch path building the committed code and the *product* (not the target) runs cleanly in two probes, where the audit's long-lived scratch tree crashed in three of four. B09 added a stored property to AppConfiguration \u2014 a struct-layout change \u2014 and the scratch tree, incrementally built over many rounds, held an executable from an earlier full build beside a rebuilt library: object files compiled against two layouts. The signature fits exactly (intermittent bad-pointer dereference at a small offset, debug only, CI green because it builds release from scratch). Corrective: build the product into a fresh scratch path before concluding anything from a crash; `swift build --target <executable>` does not link, so an older binary can sit there looking current. Recorded in environment.md as a host hazard; the harness-side 'must not crash' check is B106.",
+      "evidence_after": "swift build --product mcps-mon --scratch-path <fresh> => clean-build probe: crashed: False, twice. The committed code was not modified: git diff --stat HEAD was empty for the whole experiment. Artifact: AUDIT/evidence/B104-monitor-debug-crash.txt",
       "commit_sha": "",
-      "notes": "Impact: the monitor is a shipped product surface; a developer running the default debug build gets a crash instead of the dashboard. Release is unaffected, so this does not block the go-live artefact, but Phase E's 'zero warnings, everything green' claim should not be made while a debug build of a shipped binary crashes. Next step: bisect between f3dd8d9 (main) and the branch tip by building only the MCPSMonitor target at each step and running the PTY probe; the first bad commit is the cause. The harness check that found this (a PTY probe asserting no crash) should be folded into scripts/monitor_tty_smoke.py so it cannot regress silently. raw record: found during B10 (not in a Phase B pass) Bisect done: B09's AppConfiguration change is the trigger; main's version is clean. Next: review that diff for the specific defect \u2014 the nested functions in parse() capture a mutable local array, which is the main structural change \u2014 or reimplement the diagnostics without the captured mutable state, testing with the PTY probe (which must become a 'must not crash' harness check). Until then the release artefact and CI are unaffected; B09's own tests pass.",
+      "notes": "Impact: the monitor is a shipped product surface; a developer running the default debug build gets a crash instead of the dashboard. Release is unaffected, so this does not block the go-live artefact, but Phase E's 'zero warnings, everything green' claim should not be made while a debug build of a shipped binary crashes. Next step: bisect between f3dd8d9 (main) and the branch tip by building only the MCPSMonitor target at each step and running the PTY probe; the first bad commit is the cause. The harness check that found this (a PTY probe asserting no crash) should be folded into scripts/monitor_tty_smoke.py so it cannot regress silently. raw record: found during B10 (not in a Phase B pass) Bisect done: B09's AppConfiguration change is the trigger; main's version is clean. Next: review that diff for the specific defect \u2014 the nested functions in parse() capture a mutable local array, which is the main structural change \u2014 or reimplement the diagnostics without the captured mutable state, testing with the PTY probe (which must become a 'must not crash' harness check). Until then the release artefact and CI are unaffected; B09's own tests pass. Resolved as a build artifact. Two process lessons are recorded: build the product (a --target build does not link), and use a fresh scratch path when a crash is the thing being investigated.",
       "blocked_reason": ""
     },
     {
@@ -2638,6 +2638,24 @@
       "evidence_after": "`git diff --stat HEAD` no longer lists them; `git ls-files scripts | grep pycache` is empty; the scripts still run (mcp_smoke stdio and --http PASSED, monitor_tty_smoke PASSED in CI at the previous commit).",
       "commit_sha": "",
       "notes": "Self-inflicted during this audit; recorded rather than quietly dropped.",
+      "blocked_reason": ""
+    },
+    {
+      "id": "B106",
+      "severity": "S3",
+      "project": "tests/scripts",
+      "module": "scripts/monitor_tty_smoke.py",
+      "file_line": "scripts/monitor_tty_smoke.py",
+      "title": "The PTY harness reports a crashing monitor as a first-frame timeout",
+      "category": "test",
+      "status": "START",
+      "host_used": "",
+      "discovered_by": "Phase D, found while investigating B104",
+      "evidence_before": "When B104's stale build crashed the monitor at startup, the harness failed with 'timed out waiting for the first frame' \u2014 true but misleading: the process had already died and printed 'Program crashed: Signal 11'. A crash should be reported as a crash, with the exit status, so the failure names the real defect.",
+      "fix_summary": "",
+      "evidence_after": "",
+      "commit_sha": "",
+      "notes": "Add a startup check that fails as soon as the process is no longer running, reporting its exit status and the tail of the transcript, before any frame wait times out. Low risk, and it is what made this round's investigation slower than it needed to be. raw record: found during B104",
       "blocked_reason": ""
     }
   ]

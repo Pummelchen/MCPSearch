@@ -69,3 +69,34 @@ nested helpers now capture a mutable local `issues` array — or reimplement the
 captured mutable state, and make the PTY probe a "must not crash" check in
 `scripts/monitor_tty_smoke.py` so an intermittent crash reports as a crash rather than a first-frame
 timeout.
+
+## Resolution: not a code defect — a stale incremental build
+
+A **fresh scratch path** (`~/Library/Caches/MCPSearch/b104-fresh`) building the committed code, with
+nothing reverted, and building the **product** rather than the target:
+
+```
+$ swift build --product mcps-mon --scratch-path <fresh>
+Build of product 'mcps-mon' complete!
+clean-build probe: crashed: False | bytes: 10 | alive: True
+clean-build probe: crashed: False | bytes: 10 | alive: True
+```
+
+Two probes, no crash. The same source that crashed 3 of 4 probes from the audit's long-lived scratch
+tree is clean when built from scratch.
+
+**What was actually happening.** B09 added a stored property to `AppConfiguration` — a struct-layout
+change. The audit scratch tree had been built incrementally for many rounds, and the probes were run
+against an executable from an earlier full build while the library beside it had been rebuilt: a
+mixture of object files compiled against two different layouts. That produces exactly the observed
+signature — an intermittent bad-pointer dereference at a small offset, in debug only (the release tree
+was built fresh by CI, and CI stayed green throughout). It is the incremental-build half of the
+Dropbox host hazard this audit already documents in `environment.md`; the missing rule was "build the
+*product* into a *fresh* scratch path before drawing a conclusion from a crash".
+
+`swift build --target <executable>` is the second trap: it compiles the target but does not link the
+executable, so an older binary can sit in the build directory looking current.
+
+**Recorded as**: a build/environment hazard, not a product bug. `B106` tracks the harness-side
+improvement (a "must not crash" probe), which is still worth having: the existing harness reported
+the crash as a first-frame timeout.
