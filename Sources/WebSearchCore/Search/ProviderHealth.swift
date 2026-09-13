@@ -115,11 +115,6 @@ public actor ProviderHealth {
         }
     }
 
-    /// Attach a human-readable note, e.g. why an optional provider is inert.
-    public func setNote(_ note: String?, for provider: ProviderID) {
-        notes[provider] = note
-    }
-
     /// Reserve the right to make one request to this provider.
     ///
     /// - Returns: nil when the request may proceed; otherwise the reason it was
