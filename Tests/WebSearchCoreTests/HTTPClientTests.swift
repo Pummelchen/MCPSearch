@@ -380,11 +380,27 @@ final class HTTPClientTests: XCTestCase {
         case .success:
             XCTFail("expected cancellation")
         case .failure(let error):
-            XCTAssertTrue(
-                error is CancellationError || (error as? HTTPError) != nil,
-                "cancellation must surface as an error, got \(error)"
-            )
+            // Pinning the category, not the existence of an error: `(error as? HTTPError) != nil`
+            // is true for every failure this client can produce, so the old assertion could not
+            // fail and said nothing about cancellation (ledger B24).
+            //
+            // Two shapes are legitimate. The transport maps a cancelled URLSession task to
+            // `.cancelled`, and the retry loop's own `Task.checkCancellation()` throws a raw
+            // `CancellationError`. Everything else — a timeout, a connection failure, a
+            // response-too-large — is a misclassification that changes what the operator sees.
+            if !(error is CancellationError) {
+                XCTAssertEqual(
+                    error as? HTTPError,
+                    .cancelled(label: "test"),
+                    "cancellation must surface as .cancelled for its own request label, got \(error)"
+                )
+            }
         }
+        XCTAssertEqual(
+            server.requestCount,
+            1,
+            "a cancelled request must not be retried: the retry would ignore the caller entirely"
+        )
     }
 
     func testHeaderLookupIsCaseInsensitive() {
