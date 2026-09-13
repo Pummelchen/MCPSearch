@@ -162,6 +162,54 @@ final class FetchFallbackTests: XCTestCase {
         XCTAssertFalse(readerURL.contains("%23"), "nor the fragment: \(readerURL)")
     }
 
+    /// A server that dribbles bytes and never finishes must not hold `web_open` open. The
+    /// per-request inactivity timeouts never fire on a drip, and there was no total deadline,
+    /// so the call could hang forever (ledger B14).
+    func testAFetchThatNeverFinishesHitsTheTotalDeadline() async throws {
+        let server = try LoopbackServer(responses: [
+            LoopbackServer.Response(
+                status: 200,
+                headers: ["Content-Type": "text/html"],
+                // Declares 40 MB, sends 64 KB, then holds the connection for five seconds.
+                body: String(repeating: "A", count: 64 * 1024),
+                delayMilliseconds: 0,
+                drip: .init(
+                    chunkBytes: 64 * 1024,
+                    pauseMilliseconds: 0,
+                    holdOpenSeconds: 5,
+                    declaredBytes: 40 * 1024 * 1024
+                )
+            )
+        ])
+        // A 400 ms deadline against a five-second hold: the test would take five seconds
+        // without the fix, and the error would be the transport's rather than a deadline's.
+        let fetcher = WebFetcher(
+            direct: directFetcher(allowPrivateNetwork: true),
+            policy: WebFetcher.Policy(totalTimeout: .milliseconds(400)),
+            log: .disabled
+        )
+
+        let started = DispatchTime.now().uptimeNanoseconds
+        do {
+            let result = try await fetcher.open(FetchRequest(url: server.baseURL))
+            XCTFail("a fetch that never finishes must not return content: \(result.text.count) chars")
+        } catch let error as SearchError {
+            guard case .fetchFailed(let url, let reason) = error else {
+                return XCTFail("expected fetchFailed from the deadline, got \(error)")
+            }
+            XCTAssertEqual(url, server.baseURL)
+            XCTAssertTrue(reason.contains("did not finish"), reason)
+        }
+        let elapsedMilliseconds = Int(
+            (DispatchTime.now().uptimeNanoseconds - started) / 1_000_000
+        )
+        XCTAssertLessThan(
+            elapsedMilliseconds,
+            3_000,
+            "the deadline must cut the call off, not the server's five-second hold"
+        )
+    }
+
     /// `SEARCH_ENABLE_JINA_READER=false` reaches `WebFetcher` as `jina: nil`, so a thin
     /// page is returned as-is with a warning rather than silently spending a reader call.
     func testReaderDisabledReturnsTheThinNativeExtractionWithAWarning() async throws {

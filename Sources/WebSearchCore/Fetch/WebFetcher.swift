@@ -41,9 +41,16 @@ public actor WebFetcher {
         public var maxRedirects: Int
         /// Content types we will attempt to read as text.
         public var allowedContentTypePrefixes: [String]
+        /// Total time one `web_open` may take, across the direct fetch and any reader fallback.
+        ///
+        /// The per-request inactivity timeouts bound a *stalled* socket, but a server that
+        /// dribbles one byte at a time is never inactive: without a total deadline it held the
+        /// tool call — and the client waiting on it — open indefinitely (ledger B14).
+        public var totalTimeout: Duration
 
-        public init(maxRedirects: Int = 5) {
+        public init(maxRedirects: Int = 5, totalTimeout: Duration = .seconds(30)) {
             self.maxRedirects = max(0, maxRedirects)
+            self.totalTimeout = totalTimeout
             self.allowedContentTypePrefixes = [
                 "text/", "application/json", "application/xml", "application/xhtml",
                 "application/rss+xml", "application/atom+xml", "application/x-yaml",
@@ -70,6 +77,29 @@ public actor WebFetcher {
     }
 
     public func open(_ request: FetchRequest) async throws -> FetchResult {
+        // One deadline over the whole operation: the direct fetch, the extraction, and any
+        // reader fallback. Whichever finishes first wins, and the loser is cancelled — so a
+        // page that never finishes can no longer hold the call open (ledger B14).
+        try await withThrowingTaskGroup(of: FetchResult.self) { group in
+            group.addTask { try await self.performOpen(request) }
+            group.addTask {
+                try await Task.sleep(for: self.policy.totalTimeout)
+                throw SearchError.fetchFailed(
+                    request.url,
+                    reason: "the page did not finish within "
+                        + "\(Int(self.policy.totalTimeout.seconds))s"
+                )
+            }
+            defer { group.cancelAll() }
+            guard let result = try await group.next() else {
+                throw SearchError.fetchFailed(request.url, reason: "the fetch produced no result")
+            }
+            return result
+        }
+    }
+
+    /// The fetch itself, under whatever deadline `open` imposed.
+    private func performOpen(_ request: FetchRequest) async throws -> FetchResult {
         let started = DispatchTime.now().uptimeNanoseconds
 
         let directResult: FetchResult?

@@ -183,27 +183,7 @@ public enum SearchPipelineFactory {
             log: log
         )
 
-        // The fetch path is independent of the search providers; it only needs the
-        // SSRF policy and, optionally, the Jina Reader fallback.
-        let urlPolicy = URLPolicy(
-            allowPrivateNetwork: configuration.allowPrivateNetworkFetch
-        )
-        let direct = DirectHTTPFetcher(
-            configuration: configuration,
-            policy: urlPolicy,
-            log: log
-        )
-        let jina: JinaReaderFetcher? =
-            configuration.enableJinaReaderFallback
-            ? JinaReaderFetcher(
-                apiKey: configuration.jinaAPIKey,
-                http: http,
-                configuration: configuration,
-                log: log
-            )
-            : nil
-
-        let fetcher = WebFetcher(direct: direct, jina: jina, log: log)
+        let fetcher = makeFetcher(configuration: configuration, http: http, log: log)
 
         // Synthesis shares the fetched-results contract but not the provider path: it is
         // wired from configuration only, so adding a key can never change which
@@ -224,4 +204,45 @@ public enum SearchPipelineFactory {
             configuration: configuration
         )
     }
+    /// The page fetcher: direct first, the reader as the sanctioned fallback.
+    ///
+    /// Separate from `make` so the composition root stays readable, and because the fetch path
+    /// is independent of the search providers — it needs only the SSRF policy, the optional
+    /// reader, and a deadline.
+    private static func makeFetcher(
+        configuration: AppConfiguration,
+        http: HTTPClient,
+        log: Log
+    ) -> WebFetcher {
+        let urlPolicy = URLPolicy(
+            allowPrivateNetwork: configuration.allowPrivateNetworkFetch
+        )
+        let direct = DirectHTTPFetcher(
+            configuration: configuration,
+            policy: urlPolicy,
+            log: log
+        )
+        let jina: JinaReaderFetcher? =
+            configuration.enableJinaReaderFallback
+            ? JinaReaderFetcher(
+                apiKey: configuration.jinaAPIKey,
+                http: http,
+                configuration: configuration,
+                log: log
+            )
+            : nil
+
+        // The fetch deadline scales with the request timeout (three times it, at least 15 s):
+        // a deployment that raises SEARCH_REQUEST_TIMEOUT_MS for slow origins gets a
+        // proportionally patient page fetch, and the default 10 s gives the documented 30 s.
+        return WebFetcher(
+            direct: direct,
+            policy: WebFetcher.Policy(
+                totalTimeout: max(configuration.requestTimeout * 3, .seconds(15))
+            ),
+            jina: jina,
+            log: log
+        )
+    }
+
 }
