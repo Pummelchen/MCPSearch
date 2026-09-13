@@ -462,14 +462,6 @@ public struct ToolArguments: Sendable {
         throw ArgumentError("`\(name)` must be an integer")
     }
 
-    public func bool(_ name: String) throws -> Bool? {
-        guard let value = raw[name], !value.isNull else { return nil }
-        guard let flag = value.boolValue else {
-            throw ArgumentError("`\(name)` must be a boolean")
-        }
-        return flag
-    }
-
     public func stringArray(_ name: String, maxItems: Int) throws -> [String] {
         guard let value = raw[name], !value.isNull else { return [] }
         guard let elements = value.arrayValue else {

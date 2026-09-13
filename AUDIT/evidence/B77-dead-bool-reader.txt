@@ -1,0 +1,23 @@
+# B77 — `ToolArguments.bool(_:)` had no caller
+
+Host: this Mac (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+`grep -rn "bool(" Sources/` found the reader's definition and no call site: no tool schema has a
+boolean argument, so the method — with its own distinct error message ("`x` must be a boolean") —
+was unreachable public surface in the executable's argument layer. The `Value.bool` *encoder* used
+by the status/structured payloads is a different function and is unaffected.
+
+## The fix
+
+The method is deleted. There is nothing to test: the build and the full suite are the check.
+
+## Verification
+
+```
+$ grep -rn "func bool" Sources/SwiftWebSearchMCP/ToolSchemas.swift        # no matches
+$ swift build --scratch-path $SCRATCH -Xswiftc -warnings-as-errors      0 warnings, 0 errors
+$ swift test
+Executed 478 tests, with 6 skipped and 0 failures (0 unexpected)
+```
