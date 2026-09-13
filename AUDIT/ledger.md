@@ -125,7 +125,7 @@ client loses service), and the margin is unknown — so this is fixed as a guard
 | same | 5,000 | **SIGBUS — process death** |
 | `HTMLExtractor.extract` | 20,000 | **SIGBUS — process death** |
 
-**Fix (implemented · status DONE)**
+**Fix (implemented · status DONE · commit `199a962`)**
 
 1. **Reject a body that is not markup before parsing.** `MarkupDepth.containsMarkup` looks for a
    `<` that actually starts a tag, and `ScraperSupport.parse` fails such a response as
