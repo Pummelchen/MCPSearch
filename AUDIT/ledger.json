@@ -19,7 +19,9 @@
       "ledger_terminal": "133 DONE, 1 BLOCKED-with-owner (B122), 0 START",
       "wiki_mirrored": true,
       "artifact": "AUDIT/evidence/PHASE-E-independent-host.txt",
-      "open_item": "B122 requires a maintainer decision (propagate cancellation and re-pin B97, or delete the unreachable arm)"
+      "open_item": "B122 requires a maintainer decision (propagate cancellation and re-pin B97, or delete the unreachable arm)",
+      "pull_request": "https://github.com/Pummelchen/MCPSearch/pull/1",
+      "pull_request_number": 1
     }
   },
   "tasks": [

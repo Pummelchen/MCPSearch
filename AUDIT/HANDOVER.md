@@ -14,7 +14,7 @@ authoritative; `AUDIT/ledger.json` carries every field. This page is orientation
 | Builds | debug + release, 0 warnings under `-warnings-as-errors` |
 | Linters | `swift-format --strict` 0 · `swiftlint --strict` 0 · ruff clean · pyright strict 0 |
 | Phases | A, B and D complete; C in progress (all S0/S1/S2 closed); **E not started** |
-| CI | green at `9d4b816`'s predecessors: runs 34760288731 and 34760840703, both jobs. Dispatch by hand (see below) |
+| CI | green at `3b5ded6` (run 34777123373) and every recorded HEAD before it |
 
 ## What the second session did
 
@@ -135,7 +135,12 @@ The queue order is this table's order.
 
 1. Continue the S3 queue above, one commit per task, each with its own evidence file, ledger rows
    and CI record.
-2. **Phase E is the next step** — the S3 queue is complete (133 DONE, 1 BLOCKED-with-owner). It is an acceptance gate, not a task
+2. **Phase E is COMPLETE and the pull request is open.** The S3 queue is finished (133 DONE,
+   1 BLOCKED-with-owner) and the acceptance gate passed on node1 from a fresh clone; see
+   `AUDIT/evidence/PHASE-E-independent-host.txt`. **PR #1** is open against `main`:
+   https://github.com/Pummelchen/MCPSearch/pull/1 — `MERGEABLE`, a fast-forward (`main` has no
+   commit the branch lacks), with `main` still untouched at `f3dd8d9`. The remaining work is review
+   and the B122 decision, not code. It is an acceptance gate, not a task
    list: a fresh clone on an independent host, zero warnings, the full suite green **repeatedly**
    (a single green run has already hidden one real flake, B116), coverage at or above the 80 % floor
    via `scripts/coverage_floor.py`, every scanner clean or waived in writing, the ledger containing
