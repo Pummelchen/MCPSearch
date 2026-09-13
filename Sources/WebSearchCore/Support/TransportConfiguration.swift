@@ -109,6 +109,12 @@ public struct ServerOptions: Sendable {
             guard index + 1 < arguments.count else {
                 throw OptionError.missingValue(flag)
             }
+            // A flag is not a value: `--host --http-path` used to take "--http-path" as the host
+            // and fail later at bind time. The `--flag=value` form above is unaffected (ledger
+            // B75).
+            guard !arguments[index + 1].hasPrefix("--") else {
+                throw OptionError.missingValue(flag)
+            }
             index += 1
             return arguments[index]
         }

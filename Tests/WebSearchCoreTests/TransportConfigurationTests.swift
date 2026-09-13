@@ -159,6 +159,15 @@ final class TransportConfigurationTests: XCTestCase {
         }
     }
 
+    /// A flag is not a value for the HTTP options either.
+    ///
+    /// `--host --http-path /x` used to take "--http-path" as the host and fail later at bind time
+    /// (ledger B75).
+    func testAnHTTPOptionDoesNotTakeTheNextFlagAsItsValue() {
+        assertRejects(["--host", "--http-path", "/x"], expecting: .missingValue("--host"))
+        assertRejects(["--port", "--host", "127.0.0.1"], expecting: .missingValue("--port"))
+    }
+
     func testBoundaryPortsAreAccepted() throws {
         XCTAssertEqual(try ServerOptions.parse(["--port", "1"]).httpConfiguration?.port, 1)
         XCTAssertEqual(

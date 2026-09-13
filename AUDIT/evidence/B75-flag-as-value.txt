@@ -1,0 +1,51 @@
+# B75 — a flag could be swallowed as a value, and `--node` accepted a relative URL
+
+Host: this Mac (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+Two parsers share a copy-pasted `value(for:)` helper that returned `arguments[index + 1]` without
+checking what it was:
+
+* `mcps-mon --node --interval=5` created a node literally named `--interval` and consumed the
+  interval flag;
+* `SwiftWebSearchMCP --host --http-path /x` took `--http-path` as the host and failed only at bind
+  time, far from the mistake.
+
+And `--node` validated its URL with `URL(string:)`, which accepts *relative* references, so
+`--node n1=relative/path` started happily and then reported `n1 DOWN … unreachable` instead of
+rejecting the argument.
+
+## Fails-before evidence
+
+```
+$ swift test --filter testFlagsAreNotValuesAndNodesNeedAbsoluteURLs     # with the guards removed
+error: ... XCTAssertThrowsError failed: did not throw an error - ["--node", "--interval=5"] must be rejected
+error: ... XCTAssertThrowsError failed: did not throw an error - ["--node", "n1=relative/path"] must be rejected
+```
+
+## The fix
+
+Both `value(for:)` copies refuse a value that starts with `--` (the `--flag=value` form is
+unaffected, because it never reaches that branch), and `--node` requires a scheme and a host:
+
+```swift
+guard !arguments[index + 1].hasPrefix("--") else { throw OptionError.missingValue(flag) }
+...
+guard let url = URL(string: urlText), url.scheme != nil, url.host() != nil else {
+    throw OptionError.invalidValue(flag: "--node", value: raw, expected: "name=absolute-url")
+}
+```
+
+## Verification
+
+```
+$ swift test --filter "MonitorOptionsTests|TransportConfigurationTests"
+Executed 46 tests, with 0 failures (0 unexpected)
+
+$ swift test
+Executed 486 tests, with 6 skipped and 0 failures (0 unexpected) in 17.754 seconds
+
+$ swift-format lint --recursive --strict Sources Tests    0 diagnostics
+$ swiftlint lint --strict                                 0 violations in 83 files
+```

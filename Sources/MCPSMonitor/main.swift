@@ -142,6 +142,11 @@ struct Options: Sendable {
                 return String(current[current.index(after: equals)...])
             }
             guard index + 1 < arguments.count else { throw OptionError.missingValue(flag) }
+            // A flag is not a value: `--node --interval=5` used to create a node literally named
+            // `--interval` and swallow the interval flag (ledger B75).
+            guard !arguments[index + 1].hasPrefix("--") else {
+                throw OptionError.missingValue(flag)
+            }
             index += 1
             return arguments[index]
         }
@@ -165,9 +170,12 @@ struct Options: Sendable {
                 }
                 let name = String(raw[raw.startIndex..<separator])
                 let urlText = String(raw[raw.index(after: separator)...])
-                guard let url = URL(string: urlText) else {
+                // `URL(string:)` accepts a relative reference, so `n1=foo` used to start and then
+                // show `n1 DOWN … unreachable` instead of failing here; a node needs an absolute
+                // URL, which means a scheme and a host (ledger B75).
+                guard let url = URL(string: urlText), url.scheme != nil, url.host() != nil else {
                     throw OptionError.invalidValue(
-                        flag: "--node", value: raw, expected: "name=url"
+                        flag: "--node", value: raw, expected: "name=absolute-url"
                     )
                 }
                 customNodes.append(

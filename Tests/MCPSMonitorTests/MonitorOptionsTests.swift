@@ -123,6 +123,25 @@ final class MonitorOptionsTests: XCTestCase {
         XCTAssertFalse(options.showEngines)
     }
 
+    /// A flag is not a value, and a node needs an absolute URL.
+    ///
+    /// `--node --interval=5` used to create a node named `--interval` and swallow the interval
+    /// flag, and `n1=relative/path` used to start and then report the node as unreachable instead
+    /// of failing at parse time (ledger B75).
+    func testFlagsAreNotValuesAndNodesNeedAbsoluteURLs() {
+        for arguments in [
+            ["--node", "--interval=5"],
+            ["--interval", "--node", "n1=http://127.0.0.1:8888"],
+            ["--node", "n1=relative/path"],
+            ["--node", "n1="],
+        ] {
+            XCTAssertThrowsError(
+                try Options.parse(arguments),
+                "\(arguments) must be rejected"
+            )
+        }
+    }
+
     func testInvalidArgumentsAreRejected() {
         for arguments in [
             ["--nonsense"],
