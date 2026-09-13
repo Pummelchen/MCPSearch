@@ -16,15 +16,15 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 
 | Metric | Count |
 | --- | --- |
-| Tasks enumerated | 119 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing) |
+| Tasks enumerated | 120 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 43 |
-| START (reproduced, expected behaviour written) | 76 |
+| DONE | 45 |
+| START (reproduced, expected behaviour written) | 75 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
-Severity of the whole set: **S0 3, S1 8, S2 34, S3 74** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 25 are DONE and 9 open; of the 74 S3 tasks 7 are DONE and 67 open.
+Severity of the whole set: **S0 3, S1 8, S2 34, S3 75** — the S0 set (A01, B01, B02) and the S1 set
+are all DONE; of the 34 S2 tasks 27 are DONE and 7 open; of the 75 S3 tasks 7 are DONE and 68 open.
 
 
 Two cross-cutting gates are **not** tasks but acceptance criteria for Phase E: the whole
@@ -362,6 +362,7 @@ audit tooling):
 | B105 | S3 | repository hygiene | `scripts/__pycache__/*.pyc` (4 files) | Generated Python byte-code was committed to the branch | style | DONE | this Mac | Phase D (found while restoring the tree) |
 | B106 | S3 | tests/scripts | `scripts/monitor_tty_smoke.py` | The PTY harness reports a crashing monitor as a first-frame timeout | test | START | this Mac | Phase D (found during B104) |
 | B107 | **S2** | `MCPSMonitor` | `Sources/MCPSMonitor/main.swift`, `Monitor/Terminal.swift:165-171` | An externally delivered SIGINT or SIGTERM leaves the terminal in raw mode with the cursor hidden | bug | DONE | this Mac (arm64) | Phase D (found while fixing B10) |
+| B108 | S3 | `.github` | `.github/workflows/ci.yml` (checkout/cache pins) | The pinned GitHub Actions still target Node 20, which the runner is deprecating, so every job runs on a forced Node 24 | deps | START | — | Phase D (CI annotations this round) |
 | C | `DuckDuckGoProvider.search` with HTTP 200 + well-formed empty HTML | `async` (cooperative task) | **ok** |
 
 Also: `HTMLExtractorTests` (SwiftSoup-heavy) ok, `testDuckDuckGoScraperEndToEnd` (real DDG

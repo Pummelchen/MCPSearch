@@ -2675,6 +2675,27 @@
       "commit_sha": "",
       "notes": "Supervisors, kill and terminal teardown all send SIGTERM, so this is the case that bites in the field. Next: find why the dispatch-source variant stops the first frame (suspects: creating sources before the first render, or the top-level @MainActor array), or use a minimal C signal handler that only calls tcsetattr(2) and _exit(2) - both async-signal-safe - and commit the two harness cases with the fix. raw record: found during B10 Round 21 outcome: the dispatch-source route is a dead end as written (segfault before the first frame, reproduced in a clean build). The next thing to try is the other documented shape: a minimal `@convention(c)` handler installed with `sigaction(2)` that only calls async-signal-safe functions \u2014 `write(2)` for the show-cursor sequence, `tcsetattr(2)` to restore the saved settings and `_exit(2)` \u2014 which is the textbook way to do this and avoids Swift runtime work inside the handler. It needs the original termios visible to the handler, which is the part to design carefully (a C-visible snapshot, not an unchecked Sendable global).",
       "blocked_reason": ""
+    },
+    {
+      "id": "B108",
+      "severity": "S3",
+      "project": ".github",
+      "module": "`.github/workflows/ci.yml`",
+      "file_line": "`.github/workflows/ci.yml` (actions/checkout, actions/cache pins)",
+      "title": "The pinned GitHub Actions still target Node 20, which the runner is deprecating, so every job is forced onto Node 24 with a warning",
+      "category": "deps",
+      "status": "START",
+      "host_used": "",
+      "discovered_by": "Phase D (observed in the CI run annotations while recording B32/B35)",
+      "evidence_before": "Every dispatched run now carries two annotations of the form:\n\n  ```\n  ! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to\n    run on Node.js 24: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684,\n    actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683\n  ```\n\n  Both actions are pinned by commit SHA with a version comment (A10's convention), and the pinned\n  releases still declare the `node20` runtime. The job works today because the runner forces the\n  action onto Node 24; when that compatibility shim is removed the steps stop running, which turns a\n  maintenance warning into a red build for an unrelated change.",
+      "fix_summary": "",
+      "evidence_after": "",
+      "commit_sha": "",
+      "notes": "expected-correct: bump actions/checkout and actions/cache to releases whose action metadata declares the node24 runtime, keeping the SHA pin plus the `# vX.Y.Z` comment, and confirm with a dispatched run that both annotations are gone and both jobs are still green. \u00b7 confidence: certain",
+      "blocked_reason": "",
+      "raw_id": "D1 (this round)",
+      "raw_ids": [],
+      "raw_file": "Phase D"
     }
   ]
 }
