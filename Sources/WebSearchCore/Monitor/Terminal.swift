@@ -163,8 +163,11 @@ public final class KeyReader: @unchecked Sendable {
         guard tcgetattr(STDIN_FILENO, &original) == 0 else { return nil }
 
         var raw = original
-        // Non-canonical, no echo: we want each key as it is pressed, invisibly.
-        raw.c_lflag &= ~tcflag_t(ICANON | ECHO)
+        // Non-canonical, no echo: we want each key as it is pressed, invisibly. `ISIG` is cleared
+        // as well, so Ctrl-C arrives as the byte `\u{03}` and the dashboard's own quit branch
+        // handles it. With `ISIG` set the terminal raised `SIGINT` instead, the process died on
+        // the spot, and that branch was unreachable in a real terminal (ledger B10).
+        raw.c_lflag &= ~tcflag_t(ICANON | ECHO | ISIG)
         // Do not wait for a full buffer or translate carriage returns.
         raw.c_cc.0 = 0  // VMIN: return immediately
         raw.c_cc.1 = 0  // VTIME: no inter-byte timeout
