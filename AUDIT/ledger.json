@@ -5,7 +5,22 @@
     "base_commit": "f3dd8d9",
     "started": "2026-09-13",
     "ledger_version": 1,
-    "note": "Machine-readable twin of ledger.md. ledger.md wins on conflict with the wiki tracker; ledger.json wins on conflict with ledger.md for field values."
+    "note": "Machine-readable twin of ledger.md. ledger.md wins on conflict with the wiki tracker; ledger.json wins on conflict with ledger.md for field values.",
+    "phase_e": {
+      "status": "COMPLETE",
+      "host": "node1 (Mac14,3, arm64, macOS 26.6.2, Swift 6.3.3)",
+      "verified_commit": "891b94f",
+      "fresh_clone": true,
+      "warnings": 0,
+      "suite": "588 tests, 6 skipped, 0 failures, three consecutive runs",
+      "coverage_sources_lines_percent": 91.6,
+      "coverage_floor_percent": 80,
+      "scanners": "swift-format 0, swiftlint 0/92 files, ruff clean, pyright strict 0, shellcheck 2 pre-existing info notes, gitleaks full history 0 (written waiver for 5 synthetic literals), osv-scanner 0, semgrep 0",
+      "ledger_terminal": "133 DONE, 1 BLOCKED-with-owner (B122), 0 START",
+      "wiki_mirrored": true,
+      "artifact": "AUDIT/evidence/PHASE-E-independent-host.txt",
+      "open_item": "B122 requires a maintainer decision (propagate cancellation and re-pin B97, or delete the unreachable arm)"
+    }
   },
   "tasks": [
     {
