@@ -7,10 +7,10 @@ authoritative; `AUDIT/ledger.json` carries every field. This page is orientation
 
 | | |
 | --- | --- |
-| Branch | `audit/2026-09-13` at **`2691812`**, pushed to `origin` (never merged; `main` untouched at `f3dd8d9`) |
+| Branch | `audit/2026-09-13` at **`48002fc`**, pushed to `origin` (never merged; `main` untouched at `f3dd8d9`) |
 | Relationship | `main` is a **strict ancestor** of this branch — `git rev-list --count origin/audit/2026-09-13..origin/main` is 0, so the eventual merge is a fast-forward |
-| Tasks | **105 DONE, 0 PROGRESS, 26 START, 0 BLOCKED** (131 enumerated; all open work is S3) |
-| Suite | **504 tests, 6 skipped, 0 failures** (486 baseline + 3 from B116) |
+| Tasks | **110 DONE, 0 PROGRESS, 22 START, 0 BLOCKED** (132 enumerated; all open work is S3) |
+| Suite | **508 tests, 6 skipped, 0 failures** (486 baseline + 3 from B116) |
 | Builds | debug + release, 0 warnings under `-warnings-as-errors` |
 | Linters | `swift-format --strict` 0 · `swiftlint --strict` 0 · ruff clean · pyright strict 0 |
 | Phases | A, B and D complete; C in progress (all S0/S1/S2 closed); **E not started** |
@@ -34,6 +34,10 @@ Two things worth carrying forward:
   S0/S1/S2 = 34). The mechanical fields — status cell, counts, severity sentence — are now written
   by a helper kept **outside** the repository at `~/Library/Caches/MCPSearch/ledger_tool.py`;
   prose is still written by hand. Run it as `ledger_tool.py complete <ID> <payload.json>`.
+* **A finding's premise can be wrong.** B92 asserted the hosted Jina reader reports the URL it resolved
+  to; its own fix verification showed upstream fills that field with the *requested* target, so the
+  literal fix could not deliver the stated impact. The task was still closed correctly, and the ledger
+  now records the correction. When a fix's verification contradicts its finding, fix the ledger too.
 * **A task can be closed in the ledger but still marked START.** B106's fix had been committed
   (`761966b1`) and only its evidence artifact was missing, so it read START for a whole session and
   would have blocked Phase E. Before assuming an open task is open, run
@@ -94,7 +98,7 @@ Two things worth carrying forward:
   `node1` runs one (`mcps-searxng`, `127.0.0.1:8888`); its image ID matches the digest pinned in
   `deploy/docker-compose.yml`, so the fleet is in sync.
 
-## Open tasks (26, all S3)
+## Open tasks (22, all S3)
 
 The queue order is this table's order.
 
@@ -102,23 +106,19 @@ The queue order is this table's order.
 | --- | --- | --- | --- | --- |
 | B100 | S3 | test | ToolOutputFormatter's fallback and diagnostic branches are untested | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:526` |
 | B101 | S3 | test | HTTPMCPHost's startup-failure and internal-error paths are untested | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:79` |
-| B102 | S3 | bug | A cross-scheme redirect is refused by the transport, not by our policy, and surfaces as an opaque transp | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:245-256 (NoR` |
 | B103 | S3 | test | The tool-layer cancellation branches are still not exercised by any test | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:91-93, 142-143, 237` |
-| B119 | S3 | test | The PTY harness polls the monitor only once, so a crash after the drain window but before the first fram | `scripts/monitor_tty_smoke.py (the startup check after session.dr` |
+| B120 | S3 | incomplete | Only the file-system transport codes are mapped, so a redirect to any other cross-scheme target still su | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift (the cross-s` |
 | B46 | S3 | incomplete | mcps-mon always exits 0, so --iterations cannot be used as a health check | `Sources/MCPSMonitor/main.swift:45-78 (--iterations  Stop after n` |
-| B54 | S3 | bug | Concurrent first use of the Parallel provider performs the MCP handshake more than once | `Sources/WebSearchCore/Providers/ParallelMCPProvider.swift:162` |
 | B57 | S3 | logic | The per-provider "which variable enables me" contract is triplicated across units and already wrong for  | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:407` |
 | B58 | S3 | style | web_search and web_answer duplicate their argument parsing, and the two schemas have already drifted | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:186` |
 | B70 | S3 | test | Subprocess harnesses advertise a timeout that a blocking read cannot enforce | `Tests/WebSearchCoreTests/StdioServerTests.swift:85 (loop :70-93)` |
 | B71 | S3 | test | Three copies of the same subprocess harness, already diverged | `Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift:30` |
 | B76 | S3 | logic | mcps-mon ignores SEARCH_DISABLED_PROVIDERS, labels disabled providers "ready", and probes them | `Sources/MCPSMonitor/main.swift:348 (and :292), Sources/WebSearch` |
 | B79 | S3 | unsafe | A request-head Content-Length reserves up to 1 MiB per connection before any body arrives | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:167` |
-| B84 | S3 | unsafe | IPAddress.v6 is a public case that accepts any byte count, and its accessors index 16 bytes unconditio | `Sources/WebSearchCore/Fetch/URLPolicy.swift:289` |
 | B88 | S3 | perf | The declared per-host DNS cache does not exist, and every redirect hop resolves twice | `Sources/WebSearchCore/Fetch/URLPolicy.swift:57` |
 | B89 | S3 | perf | SearchCache.pruneExpired rebuilds the whole dictionary on every read, write and stats call | `Sources/WebSearchCore/Search/SearchCache.swift:103` |
 | B90 | S3 | perf | The HTTP listener bounds the request body but nothing else, so idle or slow connections are unbounded | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:61` |
 | B91 | S3 | perf | Log emission performs a synchronous blocking write to fd 2 from whatever task is logging | `Sources/WebSearchCore/Support/Logging.swift:42` |
-| B92 | S3 | logic | web_open reports the requested URL as final_url on the Jina path, and the reader's own url field i | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:125` |
 | B93 | S3 | test | The new MarkupDepth regression suite still leaves four branches/contracts unpinned | `Sources/WebSearchCore/Fetch/MarkupDepth.swift:190` |
 | B94 | S3 | test | testStatusCountsSuccessesAndFailures never observes a failure | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift:716` |
 | B95 | S3 | test | The monitor's setup-hint test asserts a string the test itself constructed | `Tests/WebSearchCoreTests/MonitorTests.swift:101` |
