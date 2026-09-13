@@ -190,6 +190,13 @@ final class MockHTTPClient: HTTPClient, @unchecked Sendable {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
+        XCTAssertFalse(
+            requests.isEmpty,
+            "assertNoCredentialLeak needs at least one recorded request: with none it passed "
+                + "without checking anything (ledger B72)",
+            file: file,
+            line: line
+        )
         for request in requests {
             let headerValues = request.headers.map { "\($0.key): \($0.value)" }.joined(separator: " ")
             XCTAssertFalse(
@@ -198,9 +205,11 @@ final class MockHTTPClient: HTTPClient, @unchecked Sendable {
                 file: file,
                 line: line
             )
-            // A key may legitimately travel in a query string (Mojeek does this),
-            // which is exactly why it must never be logged; assert the request was
-            // recorded but that our *own* diagnostics never echo it.
+            // A key may legitimately travel in a query string (Mojeek does this), which is why it
+            // must never be echoed. This helper checks what the mock can see — the headers and body
+            // it recorded; log lines and error descriptions are asserted by the tests that exercise
+            // those paths. The comment here used to claim this helper covered them too (ledger
+            // B72).
             if let body = request.body, let text = String(data: body, encoding: .utf8) {
                 XCTAssertFalse(
                     text.contains(secret),
