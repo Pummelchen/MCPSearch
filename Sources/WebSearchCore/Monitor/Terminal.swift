@@ -136,17 +136,52 @@ public enum Terminal {
     public static func truncate(_ text: String, to width: Int) -> String {
         guard width > 0 else { return "" }
         if displayWidth(text) <= width { return text }
-        guard width > 1 else { return String(text.prefix(width)) }
-        // Walk backwards to the last character that fits, then add an ellipsis.
+        guard width > 1 else {
+            // One column cannot hold a character *and* an ellipsis. Return the first visible
+            // character, dropping any leading escapes rather than emitting half of one.
+            var index = text.startIndex
+            while let end = escapeSequenceEnd(in: text, at: index) { index = end }
+            return index < text.endIndex ? String(text[index]) : ""
+        }
+
+        // Walk to the last character that fits, then add an ellipsis. Escape sequences are copied
+        // whole and for free: they occupy no columns, and slicing one in half leaves the terminal
+        // waiting for a sequence it never receives the end of (ledger B53). The previous walk
+        // counted every escape byte as width 1, so styled text was cut short *and* could end in a
+        // bare `ESC`.
         var result = ""
         var used = 0
-        for character in text {
+        var index = text.startIndex
+        while index < text.endIndex {
+            if let end = escapeSequenceEnd(in: text, at: index) {
+                result += text[index..<end]
+                index = end
+                continue
+            }
+            let character = text[index]
             let cost = character.unicodeScalars.reduce(0) { $0 + scalarWidth($1) }
             if used + cost > width - 1 { break }
             result.append(character)
             used += cost
+            index = text.index(after: index)
         }
         return result + "…"
+    }
+
+    /// The end of the ANSI escape sequence starting at `index`, or nil when there is none.
+    ///
+    /// An escape sequence is `ESC [` followed by parameters and one terminating letter, the shape
+    /// this renderer emits; anything longer is not treated as an escape rather than swallowing the
+    /// rest of the line.
+    private static func escapeSequenceEnd(in text: String, at index: String.Index) -> String.Index? {
+        guard text[index] == "\u{1B}", text.index(after: index) < text.endIndex,
+            text[text.index(after: index)] == "["
+        else { return nil }
+        var cursor = text.index(index, offsetBy: 2, limitedBy: text.endIndex) ?? text.endIndex
+        while cursor < text.endIndex, !text[cursor].isLetter {
+            cursor = text.index(after: cursor)
+        }
+        return cursor < text.endIndex ? text.index(after: cursor) : text.endIndex
     }
 
     /// Approximate display width.
@@ -157,19 +192,11 @@ public enum Terminal {
         var width = 0
         var index = text.startIndex
         while index < text.endIndex {
-            let character = text[index]
-            if character == "\u{1B}", text.index(after: index) < text.endIndex,
-                text[text.index(after: index)] == "["
-            {
-                // Skip to the terminating letter of the escape sequence.
-                var cursor = text.index(index, offsetBy: 2, limitedBy: text.endIndex) ?? text.endIndex
-                while cursor < text.endIndex, !text[cursor].isLetter {
-                    cursor = text.index(after: cursor)
-                }
-                index = cursor < text.endIndex ? text.index(after: cursor) : text.endIndex
+            if let end = escapeSequenceEnd(in: text, at: index) {
+                index = end
                 continue
             }
-            width += character.unicodeScalars.reduce(0) { $0 + scalarWidth($1) }
+            width += text[index].unicodeScalars.reduce(0) { $0 + scalarWidth($1) }
             index = text.index(after: index)
         }
         return width

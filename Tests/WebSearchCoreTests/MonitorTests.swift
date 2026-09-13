@@ -56,6 +56,30 @@ final class TerminalLayoutTests: XCTestCase {
         XCTAssertTrue(Terminal.colour("x", .green, enabled: true).contains("\u{1B}[32m"))
     }
 
+    /// Truncating styled text counts only visible characters and never slices an escape.
+    ///
+    /// The per-character walk treated the escape bytes as width-1 text, so styled lines were cut
+    /// short and could end in a bare `ESC` — the start of a sequence the terminal never receives
+    /// the end of (ledger B53).
+    func testTruncateKeepsEscapeSequencesWhole() {
+        let styled = "\u{1B}[31mabcdef\u{1B}[0m"
+        let truncated = Terminal.truncate(styled, to: 5)
+        XCTAssertEqual(truncated, "\u{1B}[31mabcd…")
+        XCTAssertEqual(Terminal.displayWidth(truncated), 5)
+
+        // The reset must survive: a coloured line truncated without it would bleed into the next.
+        let mixed = "\u{1B}[31mred\u{1B}[0m and more"
+        let truncatedMixed = Terminal.truncate(mixed, to: 7)
+        XCTAssertEqual(truncatedMixed, "\u{1B}[31mred\u{1B}[0m an…")
+        XCTAssertEqual(Terminal.displayWidth(truncatedMixed), 7)
+    }
+
+    /// A one-column budget cannot hold a character *and* an ellipsis, and must still not emit half
+    /// an escape sequence.
+    func testTruncateToOneColumnDropsLeadingEscapesRatherThanSlicingThem() {
+        XCTAssertEqual(Terminal.truncate("\u{1B}[31mabc", to: 1), "a")
+    }
+
     /// Control characters are replaced, never passed to the terminal.
     ///
     /// A terminal executes these bytes: `ESC[2J` clears the screen, `ESC]52;c;…` writes the

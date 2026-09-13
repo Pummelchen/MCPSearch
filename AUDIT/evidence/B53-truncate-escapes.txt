@@ -1,0 +1,57 @@
+# B53 — `Terminal.truncate` counted escape bytes as display width
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+```swift
+// Terminal.truncate (before)
+if displayWidth(text) <= width { return text }
+guard width > 1 else { return String(text.prefix(width)) }
+for character in text {
+    let cost = character.unicodeScalars.reduce(0) { $0 + scalarWidth($1) }
+    if used + cost > width - 1 { break }
+    result.append(character)
+    ...
+```
+
+The guard measures the text correctly (`displayWidth` skips escapes), but the walk that follows does
+not: every byte of `ESC [ 3 1 m` counted as one column. A styled line was therefore cut several
+columns early, and the walk could stop *inside* an escape sequence, leaving a bare `ESC` (or half a
+sequence) in the line — the terminal then swallows what follows as parameters.
+`width == 1` was worse: `String(text.prefix(1))` returns the `ESC` byte itself.
+
+## Fails-before evidence
+
+With the old walk restored and the new tests kept:
+
+```
+$ swift test --filter testTruncate
+error: ... XCTAssertEqual failed: ("[31m…") is not equal to ("[31mabcd…")
+error: ... XCTAssertEqual failed: ("1") is not equal to ("5")            # visible width
+error: ... XCTAssertEqual failed: ("[31mre…") is not equal to ("[31mred[0m an…")
+error: ... XCTAssertEqual failed: ("3") is not equal to ("7")
+```
+
+The truncated line came out one visible column wide where five were asked for, and the reset
+sequence was dropped with it.
+
+## The fix
+
+The escape-skipping logic moved into one `escapeSequenceEnd(in:at:)` helper used by both
+`displayWidth` and `truncate`. `truncate` now copies each escape sequence whole and for free, and
+the one-column case returns the first *visible* character, dropping leading escapes rather than
+emitting half of one.
+
+## Verification
+
+```
+$ swift test --filter "TerminalLayoutTests|RendererTests|MonitorModelTests|ProbeQueriesTests"
+Executed 33 tests, with 0 failures (0 unexpected)
+
+$ swift test
+Executed 471 tests, with 6 skipped and 0 failures (0 unexpected) in 18.035 seconds
+
+$ swift-format lint --recursive --strict Sources Tests    0 diagnostics
+$ swiftlint lint --strict                                 0 violations in 81 files
+```
