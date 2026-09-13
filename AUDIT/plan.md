@@ -96,6 +96,18 @@ Work order: all **S0**, then S1, then S2, then S3. One task = one commit on
 before and passes after, the full suite green on the correct host class, no new warnings
 versus baseline, then a cold re-read plus re-run of linters/scanners before DONE.
 
+| Task | Sev | Closed by | Evidence |
+| --- | --- | --- | --- |
+| A01 | S0 | `199a962` | `evidence/A01-asan.txt` — ASan 81 tests green where it previously aborted |
+| B01 | S0 | `2f66ff1` | `evidence/B01-searxng-secret.txt` — compose and SearXNG both fail closed; a keyed container answers JSON |
+| B02 | S0 | `cee651e` | `evidence/B02-redirect-tests.txt` — 7 redirect tests plus two mutation experiments |
+| B06 | S1 | `fe7a4f3` | `evidence/B06-retry-after.txt` — pre-fix conversions trap with signal 5; bounded after |
+| B05 | S1 | `199a962` | deleted with A01 |
+
+Remaining in severity order: the S1 set (`B03` one MCP session per process, `B04` cancellation,
+`B07` bodies buffered before the cap, `B08` `web_open`'s untested success path), then the S2 and
+S3 sets — `ledger.md` holds the full order and the current counts.
+
 ## Phase D — new findings (continuous) ✅ folded once; repeats on new findings
 
 Any finding discovered at any time gets a new ledger id and the same treatment.
