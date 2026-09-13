@@ -78,6 +78,16 @@ class Failure(Exception):
     """A smoke-test assertion failed."""
 
 
+class BindRace(Failure):
+    """The child exited because another process took the chosen port first.
+
+    ``free_loopback_port`` reports a port that was free when it was chosen, not one that is
+    reserved, so another process can bind it before the child does and the child then exits
+    with ``EADDRINUSE``. That is a retryable startup accident rather than a smoke-test
+    failure: ``start_http_server`` re-picks a port for it (ledger B117).
+    """
+
+
 def locate_binary() -> str:
     positional = [a for a in sys.argv[1:] if not a.startswith("--")]
     if positional:
@@ -368,12 +378,24 @@ def child_stderr(process: subprocess.Popen[str]) -> str:
         return "<unavailable>"
 
 
+# The server reports a failed bind through ``HTTPHostError.bindFailed`` as
+# ``Could not bind <host>:<port> — <reason>``, so that phrase on stderr is the lost-race
+# signature. A startup failure of any other kind is surfaced on the first attempt rather than
+# retried, so a real defect is never masked (ledger B117).
+BIND_FAILURE_MARKER = "Could not bind"
+
+# Attempts at starting the HTTP child before giving up. One lost race is plausible; three in a
+# row means the port is not what is wrong, and the last diagnostic is reported (ledger B117).
+HTTP_START_ATTEMPTS = 3
+
+
 def wait_for_health(port: int, process: subprocess.Popen[str], timeout: float = 20.0) -> None:
     """Poll /health until the HTTP transport is accepting connections.
 
     The child is polled on every pass: a server that has already exited will never bind,
     so the loop can say so at once with the child's own stderr instead of waiting out the
-    timeout and blaming the port (ledger B83).
+    timeout and blaming the port (ledger B83). An exit whose stderr carries the server's
+    bind-failure diagnostic raises ``BindRace`` so the caller can retry (ledger B117).
     """
     # The URL is built from a port number, so the scheme and host are asserted rather than
     # assumed: `urlopen` would happily follow a `file://` URL, and a probe that can be pointed
@@ -386,10 +408,16 @@ def wait_for_health(port: int, process: subprocess.Popen[str], timeout: float = 
     while time.time() < deadline:
         exit_code = process.poll()
         if exit_code is not None:
-            raise Failure(
+            stderr = child_stderr(process)
+            message = (
                 f"HTTP server is not listening on port {port}: it exited with code "
-                f"{exit_code} before the transport came up; stderr:\n{child_stderr(process)}"
+                f"{exit_code} before the transport came up; stderr:\n{stderr}"
             )
+            # Classify before reporting: the same exit is either a lost bind race the caller
+            # can retry away, or a real startup failure it must not retry (ledger B117).
+            if BIND_FAILURE_MARKER in stderr:
+                raise BindRace(message)
+            raise Failure(message)
         try:
             # nosemgrep: dynamic-urllib-use-detected
             with urllib.request.urlopen(health_url, timeout=2) as response:
@@ -403,7 +431,10 @@ def wait_for_health(port: int, process: subprocess.Popen[str], timeout: float = 
 def free_loopback_port() -> int:
     """Ask the OS for an unused loopback port.
 
-    A fixed port would make two concurrent smoke runs collide, which matters because
+    The port is free *when it is chosen*, not reserved: the probe socket is closed before
+    the child is started, so another process can take the port in that window. That is why
+    ``start_http_server`` retries with a fresh port rather than trusting this one (ledger
+    B117). A fixed port would make two concurrent smoke runs collide, which matters because
     this script is cheap enough to run in parallel.
     """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
@@ -411,23 +442,61 @@ def free_loopback_port() -> int:
         return probe.getsockname()[1]
 
 
-def run_http_smoke(binary: str) -> None:
-    """Start the server in HTTP mode and exercise the Streamable HTTP transport."""
-    port = free_loopback_port()
+def start_http_server(binary: str) -> tuple[int, subprocess.Popen[str]]:
+    """Start the HTTP child, re-picking the port if it loses the bind race.
+
+    Returns the port the child was told to use and the live process. The child's own bind is
+    authoritative: because ``free_loopback_port`` only reports a port that was free when it
+    was chosen, a lost race is retried on a fresh port instead of being reported as a smoke
+    failure. Anything that is not a bind failure — a bad flag, an unreadable config file, a
+    live child that never becomes healthy — propagates on the first attempt, so retrying
+    cannot mask a real defect (ledger B117).
+    """
     environment = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "SEARCH_LOG_LEVEL": "info",
     }
+    last_race: BindRace | None = None
+    for _ in range(HTTP_START_ATTEMPTS):
+        port = free_loopback_port()
+        # A fresh child and fresh pipes every attempt: a pipe belongs to the child it was
+        # attached to, so it is not reused across attempts.
+        process = subprocess.Popen(
+            [binary, "--transport", "http", "--port", str(port)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=environment,
+            text=True,
+        )
+        try:
+            wait_for_health(port, process)
+        except BindRace as race:
+            # BindRace is only raised for a child that has already exited, so there is
+            # nothing to clean up before re-picking a port. Print it rather than retrying
+            # silently, so a run that keeps racing is visible in the smoke log.
+            last_race = race
+            print(f"  note: lost the bind race on port {port}; retrying on a fresh port")
+            continue
+        except Failure:
+            # A live child that never became healthy is not the race: stop it here, because
+            # the caller never receives a process to clean up on this path.
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=10)
+            raise
+        return port, process
 
-    process = subprocess.Popen(
-        [binary, "--transport", "http", "--port", str(port)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=environment,
-        text=True,
+    assert last_race is not None
+    raise Failure(
+        f"the HTTP child lost the bind race on {HTTP_START_ATTEMPTS} ports in a row; "
+        f"last failure:\n{last_race}"
     )
+
+
+def run_http_smoke(binary: str) -> None:
+    """Start the server in HTTP mode and exercise the Streamable HTTP transport."""
+    port, process = start_http_server(binary)
     try:
-        wait_for_health(port, process)
         print(f"  /health ok on port {port}")
 
         status, headers, messages = http_exchange(

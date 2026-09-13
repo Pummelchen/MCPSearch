@@ -1,0 +1,592 @@
+# B117 — `mcp_smoke.py` picked an HTTP port it did not own
+
+Host: this Mac (arm64, macOS 26.6.2) · branch audit/2026-09-13 · Python 3.14.7
+
+## What was wrong
+
+`free_loopback_port()` binds port 0, reads the assigned port and closes the probe socket;
+`run_http_smoke` then started the child with that port. Between the close and the child's own
+bind the port is unowned, so another process can take it and the child exits with
+`EADDRINUSE`. B83 made that exit *visible* (the wait loop polls the child and reports the exit
+code with its stderr in under a second) but deliberately left the race itself.
+
+## The fix shape: retry on a classified bind failure, not a port handshake
+
+The expected-correct offers two shapes: have the child report the port it actually bound, or
+classify a bind failure and retry on a fresh port. The handshake is **not available without a
+production change**:
+
+- The server *does* log the port it bound: `HTTPMCPHost.start()` reads
+  `channel?.localAddress?.port` and logs `url: http://<host>:<boundPort><path>` at info level
+  (`Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:237-246`). But the harness must still name a
+  port, and the only way to make that port authoritative is to let the server choose it.
+- `--port 0` is rejected: `ServerOptions.parse` accepts `1...65535`
+  (`Sources/WebSearchCore/Support/TransportConfiguration.swift:146-152`). Letting the child
+  pick its own port therefore needs a change to production argument parsing (and its tests),
+  which this task does not permit and the defect does not require.
+
+So the honest minimal fix is the retry — and the retry is the only shape that keeps the port
+ownership entirely inside the harness. Holding the parent's probe socket open across the exec
+is not an option either (B83's evidence: macOS `SO_REUSEADDR` does not permit two live
+binders). That was re-confirmed on this machine: with a listener on the port, a second bind
+fails with `[Errno 48] Address already in use` whether or not the second socket sets
+`SO_REUSEADDR`.
+
+The retry fires **only** on the bind-failure signature, so it cannot mask another startup
+failure:
+
+- The server reports a failed bind as `HTTPHostError.bindFailed` →
+  `"Could not bind <host>:<port> — <reason>"`, logged at error level
+  (`Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:282-289`, `Sources/SwiftWebSearchMCP/main.swift:128-129`),
+  so `BIND_FAILURE_MARKER = "Could not bind"` on the child's stderr is the classification.
+- A child that exits for any other reason (a bad flag, an unreadable config file) propagates
+  on the first attempt. A live child that never becomes healthy is killed and reported, never
+  retried.
+- The retry is bounded at three ports (the same bound the Swift harness uses for the B20 fix)
+  and the last diagnostic is raised if every attempt loses, so a port that keeps losing is a
+  visible failure rather than a swallowed one. Each retry also prints a `note:` line, so a
+  raced run is distinguishable in the smoke log from one that never raced.
+
+The misleading `free_loopback_port` docstring is corrected as part of the finding: the port is
+free *when it is chosen*, not reserved, which is exactly why the retry exists.
+
+## The change (`scripts/mcp_smoke.py`)
+
+```
+diff --git a/scripts/mcp_smoke.py b/scripts/mcp_smoke.py
+index 5389b53..4b9bf84 100755
+--- a/scripts/mcp_smoke.py
++++ b/scripts/mcp_smoke.py
+@@ -78,6 +78,16 @@ class Failure(Exception):
+     """A smoke-test assertion failed."""
+ 
+ 
++class BindRace(Failure):
++    """The child exited because another process took the chosen port first.
++
++    ``free_loopback_port`` reports a port that was free when it was chosen, not one that is
++    reserved, so another process can bind it before the child does and the child then exits
++    with ``EADDRINUSE``. That is a retryable startup accident rather than a smoke-test
++    failure: ``start_http_server`` re-picks a port for it (ledger B117).
++    """
++
++
+ def locate_binary() -> str:
+     positional = [a for a in sys.argv[1:] if not a.startswith("--")]
+     if positional:
+@@ -368,12 +378,24 @@ def child_stderr(process: subprocess.Popen[str]) -> str:
+         return "<unavailable>"
+ 
+ 
++# The server reports a failed bind through ``HTTPHostError.bindFailed`` as
++# ``Could not bind <host>:<port> — <reason>``, so that phrase on stderr is the lost-race
++# signature. A startup failure of any other kind is surfaced on the first attempt rather than
++# retried, so a real defect is never masked (ledger B117).
++BIND_FAILURE_MARKER = "Could not bind"
++
++# Attempts at starting the HTTP child before giving up. One lost race is plausible; three in a
++# row means the port is not what is wrong, and the last diagnostic is reported (ledger B117).
++HTTP_START_ATTEMPTS = 3
++
++
+ def wait_for_health(port: int, process: subprocess.Popen[str], timeout: float = 20.0) -> None:
+     """Poll /health until the HTTP transport is accepting connections.
+ 
+     The child is polled on every pass: a server that has already exited will never bind,
+     so the loop can say so at once with the child's own stderr instead of waiting out the
+-    timeout and blaming the port (ledger B83).
++    timeout and blaming the port (ledger B83). An exit whose stderr carries the server's
++    bind-failure diagnostic raises ``BindRace`` so the caller can retry (ledger B117).
+     """
+     # The URL is built from a port number, so the scheme and host are asserted rather than
+     # assumed: `urlopen` would happily follow a `file://` URL, and a probe that can be pointed
+@@ -386,10 +408,16 @@ def wait_for_health(port: int, process: subprocess.Popen[str], timeout: float =
+     while time.time() < deadline:
+         exit_code = process.poll()
+         if exit_code is not None:
+-            raise Failure(
++            stderr = child_stderr(process)
++            message = (
+                 f"HTTP server is not listening on port {port}: it exited with code "
+-                f"{exit_code} before the transport came up; stderr:\n{child_stderr(process)}"
++                f"{exit_code} before the transport came up; stderr:\n{stderr}"
+             )
++            # Classify before reporting: the same exit is either a lost bind race the caller
++            # can retry away, or a real startup failure it must not retry (ledger B117).
++            if BIND_FAILURE_MARKER in stderr:
++                raise BindRace(message)
++            raise Failure(message)
+         try:
+             # nosemgrep: dynamic-urllib-use-detected
+             with urllib.request.urlopen(health_url, timeout=2) as response:
+@@ -403,7 +431,10 @@ def wait_for_health(port: int, process: subprocess.Popen[str], timeout: float =
+ def free_loopback_port() -> int:
+     """Ask the OS for an unused loopback port.
+ 
+-    A fixed port would make two concurrent smoke runs collide, which matters because
++    The port is free *when it is chosen*, not reserved: the probe socket is closed before
++    the child is started, so another process can take the port in that window. That is why
++    ``start_http_server`` retries with a fresh port rather than trusting this one (ledger
++    B117). A fixed port would make two concurrent smoke runs collide, which matters because
+     this script is cheap enough to run in parallel.
+     """
+     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
+@@ -411,23 +442,61 @@ def free_loopback_port() -> int:
+         return probe.getsockname()[1]
+ 
+ 
+-def run_http_smoke(binary: str) -> None:
+-    """Start the server in HTTP mode and exercise the Streamable HTTP transport."""
+-    port = free_loopback_port()
++def start_http_server(binary: str) -> tuple[int, subprocess.Popen[str]]:
++    """Start the HTTP child, re-picking the port if it loses the bind race.
++
++    Returns the port the child was told to use and the live process. The child's own bind is
++    authoritative: because ``free_loopback_port`` only reports a port that was free when it
++    was chosen, a lost race is retried on a fresh port instead of being reported as a smoke
++    failure. Anything that is not a bind failure — a bad flag, an unreadable config file, a
++    live child that never becomes healthy — propagates on the first attempt, so retrying
++    cannot mask a real defect (ledger B117).
++    """
+     environment = {
+         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+         "SEARCH_LOG_LEVEL": "info",
+     }
+-
+-    process = subprocess.Popen(
+-        [binary, "--transport", "http", "--port", str(port)],
+-        stdout=subprocess.PIPE,
+-        stderr=subprocess.PIPE,
+-        env=environment,
+-        text=True,
++    last_race: BindRace | None = None
++    for _ in range(HTTP_START_ATTEMPTS):
++        port = free_loopback_port()
++        # A fresh child and fresh pipes every attempt: a pipe belongs to the child it was
++        # attached to, so it is not reused across attempts.
++        process = subprocess.Popen(
++            [binary, "--transport", "http", "--port", str(port)],
++            stdout=subprocess.PIPE,
++            stderr=subprocess.PIPE,
++            env=environment,
++            text=True,
++        )
++        try:
++            wait_for_health(port, process)
++        except BindRace as race:
++            # BindRace is only raised for a child that has already exited, so there is
++            # nothing to clean up before re-picking a port. Print it rather than retrying
++            # silently, so a run that keeps racing is visible in the smoke log.
++            last_race = race
++            print(f"  note: lost the bind race on port {port}; retrying on a fresh port")
++            continue
++        except Failure:
++            # A live child that never became healthy is not the race: stop it here, because
++            # the caller never receives a process to clean up on this path.
++            if process.poll() is None:
++                process.kill()
++                process.wait(timeout=10)
++            raise
++        return port, process
++
++    assert last_race is not None
++    raise Failure(
++        f"the HTTP child lost the bind race on {HTTP_START_ATTEMPTS} ports in a row; "
++        f"last failure:\n{last_race}"
+     )
++
++
++def run_http_smoke(binary: str) -> None:
++    """Start the server in HTTP mode and exercise the Streamable HTTP transport."""
++    port, process = start_http_server(binary)
+     try:
+-        wait_for_health(port, process)
+         print(f"  /health ok on port {port}")
+ 
+         status, headers, messages = http_exchange(
+```
+
+## Verification
+
+The race is probabilistic, so the check manufactures the collision instead of hoping to hit
+it: it holds the exact port the harness will pick first, so the child's *own real bind* fails
+with `EADDRINUSE` — the same failure another process winning the race produces. A stub child
+(`stub_server.py`) attempts a real `bind()` on the port it is given (no `SO_REUSEADDR`) and,
+on failure, exits 1 with the same `Could not bind` diagnostic the production server prints. On
+success it serves enough of the Streamable HTTP protocol for `run_http_smoke` to finish. A
+second stub (`bad_server.py`) fails *without* the bind marker, to prove the fix does not
+retry every startup failure.
+
+Fixtures live under `$HOME/Library/Caches/MCPSearch/B117/`:
+
+`stub_server.py`:
+
+```
+#!/usr/bin/env python3
+"""Stub HTTP MCP server for the B117 bind-race check.
+
+Attempts a real bind on the port it is told to use, exactly as the production server does.
+When another process already holds that port the bind fails, so the process exits 1 with the
+same ``Could not bind`` diagnostic ``HTTPHostError.bindFailed`` prints. Otherwise it serves
+just enough of the Streamable HTTP protocol for ``run_http_smoke`` to finish.
+
+Nothing is ever written to stdout: the smoke script asserts that HTTP mode keeps stdout empty.
+"""
+
+from __future__ import annotations
+
+import json
+import socket
+import sys
+from datetime import datetime, timezone
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from typing import Any
+
+SESSION = "stub-session"
+TOOLS = ("web_answer", "web_open", "web_search", "web_search_status")
+
+
+def argument(name: str) -> str:
+    """Return the value of ``--name value`` or ``--name=value``."""
+    for index, value in enumerate(sys.argv):
+        if value == name and index + 1 < len(sys.argv):
+            return sys.argv[index + 1]
+        if value.startswith(name + "="):
+            return value.split("=", 1)[1]
+    raise SystemExit(f"stub: missing {name}")
+
+
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, fmt: str, *args: Any) -> None:
+        """Silence the stdlib's access log; the smoke script owns the output."""
+
+    def respond(self, status: int, body: bytes = b"", **headers: str) -> None:
+        self.send_response(status)
+        for name, value in headers.items():
+            self.send_header(name.replace("_", "-"), value)
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if body:
+            self.wfile.write(body)
+
+    def do_GET(self) -> None:
+        if self.path == "/health":
+            self.respond(200)
+        else:
+            self.respond(404)
+
+    def do_POST(self) -> None:
+        length = int(self.headers.get("Content-Length", "0"))
+        try:
+            message = json.loads(self.rfile.read(length) or b"{}")
+        except json.JSONDecodeError:
+            self.respond(400)
+            return
+
+        session = self.headers.get("Mcp-Session-Id")
+        accept = self.headers.get("Accept", "")
+        origin = self.headers.get("Origin")
+        method = message.get("method")
+
+        if method == "initialize":
+            body = json.dumps(
+                {
+                    "jsonrpc": "2.0",
+                    "id": message.get("id"),
+                    "result": {
+                        "protocolVersion": "2025-06-18",
+                        "serverInfo": {"name": "stub", "version": "0"},
+                    },
+                }
+            ).encode()
+            self.respond(200, body, Content_Type="application/json", Mcp_Session_Id=SESSION)
+        elif session != SESSION or origin:
+            # These are the smoke script's negative cases: no session, and a cross-origin
+            # request, must both be refused rather than served.
+            self.respond(400)
+        elif "text/event-stream" not in accept:
+            self.respond(400)
+        elif method == "notifications/initialized":
+            self.respond(202)
+        else:
+            result: dict[str, Any]
+            if method == "tools/list":
+                result = {"tools": [{"name": name} for name in TOOLS]}
+            else:
+                result = {"content": [], "isError": False}
+            body = json.dumps(
+                {"jsonrpc": "2.0", "id": message.get("id"), "result": result}
+            ).encode()
+            self.respond(200, b"data: " + body + b"\n\n", Content_Type="text/event-stream")
+
+
+def main() -> int:
+    port = int(argument("--port"))
+
+    probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        # No SO_REUSEADDR: a port another process is already serving must refuse this bind.
+        # That refusal is the collision the harness has to survive.
+        probe.bind(("127.0.0.1", port))
+        probe.listen(8)
+    except OSError as error:
+        probe.close()
+        stamp = datetime.now(timezone.utc).isoformat()
+        print(
+            f'{stamp} level=error msg="MCP server failed to start" '
+            f'error="Could not bind 127.0.0.1:{port} \u2014 {error}"',
+            file=sys.stderr,
+        )
+        return 1
+
+    server = ThreadingHTTPServer(("127.0.0.1", port), Handler, bind_and_activate=False)
+    server.socket = probe
+    try:
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    finally:
+        server.server_close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+`bad_server.py`:
+
+```
+#!/usr/bin/env python3
+"""A child that fails to start for a reason that is not the bind race.
+
+Used by ``check_b117.py`` to prove the retry does not mask a real startup failure: this
+stderr carries no ``Could not bind`` diagnostic, so the harness must report it on the first
+attempt instead of spending the retry budget on it.
+"""
+
+import sys
+
+print(
+    'level=error msg="MCP server failed to start" error="Unknown argument: --nonsense"',
+    file=sys.stderr,
+)
+raise SystemExit(2)
+```
+
+`check_b117.py`:
+
+```
+#!/usr/bin/env python3
+"""B117 check: the HTTP smoke must survive losing the bind race for its chosen port.
+
+Scenario 1 occupies the first port the harness asks the OS for, so the child's own real bind
+fails with EADDRINUSE exactly as it does when another process wins the race. The check asserts
+that the harness retries on a fresh port and finishes the HTTP session; the unfixed harness has
+no retry and fails on the first attempt.
+
+Scenario 2 starts a child that fails for a different reason, and asserts the harness gives up
+after a single attempt: a retry loop that fires on every startup failure would mask a real one.
+
+Usage: ``check_b117.py [path-to-mcp_smoke.py]``
+"""
+
+from __future__ import annotations
+
+import importlib.util
+import os
+import pathlib
+import socket
+import subprocess
+import sys
+from collections.abc import Callable
+from types import ModuleType
+
+CACHE = pathlib.Path(os.environ["HOME"]) / "Library" / "Caches" / "MCPSearch" / "B117"
+STUB = CACHE / "stub_server.py"
+BAD_STUB = CACHE / "bad_server.py"
+
+# Run in a child so the fixture proves the collision is real before relying on it: a bind of
+# a port this process is listening on must be refused.
+BIND_PROBE = """
+import socket, sys
+s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+try:
+    s.bind(("127.0.0.1", {port}))
+except OSError:
+    sys.exit(0)
+sys.exit(1)
+"""
+
+
+def load_smoke(path: pathlib.Path) -> ModuleType:
+    spec = importlib.util.spec_from_file_location("mcp_smoke", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    sys.modules["mcp_smoke"] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def recording_chooser(real: Callable[[], int], first: int | None) -> tuple[Callable[[], int], list[int]]:
+    """Wrap the harness's port chooser so every port it asks for is recorded.
+
+    ``first``, when given, is handed back for the first call only; later calls behave exactly
+    like the real chooser.
+    """
+    chosen: list[int] = []
+
+    def chooser() -> int:
+        chosen.append(first if first is not None and not chosen else real())
+        return chosen[-1]
+
+    return chooser, chosen
+
+
+def check_bind_race(smoke: ModuleType, real: Callable[[], int]) -> dict[str, bool]:
+    holder = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    holder.bind(("127.0.0.1", 0))
+    holder.listen(8)
+    held_port = int(holder.getsockname()[1])
+    refused = (
+        subprocess.run(
+            [sys.executable, "-c", BIND_PROBE.format(port=held_port)], check=False
+        ).returncode
+        == 0
+    )
+
+    smoke.free_loopback_port, chosen = recording_chooser(real, held_port)
+    error_text = ""
+    recovered = False
+    try:
+        smoke.run_http_smoke(str(STUB))
+        recovered = True
+    except smoke.Failure as failure:
+        error_text = str(failure)
+    finally:
+        holder.close()
+
+    if error_text:
+        print(f"  scenario 1 failure: {error_text}")
+    print(f"  scenario 1 ports chosen: {chosen}")
+    return {
+        "the fixture's occupied port refuses a real bind": refused,
+        "the harness chose the occupied port first": bool(chosen) and chosen[0] == held_port,
+        "the harness retried on a different, fresh port": len(chosen) >= 2
+        and chosen[1] != held_port,
+        "run_http_smoke recovered and finished the HTTP session": recovered,
+    }
+
+
+def check_real_failure_is_not_retried(smoke: ModuleType, real: Callable[[], int]) -> dict[str, bool]:
+    smoke.free_loopback_port, chosen = recording_chooser(real, None)
+    raised = False
+    try:
+        smoke.run_http_smoke(str(BAD_STUB))
+    except smoke.Failure:
+        raised = True
+    print(f"  scenario 2 ports chosen: {chosen}")
+    return {
+        "a non-bind startup failure is reported": raised,
+        "a non-bind startup failure is not retried": len(chosen) == 1,
+    }
+
+
+def main() -> int:
+    smoke_path = pathlib.Path(sys.argv[1] if len(sys.argv) > 1 else "scripts/mcp_smoke.py")
+    smoke = load_smoke(smoke_path)
+    real_free_port = smoke.free_loopback_port
+
+    checks = check_bind_race(smoke, real_free_port)
+    checks.update(check_real_failure_is_not_retried(smoke, real_free_port))
+    for name, passed in checks.items():
+        print(f"{'PASS' if passed else 'FAIL'}: {name}")
+    return 0 if all(checks.values()) else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
+```
+
+Command (run from the repository root; identical for RED and GREEN):
+
+```
+$ python3 "$HOME/Library/Caches/MCPSearch/B117/check_b117.py" scripts/mcp_smoke.py
+```
+
+RED, pristine `scripts/mcp_smoke.py` (fix temporarily reverted with
+`git checkout -- scripts/mcp_smoke.py`):
+
+```
+  scenario 1 failure: HTTP server is not listening on port 57130: it exited with code 1 before the transport came up; stderr:
+2026-09-13T14:42:23.056051+00:00 level=error msg="MCP server failed to start" error="Could not bind 127.0.0.1:57130 — [Errno 48] Address already in use"
+  scenario 1 ports chosen: [57130]
+  scenario 2 ports chosen: [57132]
+PASS: the fixture's occupied port refuses a real bind
+PASS: the harness chose the occupied port first
+FAIL: the harness retried on a different, fresh port
+FAIL: run_http_smoke recovered and finished the HTTP session
+PASS: a non-bind startup failure is reported
+PASS: a non-bind startup failure is not retried
+
+real	0m2.700s
+user	0m0.172s
+sys	0m0.067s
+exit:1
+```
+
+GREEN, fixed `scripts/mcp_smoke.py`:
+
+```
+  note: lost the bind race on port 57116; retrying on a fresh port
+  /health ok on port 57118
+  initialize ok over HTTP (session issued, protocol 2025-06-18)
+  notifications/initialized accepted (202)
+  tools/list ok over SSE
+  tools/call ok over SSE
+  negative cases refused (no session, no SSE accept, cross-origin)
+  stdout remained empty in HTTP mode
+  scenario 1 ports chosen: [57116, 57118]
+  scenario 2 ports chosen: [57128]
+PASS: the fixture's occupied port refuses a real bind
+PASS: the harness chose the occupied port first
+PASS: the harness retried on a different, fresh port
+PASS: run_http_smoke recovered and finished the HTTP session
+PASS: a non-bind startup failure is reported
+PASS: a non-bind startup failure is not retried
+
+real	0m2.956s
+user	0m0.238s
+sys	0m0.087s
+exit:0
+```
+
+In RED the collision is confirmed real (the occupied port refuses a bind) and the harness
+chooses it, but there is no retry: one port chosen, `run_http_smoke` fails. In GREEN the
+harness retries on a second port, `run_http_smoke` completes the whole HTTP session, and the
+non-bind stub is still reported after a single attempt. The scripted checks flip from
+`FAIL/FAIL` to `PASS/PASS`; the two fixture-integrity checks pass in both runs.
+
+## Gates (fixed file)
+
+```
+$ ruff check scripts
+All checks passed!
+
+$ ruff format --check scripts
+6 files already formatted
+
+$ pyright scripts/mcp_smoke.py
+0 errors, 0 warnings, 0 informations
+```
+
+## What is not verified
+
+The real Swift binary was not run: no binary is built in this checkout, and this session is
+not permitted to run `swift build`. The `"Could not bind"` classification is verified against
+the production source paths quoted above and reproduced in the stub, but it is not observed
+from the running server. For the same reason the end-to-end
+`python3 scripts/mcp_smoke.py --http <binary>` was not run against the real server; the check
+drives `run_http_smoke` itself against the stub instead.

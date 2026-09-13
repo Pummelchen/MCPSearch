@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 129 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 97 |
-| START (reproduced, expected behaviour written) | 32 |
+| DONE | 98 |
+| START (reproduced, expected behaviour written) | 31 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 84** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 52 are DONE and 32 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 53 are DONE and 31 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -163,7 +163,7 @@ waived in writing.
 | B114 | S3 | `SwiftWebSearchMCP` (`TransportConfiguration.usage`) | `Sources/WebSearchCore/Support/TransportConfiguration.swift:51-77` | `usage` under-documents the CLI, and the test that claims to check every flag locks the incomplete list in place | docs | START | this Mac (arm64) | handover re-read L7 |
 | B115 | S3 | repository root (`README.md`) | `README.md:120`, provider table `:122-134` | The README undercounts the keyless routes and its Startpage row omits the flag the adapter actually requires | docs | DONE | this Mac (arm64) | handover re-read L7 |
 | B116 | S3 | `WebSearchCore` / `Search` (`SearchOrchestrator`, `RateLimiter`) | `SearchOrchestrator.swift:456-462`, `RateLimiter.swift:97-104` | A local throttle that cleared between the authorise and the wait estimate was reported as a hard skip, making the suite intermittently red | bug | DONE | node1 (arm64) | Phase E baseline |
-| B117 | S3 | `scripts` (`mcp_smoke.py`) | `scripts/mcp_smoke.py` (`free_loopback_port`) | The HTTP smoke picks a free port by closing the socket before the child binds, so the child can lose the bind race | test | START | this Mac (arm64) | Phase C (residual B83 left) |
+| B117 | S3 | `scripts` (`mcp_smoke.py`) | `scripts/mcp_smoke.py` (`free_loopback_port`) | The HTTP smoke picks a free port by closing the socket before the child binds, so the child can lose the bind race | test | DONE | this Mac (arm64) | Phase C (residual B83 left) |
 
 ---
 
@@ -215,6 +215,41 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B117 — the HTTP smoke picked a free port before the child bound, so the child could lose the race
+
+**Severity S3** (recorded) · **category** test · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** `free_loopback_port` binds port 0, reads the assigned number, closes the socket
+and returns it; the child then binds it itself. Between the close and the child's bind the port is
+unowned, so another process can take it and the child exits `EADDRINUSE`. B83 fixed the *symptom* -
+the wait loop now polls the child and reports the exit code with its stderr in under a second - but
+left the race, which is the same class `B20` fixed in the Swift HTTP-transport harness.
+
+**Why the retry, and not the handshake.** The finding offered "have the child report the port it
+actually bound". That is impossible here without a production change: `ServerOptions.parse` rejects
+`--port 0` (its range is `1...65535`), so the harness must still name a port, and the child's choice
+can only be made authoritative by letting the OS choose. Holding the probe socket open across the
+exec was already rejected by B83 and was **re-measured on this machine**: a second bind fails
+`Errno 48` with *and* without `SO_REUSEADDR`. The honest minimal fix is therefore the retry, which
+keeps port ownership entirely in the harness.
+
+**Not masking a real failure.** The retry fires only on the `Could not bind` marker that
+`HTTPHostError.bindFailed` emits through `main.swift`'s startup error log. A non-bind exit
+propagates on the first attempt; a live-but-unhealthy child is killed and reported, never retried;
+the loop is bounded at three ports and raises the last diagnostic if all lose; and each retry prints
+a `note:` line so a raced run is visible rather than silent.
+
+**Verification.** A deterministic fixture holds the exact port the harness picks first, so the stub
+child's real bind fails `EADDRINUSE` instead of relying on luck. RED (fix reverted) fails to retry
+and never completes the HTTP session (exit 1); GREEN completes the whole session and passes six
+assertions, including that a non-bind startup failure is *not* retried. ruff, `ruff format --check`
+and pyright strict are clean. Artifact: `AUDIT/evidence/B117-smoke-port-race.txt`.
+
+**Stated limit.** The race cannot be fully removed without a production argument-parsing change
+(allowing `--port 0` so the child can choose), which is out of this task's scope. The marker string
+is source-verified and reproduced in a stub, not observed from the real binary, because no Swift
+binary was built in that session.
 
 ## B111 — nullable enums excluded the null the design depends on
 
