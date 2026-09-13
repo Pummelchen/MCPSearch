@@ -549,6 +549,61 @@ final class SearchOrchestratorTests: XCTestCase {
         XCTAssertTrue(response.providersFailed.contains { $0.category == .timeout })
     }
 
+    /// A provider that already reported a *failure* must not be charged a second, synthetic
+    /// deadline failure. Before this test the failed provider appeared twice in
+    /// `providers_failed`, the count was inflated, and its real error was overwritten by a
+    /// deadline it did not cause (ledger B12).
+    func testABudgetExpiryChargesOnlyTheProvidersThatDidNotReport() async throws {
+        var configuration = Fixtures.configuration()
+        configuration.balancedTimeout = .milliseconds(300)
+        configuration.fastTimeout = .milliseconds(300)
+        // Fails immediately with a real error, well before the deadline.
+        let failing = MockSearchProvider.failing(.tavily, with: .providerUnavailable(.tavily))
+        // Still running when the budget expires.
+        let hanging = MockSearchProvider.hanging(.brave)
+
+        let registry = ProviderRegistry(providers: [failing, hanging], configuration: configuration)
+        let health = ProviderHealth()
+        let orchestrator = SearchOrchestrator(
+            registry: registry,
+            health: health,
+            cache: SearchCache(),
+            configuration: configuration
+        )
+
+        // Nothing succeeds, so the search reports the failures rather than a result set.
+        let failures: [ProviderFailure]
+        do {
+            _ = try await orchestrator.search(Fixtures.request(mode: .balanced))
+            XCTFail("a search in which every provider failed must report the failures")
+            return
+        } catch let error as SearchError {
+            guard case .providersFailed(let reported) = error else {
+                XCTFail("expected providersFailed, got \(error)")
+                return
+            }
+            failures = reported
+        }
+
+        let tavilyFailures = failures.filter { $0.provider == .tavily }
+        XCTAssertEqual(tavilyFailures.count, 1, "one failure is one report: \(tavilyFailures)")
+        XCTAssertEqual(
+            tavilyFailures.first?.category,
+            .serverError,
+            "its own error must survive; the deadline was not its fault"
+        )
+        // The provider that did not report is the one the deadline is charged to.
+        XCTAssertEqual(
+            failures.filter { $0.provider == .brave && $0.category == .timeout }.count,
+            1
+        )
+        XCTAssertEqual(
+            failures.count,
+            2,
+            "one real failure plus one deadline: \(failures.map(\.provider))"
+        )
+    }
+
     // MARK: Caching
 
     func testSecondIdenticalSearchIsServedFromCache() async throws {

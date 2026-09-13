@@ -370,7 +370,7 @@ public actor SearchOrchestrator {
                 aggregate.attempted += ids.filter { !reported.contains($0) }.count
                 await self.recordBudgetExceeded(
                     ids: ids,
-                    answered: aggregate,
+                    alreadyReported: reported,
                     into: &aggregate
                 )
             }
@@ -382,14 +382,28 @@ public actor SearchOrchestrator {
     /// mistaken for a real provider failure.
     static let budgetSentinel = "internal:search-budget-expired"
 
+    /// Charge the budget to the providers that had not reported yet.
+    ///
+    /// `alreadyReported` is responses *and* failures, computed by the caller. Deriving it from
+    /// responses alone charged a provider that had already failed a second, synthetic deadline
+    /// failure: the failure list carried the provider twice, "N provider(s) failed" was
+    /// inflated, and `lastError` was overwritten with a deadline that provider did not cause
+    /// (ledger B12).
     private func recordBudgetExceeded(
         ids: [ProviderID],
-        answered: FanOutResult,
+        alreadyReported: Set<ProviderID>,
         into aggregate: inout FanOutResult
     ) async {
-        log.warning("Search time budget exceeded; cancelling slow providers")
-        let answeredIDs = Set(answered.responses.map(\.provider))
-        for id in ids where !answeredIDs.contains(id) {
+        let unanswered = ids.filter { !alreadyReported.contains($0) }
+        guard !unanswered.isEmpty else {
+            log.debug("Search time budget exceeded, but every provider had already reported")
+            return
+        }
+        log.warning(
+            "Search time budget exceeded; cancelling slow providers",
+            metadata: ["unreported": "\(unanswered.count)"]
+        )
+        for id in unanswered {
             let failure = ProviderFailure(
                 provider: id,
                 category: .timeout,
