@@ -191,9 +191,13 @@ final class HTMLExtractorTests: XCTestCase {
         let elapsed = ContinuousClock.now - started
 
         XCTAssertEqual(try root?.className(), "content", "the outermost container wins")
+        // 4 s: the quadratic implementation this guards against takes 7.2 s on this fixture, while
+        // the linear one takes 0.28 s on an idle machine — a 1 s bound was mine, and it flaked once
+        // at 1.16 s on a loaded runner. The bound has to separate 7.2 from 0.3, not measure the
+        // scheduler (ledger B28 follow-up).
         XCTAssertLessThan(
             elapsed,
-            .seconds(1),
+            .seconds(4),
             "scoring nested containers re-walks their subtrees: took \(elapsed)"
         )
     }

@@ -1058,6 +1058,14 @@ final class StdioServerTests: XCTestCase {
             "SEARXNG_BASE_URL": stub.baseURL.absoluteString,
             // `web_open` fetches the loopback stub, which the SSRF policy refuses by default.
             "SEARCH_ALLOW_PRIVATE_NETWORK": "1",
+            // Pin the provider set. This test asserts the result-count clamp, and CI runs the whole
+            // suite a second time with placeholder provider credentials present: with Tavily and
+            // Brave configured, the balanced fan-out spends its slots on providers that call the
+            // real vendor APIs with a bogus key and fail, so the stub's answer — and the clamp
+            // assertion — depended on ambient credentials and the network. Disabling everything but
+            // SearXNG makes the answer come from the stub alone, in every environment.
+            "SEARCH_DISABLED_PROVIDERS":
+                "tavily,brave,mojeek,exa,open_web_search,parallel,duckduckgo,startpage",
         ])
         defer { server.stop() }
 
