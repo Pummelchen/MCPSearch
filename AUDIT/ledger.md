@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 132 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 111 |
-| START (reproduced, expected behaviour written) | 21 |
+| DONE | 112 |
+| START (reproduced, expected behaviour written) | 20 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 87** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 66 are DONE and 21 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 67 are DONE and 20 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -142,7 +142,7 @@ waived in writing.
 | B86 | S3 | `deploy` (`provision-node.sh`) | `deploy/provision-node.sh:71` | Provisioning writes through fixed, predictable `/tmp` paths and loads a container image from one | unsafe | DONE | this Mac (arm64) | Phase B L4-12 |
 | B87 | S3 | `WebSearchCore` / `Fetch` (`JinaReaderFetcher`) + `WebSearchCore` / `Search` (`SearchPipelineFactory`) | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:65` | The Jina Reader fallback discloses the target URL to a third party by default, with no warning that it did | docs | DONE | this Mac (arm64) | Phase B L4-13 |
 | B88 | S3 | `WebSearchCore` / `Fetch` (`URLPolicy` + `DirectHTTPFetcher`) | `Sources/WebSearchCore/Fetch/URLPolicy.swift:57` | The declared per-host DNS cache does not exist, and every redirect hop resolves twice | perf | DONE | this Mac (arm64) | Phase B L5-3 |
-| B89 | S3 | `WebSearchCore` / `Search` (`SearchCache`) | `Sources/WebSearchCore/Search/SearchCache.swift:103` | `SearchCache.pruneExpired` rebuilds the whole dictionary on every read, write and stats call | perf | START | this Mac (arm64) | Phase B L5-4 |
+| B89 | S3 | `WebSearchCore` / `Search` (`SearchCache`) | `Sources/WebSearchCore/Search/SearchCache.swift:103` | `SearchCache.pruneExpired` rebuilds the whole dictionary on every read, write and stats call | perf | DONE | this Mac (arm64) | Phase B L5-4 |
 | B90 | S3 | `SwiftWebSearchMCP` (`HTTPMCPHost`) | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:61` | The HTTP listener bounds the request body but nothing else, so idle or slow connections are unbounded | perf | START | this Mac (arm64) | Phase B L5-5 |
 | B91 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:42` | Log emission performs a synchronous blocking write to fd 2 from whatever task is logging | perf | START | this Mac (arm64) | Phase B L5-6 |
 | B92 | S3 | `WebSearchCore` / `Fetch` (`JinaReaderFetcher`) | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:125` | `web_open` reports the requested URL as `final_url` on the Jina path, and the reader's own `url` field is decoded but never used | logic | DONE | this Mac (arm64) | Phase B L5-7 |
@@ -218,6 +218,41 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B89 — `SearchCache.pruneExpired` rebuilt the whole dictionary on every access
+
+**Severity S3** · **category** perf · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** `get`, `store` and `stats` each called `pruneExpired()`, which did
+`storage = storage.filter { now.timeIntervalSince($0.value.storedAt) < $0.value.ttl.seconds }`.
+Every search therefore allocated a new dictionary and re-hashed every live entry even when nothing
+had expired, and `evictOldest` sorted the whole dictionary on overflow.
+
+**The fix.** Entries store an absolute `expiresAt` and the cache keeps `nextExpiry`, the earliest
+deadline in `storage`. `get` no longer sweeps: it judges the requested key directly and removes it
+on the spot, the branch the old code already had. `store` lowers the watermark, then sweeps and
+enforces capacity in the old order; `stats` sweeps when due. `sweepExpired(now:)` removes expired
+entries in place and recomputes the watermark. No public API changed.
+
+**The invariant.** `nextExpiry` is only lowered by a store and exactly recomputed by a sweep, and
+entries are only removed, so it can be stale-early but never stale-late — it is always at most the
+earliest deadline in `storage`. Skipping the sweep when it is in the future therefore changes
+nothing, and it is never skipped when an entry is actually due. The preserved observables: `get`
+results and hit/miss counters (both paths now compare the same `expiresAt`), `stats().entries`
+still counting live entries only, the capacity bound (sweep before the bound check, eviction order
+untouched), and the successful-responses-only rule.
+
+**Verification.** Two tests in `SearchCacheTests`, driven by `TestClock`: `stats().entries == 1`
+with a short-lived and a long-lived entry after the short one lapses, and a capacity-8 cache whose
+eight entries all expire before one live store still reports one entry with the live key present.
+**Falsification.** The literal revert — the pre-fix `SearchCache.swift` from `HEAD` — makes both
+tests *pass*, which is the evidence that the fast path preserved the old semantics rather than
+merely claiming to. Removing the two `sweepExpired` call sites instead reddens them (`"8"` and
+`"2"` against `"1"`), so the tests are load-bearing for the lazy design. The file was restored and
+verified byte-identical (`diff` empty, SHA-256 `ea3992ef…15443ae`).
+
+**Not changed.** `evictOldest` still sorts on overflow; that is a write-path cost only, and the
+finding names `pruneExpired`.
 
 ## B88 — the declared per-host DNS cache did not exist, and a redirect hop resolved twice
 

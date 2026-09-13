@@ -1040,6 +1040,51 @@ final class SearchCacheTests: XCTestCase {
         XCTAssertEqual(stats.misses, 1)
     }
 
+    /// The lazy sweep must not turn "expired" into "still counted".
+    ///
+    /// `stats().entries` counted only live entries before the sweep became lazy, and it still
+    /// does: an entry whose deadline has passed makes the sweep due, so the count is taken after
+    /// it is removed (ledger B89).
+    func testStatsCountOnlyLiveEntries() async {
+        let clock = TestClock()
+        let cache = SearchCache(clock: clock)
+        let shortKey = SearchCache.Key(request: Fixtures.request("short"), providers: [.tavily])
+        let longKey = SearchCache.Key(request: Fixtures.request("long"), providers: [.tavily])
+        await cache.store(makeResponse("short"), for: shortKey, ttl: .seconds(10))
+        await cache.store(makeResponse("long"), for: longKey, ttl: .seconds(600))
+
+        clock.advance(by: .seconds(20))
+
+        let stats = await cache.stats()
+        XCTAssertEqual(stats.entries, 1, "the expired entry must not be counted")
+        let expired = await cache.get(shortKey)
+        let live = await cache.get(longKey)
+        XCTAssertNil(expired, "an expired entry must never be served")
+        XCTAssertNotNil(live, "the live entry must survive the sweep")
+    }
+
+    /// Expired entries may linger until the next sweep, but they must not hold capacity hostage:
+    /// a live store still evicts to the bound, and it must not evict a live entry to make room
+    /// for itself while expired ones are still there.
+    func testExpiredEntriesDoNotConsumeCapacity() async {
+        let clock = TestClock()
+        let cache = SearchCache(capacity: 8, clock: clock)
+        for index in 0..<8 {
+            let key = SearchCache.Key(request: Fixtures.request("old \(index)"), providers: [.tavily])
+            await cache.store(makeResponse("old \(index)"), for: key, ttl: .seconds(10))
+        }
+
+        clock.advance(by: .seconds(11))
+
+        let liveKey = SearchCache.Key(request: Fixtures.request("live"), providers: [.tavily])
+        await cache.store(makeResponse("live"), for: liveKey, ttl: .seconds(600))
+
+        let stats = await cache.stats()
+        XCTAssertEqual(stats.entries, 1, "the eight expired entries must not count against capacity")
+        let live = await cache.get(liveKey)
+        XCTAssertNotNil(live)
+    }
+
     func testCapacityEvictionKeepsCacheBounded() async {
         let cache = SearchCache(capacity: 8, clock: TestClock())
         for index in 0..<20 {
