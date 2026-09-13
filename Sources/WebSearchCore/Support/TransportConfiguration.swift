@@ -189,7 +189,7 @@ public struct ServerOptions: Sendable {
             // Contradictory rather than merely redundant: stdio has no host, port or path,
             // so one of the two requests is a mistake the user needs to see.
             throw OptionError.conflictingArguments(
-                "HTTP options (--port/--host/--http-path) were given together with "
+                "HTTP options (--port/--host/--http-path/--http-allowed-host) were given together with "
                     + "--transport stdio; drop one or ask for --transport http"
             )
         case .stdio:
