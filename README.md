@@ -117,19 +117,21 @@ export DEEPSEEK_API_KEY=sk-...   # optional; adds web_answer
 
 ## Providers
 
-No account is required to run this. Four of the routes below need no vendor key at all:
+No account is required to run this. Five of the routes below need no vendor key at all: two
+of them still need an endpoint you point them at (a SearXNG instance, or an Open Web Search
+aggregator), two are opt-in scrapers, and Parallel needs only its flag.
 
 | Route | Needs | Notes |
 | --- | --- | --- |
-| **Self-hosted SearXNG** | Docker only | Aggregates Google and Brave with no vendor key. See [Self-Hosting](https://github.com/Pummelchen/MCPSearch/wiki/Self-Hosting). |
-| **Parallel Search MCP** | nothing | Free anonymous tier, measured at exactly 20 calls per window. Enable with `SEARCH_ENABLE_PARALLEL=true`. |
-| **DuckDuckGo** | nothing | Free scraper. Throttles to about one query per 10s. Enable with `SEARCH_ENABLE_SCRAPERS=true`. |
+| **Self-hosted SearXNG** | Docker, plus `SEARXNG_BASE_URL` | Aggregates Google and Brave with no vendor key. See [Self-Hosting](https://github.com/Pummelchen/MCPSearch/wiki/Self-Hosting). |
+| **Parallel Search MCP** | `SEARCH_ENABLE_PARALLEL=true` | Free anonymous tier, measured at exactly 20 calls per window. |
+| **DuckDuckGo** | `SEARCH_ENABLE_SCRAPERS=true` | Free scraper. Throttles to about one query per 10s. |
 | Tavily | `TAVILY_API_KEY` | Good on keyword queries; weaker on interpretive ones. 1 credit per search. |
 | Brave Search | `BRAVE_SEARCH_API_KEY` | Broad independent index. |
 | Mojeek | `MOJEEK_API_KEY` | Independent index, for diversity. Paid API. |
 | Exa | `EXA_API_KEY` | Neural retrieval and highlights. |
-| Open Web Search | `OPEN_WEB_SEARCH_URL` | Aggregation endpoint; contract unverified. |
-| Startpage | none | Currently unusable: the site serves an Anubis proof-of-work challenge. |
+| Open Web Search | `OPEN_WEB_SEARCH_URL` | No vendor key: an aggregation endpoint you supply. Contract unverified. |
+| Startpage | `SEARCH_ENABLE_SCRAPERS=true` | Currently unusable: the site serves an Anubis proof-of-work challenge. |
 
 Run at least two providers. A single provider is brittle in practice: measured on this
 deployment, DuckDuckGo alone failed 41 of 50 queries once its throttle was reached,
