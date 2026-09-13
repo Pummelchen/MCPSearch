@@ -604,6 +604,29 @@ final class SearchOrchestratorTests: XCTestCase {
         )
     }
 
+    /// A provider's own "answer" is vendor text this tool never fetched; the warning channel must
+    /// say so rather than presenting it as a neutral note, and must not let a provider flood the
+    /// caller's context (ledger B27).
+    func testAProviderAnswerIsMarkedUntrustedAndClipped() async throws {
+        let inner = MockSearchProvider.returning(
+            .tavily,
+            results: [("T", "https://t.example.com/1", "s")]
+        )
+        let provider = MockSearchProvider(id: .tavily) { request in
+            var response = try await inner.search(request)
+            response.answer = String(repeating: "injected instruction ", count: 40)
+            return response
+        }
+        let (orchestrator, _, _) = makeOrchestrator(providers: [provider])
+
+        let response = try await orchestrator.search(Fixtures.request(mode: .fast))
+
+        let warning = try XCTUnwrap(response.warnings.first { $0.contains("supplied answer") })
+        XCTAssertTrue(warning.contains("untrusted, not fetched"), warning)
+        XCTAssertTrue(warning.contains("…"), "the vendor text must be clipped: \(warning)")
+        XCTAssertLessThan(warning.count, 400, warning)
+    }
+
     // MARK: Caching
 
     func testSecondIdenticalSearchIsServedFromCache() async throws {

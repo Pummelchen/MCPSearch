@@ -18,8 +18,8 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 115 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102 and B103 found in Phase D) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 27 |
-| START (reproduced, expected behaviour written) | 88 |
+| DONE | 28 |
+| START (reproduced, expected behaviour written) | 87 |
 | BLOCKED | 0 |
 
 Severity of the folded set: S0 2, S1 6, S2 27, S3 66.
@@ -73,7 +73,7 @@ waived in writing.
 | B24 | S2 | `Tests/WebSearchCoreTests/HTTPClientTests.swift`, `Sources/WebSearchCore/Support/HTTPClient.swift` | `Tests/WebSearchCoreTests/HTTPClientTests.swift:314` | `testCancellationPropagatesAsCancelled` uses an assertion that cannot fail | test | START | this Mac (arm64) | Phase B L3-19 |
 | B25 | S2 | `MCPSMonitor` (rendering) + `WebSearchCore` / `Monitor` | `Sources/WebSearchCore/Monitor/Renderer.swift:313` (also `:307` for `status.lastError`, and `Sources/MCPSMonitor/main.swift:431`) | Provider/instance-controlled engine names are written to the operator's terminal without stripping control characters (terminal escape injection) | unsafe | START | this Mac (arm64) | Phase B L4-2 |
 | B26 | S2 | `WebSearchCore` / `Search` (`AnswerSynthesizer`) | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift:460` | Citation validation covers only `[n]` markers, so the answer prose can still carry fabricated URLs that the documented guarantee says cannot exist | logic | DONE | this Mac (arm64) | Phase B L4-3 |
-| B27 | S2 | `WebSearchCore` / `Search` (`AnswerSynthesizer`, `SearchOrchestrator`) + `SwiftWebSearchMCP` | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift:215` (also `Sources/WebSearchCore/Search/SearchOrchestrator.swift:201`) | Untrusted page text and provider answers enter the synthesis prompt and the tool output as undelimited content (indirect prompt injection) | unsafe | START | this Mac (arm64) | Phase B L4-4 |
+| B27 | S2 | `WebSearchCore` / `Search` (`AnswerSynthesizer`, `SearchOrchestrator`) + `SwiftWebSearchMCP` | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift:215` (also `Sources/WebSearchCore/Search/SearchOrchestrator.swift:201`) | Untrusted page text and provider answers enter the synthesis prompt and the tool output as undelimited content (indirect prompt injection) | unsafe | DONE | this Mac (arm64) | Phase B L4-4 |
 | B28 | S2 | `WebSearchCore` / `Fetch` (`HTMLExtractor`) | `Sources/WebSearchCore/Fetch/HTMLExtractor.swift:143` | `preferredContentRoot` re-serialises every candidate's subtree, giving quadratic work on crafted HTML | perf | START | this Mac (arm64) | Phase B L5-2 |
 | B29 | S2 | `Sources/WebSearchCore/Support/HTTPClient.swift` (`send` retry branch) | `Sources/WebSearchCore/Support/HTTPClient.swift:243` | `maxRetryAfter` (the cap that stops a hostile `Retry-After` stalling a search) is untested | test | START | this Mac (arm64) | Phase B L6-5 |
 | B30 | S2 | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift` | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:202` | `DirectHTTPFetcher`'s size cap, content-type gate, raw-text path and timeout mapping have no test | test | START | this Mac (arm64) | Phase B L6-6 |

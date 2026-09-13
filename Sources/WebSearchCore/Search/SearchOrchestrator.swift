@@ -198,14 +198,7 @@ public actor SearchOrchestrator {
 
         let results = fuse(accumulated, request: request)
 
-        // Provider-supplied answers are only useful if the caller can tell where they
-        // came from, so each is attributed.
-        for response in accumulated {
-            if let answer = response.answer, !answer.isEmpty {
-                warnings.append("\(response.provider.displayName) answer: \(answer)")
-            }
-            warnings.append(contentsOf: response.warnings)
-        }
+        warnings.append(contentsOf: Self.collectWarnings(from: accumulated))
 
         let elapsed = Int((DispatchTime.now().uptimeNanoseconds - started) / 1_000_000)
 
@@ -381,6 +374,28 @@ public actor SearchOrchestrator {
     /// Marker message identifying the budget timer task's result, so it is never
     /// mistaken for a real provider failure.
     static let budgetSentinel = "internal:search-budget-expired"
+
+    /// Warnings for a fan-out, with each provider's own answers attributed.
+    ///
+    /// Provider-supplied answers are only useful if the caller can tell where they came from, so
+    /// each is attributed — and labelled as untrusted, because a provider's answer is vendor text
+    /// that this tool never fetched or verified. Warnings travel into the *caller's* context,
+    /// where an injected instruction would read as ours, so the text is clipped as well
+    /// (ledger B27).
+    static func collectWarnings(from responses: [ProviderSearchResponse]) -> [String] {
+        var warnings: [String] = []
+        for response in responses {
+            if let answer = response.answer, !answer.isEmpty {
+                let clipped = answer.count > 300 ? String(answer.prefix(300)) + "…" : answer
+                warnings.append(
+                    "\(response.provider.displayName) supplied answer (untrusted, not fetched): "
+                        + clipped
+                )
+            }
+            warnings.append(contentsOf: response.warnings)
+        }
+        return warnings
+    }
 
     /// Charge the budget to the providers that had not reported yet.
     ///
