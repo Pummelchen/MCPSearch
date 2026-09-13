@@ -66,14 +66,21 @@ jobs:
         run: |
           set -euo pipefail
           swift --version
-          version="$(swift -version 2>&1 | sed -n 's/.*Swift version \([0-9]*\.[0-9]*\).*/\1/p' | head -1)"
-          echo "Detected Swift $version"
+          version="$(swift -version 2>&1 | sed -n 's/.*Swift version \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -1)"
+          # An unparseable version used to make both numeric tests fail, which skipped the
+          # error branch and let the step exit 0 — silently passing on exactly the output-format
+          # change the step exists to catch (ledger B22). Refuse to guess.
+          if [ -z "$version" ]; then
+            echo "::error::could not parse 'Swift version X.Y' from 'swift -version'; refusing to guess"
+            exit 1
+          fi
           major="${version%%.*}"
-          minor="${version##*.}"
+          minor="${version#*.}"
           if [ "$major" -lt 6 ] || { [ "$major" -eq 6 ] && [ "$minor" -lt 3 ]; }; then
             echo "::error::This package requires swift-tools-version 6.3 or newer; found $version"
             exit 1
           fi
+          echo "Swift $version satisfies swift-tools-version 6.3"
 
       # Cache the resolved dependency graph and its build products. A cold graph
       # (swift-sdk, swift-nio, SwiftSoup) plus a debug *and* a release build is the
