@@ -35,7 +35,7 @@ Branch: `audit/2026-09-13` from `main` @ `f3dd8d9`. Never force-pushed; `main` i
 | `ruff check` (4 scripts) | 70 findings; `ruff format --check` → 4 files would be reformatted | `ruff-check.txt`, `ruff-format.txt` |
 | `pyright` (default mode, 4 scripts) | 2 errors | `pyright.txt` |
 | `shellcheck` (`-S style`) | 13 style notes, 0 warnings/errors | `shellcheck.txt` |
-| Secret scan, **full history** (gitleaks) | 5 findings, all synthetic test literals | `gitleaks.json` (values never echoed) |
+| Secret scan, **full history** (gitleaks) | 5 findings, all synthetic test literals | `baseline/gitleaks-summary.txt` (the raw `--report-format json` output is deliberately **not** committed: it carries the matched values) |
 | Dependency CVE (osv-scanner, 8 packages) | **no issues found** | `osv-scanner.txt` |
 | SAST (semgrep, `--config auto`) | 4 findings (2 informational, 1 false positive, 1 supply-chain) | `semgrep.json` |
 | YAML parse | 3/3 parse | `yaml-parse.txt` |
