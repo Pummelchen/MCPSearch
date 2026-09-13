@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 127 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 82 |
-| START (reproduced, expected behaviour written) | 45 |
+| DONE | 83 |
+| START (reproduced, expected behaviour written) | 44 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 82** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 82 S3 tasks 37 are DONE and 45 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 82 S3 tasks 38 are DONE and 44 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -213,6 +213,31 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B108 — the pinned actions targeted the deprecated Node 20 runtime
+
+**Severity S3** (recorded) · **category** deps · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** Three `uses:` pins declared the `node20` action runtime, so every dispatched
+run carried a `Node.js 20 is deprecated ... forced to run on Node.js 24` annotation against
+`actions/cache@5a3ec84e` and `actions/checkout@11bd7190` (lines 44, 103 and 213). The jobs pass
+today only because the runner forces the action onto Node 24; when that shim is withdrawn the
+steps stop running, which turns a maintenance warning into a red build for an unrelated change.
+
+**The decision.** Take the current stable of each (`checkout` v7.0.1, `cache` v6.1.0) rather than
+the oldest release that declares `node24` (`v5.0.0` of each). `v5.0.0` is the node24 switch and
+nothing else, so it is the smaller change — but these pins are SHA-frozen and nothing auto-updates
+them, so `v5.0.0` would land the repository two and one majors behind on action code that runs
+with repository credentials, and `checkout` v7 additionally refuses fork-PR checkout for
+`pull_request_target`/`workflow_run`. Both require Actions Runner ≥ `2.327.1`, satisfied by the
+GitHub-hosted `macos-26` runners. Our usage is the default minimal form of both actions, so the
+ESM migrations in `checkout` v6-v7 and `cache` v6 touch no input this workflow reads.
+
+**Verification.** Each candidate's `runs.using` was read from its own `action.yml` at the tag's
+commit, and each pinned SHA was asserted to be that tag's commit rather than trusted from the
+version comment. The workflow still parses and both jobs survive. The annotation-free dispatched
+run is the one thing a local check cannot assert and is recorded with the run id. Artifact:
+`AUDIT/evidence/B108-action-runtime-pins.txt`.
 
 ## B80 — `soak.py` conflated EOF with a malformed stdout line and discarded the line
 
@@ -479,7 +504,7 @@ audit tooling):
 | B105 | S3 | repository hygiene | `scripts/__pycache__/*.pyc` (4 files) | Generated Python byte-code was committed to the branch | style | DONE | this Mac | Phase D (found while restoring the tree) |
 | B106 | S3 | tests/scripts | `scripts/monitor_tty_smoke.py` | The PTY harness reports a crashing monitor as a first-frame timeout | test | START | this Mac | Phase D (found during B104) |
 | B107 | **S2** | `MCPSMonitor` | `Sources/MCPSMonitor/main.swift`, `Monitor/Terminal.swift:165-171` | An externally delivered SIGINT or SIGTERM leaves the terminal in raw mode with the cursor hidden | bug | DONE | this Mac (arm64) | Phase D (found while fixing B10) |
-| B108 | S3 | `.github` | `.github/workflows/ci.yml` (checkout/cache pins) | The pinned GitHub Actions still target Node 20, which the runner is deprecating, so every job runs on a forced Node 24 | deps | START | — | Phase D (CI annotations this round) |
+| B108 | S3 | `.github` | `.github/workflows/ci.yml` (checkout/cache pins) | The pinned GitHub Actions still target Node 20, which the runner is deprecating, so every job runs on a forced Node 24 | deps | DONE | — | Phase D (CI annotations this round) |
 | C | `DuckDuckGoProvider.search` with HTTP 200 + well-formed empty HTML | `async` (cooperative task) | **ok** |
 
 Also: `HTMLExtractorTests` (SwiftSoup-heavy) ok, `testDuckDuckGoScraperEndToEnd` (real DDG

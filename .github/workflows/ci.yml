@@ -41,7 +41,7 @@ jobs:
       # trailing comment) so a retagged or compromised major-version branch cannot
       # change what runs here.
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Select the newest Xcode
         run: |
@@ -100,7 +100,7 @@ jobs:
       # difference between a few minutes and the 30-minute budget, and the lockfile
       # makes the key stable until dependencies actually change.
       - name: Cache SwiftPM dependencies and build products
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684  # v4.2.3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             .build
@@ -210,7 +210,7 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Install analysis tools
         run: |

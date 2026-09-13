@@ -1,0 +1,83 @@
+# B108 — the pinned actions targeted the deprecated Node 20 runtime
+
+Host: node1 (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+Three `uses:` pins in `.github/workflows/ci.yml` declared the `node20` action runtime, which the
+runner is deprecating. Every dispatched run carried an annotation of the form:
+
+```
+! Node.js 20 is deprecated. The following actions target Node.js 20 but are being forced to
+  run on Node.js 24: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684,
+  actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+```
+
+```
+$ grep -n 'uses:' .github/workflows/ci.yml      # before
+44:        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+103:        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684  # v4.2.3
+213:        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+```
+
+The jobs pass today only because the runner forces the action onto Node 24. When that
+compatibility shim is withdrawn the steps stop running, which converts a maintenance warning into
+a red build on an unrelated change.
+
+## The runtime each candidate release declares
+
+Read from each release's own `action.yml` at the tag's commit, not from a changelog:
+
+```
+repo                tag       commit SHA                                runs.using
+actions/checkout    v4.2.2    11bd71901bbe5b1630ceea73d27597364c9af683  node20   <- the pin
+actions/checkout    v5.0.0    08c6903cd8c0fde910a37f88322edcfb5dd907a8  node24
+actions/checkout    v7.0.1    3d3c42e5aac5ba805825da76410c181273ba90b1  node24   <- chosen
+actions/cache       v4.2.3    5a3ec84eff668545956fd18022155c47e93e2684  node20   <- the pin
+actions/cache       v5.0.0    a7833574556fa59680c1b7cb190c1735db73ebf0  node24
+actions/cache       v6.1.0    55cc8345863c7cc4c66a329aec7e433d2d1c52a9  node24   <- chosen
+```
+
+## The decision
+
+The current stable release of each is taken (`v7.0.1`, `v6.1.0`), not the oldest release that
+happens to declare `node24` (`v5.0.0` of each). `v5.0.0` is the node24 switch and nothing else,
+so it is the smallest change; but these pins are SHA-frozen and nothing auto-updates them, so
+choosing `v5.0.0` would land the repository two and one majors behind on action code that runs
+with repository credentials. `checkout` v7 additionally refuses to check out a fork pull request
+for `pull_request_target`/`workflow_run`, which this workflow does not trigger on but should not
+be opted out of by omission.
+
+Both releases require Actions Runner ≥ `2.327.1`. The workflow runs on GitHub-hosted `macos-26`
+runners, which are well past that, so the requirement is satisfied without pinning anything.
+
+Our usage of both actions is the default, minimal form — a bare `checkout`, and `cache` with
+`path`/`key`/`restore-keys` — so the ESM migrations in `checkout` v6-v7 and `cache` v6 do not
+touch an input or output this workflow reads.
+
+## Verification
+
+The SHA↔version correspondence is asserted, not assumed: each pinned SHA is the tag's own commit.
+
+```
+$ gh api repos/actions/checkout/git/matching-refs/tags \
+    --jq '.[] | select(.object.sha=="3d3c42e5aac5ba805825da76410c181273ba90b1") | .ref'
+refs/tags/v7
+refs/tags/v7.0.1
+$ gh api repos/actions/cache/git/matching-refs/tags \
+    --jq '.[] | select(.object.sha=="55cc8345863c7cc4c66a329aec7e433d2d1c52a9") | .ref'
+refs/tags/v6
+refs/tags/v6.1.0
+```
+
+The workflow still parses and both jobs survive:
+
+```
+$ python3 -c "import yaml;print(list(yaml.safe_load(open('.github/workflows/ci.yml'))['jobs']))"
+['build-and-test', 'static-analysis']
+```
+
+The remaining verification is the one this cannot self-certify: that a dispatched run exercises
+both jobs with **no** Node.js deprecation annotation and both green. That is recorded with the
+run id below once it completes — an assertion about a runner's annotations is not something a
+local check can make.
