@@ -1,0 +1,57 @@
+# B20 — the HTTP-transport harness assumed a port it had not reserved
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+```swift
+/// Ask the kernel for an unused loopback port, so two concurrent runs cannot collide
+/// and no fixed port is ever bound.
+private static func freeLoopbackPort() throws -> UInt16 {
+    ...  // bind port 0, read the port with getsockname, `defer { close(fd) }`
+}
+```
+
+The probe socket is closed before the child is started, so the port is unowned between `close()`
+and the child's `bind()`. Anything on the machine — another test run, another process — can take
+it in that window. The comment claimed the opposite ("so two concurrent runs cannot collide"), and
+the failure it hid is the worst kind for a harness: the child exits with a bind error, or the test
+silently talks to a foreign listener that answers `/health` with 200.
+
+## Fails-before evidence
+
+The race cannot be produced on demand, so it is simulated: a `LoopbackServer` holding the port the
+first attempt would use. The control run keeps exactly one attempt, which is what the old code did.
+
+```
+$ swift test --filter testHealthEndpointAnswersTheDocumentedBody
+  single attempt + busy port   → Test Case ... failed (0.215 seconds)
+  three attempts + busy port   → Test Case ... passed (0.272 seconds)
+```
+
+The first line is the old behaviour; the second is the fix recovering on a fresh port. The child
+exits immediately on the bind failure, so a lost race costs one 50 ms poll, not a timeout.
+
+## The fix
+
+`startServer` now tries up to three ports, with a fresh pipe pair per attempt (a pipe belongs to
+the child it was attached to), and reports the last failure if all three lose. The readiness poll
+moved into `waitForHealth(_:)` so the retry loop stays readable.
+
+The comment states what is actually guaranteed: the port is free **when it is chosen**, not
+reserved, which is why the retry exists. That correction is part of the finding — the old comment
+told the next reader the opposite of the truth.
+
+## Verification
+
+```
+$ swift test --filter HTTPTransportTests
+Executed 10 tests, with 0 failures (0 unexpected) in 1.452 seconds
+
+$ swift test
+Executed 469 tests, with 6 skipped and 0 failures (0 unexpected) in 19.034 seconds
+
+$ swift build -c release --scratch-path $SCRATCH -Xswiftc -warnings-as-errors      0 warnings, 0 errors
+$ swift-format lint --recursive --strict Sources Tests                             0 diagnostics
+$ swiftlint lint --strict                                                          0 violations in 81 files
+```

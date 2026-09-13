@@ -173,8 +173,9 @@ private struct RawHTTP {
 /// HTTP to it. Nothing here reaches the network beyond loopback.
 final class HTTPTransportTests: XCTestCase {
     private var process: Process?
-    private let stdoutPipe = Pipe()
-    private let stderrPipe = Pipe()
+    /// Replaced for every attempt: a pipe belongs to the child it was attached to.
+    private var stdoutPipe = Pipe()
+    private var stderrPipe = Pipe()
     private var port: UInt16 = 0
 
     override func tearDown() {
@@ -184,8 +185,11 @@ final class HTTPTransportTests: XCTestCase {
 
     // MARK: - Harness
 
-    /// Ask the kernel for an unused loopback port, so two concurrent runs cannot collide
-    /// and no fixed port is ever bound.
+    /// Ask the kernel for a free loopback port, so no fixed port is ever bound.
+    ///
+    /// The port is free *when it is chosen*, not reserved: the probe socket closes before the child
+    /// binds, so anything on the machine can take it in that window. That is why `startServer`
+    /// retries with a fresh port rather than assuming the kernel held this one (ledger B20).
     private static func freeLoopbackPort() throws -> UInt16 {
         let fd = socket(AF_INET, SOCK_STREAM, 0)
         guard fd >= 0 else { throw RawHTTP.Failure.socket("could not create a probe socket") }
@@ -216,44 +220,65 @@ final class HTTPTransportTests: XCTestCase {
 
     private func startServer(extraArguments: [String] = []) throws {
         let binary = try ServerTestSupport.binaryURL()
-        port = try Self.freeLoopbackPort()
+        var lastFailure = ""
 
-        let process = Process()
-        process.executableURL = binary
-        process.arguments =
-            ["--transport", "http", "--port", String(port)] + extraArguments
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
+        // Three attempts: one lost race is plausible, three in a row means something else is wrong
+        // and the error below reports it.
+        for _ in 1...3 {
+            port = try Self.freeLoopbackPort()
+            stdoutPipe = Pipe()
+            stderrPipe = Pipe()
 
-        // Hermetic, exactly like the stdio harness: no ambient provider credentials.
-        var environment = ["PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"]
-        for key in ServerTestSupport.providerEnvironmentVariables {
-            environment.removeValue(forKey: key)
+            let process = Process()
+            process.executableURL = binary
+            process.arguments =
+                ["--transport", "http", "--port", String(port)] + extraArguments
+            process.standardInput = FileHandle.nullDevice
+            process.standardOutput = stdoutPipe
+            process.standardError = stderrPipe
+
+            // Hermetic, exactly like the stdio harness: no ambient provider credentials.
+            var environment = [
+                "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+            ]
+            for key in ServerTestSupport.providerEnvironmentVariables {
+                environment.removeValue(forKey: key)
+            }
+            environment["SEARCH_LOG_LEVEL"] = "warning"
+            process.environment = ServerTestSupport.childEnvironment(base: environment)
+
+            try process.run()
+            self.process = process
+
+            if let failure = waitForHealth(process) {
+                lastFailure = failure
+                stopServer()
+                continue
+            }
+            return
         }
-        environment["SEARCH_LOG_LEVEL"] = "warning"
-        process.environment = ServerTestSupport.childEnvironment(base: environment)
 
-        try process.run()
-        self.process = process
+        throw RawHTTP.Failure.connect(
+            "server did not become healthy on three free ports (last: \(lastFailure))"
+        )
+    }
 
-        // Poll readiness. 50 ms is the longest sleep this suite permits.
+    /// Poll `/health` until the child answers. Returns a description of the failure, or nil.
+    ///
+    /// 50 ms is the longest sleep this suite permits.
+    private func waitForHealth(_ process: Process) -> String? {
         for _ in 0..<200 {
             guard process.isRunning else {
-                throw RawHTTP.Failure.connect(
-                    "server exited before becoming healthy; stderr: \(stderrText())"
-                )
+                return "server exited before becoming healthy; stderr: \(stderrText())"
             }
             if let response = try? RawHTTP.request(port: port, method: "GET", path: "/health"),
                 response.status == 200
             {
-                return
+                return nil
             }
             usleep(50_000)
         }
-        throw RawHTTP.Failure.connect(
-            "server did not become healthy on port \(port); stderr: \(stderrText())"
-        )
+        return "server did not become healthy on port \(port); stderr: \(stderrText())"
     }
 
     private func stopServer() {

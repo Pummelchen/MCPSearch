@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 120 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 51 |
-| START (reproduced, expected behaviour written) | 69 |
+| DONE | 52 |
+| START (reproduced, expected behaviour written) | 68 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 75** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 33 are DONE and 1 open; of the 75 S3 tasks 7 are DONE and 68 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 75 S3 tasks 7 are DONE and 68 open.
 
 
 Two cross-cutting gates are **not** tasks but acceptance criteria for Phase E: the whole
@@ -68,7 +68,7 @@ waived in writing.
 | B17 | S2 | `deploy/provision-node.sh` | `deploy/provision-node.sh:235` (template at `:216`) | Unchecked `sed` can leave the tracked `__SECRET_KEY__` placeholder signing a provisioned SearXNG instance | placeholder | DONE | this Mac (arm64) | Phase B PLACEHOLDER-2 |
 | B18 | S2 | `Tests/WebSearchCoreTests/StdioServerTests.swift` | `Tests/WebSearchCoreTests/StdioServerTests.swift:716` | `web_open` security-rejection test is weakened to "some refusal happened" | test | DONE | this Mac (arm64) | Phase B L3-4 |
 | B19 | S2 | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift` | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift:674` | The test named `testProvidersReceiveALargerBudgetThanTheFinalResultLimit` never inspects the budget | test | DONE | this Mac (arm64) | Phase B L3-5 |
-| B20 | S2 | `Tests/WebSearchCoreTests/HTTPTransportTests.swift` | `Tests/WebSearchCoreTests/HTTPTransportTests.swift:183` (release at `:188`, use at `:215`) | Port race in the HTTP-transport harness, whose comment claims collision-freedom | test | START | this Mac (arm64) | Phase B L3-6 |
+| B20 | S2 | `Tests/WebSearchCoreTests/HTTPTransportTests.swift` | `Tests/WebSearchCoreTests/HTTPTransportTests.swift:183` (release at `:188`, use at `:215`) | Port race in the HTTP-transport harness, whose comment claims collision-freedom | test | DONE | this Mac (arm64) | Phase B L3-6 |
 | B21 | S2 | `SwiftWebSearchMCP` (HTTP transport wiring) | `Sources/SwiftWebSearchMCP/main.swift:120` | The HTTP Host allow-list is hard-coded to loopback, so the documented `--host`/proxy deployment gets 421 | bug | DONE | this Mac (arm64) | Phase B L3-26 |
 | B22 | S2 | `.github/workflows/ci.yml` | `.github/workflows/ci.yml:67` (parse at `:63`) | The CI Swift-version gate passes silently when the version cannot be parsed | logic | DONE | this Mac (arm64) | Phase B L3-27 |
 | B23 | S2 | `scripts/soak.py` | `scripts/soak.py:217` (guard at `:214`, assignment `:221`) | `soak.py --providers` is not authoritative: an ambient `SEARCH_DISABLED_PROVIDERS` still disables requested providers | logic | DONE | this Mac (arm64) | Phase B L3-28 |
