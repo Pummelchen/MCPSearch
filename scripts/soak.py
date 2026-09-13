@@ -212,18 +212,13 @@ def build_environment(providers: set[str]) -> dict[str, str]:
     """
     environment = dict(os.environ)
 
-    # Anything not explicitly requested is switched off, so the run is unambiguous.
+    # Anything not explicitly requested is switched off, so the run is unambiguous. The value is
+    # *assigned* from the request, never merged with the ambient one: merging kept a requested
+    # provider disabled when the environment already named it, and with every provider requested
+    # the old `if disabled:` guard left the ambient list untouched — both contradicting the run
+    # header, which is what `--providers` is supposed to describe (ledger B23).
     disabled = sorted(set(ALL_PROVIDERS) - providers)
-    if disabled:
-        already = [
-            p.strip()
-            for p in environment.get("SEARCH_DISABLED_PROVIDERS", "").split(",")
-            if p.strip()
-        ]
-        for provider in disabled:
-            if provider not in already:
-                already.append(provider)
-        environment["SEARCH_DISABLED_PROVIDERS"] = ",".join(already)
+    environment["SEARCH_DISABLED_PROVIDERS"] = ",".join(disabled)
 
     # Scrapers and Parallel are also opt-in flags, not just registry entries.
     environment["SEARCH_ENABLE_SCRAPERS"] = (
