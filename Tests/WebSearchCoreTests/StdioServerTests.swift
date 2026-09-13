@@ -505,6 +505,171 @@ final class StdioServerTests: XCTestCase {
         )
     }
 
+    // MARK: - web_open, the success path
+
+    /// `web_open` returned a rejection in every other test in this file, so its success path —
+    /// the handler's `Self.success`, `ToolOutputFormatter.openText` and `openStructured` — was
+    /// never executed end to end. Making `webOpen` always fail used to leave the suite green
+    /// (ledger B08).
+    func testWebOpenReturnsStructuredContentAndTextForARealPage() throws {
+        let body = String(
+            repeating: "Opening a page returns the readable text of that page. ",
+            count: 20
+        )
+        let page = try LoopbackServer(responses: [
+            .init(
+                status: 200,
+                headers: ["Content-Type": "text/html; charset=utf-8"],
+                body: """
+                    <html><head><title>Audit Page</title></head>
+                    <body><nav>menu</nav><article><p>\(body)</p></article>
+                    <footer>footer</footer></body></html>
+                    """
+            )
+        ])
+
+        let server = try startInitializedServer(environment: [
+            // The loopback page is on 127.0.0.1, which the SSRF policy refuses by design.
+            "SEARCH_ALLOW_PRIVATE_NETWORK": "1",
+        ])
+        defer { server.stop() }
+
+        try server.send([
+            "jsonrpc": "2.0",
+            "id": 30,
+            "method": "tools/call",
+            "params": [
+                "name": "web_open",
+                "arguments": ["url": page.baseURL.absoluteString],
+            ],
+        ])
+        let response = try server.readResponse(id: 30)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        XCTAssertNotEqual(result["isError"] as? Bool, true, "\(result)")
+
+        let structured = try XCTUnwrap(result["structuredContent"] as? [String: Any])
+        XCTAssertEqual(structured["url"] as? String, page.baseURL.absoluteString)
+        XCTAssertEqual(structured["final_url"] as? String, page.baseURL.absoluteString)
+        XCTAssertEqual(structured["status"] as? Int, 200)
+        XCTAssertEqual(structured["title"] as? String, "Audit Page")
+        XCTAssertEqual(structured["extraction_method"] as? String, "html_extraction")
+        XCTAssertEqual(structured["truncated"] as? Bool, false)
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        let text = content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        XCTAssertEqual(
+            structured["text_characters"] as? Int,
+            text.components(separatedBy: "\n\n").dropFirst().joined(separator: "\n\n").count,
+            "text_characters must be the length of the body that follows the header"
+        )
+        XCTAssertTrue(
+            (structured["warnings"] as? [Any])?.isEmpty ?? false,
+            "a page that extracts cleanly carries no warnings: \(structured["warnings"] ?? "nil")"
+        )
+
+        let parts = text.components(separatedBy: "\n\n")
+        let header = parts.first ?? ""
+        let bodyText = parts.dropFirst().joined(separator: "\n\n")
+        XCTAssertTrue(header.contains("URL: \(page.baseURL.absoluteString)"), header)
+        XCTAssertTrue(header.contains("Status: 200 (html_extraction)"), header)
+        XCTAssertTrue(header.contains("# Audit Page"), "a title the body does not open with is a heading: \(header)")
+        XCTAssertFalse(bodyText.isEmpty)
+        XCTAssertTrue(bodyText.contains("readable text of that page"), String(bodyText.prefix(200)))
+        XCTAssertEqual(page.requestCount, 1, "the page must actually have been fetched")
+    }
+
+    /// The truncation branch: the same page fetched with a 1 000-character budget.
+    func testWebOpenReportsTruncationInBothForms() throws {
+        let body = String(
+            repeating: "Truncation is reported rather than silent. ",
+            count: 80
+        )
+        let page = try LoopbackServer(responses: [
+            .init(
+                status: 200,
+                headers: ["Content-Type": "text/html; charset=utf-8"],
+                body: "<html><head><title>Long Page</title></head><body><article><p>\(body)</p></article></body></html>"
+            )
+        ])
+
+        let server = try startInitializedServer(environment: ["SEARCH_ALLOW_PRIVATE_NETWORK": "1"])
+        defer { server.stop() }
+
+        try server.send([
+            "jsonrpc": "2.0",
+            "id": 31,
+            "method": "tools/call",
+            "params": [
+                "name": "web_open",
+                "arguments": ["url": page.baseURL.absoluteString, "max_characters": 1_000],
+            ],
+        ])
+        let response = try server.readResponse(id: 31)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        XCTAssertNotEqual(result["isError"] as? Bool, true, "\(result)")
+
+        let structured = try XCTUnwrap(result["structuredContent"] as? [String: Any])
+        XCTAssertEqual(structured["truncated"] as? Bool, true)
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        let text = content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        let bodyText = text.components(separatedBy: "\n\n").dropFirst().joined(separator: "\n\n")
+        // `clip` cuts at the last whitespace before the budget rather than mid-word, so the
+        // body is at most the budget and normally close to it.
+        let characters = try XCTUnwrap(structured["text_characters"] as? Int)
+        XCTAssertEqual(characters, bodyText.count, "text_characters must match the body")
+        XCTAssertLessThanOrEqual(characters, 1_000)
+        XCTAssertGreaterThan(characters, 500, "the clip should use most of the budget")
+        XCTAssertTrue(text.contains("Note: content was truncated."), String(text.prefix(200)))
+    }
+
+    /// The title-dedup branch: when the extracted text already opens with the title, the heading
+    /// must not repeat it. That branch was the reason this code exists, and nothing asserted it.
+    func testWebOpenDoesNotRepeatATitleTheBodyAlreadyOpensWith() throws {
+        let page = try LoopbackServer(responses: [
+            .init(
+                status: 200,
+                headers: ["Content-Type": "text/html; charset=utf-8"],
+                body: """
+                    <html><head><title>Alpha Page</title></head>
+                    <body><article><h1>Alpha Page</h1>
+                    <p>Body text that follows the heading and says enough to be extracted.</p>
+                    </article></body></html>
+                    """
+            )
+        ])
+
+        let server = try startInitializedServer(environment: ["SEARCH_ALLOW_PRIVATE_NETWORK": "1"])
+        defer { server.stop() }
+
+        try server.send([
+            "jsonrpc": "2.0",
+            "id": 32,
+            "method": "tools/call",
+            "params": [
+                "name": "web_open",
+                "arguments": ["url": page.baseURL.absoluteString],
+            ],
+        ])
+        let response = try server.readResponse(id: 32)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        XCTAssertNotEqual(result["isError"] as? Bool, true, "\(result)")
+
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        let text = content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        let parts = text.components(separatedBy: "\n\n")
+        let header = parts.first ?? ""
+        let bodyText = parts.dropFirst().joined(separator: "\n\n")
+
+        XCTAssertTrue(
+            bodyText.contains("Alpha Page"),
+            "the premise of this test is that the body carries the title: \(String(bodyText.prefix(120)))"
+        )
+        XCTAssertFalse(
+            header.contains("Alpha Page"),
+            "the header must not repeat a title the body already opens with: \(header)"
+        )
+        XCTAssertTrue(header.contains("URL: "), header)
+    }
+
     /// A refusal is a successful result, not an error, and must be distinguishable
     /// from an answer.
     func testWebAnswerReportsInsufficientResultsAsAStatusNotAnError() throws {

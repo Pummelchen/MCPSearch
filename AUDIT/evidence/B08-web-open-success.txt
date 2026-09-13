@@ -1,0 +1,35 @@
+# B08 — web_open's success path through the MCP tool, evidence after the fix
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## The tests (in StdioServerTests, against the real stdio server process)
+
+```
+$ swift test --filter StdioServerTests/testWebOpen
+testWebOpenReturnsStructuredContentAndTextForARealPage     url/final_url/status/title/
+                                                          content_type/extraction_method/
+                                                          truncated/text_characters/warnings,
+                                                          header lines and body, 1 real request
+testWebOpenReportsTruncationInBothForms                   truncated=true, text_characters == body,
+                                                          <= budget, "Note: content was truncated."
+testWebOpenDoesNotRepeatATitleTheBodyAlreadyOpensWith     header without "# Alpha Page", body with it
+Executed 4 tests, with 0 failures (0 unexpected) in 1.787 seconds
+```
+
+The page is served by the loopback harness with `SEARCH_ALLOW_PRIVATE_NETWORK=1`, so the fetch,
+the extraction, the handler's `Self.success` and both formatter functions all run for real.
+
+## Mutation evidence — only the success path broken
+
+```
+(the success return replaced by Self.error, all guards untouched)
+Executed 20 tests, with 7 failures (0 unexpected) in 3.481 seconds
+  3x testWebOpenDoesNotRepeatATitleTheBodyAlreadyOpensWith
+  2x testWebOpenReportsTruncationInBothForms
+  2x testWebOpenReturnsStructuredContentAndTextForARealPage
+```
+
+The other 17 StdioServerTests stayed green, which is the finding's claim exactly: before these
+three tests, making `webOpen` always fail left the suite green. (A first, broader mutation that
+also short-circuited the URL guards failed 12 tests, which shows the rejection paths were
+already covered.) The mutation was reverted.
