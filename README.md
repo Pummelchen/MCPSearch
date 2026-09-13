@@ -19,7 +19,9 @@ server that gives local AI clients reliable public-web search and page fetching.
   scale, so results are fused with weighted Reciprocal Rank Fusion.
 - **Swift 6.3.3**, strict concurrency, no runtime dependency on Node or Python.
 - **Client-compatible by construction.** Tool schemas satisfy the strictest consumer's
-  validation, and both stdio and Streamable HTTP are supported — see
+  validation, and both stdio and Streamable HTTP are supported. No vendor client has been
+  connected to this server and that round trip is not planned, so the claim is bounded to
+  the documented rules, the schema linter and the protocol tests that run locally — see
   [Compatibility](https://github.com/Pummelchen/MCPSearch/wiki/Compatibility).
 
 ## What is here
