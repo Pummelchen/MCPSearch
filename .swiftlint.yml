@@ -53,6 +53,11 @@ disabled_rules:
 #   cyclomatic_complexity    26        Sources/WebSearchCore/Support/AppConfiguration.swift:275
 #   nesting (type level)      4        Sources/WebSearchCore/Providers/BraveProvider.swift:245
 #
+# `ProviderContractTests` remains the worst offender but is no longer at the ceiling: ledger B96
+# moved its one status-mapping test into `HTTPStatusMapperTests`, taking the file to 1421 lines.
+# The envelope above is left at the recorded A03 measurement rather than narrowed to match, because
+# the point of the envelope is to be the number the file must not exceed.
+#
 # Every other finding the default rules produced in our own code was fixed rather than configured
 # away: a `try!`, ten `Data` → `String` decodings, three `for`-`if` pairs, two orphaned doc comments
 # and one unused closure parameter. Splitting the large test suites and the long orchestrator

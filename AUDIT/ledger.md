@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 132 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 125 |
-| START (reproduced, expected behaviour written) | 7 |
+| DONE | 126 |
+| START (reproduced, expected behaviour written) | 6 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 87** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 80 are DONE and 7 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 81 are DONE and 6 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -149,7 +149,7 @@ waived in writing.
 | B93 | S3 | `Sources/WebSearchCore/Fetch/MarkupDepth.swift`, `Search/SearchError.swift`, `SwiftWebSearchMCP/ToolHandlers.s | `Sources/WebSearchCore/Fetch/MarkupDepth.swift:190` | The new `MarkupDepth` regression suite still leaves four branches/contracts unpinned | test | DONE | this Mac (arm64) | Phase B L6-4 |
 | B94 | S3 | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift`, `Sources/WebSearchCore/Search/SearchOrchestrator.swi | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift:716` | `testStatusCountsSuccessesAndFailures` never observes a failure | test | DONE | this Mac (arm64) | Phase B L6-14 |
 | B95 | S3 | `Tests/WebSearchCoreTests/MonitorTests.swift`, `Sources/WebSearchCore/Monitor/ProviderProbe.swift:50` | `Tests/WebSearchCoreTests/MonitorTests.swift:101` | The monitor's setup-hint test asserts a string the test itself constructed | test | DONE | this Mac (arm64) | Phase B L6-15 |
-| B96 | S3 | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift` | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift:46` | `HTTPStatusMapper.map`'s HTTPError branches and `validate`'s default/422 statuses are untested | test | START | this Mac (arm64) | Phase B L6-16 |
+| B96 | S3 | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift` | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift:46` | `HTTPStatusMapper.map`'s HTTPError branches and `validate`'s default/422 statuses are untested | test | DONE | this Mac (arm64) | Phase B L6-16 |
 | B97 | S3 | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift`, `Tests/WebSearchCoreTests/AnswerSynthesizerTests.swift | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift:349` | `AnswerSynthesizer`'s completion edge cases, token usage and locale prompt are untested | test | START | this Mac (arm64) | Phase B L6-17 |
 | B98 | S3 | `Sources/MCPSMonitor/main.swift` (`Monitor`), `Tests/MCPSMonitorTests/MonitorOptionsTests.swift` | `Sources/MCPSMonitor/main.swift:337` | The `Monitor` actor's refresh/counting/warning logic has no Swift test | test | START | this Mac (arm64) | Phase B L6-18 |
 | B99 | S3 | `Tests/WebSearchCoreTests/TestSupport.swift`, `scripts/*.py` | `Tests/WebSearchCoreTests/TestSupport.swift:12` | No test ties the Swift test harnesses to the Python harnesses, and two scripts are untested entirely | test | START | this Mac (arm64) | Phase B L6-19 |
@@ -218,6 +218,43 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B96 — the status mapper's `HTTPError` arms and `validate`'s default/422 paths were untested
+
+**Severity S3** · **category** test · **status** DONE · **host** node1 (arm64)
+
+**Premise confirmed open.** `HTTPStatusMapper.map` had exactly one direct test, which passed a
+`URLError`, so no `HTTPError` arm was verified; `validate` was covered for 401/403/429/400/503/200
+only — no 422 and no unmapped status. B17 and the recent provider work had not added coverage.
+
+**What was added.** A new `HTTPStatusMapperTests.swift` owns the status/transport contract, and
+`testHTTPStatusMapperClassifiesCorrectly` moved into it unchanged. `ProviderContractTests` was at
+SwiftLint's 1458-line `file_length` ceiling, so growing it was not possible; the move takes it to
+1421 lines and the file count 87 -> 88. Eleven tests pin: the status table including 422, 404, 418
+and 301; the success range; `Retry-After`; vendor-specific status sets; all six `HTTPError` arms;
+the `SearchError` passthrough; explicit cancellation; curated `URLError` reasons; the generic
+fallback; and that the transport-produced descriptions carry no URL.
+
+**Two measurements corrected the test, not the code.** `.cannotConnectToHost` is curated as
+`could not connect to the host` (not `the host could not be resolved`), and 204 is inside
+`HTTPResponse.isSuccess`'s `200..<300`, so it passes `validate` rather than taking the default arm.
+
+**A finding surfaced.** `HTTPError.invalidURL(detail)` is interpolated verbatim into
+`SearchError.unsupportedRequest(provider, detail)` and rendered as `"<Provider> cannot serve this
+request: <detail>"`, so a URL-shaped detail would be echoed, key included. `git grep` finds no
+production call site that throws `invalidURL` — the case is dormant — so this is not an active leak,
+but the first draft of the URL-hygiene test asserted it was safe, which was wrong. The test now
+covers the three descriptions the transports actually produce and both the artifact and the test
+file record the hazard for whichever task owns `HTTPError`'s construction.
+
+**Falsification.** M1 removes 422 from `case 400, 422` and makes the `default` arm throw
+`providerUnavailable`: 5 assertion failures. M2 disables the whole `HTTPError` switch so every case
+falls through to the generic network failure: all six table rows red with the generic description.
+`HTTPStatusMapper.swift` restored byte-identical (`diff` empty, SHA-256
+`663b23ca4fabf914917f7eb17f2d50d30c280963d645fc682e6a5a019c9be6dc`).
+
+Gate: 564 tests / 6 skipped / 0 failures; debug and release 0 warnings; swift-format 0;
+swiftlint 0 in 88 files; notices clean. Evidence: `AUDIT/evidence/B96-http-status-mapper.txt`.
 
 ## B95 — the monitor's setup-hint test asserted a string it had constructed itself
 

@@ -1388,47 +1388,10 @@ final class ProviderContractTests: XCTestCase {
     }
 
     // MARK: - Status mapping
-
-    func testHTTPStatusMapperClassifiesCorrectly() {
-        func response(_ status: Int, headers: [String: String] = [:]) -> HTTPResponse {
-            HTTPResponse(
-                statusCode: status,
-                headers: headers,
-                body: Data(),
-                url: URL(string: "https://example.com")!
-            )
-        }
-
-        XCTAssertThrowsError(
-            try HTTPStatusMapper.validate(response(401), provider: .tavily)
-        ) { error in
-            XCTAssertEqual((error as? SearchError)?.category, .authentication)
-        }
-        XCTAssertThrowsError(
-            try HTTPStatusMapper.validate(response(403), provider: .tavily)
-        ) { error in
-            XCTAssertEqual((error as? SearchError)?.category, .authentication)
-        }
-        XCTAssertThrowsError(
-            try HTTPStatusMapper.validate(response(429, headers: ["retry-after": "5"]), provider: .tavily)
-        ) { error in
-            guard case .rateLimited(_, let retryAfter) = error as? SearchError else {
-                return XCTFail("expected rateLimited")
-            }
-            XCTAssertEqual(retryAfter?.milliseconds, 5000)
-        }
-        XCTAssertThrowsError(
-            try HTTPStatusMapper.validate(response(400), provider: .tavily)
-        ) { error in
-            XCTAssertEqual((error as? SearchError)?.category, .unsupportedRequest)
-        }
-        XCTAssertThrowsError(
-            try HTTPStatusMapper.validate(response(503), provider: .tavily)
-        ) { error in
-            XCTAssertEqual((error as? SearchError)?.category, .serverError)
-        }
-        XCTAssertNoThrow(try HTTPStatusMapper.validate(response(200), provider: .tavily))
-    }
+    //
+    // `testHTTPStatusMapperClassifiesCorrectly` moved to `HTTPStatusMapperTests`, which owns the
+    // whole status/transport contract. This file is at SwiftLint's `file_length` ceiling, and the
+    // move is a straight relocation: the body was not changed (ledger B96).
 
     func testRetryableStatusSetIsDeliberatelyNarrow() {
         // 400/401/403 must never be retried: retrying wastes quota and cannot succeed.

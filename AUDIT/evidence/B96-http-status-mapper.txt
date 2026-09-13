@@ -1,0 +1,128 @@
+# B96 — the status mapper's `HTTPError` arms and `validate`'s default/422 paths were untested
+
+Host: `node1 (arm64, macOS 26.6.2)` · branch `audit/2026-09-13` · Swift 6.3.3
+
+## Premise check: still open, and B17/B57 had not moved it
+
+Grepped before writing. `HTTPStatusMapper.map` was called by exactly one test
+(`ErrorReportingTests.testTransportErrorTextNeverEchoesTheRequestURL`, with a `URLError`), so every
+`HTTPError` arm was unverified; `validate` was exercised only by
+`ProviderContractTests.testHTTPStatusMapperClassifiesCorrectly`, which covered
+401/403/429/400/503/200 — no 422, no unmapped status. B17 (secret-key guard) and the recent provider
+work did not add coverage here; the mapper file itself is unchanged since it was written.
+
+## What was added
+
+A new `HTTPStatusMapperTests.swift` owns the whole status/transport contract, and the existing
+`testHTTPStatusMapperClassifiesCorrectly` moved into it unchanged. `ProviderContractTests` was at
+SwiftLint's 1458-line `file_length` ceiling, so growing it was not an option; after the move it is
+1421 lines. Eleven tests:
+
+| Test | Pins |
+| --- | --- |
+| `testValidateMapsEveryStatusClass` | a table over 401/403/429/400/**422**/500/503/599/**404**/**418**/**301**, each with its exact `SearchError` |
+| `testValidateAcceptsEveryStatusInTheSuccessRange` | 200/201/202/204/299 pass through |
+| `testValidateCarriesRetryAfterForThrottling` | the `Retry-After` header reaches `rateLimited` as 5 s |
+| `testValidateHonoursVendorSpecificStatusSets` | the caller's `authenticationStatusCodes`/`rateLimitStatusCodes` are consulted before the generic switch, and the default arm still applies when they do not match |
+| `testMapClassifiesEveryHTTPErrorCase` | all six `HTTPError` cases: `timedOut`→`timeout`, `cancelled`→`networkFailure("cancelled")`, `connectionFailed`/`transportFailure`→`networkFailure(reason)`, `responseTooLarge`→`malformedResponse`, `invalidURL`→`unsupportedRequest(detail)` |
+| `testMapPassesASearchErrorThroughUnchanged` | a `SearchError` is not re-wrapped, and keeps its original provider |
+| `testMapClassifiesCancellationExplicitly` | `CancellationError`→`networkFailure("cancelled")` |
+| `testMapCuratesURLErrorReasons` | a `URLError` is curated from its code and carries no URL, keys or host |
+| `testMapFallsBackToTheGenericNetworkFailure` | an arbitrary error becomes `networkFailure(provider, localizedDescription)` |
+| `testMappedDescriptionsNeverEchoARequestURL` | no transport-produced description contains the URL, its key or its host |
+| `testHTTPStatusMapperClassifiesCorrectly` | the original assertions, relocated |
+
+## Two measurements that changed the assertions
+
+Running the new table found two places where my first draft asserted something the code does not do:
+
+* `.cannotConnectToHost` is curated as `"could not connect to the host"`, not `"the host could not be
+  resolved"` (that is `.cannotFindHost`/`.dnsLookupFailed`). The assertion now says what the code
+  says.
+* `validate` treats 204 as a success, because `HTTPResponse.isSuccess` is `(200..<300)`. The first
+  draft asserted it took the default arm; it now sits in the success-range test.
+
+## A finding this test surfaced, not asserted away
+
+`HTTPError.invalidURL(detail)` is interpolated verbatim by `map` into
+`SearchError.unsupportedRequest(provider, detail)`, whose `safeDescription` renders as
+`"Mojeek cannot serve this request: \(detail)"`. A URL-shaped detail is therefore echoed:
+
+```
+HTTPError.invalidURL("https://api.mojeek.com/search?api_key=tvly-not-real")
+  -> Mojeek cannot serve this request: https://api.mojeek.com/search?api_key=tvly-not-real
+```
+
+`git grep` finds **no production call site that throws `invalidURL`** — the case exists for the
+transport adapters and is currently dormant — so this is not an active leak. The first draft of
+`testMappedDescriptionsNeverEchoARequestURL` asserted it was safe; that was wrong, and rather than
+delete the finding, the test now covers the three descriptions the transports actually produce and
+the file's doc comment records the hazard. It belongs to whichever task owns `HTTPError`'s
+construction, not to a test-only item.
+
+## Proof the assertions can fail (mutations of production code)
+
+**M1 — `validate`'s request-error and default arms** (`HTTPStatusMapper.swift`): 422 removed from
+`case 400, 422`, and the `default` arm made to throw `providerUnavailable`:
+
+```
+HTTPStatusMapperTests.swift:154: … testValidateHonoursVendorSpecificStatusSets :
+    ("serverError") is not equal to ("unsupportedRequest")
+HTTPStatusMapperTests.swift:81: … testValidateMapsEveryStatusClass :
+    providerUnavailable(.tavily) is not equal to unsupportedRequest(.tavily, "upstream rejected the request (HTTP 422)")
+HTTPStatusMapperTests.swift:81: … testValidateMapsEveryStatusClass :
+    providerUnavailable(.tavily) is not equal to unsupportedRequest(.tavily, "unexpected status HTTP 404")
+HTTPStatusMapperTests.swift:81: … HTTP 418 …
+HTTPStatusMapperTests.swift:81: … HTTP 301 …
+Executed 11 tests, with 5 failures (0 unexpected)
+```
+
+**M2 — the whole `HTTPError` switch disabled** (`if let httpError = error as? HTTPError, false`), so
+every case falls through to the generic network failure. All six rows of the table go red with the
+generic description, each naming its own case:
+
+```
+HTTPStatusMapperTests.swift:200: … testMapClassifiesEveryHTTPErrorCase :
+    networkFailure(.tavily, "The operation couldn't be completed. (WebSearchCore.HTTPError error 0.)")
+    is not equal to timeout(.tavily) - timedOut
+… - cancelled, connectionFailed, transportFailure, responseTooLarge, invalidURL
+Executed 11 tests, with 6 failures (0 unexpected)
+```
+
+`HTTPStatusMapper.swift` was restored from its pre-mutation copy: `diff` empty, SHA-256
+`663b23ca4fabf914917f7eb17f2d50d30c280963d645fc682e6a5a019c9be6dc` for both the restored file and the
+backup. `git diff --stat Sources/` is empty.
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (6.84s)                                          0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+Executed 564 tests, with 6 tests skipped and 0 failures (0 unexpected) in 31.390 (31.431) seconds
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (14.40s)                                         0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+exit 0                                                           0 diagnostics
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 88 files.         exit 0
+
+$ python3 scripts/third_party_notices.py
+THIRD-PARTY-NOTICES.md covers all 8 resolved packages at the pinned versions
+```
+
+564 is the 554 baseline plus these eleven tests minus the one that moved in from
+`ProviderContractTests` (which keeps its own count). The file count rose 87 → 88. `.swiftlint.yml`'s
+envelope comment notes that the worst offender is no longer at its ceiling but keeps the recorded
+A03 number as the bound. The 6 skips are the pre-existing environment-gated ones.
+
+## Deviation
+
+The expected-correct asks that a `safeDescription` carry no request URL, and this test found one
+case where a URL-shaped `invalidURL` detail would be echoed. The case has no production thrower, so
+there is no behaviour to fix under a test-only task; the limitation is asserted around and recorded
+here and in the test file rather than silently dropped or "fixed" by weakening the string.
