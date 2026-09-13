@@ -16,6 +16,27 @@ import WebSearchCore
 let configuration = AppConfiguration.load()
 let log = Log(level: configuration.logLevel, logQueries: configuration.logQueries)
 
+// Report every configured value that could not be used. Silently falling back to a default is
+// how a typo turns into "no providers are configured" with no explanation (ledger B09).
+for issue in configuration.issues {
+    // The tool's own logger takes string metadata; the detail never contains a credential.
+    let metadata = ["key": issue.key, "detail": issue.detail]
+    switch issue.kind {
+    case .unreadableConfigFile:
+        log.error("Configuration file problem", metadata: metadata)
+    case .unparseableValue, .invalidURL:
+        log.warning("Ignoring an unusable configured value", metadata: metadata)
+    }
+}
+if configuration.issues.contains(where: { $0.kind == .unreadableConfigFile }) {
+    // A config file that was asked for and is not there is fatal: starting with defaults would
+    // quietly serve a different configuration than the one the operator provided.
+    FileHandle.standardError.write(
+        Data("Refusing to start: SEARCH_CONFIG_FILE could not be read.\n".utf8)
+    )
+    exit(2)
+}
+
 log.info(
     "Starting \(MCPServerFactory.serverName)",
     metadata: [

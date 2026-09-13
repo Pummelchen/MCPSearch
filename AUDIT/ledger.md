@@ -18,8 +18,8 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 115 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102 and B103 found in Phase D) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 28 |
-| START (reproduced, expected behaviour written) | 87 |
+| DONE | 29 |
+| START (reproduced, expected behaviour written) | 86 |
 | BLOCKED | 0 |
 
 Severity of the folded set: S0 2, S1 6, S2 27, S3 66.
@@ -55,7 +55,7 @@ waived in writing.
 | B06 | **S1** | `WebSearchCore` / `Support` + `Fetch`, `MCPSMonitor` | `Sources/WebSearchCore/Support/Logging.swift:128`, `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:142`, `Sources/MCPSMonitor/main.swift:171` | Untrusted seconds are converted `Double`->`Int` without a range check, so a hostile value traps the whole process | unsafe | DONE | this Mac (arm64) | Phase B L4-1 + L3-3 |
 | B07 | **S1** | `WebSearchCore` (transport) | `Sources/WebSearchCore/Support/BoundedResponseBody.swift`, `Support/HTTPClient.swift:299`, `Fetch/DirectHTTPFetcher.swift:176` | Response bodies are fully buffered in memory before the byte cap is applied, so one hostile page exhausts the process | perf | DONE | this Mac (arm64) | Phase B L5-1 |
 | B08 | **S1** | `SwiftWebSearchMCP` (web_open tool) | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:134`, `ToolSchemas.swift:738-774`, `Tests/WebSearchCoreTests/StdioServerTests.swift` | `web_open`'s success path through the MCP tool is untested end to end | test | DONE | this Mac (arm64) | Phase B L6-2 |
-| B09 | S2 | `WebSearchCore` — `Support/AppConfiguration.swift`, `SwiftWebSearchMCP/main.swift` | `Sources/WebSearchCore/Support/AppConfiguration.swift:252-261`, `:283-300`, `:389-391` | Nothing validates configuration at startup: a mistyped value or config path is silently discarded | incomplete | START | this Mac (arm64) | Phase B L7-1 |
+| B09 | S2 | `WebSearchCore` — `Support/AppConfiguration.swift`, `SwiftWebSearchMCP/main.swift` | `Sources/WebSearchCore/Support/AppConfiguration.swift:252-261`, `:283-300`, `:389-391` | Nothing validates configuration at startup: a mistyped value or config path is silently discarded | incomplete | DONE | this Mac (arm64) | Phase B L7-1 |
 | B10 | S2 | `MCPSMonitor` + `Monitor/Terminal.swift` | `Sources/WebSearchCore/Monitor/Terminal.swift:156-157`, `:165-171`, `:187-189`; `Sources/MCPSMonitor/main.swift:508`, `:571-574` | Ctrl-C (or SIGTERM) leaves the dashboard's terminal in raw mode with the cursor hidden, and the Ctrl-C key branch is unreachable | bug | START | this Mac (arm64) | Phase B L7-2 |
 | B11 | S2 | WebSearchCore (Search) | `Sources/WebSearchCore/Search/ProviderHealth.swift:143` | A half-open breaker authorises an unbounded number of requests: `authorize` discards the probe refusal | bug | START | this Mac (arm64) | Phase B L2-1 |
 | B12 | S2 | WebSearchCore (Search) | `Sources/WebSearchCore/Search/SearchOrchestrator.swift:384` | Providers that already reported a failure are charged a second, synthetic deadline failure | bug | DONE | this Mac (arm64) | Phase B L2-3 |

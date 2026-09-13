@@ -76,6 +76,33 @@ public struct AppConfiguration: Sendable, Hashable {
 
     // MARK: Logging
 
+    /// A configured value that could not be used.
+    ///
+    /// A typo used to be indistinguishable from "not configured": the value was dropped, the
+    /// default applied, and nothing anywhere said so — which is how an operator ends up with an
+    /// empty provider list and no explanation (ledger B09).
+    public struct ConfigurationIssue: Sendable, Hashable {
+        public enum Kind: Sendable, Hashable {
+            /// `SEARCH_CONFIG_FILE` was set but the file is missing or unreadable.
+            case unreadableConfigFile
+            /// A value was present but is not of the documented shape.
+            case unparseableValue
+            /// A URL was present but is not an absolute `http(s)` URL.
+            case invalidURL
+        }
+
+        public let kind: Kind
+        /// The environment variable or file key the value came from.
+        public let key: String
+        /// What was wrong, phrased for an operator. Never contains a credential.
+        public let detail: String
+
+        public var description: String { "\(key): \(detail)" }
+    }
+
+    /// Everything that was configured but could not be used, in the order it was found.
+    public private(set) var issues: [ConfigurationIssue] = []
+
     public var logLevel: LogLevel
     public var logQueries: Bool
 
@@ -248,15 +275,42 @@ extension AppConfiguration {
         configFileURL: URL? = nil
     ) -> AppConfiguration {
         var values: [String: String] = [:]
+        var issues: [ConfigurationIssue] = []
 
-        let fileURL =
-            configFileURL
-            ?? environment[Key.configFile.rawValue].flatMap { URL(fileURLWithPath: $0) }
-            .flatMap { FileManager.default.fileExists(atPath: $0.path) ? $0 : nil }
+        // A config file that was asked for and is not there is a configuration error, not
+        // "no config file": silently falling back to the environment is how a mistyped path
+        // turns into a server with no providers and no diagnostic (ledger B09).
+        var fileURL = configFileURL
+        if fileURL == nil, let requested = environment[Key.configFile.rawValue],
+            !requested.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        {
+            let candidate = URL(fileURLWithPath: requested)
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                fileURL = candidate
+            } else {
+                issues.append(
+                    ConfigurationIssue(
+                        kind: .unreadableConfigFile,
+                        key: Key.configFile.rawValue,
+                        detail: "\(requested) does not exist"
+                    )
+                )
+            }
+        }
 
-        if let fileURL, let contents = try? String(contentsOf: fileURL, encoding: .utf8) {
-            for (key, value) in parseDotEnv(contents) {
-                values[key] = value
+        if let fileURL {
+            if let contents = try? String(contentsOf: fileURL, encoding: .utf8) {
+                for (key, value) in parseDotEnv(contents) {
+                    values[key] = value
+                }
+            } else {
+                issues.append(
+                    ConfigurationIssue(
+                        kind: .unreadableConfigFile,
+                        key: Key.configFile.rawValue,
+                        detail: "\(fileURL.path) exists but could not be read"
+                    )
+                )
             }
         }
 
@@ -267,12 +321,23 @@ extension AppConfiguration {
             }
         }
 
-        return parse(values)
+        var configuration = parse(values)
+        // The file problem is reported first: it explains why other values may be missing.
+        configuration.issues = issues + configuration.issues
+        return configuration
     }
 
     /// Parse a resolved key/value map into a configuration. Kept pure so it can be
     /// unit tested without touching the process environment.
     public static func parse(_ values: [String: String]) -> AppConfiguration {
+        var issues: [ConfigurationIssue] = []
+
+        func record(_ kind: ConfigurationIssue.Kind, _ key: Key, _ detail: String) {
+            issues.append(
+                ConfigurationIssue(kind: kind, key: key.rawValue, detail: detail)
+            )
+        }
+
         func string(_ key: Key) -> String? {
             guard let raw = values[key.rawValue]?.trimmingCharacters(in: .whitespacesAndNewlines),
                 !raw.isEmpty
@@ -282,7 +347,11 @@ extension AppConfiguration {
 
         func int(_ key: Key) -> Int? {
             guard let raw = string(key) else { return nil }
-            return Int(raw)
+            guard let value = Int(raw) else {
+                record(.unparseableValue, key, "'\(raw)' is not a whole number")
+                return nil
+            }
+            return value
         }
 
         func bool(_ key: Key) -> Bool? {
@@ -290,13 +359,27 @@ extension AppConfiguration {
             switch raw {
             case "1", "true", "yes", "on", "enabled": return true
             case "0", "false", "no", "off", "disabled": return false
-            default: return nil
+            default:
+                record(.unparseableValue, key, "'\(raw)' is not a yes/no value")
+                return nil
             }
         }
 
+        /// An absolute `http(s)` URL with a host.
+        ///
+        /// `URL(string:)` is not a validator — it accepts `searx.example.com` as a *relative*
+        /// URL and returns nil for other typos — so a schemeless endpoint used to be accepted
+        /// and then produced requests against a relative path (ledger B09).
         func url(_ key: Key) -> URL? {
             guard let raw = string(key) else { return nil }
-            return URL(string: raw)
+            guard let parsed = URL(string: raw), let scheme = parsed.scheme?.lowercased(),
+                scheme == "http" || scheme == "https",
+                let host = parsed.host(), !host.isEmpty
+            else {
+                record(.invalidURL, key, "'\(raw)' is not an http(s) URL with a host")
+                return nil
+            }
+            return parsed
         }
 
         var configuration = AppConfiguration()
@@ -387,13 +470,36 @@ extension AppConfiguration {
         if let allowed = bool(.allowPrivateNetwork) {
             configuration.allowPrivateNetworkFetch = allowed
         }
-        if let raw = string(.logLevel), let level = LogLevel(rawValue: raw.lowercased()) {
-            configuration.logLevel = level
+        if let raw = string(.logLevel) {
+            configuration.applyLogLevel(raw) { issues.append($0) }
         }
         if let enabled = bool(.logQueries) { configuration.logQueries = enabled }
         if let agent = string(.userAgent) { configuration.userAgent = agent }
 
+        configuration.issues = issues
         return configuration
+    }
+
+    /// Apply `SEARCH_LOG_LEVEL`, reporting a value that is not one of the known levels.
+    ///
+    /// Separate from `parse` so the diagnostic does not add a branch to a function that is
+    /// already at the complexity ratchet (ledger B09).
+    private mutating func applyLogLevel(
+        _ raw: String,
+        reporting issue: (ConfigurationIssue) -> Void
+    ) {
+        if let level = LogLevel(rawValue: raw.lowercased()) {
+            logLevel = level
+        } else {
+            issue(
+                ConfigurationIssue(
+                    kind: .unparseableValue,
+                    key: Key.logLevel.rawValue,
+                    detail: "'\(raw)' is not one of "
+                        + LogLevel.allCases.map(\.rawValue).joined(separator: ", ")
+                )
+            )
+        }
     }
 
     /// Minimal `KEY=VALUE` parser supporting `#` comments and optional quotes.

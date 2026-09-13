@@ -328,6 +328,73 @@ final class ConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.providerOrder.first, .brave)
         XCTAssertFalse(configuration.providerOrder.contains { $0.rawValue == "nonsense" })
     }
+    /// A typo used to be indistinguishable from "not configured": the value was dropped and the
+    /// default applied with no diagnostic, which is how an operator ends up with no providers and
+    /// no explanation (ledger B09).
+    func testUnusableConfiguredValuesAreReported() throws {
+        var environment = [
+            "SEARCH_REQUEST_TIMEOUT_MS": "lots",
+            "SEARCH_LOG_LEVEL": "verbose",
+            "SEARCH_ENABLE_SCRAPERS": "maybe",
+            "SEARXNG_BASE_URL": "searx.example.com",
+        ]
+        environment["SEARCH_CONFIG_FILE"] = "/definitely/not/here/config.env"
+
+        let configuration = AppConfiguration.load(environment: environment)
+
+        let byKey = Dictionary(
+            grouping: configuration.issues,
+            by: \.key
+        ).mapValues { $0.map(\.kind) }
+        XCTAssertEqual(byKey["SEARCH_CONFIG_FILE"], [.unreadableConfigFile])
+        XCTAssertEqual(byKey["SEARCH_REQUEST_TIMEOUT_MS"], [.unparseableValue])
+        XCTAssertEqual(byKey["SEARCH_LOG_LEVEL"], [.unparseableValue])
+        XCTAssertEqual(byKey["SEARCH_ENABLE_SCRAPERS"], [.unparseableValue])
+        XCTAssertEqual(byKey["SEARXNG_BASE_URL"], [.invalidURL])
+
+        // The defaults are used, and the schemeless endpoint is *not* configured — which is the
+        // part that matters: a relative URL must never reach a request.
+        XCTAssertEqual(configuration.requestTimeout, AppConfiguration().requestTimeout)
+        XCTAssertEqual(configuration.logLevel, AppConfiguration().logLevel)
+        XCTAssertNil(configuration.searxngBaseURL)
+        XCTAssertFalse(configuration.enableScrapers)
+    }
+
+    /// A value that is fine must not produce a complaint, and a schemeless URL must be the only
+    /// thing rejected about an otherwise valid configuration.
+    func testAValidConfigurationReportsNothing() throws {
+        var environment = [
+            "SEARCH_REQUEST_TIMEOUT_MS": "12000",
+            "SEARCH_LOG_LEVEL": "debug",
+            "SEARCH_ENABLE_SCRAPERS": "yes",
+            "SEARXNG_BASE_URL": "http://127.0.0.1:8888",
+        ]
+        environment["TAVILY_API_KEY"] = Fixtures.syntheticDeepSeekKey
+
+        let configuration = AppConfiguration.load(environment: environment)
+
+        XCTAssertEqual(configuration.issues, [])
+        XCTAssertEqual(configuration.requestTimeout, .milliseconds(12_000))
+        XCTAssertEqual(configuration.logLevel, .debug)
+        XCTAssertTrue(configuration.enableScrapers)
+        XCTAssertEqual(configuration.searxngBaseURL?.absoluteString, "http://127.0.0.1:8888")
+    }
+
+    /// A requested-but-missing config file is reported by name; the environment still applies.
+    func testAMissingConfigFileIsNamedInTheIssues() throws {
+        let configuration = AppConfiguration.load(
+            environment: [
+                "SEARCH_CONFIG_FILE": "/definitely/not/here/config.env",
+                "SEARCH_LOG_LEVEL": "warning",
+            ]
+        )
+        XCTAssertEqual(configuration.issues.count, 1)
+        let issue = try XCTUnwrap(configuration.issues.first)
+        XCTAssertEqual(issue.kind, .unreadableConfigFile)
+        XCTAssertTrue(issue.detail.contains("/definitely/not/here/config.env"), issue.detail)
+        XCTAssertEqual(configuration.logLevel, .warning, "the environment still applies")
+    }
+
 }
 
 /// Timing utilities.
