@@ -56,7 +56,10 @@ public struct ProviderRegistry: Sendable {
         var reasons: [ProviderID: String] = [:]
         for id in configuration.providerOrder {
             guard let provider = providers[id] else {
-                reasons[id] = "no adapter registered"
+                // The adapter is absent because an input this provider needs was never
+                // supplied, so name that input. "no adapter registered" described the
+                // symptom and left the operator to guess the variable (ledger B57).
+                reasons[id] = ProviderEnablement.instruction(for: id, in: configuration)
                 continue
             }
             if !isEnabled(id) {
@@ -64,9 +67,15 @@ public struct ProviderRegistry: Sendable {
             } else if !provider.isConfigured {
                 reasons[id] = "no credentials or endpoint configured"
             } else if id.isExperimentalScraper, !configuration.enableScrapers {
-                reasons[id] = "scraper disabled; set SEARCH_ENABLE_SCRAPERS=true to enable"
+                reasons[id] =
+                    "scraper disabled; set "
+                    + ProviderEnablement.assignmentList(for: id, in: configuration)
+                    + " to enable"
             } else if id == .parallel, !configuration.enableParallel {
-                reasons[id] = "disabled; set SEARCH_ENABLE_PARALLEL=true to enable"
+                reasons[id] =
+                    "disabled; set "
+                    + ProviderEnablement.assignmentList(for: id, in: configuration)
+                    + " to enable"
             }
         }
         return reasons
@@ -111,13 +120,15 @@ public struct ProviderRegistry: Sendable {
             if requested == .parallel, !configuration.enableParallel {
                 throw SearchError.unsupportedRequest(
                     requested,
-                    "set SEARCH_ENABLE_PARALLEL=true to enable this provider"
+                    "set \(ProviderEnablement.assignmentList(for: requested, in: configuration))"
+                        + " to enable this provider"
                 )
             }
             if requested.isExperimentalScraper, !configuration.enableScrapers {
                 throw SearchError.unsupportedRequest(
                     requested,
-                    "set SEARCH_ENABLE_SCRAPERS=true to enable scraper providers"
+                    "set \(ProviderEnablement.assignmentList(for: requested, in: configuration))"
+                        + " to enable scraper providers"
                 )
             }
             guard isConfigured(requested) else {

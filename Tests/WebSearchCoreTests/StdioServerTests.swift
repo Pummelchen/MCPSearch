@@ -498,6 +498,53 @@ final class StdioServerTests: XCTestCase {
             text.contains("TAVILY_API_KEY") || text.contains("not configured"),
             "expected an actionable message, got: \(text)"
         )
+        // The list is built from the one enablement authority, so it names every provider's
+        // variable rather than the two the hand-written message happened to know (ledger B57).
+        for variable in [
+            "BRAVE_SEARCH_API_KEY", "MOJEEK_API_KEY", "EXA_API_KEY", "SEARXNG_BASE_URL",
+            "OPEN_WEB_SEARCH_URL", "SEARCH_ENABLE_SCRAPERS=true", "PARALLEL_MCP_URL",
+        ] {
+            XCTAssertTrue(
+                text.contains(variable),
+                "the no-provider message omits \(variable): \(text)"
+            )
+        }
+    }
+
+    /// `parallel` needs a flag *and* an endpoint, so the tool error must name the input this
+    /// configuration is missing.
+    ///
+    /// With the flag on and `PARALLEL_MCP_URL` emptied, the error used to advise
+    /// `SEARCH_ENABLE_PARALLEL=true` — a setting the operator had already applied — while the
+    /// server's own startup comment recorded that an emptied URL is what registers no adapter
+    /// (ledger B57).
+    func testParallelWithoutAnEndpointIsToldToSetTheEndpointNotTheFlag() throws {
+        let server = try startInitializedServer(environment: [
+            "SEARCH_ENABLE_PARALLEL": "true",
+            // An explicitly empty value is how an operator removes the built-in endpoint.
+            "PARALLEL_MCP_URL": "",
+        ])
+        defer { server.stop() }
+
+        try server.send([
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": [
+                "name": "web_search",
+                "arguments": ["query": "swift concurrency", "provider": "parallel"],
+            ],
+        ])
+        let response = try server.readResponse(id: 4)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        XCTAssertEqual(result["isError"] as? Bool, true)
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        let text = content.compactMap { $0["text"] as? String }.joined()
+        XCTAssertTrue(text.contains("PARALLEL_MCP_URL"), text)
+        XCTAssertFalse(
+            text.contains("SEARCH_ENABLE_PARALLEL"),
+            "the flag is already on, so naming it is not actionable: \(text)"
+        )
     }
 
     func testSearchAgainstAStubProviderReturnsStructuredAndTextContent() throws {

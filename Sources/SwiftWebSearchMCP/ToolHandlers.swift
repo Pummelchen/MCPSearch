@@ -391,17 +391,14 @@ struct ToolHandlers: Sendable {
         }
     }
 
+    /// What the operator should change, from the one enablement authority (ledger B57).
+    ///
+    /// The authority names only the inputs this configuration is missing, which is what makes
+    /// the `parallel` advice correct: that provider needs both `SEARCH_ENABLE_PARALLEL=true` and
+    /// `PARALLEL_MCP_URL`, and the hint used to name the flag in the state where the flag was
+    /// already on and the endpoint was what the operator had not supplied.
     private func unconfiguredHint(for provider: ProviderID) -> String {
-        switch provider {
-        case .tavily: "Set TAVILY_API_KEY."
-        case .brave: "Set BRAVE_SEARCH_API_KEY."
-        case .mojeek: "Set MOJEEK_API_KEY."
-        case .exa: "Set EXA_API_KEY."
-        case .searxng: "Set SEARXNG_BASE_URL to an instance with JSON output enabled."
-        case .openWebSearch: "Set OPEN_WEB_SEARCH_URL."
-        case .duckDuckGo, .startpage: "Set SEARCH_ENABLE_SCRAPERS=true to enable scrapers."
-        case .parallel: "Set SEARCH_ENABLE_PARALLEL=true to enable the upstream MCP provider."
-        }
+        ProviderEnablement.instruction(for: provider, in: pipeline.configuration)
     }
 
     /// Build an error result.

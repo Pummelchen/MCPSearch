@@ -45,19 +45,13 @@ public struct ProviderProbe: Sendable {
         registry.isConfigured(id)
     }
 
-    /// A short hint for an unconfigured provider, matching the server's own wording so
-    /// the dashboard and `web_search_status` never disagree.
+    /// The variables that would make an inactive provider run, from the one enablement
+    /// authority (ledger B57).
+    ///
+    /// Configuration-dependent on purpose: `parallel` needs the flag *and* an endpoint, and the
+    /// hint names whichever this configuration is missing rather than always the flag.
     public func setupHint(for id: ProviderID) -> String {
-        switch id {
-        case .tavily: "TAVILY_API_KEY"
-        case .brave: "BRAVE_SEARCH_API_KEY"
-        case .mojeek: "MOJEEK_API_KEY"
-        case .exa: "EXA_API_KEY"
-        case .searxng: "SEARXNG_BASE_URL"
-        case .openWebSearch: "OPEN_WEB_SEARCH_URL"
-        case .duckDuckGo, .startpage: "SEARCH_ENABLE_SCRAPERS=true"
-        case .parallel: "SEARCH_ENABLE_PARALLEL=true"
-        }
+        ProviderEnablement.assignmentList(for: id, in: configuration)
     }
 
     /// Probe one provider once.

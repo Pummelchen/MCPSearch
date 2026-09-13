@@ -45,9 +45,11 @@ public actor SearchOrchestrator {
 
         let selection = try registry.select(for: request, requested: requestedProvider)
         guard case .selected(let selectedIDs) = selection, !selectedIDs.isEmpty else {
+            // Every variable that can register a provider, from the one enablement authority
+            // rather than a hand-written pair that named two of the eight (ledger B57).
+            let variables = ProviderEnablement.allInputs.map(\.assignment).joined(separator: ", ")
             throw SearchError.invalidRequest(
-                "no search provider is configured; set an API key such as TAVILY_API_KEY "
-                    + "or configure SEARXNG_BASE_URL"
+                "no search provider is configured; set any of \(variables)"
             )
         }
 

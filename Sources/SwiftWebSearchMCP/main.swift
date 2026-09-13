@@ -69,35 +69,22 @@ log.info(
 
 // Report which providers came up, without ever echoing a credential.
 //
-// One table feeds both the inventory and the empty-configuration warning, so a new provider
-// cannot leave the warning naming only the variables that existed when it was written — it named
-// five of the eight before this task (ledger B114).
+// The requirements and their satisfaction both come from `ProviderEnablement`, the one
+// authority the status tool, the tool error text and the monitor also read, so a provider
+// cannot be named here and forgotten there (ledger B57). The inventory and the
+// empty-configuration warning read the same authority, so the warning cannot name only the
+// variables that existed when it was written (ledger B114).
 //
 // Jina is absent on purpose: its key only raises the page-extraction rate limit, and it is
 // not a search provider. Parallel needs the flag *and* an endpoint, because an emptied
-// PARALLEL_MCP_URL registers no adapter while the flag still reads as on.
-let providerAvailability: [(provider: String, variables: [String], configured: Bool)] = [
-    ("tavily", ["TAVILY_API_KEY"], configuration.tavilyAPIKey != nil),
-    ("brave", ["BRAVE_SEARCH_API_KEY"], configuration.braveAPIKey != nil),
-    ("mojeek", ["MOJEEK_API_KEY"], configuration.mojeekAPIKey != nil),
-    ("exa", ["EXA_API_KEY"], configuration.exaAPIKey != nil),
-    ("searxng", ["SEARXNG_BASE_URL"], configuration.searxngBaseURL != nil),
-    ("open_web_search", ["OPEN_WEB_SEARCH_URL"], configuration.openWebSearchURL != nil),
-    ("duckduckgo", ["SEARCH_ENABLE_SCRAPERS"], configuration.enableScrapers),
-    ("startpage", ["SEARCH_ENABLE_SCRAPERS"], configuration.enableScrapers),
-    (
-        "parallel", ["SEARCH_ENABLE_PARALLEL", "PARALLEL_MCP_URL"],
-        configuration.enableParallel && configuration.parallelMCPURL != nil
-    ),
-]
+// PARALLEL_MCP_URL registers no adapter while the flag still reads as on — which is exactly
+// the pair of inputs `ProviderEnablement` records for it.
+let configuredProviders = ProviderID.allCases
+    .filter { ProviderEnablement.isSatisfied($0, in: configuration) }
+    .map(\.rawValue)
 
-let configuredProviders = providerAvailability.filter { $0.configured }.map { $0.provider }
-
-// Every variable that can register a provider, in table order and named once each.
-let providerVariables = providerAvailability.flatMap { $0.variables }
-    .reduce(into: [String]()) { names, variable in
-        if !names.contains(variable) { names.append(variable) }
-    }
+// Every variable that can register a provider, named once each.
+let providerVariables = ProviderEnablement.allInputs.map(\.variableName)
 
 log.info(
     "Provider configuration resolved",

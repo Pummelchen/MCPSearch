@@ -136,11 +136,15 @@ final class ProviderProbeTests: XCTestCase {
 
     private func makeProbe(
         _ providers: [any SearchProvider],
-        order: [ProviderID]? = nil
+        order: [ProviderID]? = nil,
+        enableParallel: Bool = false,
+        parallelURL: URL? = AppConfiguration().parallelMCPURL
     ) -> ProviderProbe {
-        let configuration = Fixtures.configuration(
-            providerOrder: order ?? AppConfiguration.defaultProviderOrder
+        var configuration = Fixtures.configuration(
+            providerOrder: order ?? AppConfiguration.defaultProviderOrder,
+            enableParallel: enableParallel
         )
+        configuration.parallelMCPURL = parallelURL
         return ProviderProbe(
             registry: ProviderRegistry(providers: providers, configuration: configuration),
             configuration: configuration
@@ -221,6 +225,12 @@ final class ProviderProbeTests: XCTestCase {
         XCTAssertEqual(probe.probeTargets(), [.exa, .tavily])
     }
 
+    /// The monitor's hint names the variables the *server* would tell the operator to set,
+    /// because both read `ProviderEnablement` (ledger B57).
+    ///
+    /// `parallel` needs both a flag and an endpoint, so the hint is configuration-dependent:
+    /// the version this replaces always said `SEARCH_ENABLE_PARALLEL=true`, including in the
+    /// state where that flag was already on and the endpoint was the missing input.
     func testSetupHintNamesTheRightVariableForEveryProvider() {
         let probe = makeProbe([])
         XCTAssertEqual(probe.setupHint(for: .tavily), "TAVILY_API_KEY")
@@ -231,7 +241,22 @@ final class ProviderProbeTests: XCTestCase {
         XCTAssertEqual(probe.setupHint(for: .openWebSearch), "OPEN_WEB_SEARCH_URL")
         XCTAssertEqual(probe.setupHint(for: .duckDuckGo), "SEARCH_ENABLE_SCRAPERS=true")
         XCTAssertEqual(probe.setupHint(for: .startpage), "SEARCH_ENABLE_SCRAPERS=true")
-        XCTAssertEqual(probe.setupHint(for: .parallel), "SEARCH_ENABLE_PARALLEL=true")
+        XCTAssertEqual(
+            probe.setupHint(for: .parallel), "SEARCH_ENABLE_PARALLEL=true",
+            "with the endpoint present, the flag is the only missing input"
+        )
+
+        // The flag is on and the endpoint was emptied: the hint must name the endpoint, not
+        // repeat advice the operator has already taken.
+        XCTAssertEqual(
+            makeProbe([], enableParallel: true, parallelURL: nil).setupHint(for: .parallel),
+            "PARALLEL_MCP_URL"
+        )
+        // Neither is present: both are named, flag first.
+        XCTAssertEqual(
+            makeProbe([], enableParallel: false, parallelURL: nil).setupHint(for: .parallel),
+            "SEARCH_ENABLE_PARALLEL=true and PARALLEL_MCP_URL"
+        )
     }
 
     func testIsConfiguredReflectsTheRegistry() {

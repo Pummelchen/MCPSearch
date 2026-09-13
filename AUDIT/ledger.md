@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 132 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 116 |
-| START (reproduced, expected behaviour written) | 16 |
+| DONE | 117 |
+| START (reproduced, expected behaviour written) | 15 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 87** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 71 are DONE and 16 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 72 are DONE and 15 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -110,7 +110,7 @@ waived in writing.
 | B54 | S3 | WebSearchCore (Providers) | `Sources/WebSearchCore/Providers/ParallelMCPProvider.swift:162` | Concurrent first use of the Parallel provider performs the MCP handshake more than once | bug | DONE | this Mac (arm64) | Phase B L2-10 |
 | B55 | S3 | WebSearchCore (Search) | `Sources/WebSearchCore/Search/ProviderHealth.swift:119` | `ProviderHealth.setNote` is dead public API | dead | DONE | this Mac (arm64) | Phase B L2-11 |
 | B56 | S3 | WebSearchCore (Providers) | `Sources/WebSearchCore/Providers/ScraperSupport.swift:24` | `ScraperSupport.BlockKind.noResults` is never produced, so an empty result page is reported as unparseable | dead | DONE | this Mac (arm64) | Phase B L2-12 |
-| B57 | S3 | SwiftWebSearchMCP (with WebSearchCore) | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:407` | The per-provider "which variable enables me" contract is triplicated across units and already wrong for `parallel` | logic | START | this Mac (arm64) | Phase B L1-1 |
+| B57 | S3 | SwiftWebSearchMCP (with WebSearchCore) | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:407` | The per-provider "which variable enables me" contract is triplicated across units and already wrong for `parallel` | logic | DONE | this Mac (arm64) | Phase B L1-1 |
 | B58 | S3 | SwiftWebSearchMCP | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:186` | `web_search` and `web_answer` duplicate their argument parsing, and the two schemas have already drifted | style | START | this Mac (arm64) | Phase B L1-2 |
 | B59 | S3 | `WebSearchCore/Support/AppConfiguration.swift` | `Sources/WebSearchCore/Support/AppConfiguration.swift:330` | `PARALLEL_MCP_URL=` cannot clear the default endpoint: the branch is unreachable in production | dead | DONE | this Mac (arm64) | Phase B L3-7 |
 | B60 | S3 | `WebSearchCore/Providers/DuckDuckGoProvider.swift` | `Sources/WebSearchCore/Providers/DuckDuckGoProvider.swift:70` | DuckDuckGo region hint sends the region twice instead of region-language | bug | DONE | this Mac (arm64) | Phase B L3-8 |
@@ -218,6 +218,20 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B57 — one authority for provider enablement, and the `parallel` hint
+
+**Severity S3** · **category** logic · **status** DONE · **host** node1 (arm64)
+
+**Premise holds, and the duplication was worse than reported.** "Which variable enables me" was written out in five places at HEAD: `SearchPipelineFactory` notes (`:61-127`), `ProviderRegistry.ineligibleReasons` (`:67-69`) and its two `select` messages (`:114,120`), `ToolHandlers.unconfiguredHint` (`:396-403`), `ProviderProbe.setupHint` (`:52-59`) and the server's startup inventory (`main.swift:80-92`). `parallel` is the provider with two inputs: emptying `PARALLEL_MCP_URL` makes `AppConfiguration.parse` set it to nil and the factory register no adapter, so `.notConfigured(.parallel)` fires while `SEARCH_ENABLE_PARALLEL` may be true — and both hint copies then named the flag.
+
+**Consolidation.** New `Sources/WebSearchCore/Support/ProviderEnablement.swift`: `Input` cases whose `variableName` comes from `AppConfiguration.Key`, an exhaustive `inputs(for:)`, `AppConfiguration.satisfies(_:)` as the only configuration read, and `missingInputs`/`inputsToName`/`isSatisfied`/`instruction`/`assignmentList`/`allInputs`. Every surface listed above now calls it; the status tool's note for a provider with no adapter is the actionable instruction rather than `no adapter registered`, which is what makes the status tool and the tool error agree. No public signature changed; `ProviderProbe.setupHint(for:)` is now configuration-dependent, as naming the right `parallel` input requires.
+
+**Behaviour.** `inputs(for: .parallel)` is `[.parallelEnabled, .parallelEndpoint]`, so: flag off + URL present → `Set SEARCH_ENABLE_PARALLEL=true …`; flag on + URL absent → `Set PARALLEL_MCP_URL …`; both absent → both, flag first. The SearXNG JSON guidance and the scraper/Parallel phrasing are preserved by per-input `purpose` clauses.
+
+**Falsification.** M1 reverts `inputs(for: .parallel)` to the flag only, which makes the strings literally the ones the finding quotes, and reddens 15 assertions across the nine tests including the stdio end-to-end case. M2 reverts the no-provider message to its hard-coded pair and reddens the strengthened assertion with `omits BRAVE_SEARCH_API_KEY`, `omits SEARCH_ENABLE_SCRAPERS=true`, `omits PARALLEL_MCP_URL`. Both files restored byte-identical (`diff` empty; SHA-256 `f3618e0e…` and `eee1ee0a…`).
+
+**Noted.** SwiftLint's `function_body_length` fired once on `SearchOrchestrator.search` while developing; the shared list moved into `ProviderEnablement.allInputs`, which the startup inventory also uses now. The literal change covers five call sites rather than the three named, because the registry reasons and the no-provider error are operator-facing copies of the same contract.
 
 ## B46 — `mcps-mon` exits 0 even when the whole fleet is down
 
