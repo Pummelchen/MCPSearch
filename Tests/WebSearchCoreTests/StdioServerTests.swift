@@ -855,12 +855,21 @@ final class StdioServerTests: XCTestCase {
         let server = try startInitializedServer(environment: [:])
         defer { server.stop() }
 
+        // Every row asserts the *specific* refusal it provokes. The two classes carry different
+        // operator actions — a URL that is not absolute is the caller's typo, while a blocked
+        // scheme, host or address is a security decision — so accepting any message containing
+        // "Refused" as a fallback made the whole `expected` column unenforceable (ledger B18).
         let cases: [(id: Int, url: String, expected: String)] = [
             (10, "file:///etc/passwd", "public http/https"),
             (11, "http://localhost:8080/admin", "public http/https"),
             (12, "http://169.254.169.254/latest/meta-data/", "public http/https"),
             (13, "http://10.0.0.1/", "public http/https"),
-            (14, "javascript:alert(1)", "valid absolute URL"),
+            // `URL(string:)` accepts `javascript:alert(1)`: it is a syntactically valid absolute
+            // URL, so this is a policy refusal, not a parse failure. The old fallback hid that
+            // distinction by passing whichever arm the code happened to take.
+            (14, "javascript:alert(1)", "public http/https"),
+            // And this is what the other arm looks like: no parseable absolute URL at all.
+            (15, "ht tp://x", "valid absolute URL"),
         ]
 
         for testCase in cases {
@@ -880,7 +889,7 @@ final class StdioServerTests: XCTestCase {
             let content = try XCTUnwrap(result["content"] as? [[String: Any]])
             let text = content.compactMap { $0["text"] as? String }.joined()
             XCTAssertTrue(
-                text.contains(testCase.expected) || text.contains("Refused"),
+                text.contains(testCase.expected),
                 "for \(testCase.url) expected \(testCase.expected), got: \(text)"
             )
         }
