@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 130 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 103 |
-| START (reproduced, expected behaviour written) | 27 |
+| DONE | 104 |
+| START (reproduced, expected behaviour written) | 26 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 85** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 85 S3 tasks 58 are DONE and 27 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 85 S3 tasks 59 are DONE and 26 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -164,7 +164,7 @@ waived in writing.
 | B115 | S3 | repository root (`README.md`) | `README.md:120`, provider table `:122-134` | The README undercounts the keyless routes and its Startpage row omits the flag the adapter actually requires | docs | DONE | this Mac (arm64) | handover re-read L7 |
 | B116 | S3 | `WebSearchCore` / `Search` (`SearchOrchestrator`, `RateLimiter`) | `SearchOrchestrator.swift:456-462`, `RateLimiter.swift:97-104` | A local throttle that cleared between the authorise and the wait estimate was reported as a hard skip, making the suite intermittently red | bug | DONE | node1 (arm64) | Phase E baseline |
 | B117 | S3 | `scripts` (`mcp_smoke.py`) | `scripts/mcp_smoke.py` (`free_loopback_port`) | The HTTP smoke picks a free port by closing the socket before the child binds, so the child can lose the bind race | test | DONE | this Mac (arm64) | Phase C (residual B83 left) |
-| B118 | S3 | `SwiftWebSearchMCP` (`ServerOptions`) | `Sources/WebSearchCore/Support/TransportConfiguration.swift` (the `--transport` error) | The invalid `--transport` error names only two of the four accepted spellings that the usage text now documents | docs | START | node1 (arm64) | Phase C (found while doing B114) |
+| B118 | S3 | `SwiftWebSearchMCP` (`ServerOptions`) | `Sources/WebSearchCore/Support/TransportConfiguration.swift` (the `--transport` error) | The invalid `--transport` error names only two of the four accepted spellings that the usage text now documents | docs | DONE | node1 (arm64) | Phase C (found while doing B114) |
 
 ---
 
@@ -216,6 +216,36 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B118 — the invalid `--transport` error named two of the four accepted spellings
+
+**Severity S3** (recorded) · **category** docs · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** B114 made `usage` render the `--transport` help line from the `TransportName`
+table, so `--help` now lists all four accepted spellings (`stdio`, `http`, `streamable-http`,
+`streamable_http`). The rejection message did not come along: it hardcoded
+`expected: "stdio or http"`, which after B114 was the only place in the CLI that disagreed with
+`--help`. A caller who mistyped was told the legal set was smaller than it is, so the more natural
+`--transport streamable-http` looked unsupported.
+
+**The fix.** One producer, `TransportName.acceptedValues`, renders the list from the same table
+`parse` resolves against, and both the usage line and the parse error print it, so the two cannot
+drift apart again. The error now reads `Invalid value for --transport: 'carrier-pigeon' (expected
+stdio, http, streamable-http, streamable_http)`, byte-for-byte the phrase `--help` shows. No public
+signature changed; `acceptedValues` is internal to `ServerOptions`.
+
+**Verification.** `TransportConfigurationTests.testInvalidTransportIsRejected` no longer pins the
+two-value wording: it asserts the full literal list and that the same phrase appears in
+`ServerOptions.usage`. Restoring the hardcoded `"stdio or http"` makes it fail with both messages
+side by side — the exact drift the finding describes — and `TransportConfiguration.swift` was then
+restored byte-identically (`diff` empty; SHA-256 equal). No new test method was added, so the count
+is unchanged from B87. Debug and release build with 0 warnings under `-warnings-as-errors`;
+**504 tests, 6 skipped, 0 failures**; `swift-format --strict` and `swiftlint --strict` clean over 84
+files; the third-party notices check reports all 8 pinned packages covered. Artifact:
+`AUDIT/evidence/B118-transport-expected-values.txt`.
+
+**Noted.** `MCPSMonitor` has its own option parser with its own error wording, but it does not parse
+`--transport`, so there is no second transport list to keep in sync.
 
 ## B87 — the Jina Reader fallback hid the third-party disclosure
 

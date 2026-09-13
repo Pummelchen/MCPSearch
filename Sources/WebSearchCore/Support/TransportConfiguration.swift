@@ -127,8 +127,7 @@ public struct ServerOptions: Sendable {
                 ["Print this usage and exit."]
             case .transport:
                 [
-                    "Transport to serve on: "
-                        + TransportName.allCases.map(\.rawValue).joined(separator: ", ") + ".",
+                    "Transport to serve on: " + TransportName.acceptedValues + ".",
                     "Default: stdio.",
                 ]
             case .port:
@@ -177,6 +176,16 @@ public struct ServerOptions: Sendable {
         case http
         case streamableHyphen = "streamable-http"
         case streamableUnderscore = "streamable_http"
+
+        /// The accepted spellings as one phrase.
+        ///
+        /// Both `usage` and the `--transport` rejection message render from this, so the
+        /// documented set and the set the error names cannot drift apart. The error used to
+        /// hardcode "stdio or http" while `usage` listed all four, which made the more natural
+        /// `--transport streamable-http` look unsupported (ledger B118).
+        static var acceptedValues: String {
+            allCases.map(\.rawValue).joined(separator: ", ")
+        }
     }
 
     // MARK: Usage
@@ -291,7 +300,9 @@ public struct ServerOptions: Sendable {
                     throw OptionError.invalidValue(
                         flag: "--transport",
                         value: raw,
-                        expected: "stdio or http"
+                        // Rendered from the same table `usage` lists, so the error never
+                        // advertises a smaller set than `--help` documents (ledger B118).
+                        expected: TransportName.acceptedValues
                     )
                 }
                 named = name

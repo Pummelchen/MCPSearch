@@ -135,14 +135,26 @@ final class TransportConfigurationTests: XCTestCase {
         assertRejects(["--nope"], expecting: .unknownArgument("--nope"))
     }
 
+    /// The rejection must name every spelling `--help` documents.
+    ///
+    /// The error used to say "stdio or http" while `usage` listed all four `TransportName`
+    /// cases, so the more natural `--transport streamable-http` looked unsupported
+    /// (ledger B118).
     func testInvalidTransportIsRejected() {
+        let expected = "stdio, http, streamable-http, streamable_http"
         assertRejects(
             ["--transport", "carrier-pigeon"],
             expecting: .invalidValue(
                 flag: "--transport",
                 value: "carrier-pigeon",
-                expected: "stdio or http"
+                expected: expected
             )
+        )
+        // Both the error and the usage line are rendered from `TransportName.acceptedValues`,
+        // so the same phrase must appear in `--help` (ledger B118).
+        XCTAssertTrue(
+            ServerOptions.usage.contains("Transport to serve on: \(expected)."),
+            ServerOptions.usage
         )
     }
 
