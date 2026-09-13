@@ -103,4 +103,18 @@ final class ResultNormalizerTests: XCTestCase {
     func testDecodeCommonEntitiesLeavesUnknownEntitiesAlone() {
         XCTAssertEqual(ResultNormalizer.decodeCommonEntities("&unknown; &amp;"), "&unknown; &")
     }
+
+    /// Decoding happens once: an escaped entity must not become live markup.
+    ///
+    /// The decoder replaced sequentially over its own output, so `&amp;lt;` decoded twice — the
+    /// `&amp;` produced `&`, and the `&lt;` that created was then decoded to a live `<`. A snippet
+    /// carrying escaped markup could therefore inject markup into whatever consumed the text
+    /// (ledger B63).
+    func testDecodeCommonEntitiesDoesNotDecodeTwice() {
+        XCTAssertEqual(ResultNormalizer.decodeCommonEntities("&amp;lt;b&amp;gt;"), "&lt;b&gt;")
+        XCTAssertEqual(ResultNormalizer.decodeCommonEntities("&amp;amp;"), "&amp;")
+        // A literal ampersand with no entity after it stays as it is.
+        XCTAssertEqual(ResultNormalizer.decodeCommonEntities("fish & chips"), "fish & chips")
+        XCTAssertEqual(ResultNormalizer.decodeCommonEntities("100% &more; text"), "100% &more; text")
+    }
 }

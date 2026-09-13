@@ -152,15 +152,40 @@ public enum ResultNormalizer {
     }
 
     static func decodeCommonEntities(_ input: String) -> String {
-        var output = input
-        let replacements: [(String, String)] = [
-            ("&amp;", "&"), ("&lt;", "<"), ("&gt;", ">"), ("&quot;", "\""),
-            ("&#39;", "'"), ("&apos;", "'"), ("&nbsp;", " "), ("&hellip;", "…"),
-            ("&mdash;", "—"), ("&ndash;", "–"), ("&rsquo;", "’"), ("&lsquo;", "‘"),
-            ("&ldquo;", "“"), ("&rdquo;", "”"),
+        let replacements: [String: String] = [
+            "&amp;": "&", "&lt;": "<", "&gt;": ">", "&quot;": "\"",
+            "&#39;": "'", "&apos;": "'", "&nbsp;": " ", "&hellip;": "…",
+            "&mdash;": "—", "&ndash;": "–", "&rsquo;": "’", "&lsquo;": "‘",
+            "&ldquo;": "“", "&rdquo;": "”",
         ]
-        for (entity, value) in replacements where output.contains(entity) {
-            output = output.replacingOccurrences(of: entity, with: value)
+
+        // One pass over the input, and the replacement is appended rather than re-scanned. The
+        // previous version replaced sequentially over its own output, so `&amp;lt;` decoded twice:
+        // `&amp;` became `&` and the `&lt;` that created was then decoded to a live `<`, letting a
+        // snippet's escaped markup become real markup for whatever consumed the text (ledger B63).
+        var output = ""
+        output.reserveCapacity(input.count)
+        var index = input.startIndex
+        while index < input.endIndex {
+            guard input[index] == "&" else {
+                output.append(input[index])
+                index = input.index(after: index)
+                continue
+            }
+            // The longest entity here is `&hellip;` (8 characters); a `;` further away than that is
+            // not an entity, so the `&` is literal.
+            guard let semicolon = input[index...].firstIndex(of: ";"),
+                input.distance(from: index, to: semicolon) <= 9
+            else {
+                output.append("&")
+                index = input.index(after: index)
+                continue
+            }
+            // Without the `;`: the dictionary keys carry it, and an unknown entity is copied
+            // through complete.
+            let entity = String(input[index..<semicolon]) + ";"
+            output += replacements[entity] ?? entity
+            index = input.index(after: semicolon)
         }
         return output
     }
