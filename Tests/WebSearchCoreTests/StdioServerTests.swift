@@ -9,9 +9,9 @@ import XCTest
 /// carries protocol traffic only.
 final class StdioServerTests: XCTestCase {
 
-    /// The scrub list is shared with `ErrorReportingTests` and mirrored by
-    /// `scripts/mcp_smoke.py`; see `ServerTestSupport.providerEnvironmentVariables`.
-    /// Referencing it directly is what stops the three copies from drifting.
+    // The scrub list is shared with `ErrorReportingTests` and mirrored by
+    // `scripts/mcp_smoke.py`; see `ServerTestSupport.providerEnvironmentVariables`.
+    // Referencing it directly is what stops the three copies from drifting.
 
     // MARK: - Process plumbing
 
@@ -76,7 +76,8 @@ final class StdioServerTests: XCTestCase {
                         let object = try JSONSerialization.jsonObject(with: Data(lineData))
                             as? [String: Any]
                     else {
-                        throw ServerTestError.malformedResponse(String(decoding: lineData, as: UTF8.self))
+                        throw ServerTestError.malformedResponse(
+                            (String(bytes: lineData, encoding: .utf8) ?? "<not valid UTF-8>"))
                     }
                     return object
                 }
@@ -85,7 +86,8 @@ final class StdioServerTests: XCTestCase {
                 if chunk.isEmpty {
                     // EOF: the process exited without answering.
                     throw ServerTestError.unexpectedEOF(
-                        stderr: String(decoding: stderrPipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+                        stderr: String(bytes: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
+                            ?? "<not valid UTF-8>"
                     )
                 }
                 stdoutBuffer.append(chunk)
@@ -106,7 +108,7 @@ final class StdioServerTests: XCTestCase {
 
         func stderrText() -> String {
             let data = stderrPipe.fileHandleForReading.availableData
-            return String(decoding: data, as: UTF8.self)
+            return (String(bytes: data, encoding: .utf8) ?? "<not valid UTF-8>")
         }
 
         func stop() {
@@ -997,10 +999,8 @@ final class StdioServerTests: XCTestCase {
         // And the operator-facing diagnostics are on stderr.
         try server.send(["jsonrpc": "2.0", "id": 61, "method": "tools/list"])
         _ = try server.readResponse(id: 61)
-        let stderr = String(
-            decoding: server.stderrPipe.fileHandleForReading.availableData,
-            as: UTF8.self
-        )
+        let stderr =
+            (String(bytes: server.stderrPipe.fileHandleForReading.availableData, encoding: .utf8) ?? "<not valid UTF-8>")
         XCTAssertTrue(
             stderr.contains("SwiftWebSearchMCP"),
             "expected startup diagnostics on stderr, got: \(stderr.prefix(400))"

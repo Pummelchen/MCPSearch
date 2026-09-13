@@ -892,7 +892,9 @@ final class ProviderHealthTests: XCTestCase {
         // And the allowance is enforced from the very first request.
         var denials = 0
         for _ in 0..<(RateLimiter.Policy.apiDefault.burst + 1) {
-            if await pipeline.health.authorize(.tavily) != nil { denials += 1 }
+            // `await` is not allowed in a `where` clause, so count without an `if`.
+            let refusal = await pipeline.health.authorize(.tavily)
+            denials += refusal == nil ? 0 : 1
         }
         XCTAssertEqual(denials, 1, "only the request past the burst allowance may be refused")
     }

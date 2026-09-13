@@ -316,11 +316,9 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
 
         // Translate headers into the SDK's dictionary form.
         var headers: [String: String] = [:]
-        for header in head.headers {
-            // Preserve the first occurrence, matching HTTP semantics for these fields.
-            if headers[header.name] == nil {
-                headers[header.name] = header.value
-            }
+        // Preserve the first occurrence, matching HTTP semantics for these fields.
+        for header in head.headers where headers[header.name] == nil {
+            headers[header.name] = header.value
         }
 
         let request = MCP.HTTPRequest(

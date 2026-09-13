@@ -1266,7 +1266,7 @@ final class ProviderContractTests: XCTestCase {
                 ],
             ]
             let data = (try? JSONSerialization.data(withJSONObject: envelope)) ?? Data()
-            let json = String(decoding: data, as: UTF8.self)
+            let json = (String(bytes: data, encoding: .utf8) ?? "<not valid UTF-8>")
             let sse = "event: message\ndata: \(json)\n\n"
             return HTTPResponse(
                 statusCode: 200,

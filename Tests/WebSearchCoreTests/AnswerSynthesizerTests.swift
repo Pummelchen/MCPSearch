@@ -83,10 +83,10 @@ final class AnswerSynthesizerTests: XCTestCase {
             "choices": [["message": message, "finish_reason": finish]],
             "usage": ["prompt_tokens": 100, "completion_tokens": 20],
         ]
-        return String(
-            data: try! JSONSerialization.data(withJSONObject: payload),
-            encoding: .utf8
-        )!
+        // No trapping conversion: an unencodable fixture is a bug in this helper, and the
+        // fallback makes that visible in the assertion output instead of killing the runner.
+        let data = (try? JSONSerialization.data(withJSONObject: payload)) ?? Data()
+        return String(data: data, encoding: .utf8) ?? #"{"error":"unencodable fixture"}"#
     }
 
     // MARK: Configuration
@@ -444,7 +444,7 @@ final class AnswerSynthesizerTests: XCTestCase {
         let key = Fixtures.syntheticDeepSeekKey
         XCTAssertFalse(request.url.absoluteString.contains(key))
         if let body = request.body {
-            XCTAssertFalse(String(decoding: body, as: UTF8.self).contains(key))
+            XCTAssertFalse((String(bytes: body, encoding: .utf8) ?? "<not valid UTF-8>").contains(key))
         }
         XCTAssertEqual(
             request.headers.filter { $0.value.contains(key) }.keys.sorted(),

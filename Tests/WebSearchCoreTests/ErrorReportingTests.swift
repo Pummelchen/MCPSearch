@@ -11,8 +11,8 @@ import XCTest
 /// exported for normal use must not be able to change the outcome.
 final class ErrorReportingTests: XCTestCase {
 
-    /// The scrub list is shared with `StdioServerTests` and mirrored by
-    /// `scripts/mcp_smoke.py`; see `ServerTestSupport.providerEnvironmentVariables`.
+    // The scrub list is shared with `StdioServerTests` and mirrored by
+    // `scripts/mcp_smoke.py`; see `ServerTestSupport.providerEnvironmentVariables`.
 
     // MARK: - Server harness
 
@@ -81,7 +81,7 @@ final class ErrorReportingTests: XCTestCase {
         }
 
         func stderrText() -> String {
-            String(decoding: stderr.fileHandleForReading.availableData, as: UTF8.self)
+            (String(bytes: stderr.fileHandleForReading.availableData, encoding: .utf8) ?? "<not valid UTF-8>")
         }
 
         func stop() {

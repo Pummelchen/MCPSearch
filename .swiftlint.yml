@@ -1,0 +1,75 @@
+# SwiftLint configuration — MCPSearch
+#
+# Audit task A03. Without this file, `swiftlint` reported 504 findings on this repository, and the
+# number was meaningless: 27 of them were in generated code under `.build/` (SwiftPM's
+# `runner.swift` and `resource_bundle_accessor.swift`), and most of the rest were style questions
+# `swift-format` already owns through `.swift-format` (task A02). Genuine findings — a `try!`, ten
+# silent `Data` → `String` decodings, three `for`-`if` pairs, two orphaned doc comments — were
+# buried under that noise.
+#
+# Two rules of thumb are applied here:
+#
+# 1. **Scope to our code.** `Sources`, `Tests` and `Package.swift` only. Linting a build directory
+#    is linting somebody else's source.
+# 2. **One tool owns each style question.** Where `.swift-format` decides something, SwiftLint's
+#    duplicate of it is off, with the reason named below. Two tools disagreeing about the same
+#    line is how a linter loses its authority.
+#
+# Everything else stays enabled, and every finding it produced in our own code was *fixed* rather
+# than configured away: see AUDIT/evidence/A03-swiftlint.txt for the list and the before/after
+# counts.
+
+included:
+  - Sources
+  - Tests
+  - Package.swift
+
+disabled_rules:
+  # Owned by swift-format (.swift-format): each of these is a formatting decision, and the
+  # formatter is the tool that can actually fix it.
+  - trailing_comma  # multiElementCollectionTrailingCommas
+  - opening_brace   # brace placement in the 4-space style
+  - line_length     # lineLength: 120
+  - trailing_whitespace
+  - trailing_newline
+  - vertical_whitespace
+
+  # Not applicable here.
+  - todo  # work is tracked in AUDIT/ledger.md, not in comments; the three `todo` hits that
+          # prompted this line were in SwiftPM-generated `.build` code, not in this repository
+
+# Opt-in rules are deliberately not enabled by this task. Each one is a policy choice with its own
+# findings across a 15 000-line tree, and adopting them belongs in its own task with its own fixes
+# rather than smuggled into a configuration change.
+
+# Accepted envelope, measured at the commit that introduced this file (task A03). The audit brief
+# forbids closing a task by narrowing it, so these numbers are stated rather than hidden: the gate
+# fails on anything *worse* than the tree as it stands, and the worst current offender for each rule
+# is named so a reviewer can see exactly what is tolerated.
+#
+#   function_body_length    166 lines  Sources/WebSearchCore/Search/SearchOrchestrator.swift:38
+#   type_body_length       1234 lines  Tests/WebSearchCoreTests/ProviderContractTests.swift:10
+#   file_length            1458 lines  Tests/WebSearchCoreTests/ProviderContractTests.swift
+#   cyclomatic_complexity    26        Sources/WebSearchCore/Support/AppConfiguration.swift:275
+#   nesting (type level)      4        Sources/WebSearchCore/Providers/BraveProvider.swift:245
+#
+# Every other finding the default rules produced in our own code was fixed rather than configured
+# away: a `try!`, ten `Data` → `String` decodings, three `for`-`if` pairs, two orphaned doc comments
+# and one unused closure parameter. Splitting the large test suites and the long orchestrator
+# functions is real follow-up work, and it is not quietly cancelled here.
+identifier_name:
+  # `a`, `b`, `fd`, `ms`, `ok` and friends are conventional in test fixtures and socket code.
+  min_length: { warning: 1, error: 0 }
+  max_length: { warning: 40, error: 60 }
+
+large_tuple:
+  # Named 3-tuples are used for fixtures like `(title:url:snippet:)`.
+  warning: 4
+  error: 5
+
+function_parameter_count: { warning: 8, error: 10 }
+function_body_length: { warning: 166, error: 220 }
+type_body_length: { warning: 1234, error: 1500 }
+file_length: { warning: 1458, error: 1700 }
+cyclomatic_complexity: { warning: 26, error: 35 }
+nesting: { type_level: 4 }

@@ -675,7 +675,7 @@ final class SearchOrchestratorTests: XCTestCase {
 
     func testProvidersReceiveALargerBudgetThanTheFinalResultLimit() async throws {
         // Fusion needs surplus material to deduplicate against.
-        let capturing = MockSearchProvider(id: .tavily) { request in
+        let capturing = MockSearchProvider(id: .tavily) { _ in
             ProviderSearchResponse(
                 provider: .tavily,
                 results: [

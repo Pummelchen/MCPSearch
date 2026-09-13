@@ -112,7 +112,7 @@ private struct RawHTTP {
     }
 
     private static func parse(_ raw: Data) throws -> Response {
-        let text = String(decoding: raw, as: UTF8.self)
+        let text = (String(bytes: raw, encoding: .utf8) ?? "<not valid UTF-8>")
         guard let separator = text.range(of: "\r\n\r\n") else {
             throw Failure.malformed("no header terminator in \(text.prefix(120))")
         }
@@ -260,7 +260,7 @@ final class HTTPTransportTests: XCTestCase {
     }
 
     private func stderrText() -> String {
-        String(decoding: stderrPipe.fileHandleForReading.availableData, as: UTF8.self)
+        (String(bytes: stderrPipe.fileHandleForReading.availableData, encoding: .utf8) ?? "<not valid UTF-8>")
     }
 
     /// Perform the initialize handshake and return the session id it issued.

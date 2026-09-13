@@ -1,0 +1,66 @@
+# A03 — the SwiftLint configuration, evidence after the fix
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13 · SwiftLint 0.65.1
+
+## Before: no configuration, and a third of the number was not our code
+
+```
+$ swiftlint lint --quiet        # no .swiftlint.yml
+504 findings
+  27 of them in .build/ — SwiftPM-generated code:
+     .build/…/SwiftWebSearchMCPPackageTests.derived/runner.swift        (TODO/FIXME, duplicate imports,
+                                                                         void_return, identifier_name)
+     .build/…/resource_bundle_accessor.swift                            (line_length)
+  the three 'todo' findings, i.e. the placeholder sweep, were all in that generated runner
+```
+
+## What the configuration does
+
+* `included: [Sources, Tests, Package.swift]` — the linter is scoped to the repository's own
+  code. Linting a build directory is linting somebody else's source.
+* Seven rules are disabled because `.swift-format` owns them (trailing comma, opening brace,
+  line length, trailing whitespace/newline, vertical whitespace). Two tools disagreeing about
+  the same line is how a linter loses its authority; one tool owns each style question.
+* Every other finding in our own code was **fixed**, not configured away:
+
+```
+  try! + force-unwrapped String(data:)  AnswerSynthesizerTests.swift:86  -> total expression
+  10x String(decoding:as:)              URLPolicy.swift:490 + 9 test sites   -> failable String(bytes:encoding:)
+  3x for_where                          MarkupDepth, HTTPMCPHost, FusionAndReliability
+  2x orphaned_doc_comment               ErrorReportingTests, StdioServerTests
+  1x unused_closure_parameter           SearchOrchestratorTests:678
+```
+* The structural rules keep explicit envelopes, and the worst current offender for each is named
+  in the configuration so the tolerance is reviewable rather than hidden: function body 166
+  lines (SearchOrchestrator.swift:38), type body 1234 (ProviderContractTests), file 1458
+  (ProviderContractTests), cyclomatic 26 (AppConfiguration.swift:275), type nesting 4
+  (BraveProvider.swift:245). The gate fails on anything worse than the tree as it stands;
+  splitting those suites is real follow-up work, not something this file cancels.
+
+## After
+
+```
+$ swiftlint lint --quiet --strict      # warnings are failures
+exit=0, no output
+```
+
+## Negative control — the configuration is not blind
+
+A temporary file with a nine-parameter function was added under Sources/:
+
+```
+Sources/WebSearchCore/AuditLintControl.swift:2:1: error: Function Parameter Count Violation:
+  Function should have 8 parameters or less: it currently has 9 (function_parameter_count)
+```
+
+The file was deleted again and `swiftlint lint --quiet --strict` returned to exit 0. Two
+configuration mistakes were also found and fixed by running the gate rather than assuming:
+`nesting` does not accept `statement_level`, and `indentation` is no longer a valid rule
+identifier in 0.65 — both had made the tool print a 259-line rule list while still exiting 0.
+
+## Verification after the code fixes
+
+* `swift-format lint --recursive --strict`: 0 diagnostics.
+* `swiftlint lint --quiet --strict`: exit 0.
+* `swift build` and `swift build -c release`: 0 warnings, 0 errors.
+* Full suite: 411 tests, 6 skipped, 0 failures.

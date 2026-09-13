@@ -487,8 +487,9 @@ public struct SystemDNSResolver: DNSResolver {
                             nil, 0,
                             NI_NUMERICHOST
                         ) == 0 {
-                            let text = String(
-                                decoding: buffer.prefix { $0 != 0 }.map(UInt8.init(bitPattern:)), as: UTF8.self)
+                            let text =
+                                String(bytes: buffer.prefix { $0 != 0 }.map(UInt8.init(bitPattern:)), encoding: .utf8)
+                                ?? ""
                             // Strip an IPv6 zone index (`fe80::1%en0`).
                             let cleaned = text.split(separator: "%").first.map(String.init) ?? text
                             if let address = IPAddress(cleaned) { addresses.append(address) }

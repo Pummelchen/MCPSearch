@@ -275,8 +275,8 @@ public enum MarkupDepth {
     ) -> Bool where Bytes.Element == UInt8, Bytes.Index == Int {
         let pattern = Array(text.utf8)
         guard start + pattern.count <= end else { return false }
-        for offset in 0..<pattern.count {
-            if bytes[start + offset] != pattern[offset] { return false }
+        for offset in 0..<pattern.count where bytes[start + offset] != pattern[offset] {
+            return false
         }
         return true
     }
