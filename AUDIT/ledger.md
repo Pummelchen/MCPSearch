@@ -16,15 +16,15 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 
 | Metric | Count |
 | --- | --- |
-| Tasks enumerated | 127 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
+| Tasks enumerated | 128 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 86 |
+| DONE | 87 |
 | START (reproduced, expected behaviour written) | 41 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
-Severity of the whole set: **S0 3, S1 8, S2 34, S3 82** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 82 S3 tasks 41 are DONE and 41 open.
+Severity of the whole set: **S0 3, S1 8, S2 34, S3 83** — the S0 set (A01, B01, B02) and the S1 set
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 83 S3 tasks 42 are DONE and 41 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -136,7 +136,7 @@ waived in writing.
 | B80 | S3 | `scripts/soak.py` | `scripts/soak.py:170` (used at `:183`) | `soak.py` conflates EOF with a malformed stdout line and discards the line | bug | DONE | this Mac (arm64) | Phase B L3-38 |
 | B81 | S3 | `scripts/mcp_smoke.py` | `scripts/mcp_smoke.py:315` (decode at `:296`) | `mcp_smoke.py` de-chunks an SSE body after decoding it to `str` | bug | DONE | this Mac (arm64) | Phase B L3-39 |
 | B82 | S3 | `scripts/soak.py` | `scripts/soak.py:327` (argument at `:301`) | A negative `--queries` silently truncates the query list from the end | bug | DONE | this Mac (arm64) | Phase B L3-40 |
-| B83 | S3 | `scripts/mcp_smoke.py` | `scripts/mcp_smoke.py:345-353` (port at `:350-357`, stderr only read at `:458`) | HTTP smoke can wait 20 s on a dead server and never checks that it is alive | bug | START | this Mac (arm64) | Phase B L3-41 |
+| B83 | S3 | `scripts/mcp_smoke.py` | `scripts/mcp_smoke.py:345-353` (port at `:350-357`, stderr only read at `:458`) | HTTP smoke can wait 20 s on a dead server and never checks that it is alive | bug | DONE | this Mac (arm64) | Phase B L3-41 |
 | B84 | S3 | `WebSearchCore` / `Fetch` (`URLPolicy`) | `Sources/WebSearchCore/Fetch/URLPolicy.swift:289` | `IPAddress.v6` is a public case that accepts any byte count, and its accessors index 16 bytes unconditionally | unsafe | START | this Mac (arm64) | Phase B L4-9 |
 | B85 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:93` | Query hashing for logs is a fast unsalted FNV-1a, but is documented as non-reversible | docs | START | this Mac (arm64) | Phase B L4-10 |
 | B86 | S3 | `deploy` (`provision-node.sh`) | `deploy/provision-node.sh:71` | Provisioning writes through fixed, predictable `/tmp` paths and loads a container image from one | unsafe | START | this Mac (arm64) | Phase B L4-12 |
@@ -162,6 +162,7 @@ waived in writing.
 | B113 | S3 | `WebSearchCore` / `Support` + `SwiftWebSearchMCP` (`main`) | `Sources/SwiftWebSearchMCP/main.swift:16` and `:98` | Configuration is loaded and validated before the command line is parsed, so an unreadable config file pre-empts `--help` | logic | START | this Mac (arm64) | handover re-read L7 |
 | B114 | S3 | `SwiftWebSearchMCP` (`TransportConfiguration.usage`) | `Sources/WebSearchCore/Support/TransportConfiguration.swift:51-77` | `usage` under-documents the CLI, and the test that claims to check every flag locks the incomplete list in place | docs | START | this Mac (arm64) | handover re-read L7 |
 | B115 | S3 | repository root (`README.md`) | `README.md:120`, provider table `:122-134` | The README undercounts the keyless routes and its Startpage row omits the flag the adapter actually requires | docs | DONE | this Mac (arm64) | handover re-read L7 |
+| B117 | S3 | `scripts` (`mcp_smoke.py`) | `scripts/mcp_smoke.py` (`free_loopback_port`) | The HTTP smoke picks a free port by closing the socket before the child binds, so the child can lose the bind race | test | START | this Mac (arm64) | Phase C (residual B83 left) |
 
 ---
 
@@ -213,6 +214,35 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B83 — HTTP smoke could wait 20 s on a dead server and never check that it was alive
+
+**Severity S3** (recorded) · **category** bug · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** `free_loopback_port()` closes its probe socket before the child starts, so the
+child can lose the bind race; `wait_for_health` then never called `process.poll()` and never read
+the captured stderr. A server that had already exited produced a silent 20-second wait ending in
+`HTTP transport did not become healthy on port N` - blaming the port for a process that was already
+dead, and discarding the stderr that said why.
+
+**The fix.** `wait_for_health` takes the child and polls it on every pass; an exited child is
+reported at once with its exit code and stderr, read by a new never-raising `child_stderr` helper.
+The original timeout message is kept for the live-but-never-healthy case, which is a different
+failure.
+
+**Verification.** A check drives the real `run_http_smoke` with a child that exits 1 without
+binding. Against the reverted code all three assertions fail at 20.05 s elapsed with the port-only
+message; with the fix all three pass at 0.79 s naming the dead server and its stderr. A separate
+sanity check confirms the guard returns rather than raising on a live, healthy child. ruff,
+`ruff format --check` and pyright strict are clean. Artifact:
+`AUDIT/evidence/B83-smoke-dead-server.txt`.
+
+**Deliberate deviation, and the residual it leaves.** The finding's expected-correct also offered
+"keep the probe socket until the child has bound, or retry a fresh port on bind failure". Holding
+the parent socket cannot work - the child does its own bind and would get `EADDRINUSE`, since
+macOS `SO_REUSEADDR` does not permit two live binders - and a retry is a behavioural change beyond
+the reported defect. The race itself therefore remains and is recorded as **B117** rather than
+quietly closed with the symptom.
 
 ## B82 — a negative `--queries` silently truncated the query list from the end
 

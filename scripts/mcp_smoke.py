@@ -356,8 +356,25 @@ def http_exchange(
     return status, headers, messages
 
 
-def wait_for_health(port: int, timeout: float = 20.0) -> None:
-    """Poll /health until the HTTP transport is accepting connections."""
+def child_stderr(process: subprocess.Popen[str]) -> str:
+    """Read a child's stderr for a failure message, never raising."""
+    stream = process.stderr
+    if stream is None:
+        return "<no stderr pipe>"
+    try:
+        # The child has exited, so its pipe is at EOF and this returns rather than blocking.
+        return stream.read().strip() or "<empty>"
+    except OSError, ValueError:  # pragma: no cover - best effort in a failure path
+        return "<unavailable>"
+
+
+def wait_for_health(port: int, process: subprocess.Popen[str], timeout: float = 20.0) -> None:
+    """Poll /health until the HTTP transport is accepting connections.
+
+    The child is polled on every pass: a server that has already exited will never bind,
+    so the loop can say so at once with the child's own stderr instead of waiting out the
+    timeout and blaming the port (ledger B83).
+    """
     # The URL is built from a port number, so the scheme and host are asserted rather than
     # assumed: `urlopen` would happily follow a `file://` URL, and a probe that can be pointed
     # anywhere is exactly what the audit flagged (ledger A08).
@@ -367,6 +384,12 @@ def wait_for_health(port: int, timeout: float = 20.0) -> None:
         raise Failure(f"refusing to probe a non-loopback URL: {health_url}")
     deadline = time.time() + timeout
     while time.time() < deadline:
+        exit_code = process.poll()
+        if exit_code is not None:
+            raise Failure(
+                f"HTTP server is not listening on port {port}: it exited with code "
+                f"{exit_code} before the transport came up; stderr:\n{child_stderr(process)}"
+            )
         try:
             # nosemgrep: dynamic-urllib-use-detected
             with urllib.request.urlopen(health_url, timeout=2) as response:
@@ -404,7 +427,7 @@ def run_http_smoke(binary: str) -> None:
         text=True,
     )
     try:
-        wait_for_health(port)
+        wait_for_health(port, process)
         print(f"  /health ok on port {port}")
 
         status, headers, messages = http_exchange(
