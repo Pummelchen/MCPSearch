@@ -338,6 +338,25 @@ final class ConfigurationTests: XCTestCase {
         XCTAssertTrue(configuration.issues.isEmpty, "\(configuration.issues)")
     }
 
+    /// `PARALLEL_MCP_URL=` is how an operator removes the built-in Parallel endpoint.
+    ///
+    /// The clearing branch in `parse` tests for a present-but-empty value, and `load` drops empty
+    /// environment values, so it could never run: the documented-looking way to remove the default
+    /// silently kept it (ledger B59).
+    func testAnEmptyParallelMCPURLRemovesTheDefault() {
+        XCTAssertNotNil(
+            AppConfiguration.load(environment: [:], configFileURL: nil).parallelMCPURL,
+            "the built-in default is present with no configuration"
+        )
+        XCTAssertNil(
+            AppConfiguration.load(
+                environment: ["PARALLEL_MCP_URL": ""],
+                configFileURL: nil
+            ).parallelMCPURL,
+            "an explicitly empty value must clear the default"
+        )
+    }
+
     /// `SEARCH_CONFIG_FILE` is the documented way to point at a file, and `load` must read it.
     func testConfigFileNamedByTheEnvironmentIsLoaded() throws {
         let file = try writeTemporaryConfig("SEARCH_MAX_RESULTS=4")

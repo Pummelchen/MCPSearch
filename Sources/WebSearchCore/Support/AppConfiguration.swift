@@ -321,6 +321,16 @@ extension AppConfiguration {
             }
         }
 
+        // An explicitly empty value in the *environment* is how an operator removes a default that
+        // needs nothing else configured: `PARALLEL_MCP_URL=`. `load` copies environment entries only
+        // when they are non-empty (an empty variable is not a setting) and `parseDotEnv` drops empty
+        // values, so the branch in `parse` that clears the built-in Parallel endpoint could never
+        // run (ledger B59). Carried for this key only, because it is the only key with a non-nil
+        // default that an operator would want to remove.
+        if let raw = environment[Key.parallelMCPURL.rawValue], raw.isEmpty {
+            values[Key.parallelMCPURL.rawValue] = ""
+        }
+
         var configuration = parse(values)
         // The file problem is reported first: it explains why other values may be missing.
         configuration.issues = issues + configuration.issues
