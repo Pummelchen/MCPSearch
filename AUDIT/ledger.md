@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 133 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 129 |
-| START (reproduced, expected behaviour written) | 4 |
+| DONE | 130 |
+| START (reproduced, expected behaviour written) | 3 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 88** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 88 S3 tasks 84 are DONE and 4 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 88 S3 tasks 85 are DONE and 3 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -153,7 +153,7 @@ waived in writing.
 | B97 | S3 | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift`, `Tests/WebSearchCoreTests/AnswerSynthesizerTests.swift | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift:349` | `AnswerSynthesizer`'s completion edge cases, token usage and locale prompt are untested | test | DONE | this Mac (arm64) | Phase B L6-17 |
 | B98 | S3 | `Sources/MCPSMonitor/main.swift` (`Monitor`), `Tests/MCPSMonitorTests/MonitorOptionsTests.swift` | `Sources/MCPSMonitor/main.swift:337` | The `Monitor` actor's refresh/counting/warning logic has no Swift test | test | DONE | this Mac (arm64) | Phase B L6-18 |
 | B99 | S3 | `Tests/WebSearchCoreTests/TestSupport.swift`, `scripts/*.py` | `Tests/WebSearchCoreTests/TestSupport.swift:12` | No test ties the Swift test harnesses to the Python harnesses, and two scripts are untested entirely | test | DONE | this Mac (arm64) | Phase B L6-19 |
-| B100 | S3 | `Sources/SwiftWebSearchMCP/ToolSchemas.swift` (`ToolOutputFormatter`) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:526` | `ToolOutputFormatter`'s fallback and diagnostic branches are untested | test | START | this Mac (arm64) | Phase B L6-20 |
+| B100 | S3 | `Sources/SwiftWebSearchMCP/ToolSchemas.swift` (`ToolOutputFormatter`) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:526` | `ToolOutputFormatter`'s fallback and diagnostic branches are untested | test | DONE | this Mac (arm64) | Phase B L6-20 |
 | B101 | S3 | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift`, `Tests/WebSearchCoreTests/HTTPTransportTests.swift` | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:79` | `HTTPMCPHost`'s startup-failure and internal-error paths are untested | test | START | this Mac (arm64) | Phase B L6-21 |
 | B109 | S3 | `WebSearchCore` / `Search` (`RankFusion`) | `Sources/WebSearchCore/Search/RankFusion.swift:161-162` | The response-level resale discount is applied to every result of an aggregator response, defeating the per-result refinement the code documents | logic | DONE | this Mac (arm64) | handover re-read L2 |
 | B110 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, `web_answer` input) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:275-281` | `web_answer`'s `provider` argument lost the enum that `web_search`'s `provider` declares, though the schema documents itself as a mirror | logic | DONE | this Mac (arm64) | handover re-read L1 |
@@ -219,6 +219,20 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B100 — `ToolOutputFormatter`'s fallback and diagnostic branches were untested
+
+**Severity S3** · **category** test · **status** DONE · **host** node1 (arm64)
+
+**Premise open, one branch unreachable.** `ToolOutputFormatter` lives in the executable target, which `WebSearchCoreTests` cannot import, so the only coverage was the happy-path two-result rendering and the structured status payload. But `searchText`'s `if response.results.isEmpty { "No results." }` cannot run through the server: `SearchOrchestrator.search` throws before constructing a response when `fuse` yields nothing, `SearchResponse` has exactly one construction site after that guard, and `SearchCache.store` refuses a response without usable results. The record's requested `{"results":[]}` search is a tool error instead, and that is what the test pins.
+
+**What was added.** A new `ToolOutputFormatterTests.swift` (four tests) reaching the formatter over a real stdio session against a `LoopbackServer`, in a new file because `StdioServerTests.swift` is at 1327 of SwiftLint's 1458 lines. It pins: the all-empty search being a tool error that never renders "No results."; a 500-character body clipped to a 401-character snippet line (400 + ellipsis) whose kept text is a prefix of the source; an "Unavailable providers: open_web_search" line when only one of two providers answers; and a status line whose `requests=`/`failed=` counters parse non-zero with a "last error:" line.
+
+**Two corrections the run forced.** `fast` mode selects one provider, so the partial-failure case needs `balanced` (two direct providers); and a second stub response is a race because the fan-out is concurrent, so the failing provider is pointed at a listener that has been released. The status test also parses the counters rather than substring-matching `failed=`, which would pass at `failed=0`.
+
+**Falsification.** M1 raised the snippet budget to 1000; M2 renamed the text renderer's unavailable-provider label; M3 renamed the last-error label. Each relinked `SwiftWebSearchMCP` (`--build-tests`) and produced 5 assertion failures across the four tests. `ToolSchemas.swift` restored byte-identical (`diff` empty, SHA-256 verified); no production code changed.
+
+Gate: 583 tests / 6 skipped / 0 failures; debug and release 0 warnings; swift-format 0; swiftlint 0 in 90 files; notices clean. Evidence: `AUDIT/evidence/B100-tool-output-formatter.txt`.
 
 ## B99 — no test tied the Swift harnesses to the Python harnesses, and two scripts were untested
 

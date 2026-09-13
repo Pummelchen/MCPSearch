@@ -1,0 +1,126 @@
+# B100 — `ToolOutputFormatter`'s fallback and diagnostic branches were untested
+
+Host: `node1 (arm64, macOS 26.6.2)` · branch `audit/2026-09-13` · Swift 6.3.3
+
+## Premise check: open, with one branch that cannot be reached at all
+
+The tool layer is the `SwiftWebSearchMCP` executable target, and `WebSearchCoreTests` depends only on
+`WebSearchCore` (`Package.swift`), so `ToolOutputFormatter` cannot be imported by a unit test. The
+existing coverage is the happy path only: `StdioServerTests.testSearchAgainstAStubProviderReturns…`
+asserts two result lines, and the status test asserts the **structured** payload. Nothing asserted a
+clipped snippet, an "Unavailable providers" line, or a status counter line. `git log --all --grep
+"audit(B100)"` is empty.
+
+**One of the four named branches is unreachable, and the record's own words ("fallback") hide that.**
+`searchText`'s `if response.results.isEmpty { lines.append("No results.") }` cannot run through this
+executable:
+
+* `SearchOrchestrator.search` throws `SearchError.providersFailed` (or `temporarilyUnavailable`)
+  when `fuse` produced nothing, before any `SearchResponse` is constructed;
+* `SearchResponse` has exactly one construction site (`SearchOrchestrator.swift:244`), after that
+  guard;
+* the cache-hit path cannot supply one either: `SearchCache.store` refuses a response whose
+  `hasUsableResults` is false, so a cached empty response cannot exist.
+
+The spec asked for "a search through a stub that returns `{"results":[]}` (assert the text contains
+"No results.")". That search is a tool error instead, and the test now pins *that* rather than
+pretending to reach the branch.
+
+## What was added
+
+A new `Tests/WebSearchCoreTests/ToolOutputFormatterTests.swift` (four tests) reaching the formatter
+the only way it can be reached — a real stdio MCP session against a `LoopbackServer` — which is what
+`StdioServerTests` and `SchemaCompatibilityTests` already do. `StdioServerTests.swift` is at 1327
+lines against SwiftLint's 1458-line ceiling, so the tests went into a new file rather than growing
+it, the split pattern B96 and B54 used.
+
+| Test | Pins |
+| --- | --- |
+| `testAnAllEmptySearchIsAToolErrorNotAnEmptyRendering` | a sole provider returning `{"results":[]}` is a tool error, the text does **not** contain "No results.", and it does say the search failed |
+| `testLongSnippetIsClippedWithAnEllipsis` | the 500-character body yields a snippet line of exactly 401 characters (400 + `…`), whose kept text is a prefix of the source and whose full text is gone |
+| `testAFailedProviderIsListedInTheText` | with `searxng` healthy and `open_web_search` pointed at a released port, the text carries "Unavailable providers: open_web_search" and still renders the result |
+| `testStatusTextCarriesCountersAndTheLastError` | a failing provider yields a status line whose `requests=` and `failed=` counters parse to non-zero values, plus a "last error:" line and the cache line |
+
+Two details the first draft got wrong and the run corrected:
+
+* **`fast` mode selects one provider.** It never touched `open_web_search`, so the partial-failure
+  test needed `balanced` (`maxDirectProviders == 2`) to fan out to both.
+* **A second response from one stub is a race.** The fan-out is concurrent, so "first request gets
+  200, second gets 503" is not deterministic. The failing provider is pointed at a `LoopbackServer`
+  whose listener is released before the server starts, which refuses the connection every time.
+
+The status test also avoided a substring trap: `rendered.contains("failed=")` passes even when the
+counter is `failed=0`, so the line is parsed and both counters are asserted non-zero.
+
+## Proof the assertions can fail (mutations of production code)
+
+Three mutations in `Sources/SwiftWebSearchMCP/ToolSchemas.swift`, built with `--build-tests
+-Xswiftc -warnings-as-errors` after a `touch`. `--build-tests` relinks the `SwiftWebSearchMCP`
+product (the log shows `Linking SwiftWebSearchMCP`), which is the relink lesson 2 warns about for a
+subprocess test:
+
+**M1** — `maximumSnippet: Int = 400` → `1000`:
+
+```
+ToolOutputFormatterTests.swift:125: … testLongSnippetIsClippedWithAnEllipsis : XCTAssertTrue failed
+    - the clip must be marked: xxxxx
+ToolOutputFormatterTests.swift:127: … ("500") is not equal to ("401") - the snippet must be clipped
+    to the formatter's 400-character budget, got 500
+ToolOutputFormatterTests.swift:136: … the full 500-character body must not survive
+```
+
+**M2** — the text renderer's `"Unavailable providers: "` → `"Providers skipped: "`:
+
+```
+ToolOutputFormatterTests.swift:182: … testAFailedProviderIsListedInTheText : XCTAssertTrue failed -
+    the failed provider must be named in the text: [1] OK page
+```
+
+**M3** — `"    last error: \(lastError)"` → `"    error: \(lastError)"`:
+
+```
+ToolOutputFormatterTests.swift:243: … testStatusTextCarriesCountersAndTheLastError : XCTAssertTrue
+    failed - the provider's last error must be rendered: Provider status:
+    error: SearXNG is temporarily unavailable.
+```
+
+Combined: `Executed 4 tests, with 5 failures (0 unexpected)`. `ToolSchemas.swift` was restored:
+`diff` empty, SHA-256
+`e62e92621f3380f64217f3dc8955ddd9fddb18e9081226af05a1766f78c03530` for both the restored file and
+the backup (`shasum -a 256 -c` OK). `git diff --stat Sources/` is empty; no production code changed.
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (6.22s)                                          0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+Executed 583 tests, with 6 tests skipped and 0 failures (0 unexpected) in 33.824 (33.904) seconds
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (4.69s)                                          0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+exit 0                                                           0 diagnostics
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 90 files.         exit 0
+
+$ python3 scripts/third_party_notices.py
+THIRD-PARTY-NOTICES.md covers all 8 resolved packages at the pinned versions
+```
+
+583 is the 579 post-B99 count plus these four tests. File count 89 → 90. Because two of the four
+depend on timing (a released port and a concurrent fan-out), the file was run five consecutive
+times before the gate: 4/4 passed every time.
+
+## Deviation
+
+The expected-correct's first bullet — `{"results":[]}` reaching "No results." — is **not
+implemented, because it cannot be**: that rendering is unreachable through the server, as shown
+above. Asserting it would have required either exporting the executable's internals (a production
+change for a test), duplicating the formatter, or bypassing the orchestrator; the test instead pins
+the observable contract, and this artifact records the branch as effectively dead. If the ledger
+wants that string to remain, the check belongs to whichever task owns `searchText`'s contract, not
+to a test-only item.
