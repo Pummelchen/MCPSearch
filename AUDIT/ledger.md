@@ -18,8 +18,8 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 113 (A01-A12 from Phase A/B, B01-B101 folded in Phase D) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 2 |
-| START (reproduced, expected behaviour written) | 111 |
+| DONE | 3 |
+| START (reproduced, expected behaviour written) | 110 |
 | BLOCKED | 0 |
 
 Severity of the folded set: S0 2, S1 6, S2 27, S3 66.
@@ -47,7 +47,7 @@ waived in writing.
 | A10 | S1 | CI | `.github/workflows/ci.yml` | No gate for warnings-as-errors, formatter, linter, type checker, coverage floor, or scanners | test | START | this Mac | audit baseline |
 | A11 | S2 | scripts | `scripts/*.py` (4 files) | Python is 3.14 with no strict type-checking config and no annotations | style | START | this Mac | audit baseline (pyright) |
 | A12 | S2 | cross-unit contracts | `Support/AppConfiguration.swift`, `scripts/*`, `deploy/*`, CI | Env-var contracts between units have no automated consistency check | logic | START | this Mac | scope discovery |
-| B01 | S0 | `deploy/docker-compose.yml` (with `deploy/searxng/settings.yml`) | `deploy/docker-compose.yml:30` (placeholder at `deploy/searxng/settings.yml:22`) | The documented compose secret-key override is the wrong variable, so the tracked placeholder is what signs the instance | placeholder | START | this Mac (arm64) | Phase B PLACEHOLDER-3 |
+| B01 | **S0** | `deploy/docker-compose.yml` (with `deploy/searxng/settings.yml`, `deploy/.env.example`) | `deploy/docker-compose.yml:33`, `deploy/searxng/settings.yml:13-22` | The documented compose secret-key override is the wrong variable, so the tracked placeholder is what signs the instance | placeholder | DONE | this Mac (arm64) | Phase B PLACEHOLDER-3 + L7-10 |
 | B02 | S0 | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift` (fetch redirect branch), `Tests/WebSearchCoreTests/Fetch | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:82` | The manual redirect loop is the SSRF boundary for redirects and has no test at all | test | START | this Mac (arm64) | Phase B L6-1 |
 | B03 | S1 | `SwiftWebSearchMCP` (HTTP transport wiring) | `Sources/SwiftWebSearchMCP/main.swift:118` (one transport per process), `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:290` (non-POST refused before the | The HTTP transport serves exactly one MCP session per process, and that session can never be released | bug | START | this Mac (arm64) | Phase B L3-25 |
 | B04 | S1 | `Sources/WebSearchCore/Search/SearchOrchestrator.swift`, `Sources/SwiftWebSearchMCP/ToolHandlers.swift` | `Sources/WebSearchCore/Search/SearchOrchestrator.swift:91` | Caller cancellation is never tested, and mid-flight cancellation is observably swallowed | test | START | this Mac (arm64) | Phase B L6-3 |
@@ -181,6 +181,43 @@ Folding them into this ledger:
   the note says so; the tasks are still tracked separately because their fixes are separate.
 * **Scope of a task cannot be narrowed to close it**, and `BLOCKED` requires a named owner; both
   apply to the folded tasks exactly as to the A-series.
+
+## B01 — the compose secret-key override named a variable SearXNG never reads
+
+**Severity S0** (recorded) · **category** placeholder · **status** DONE
+
+**What was wrong.** `deploy/docker-compose.yml` documented `SEARXNG_SECRET_KEY`, and
+`deploy/searxng/settings.yml` tracked `secret_key: "change-me-local-only-not-a-credential"`.
+Checked against the **pinned image**, not upstream master: `settings_defaults.py:218` declares
+`'secret_key': SettingsValue(str, environ_name='SEARXNG_SECRET')`, and `SettingsValue.__call__`
+overrides the value with the environment variable when it is set. So the documented variable did
+nothing, and the literal in git was the key signing sessions. The image's own "generate a random
+key" path only runs when no settings file is mounted, which is not this deployment.
+
+**Fix.** The key now comes from the environment only: compose requires
+`SEARXNG_SECRET=${SEARXNG_SECRET:?...}` and `settings.yml` no longer sets `secret_key`, so there
+is no tracked placeholder to take effect. `deploy/.env.example` (git-ignored when copied to
+`.env`) shows the `openssl rand -hex 32` one-liner, and the wiki's installation and self-hosting
+pages describe it. Both layers fail closed: compose refuses to render without the variable, and
+SearXNG itself refuses to start with its shipped placeholder.
+
+**Evidence after** ([`evidence/B01-searxng-secret.txt`](evidence/B01-searxng-secret.txt))
+
+| Check | Result |
+| --- | --- |
+| `docker compose config` with no key | exit 1, `required variable SEARXNG_SECRET is missing a value` |
+| `SEARXNG_SECRET=probe-value docker compose config` | renders `SEARXNG_SECRET: probe-value` |
+| container with the new settings and no key | exits 1, `server.secret_key is not changed` |
+| throwaway container with a key, `q=swift&format=json` | HTTP 200, 21 results |
+
+The live `mcps-searxng` instance on `127.0.0.1:8888` was not restarted, recreated or touched: the
+verification used a separate container on port 18888, which was removed afterwards.
+
+**Still open (`B02`-adjacent, not this task).** `deploy/provision-node.sh` writes a *generated*
+per-node key into its own `settings.yml` (unchanged here) and its unchecked `sed` is tracked
+separately; the file mode of that generated settings file is `L7-12`/`L4-11`.
+
+---
 
 ---
 

@@ -23,11 +23,13 @@ services:
     environment:
       # Keeps SearXNG's own logs out of the way; the MCP server never reads them.
       - SEARXNG_BASE_URL=http://localhost:8080/
-      # Overrides the placeholder in the mounted settings.yml. SearXNG maps SEARXNG_*
-      # variables onto its settings, so a deployment that cares can export a real key
-      # without editing the tracked file. The placeholder only signs local session data on
-      # an instance that has no accounts, no limiter and no public exposure.
-      - SEARXNG_SECRET_KEY=${SEARXNG_SECRET_KEY:-change-me-local-only-not-a-credential}
+      # The session-signing key. This is the variable SearXNG actually reads — its
+      # settings_defaults.py declares `server.secret_key` as `SettingsValue(str,
+      # environ_name='SEARXNG_SECRET')` — and an environment variable overrides the mounted
+      # settings file. It is required rather than defaulted: a tracked placeholder would
+      # silently sign sessions with a public literal. Put a real key in deploy/.env (copy
+      # deploy/.env.example, which shows the one-liner) or export it before `compose up`.
+      - SEARXNG_SECRET=${SEARXNG_SECRET:?set SEARXNG_SECRET - see deploy/.env.example}
     healthcheck:
       # A JSON request is the right probe: it fails when `search.formats` lacks `json`,
       # which is the failure that otherwise shows up as a mysterious 403 in the server.
