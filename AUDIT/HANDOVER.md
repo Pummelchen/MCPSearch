@@ -7,10 +7,10 @@ authoritative; `AUDIT/ledger.json` carries every field. This page is orientation
 
 | | |
 | --- | --- |
-| Branch | `audit/2026-09-13` at **`9d4b816`**, pushed to `origin` (never merged; `main` untouched at `f3dd8d9`) |
+| Branch | `audit/2026-09-13` at **`61eb015`**, pushed to `origin` (never merged; `main` untouched at `f3dd8d9`) |
 | Relationship | `main` is a **strict ancestor** of this branch — `git rev-list --count origin/audit/2026-09-13..origin/main` is 0, so the eventual merge is a fast-forward |
-| Tasks | **89 DONE, 0 PROGRESS, 40 START, 0 BLOCKED** (129 enumerated; all open work is S3) |
-| Suite | **489 tests, 6 skipped, 0 failures** (486 baseline + 3 from B116) |
+| Tasks | **92 DONE, 0 PROGRESS, 37 START, 0 BLOCKED** (129 enumerated; all open work is S3) |
+| Suite | **490 tests, 6 skipped, 0 failures** (486 baseline + 3 from B116) |
 | Builds | debug + release, 0 warnings under `-warnings-as-errors` |
 | Linters | `swift-format --strict` 0 · `swiftlint --strict` 0 · ruff clean · pyright strict 0 |
 | Phases | A, B and D complete; C in progress (all S0/S1/S2 closed); **E not started** |
@@ -21,8 +21,8 @@ authoritative; `AUDIT/ledger.json` carries every field. This page is orientation
 Established the baseline on the independent host first, which was the right order: it found that
 the suite was **not** reliably green. `StdioServerTests.testToolArgumentClampsAreEnforced` failed
 about once in twenty runs, root-caused to a local-throttle boundary race and fixed as **B116** with
-a deterministic clock rather than by re-running. Then it closed **B41, B48, B49, B80, B81, B82,
-B83, B108, B115**, folded seven findings the re-read turned up as **B109–B115**, and recorded
+a deterministic clock rather than by re-running. Then it closed **B41, B48, B49, B64, B78, B80, B81, B82,
+B83, B86, B108, B115**, folded seven findings the re-read turned up as **B109–B115**, and recorded
 B83's deliberately-left residual as **B117**.
 
 Two things worth carrying forward:
@@ -34,6 +34,14 @@ Two things worth carrying forward:
   prose is still written by hand. Run it as `ledger_tool.py complete <ID> <payload.json>`.
 * **A green suite on the CI runner is not the same as a green suite here.** The B116 flake passed
   CI repeatedly. Establish the baseline locally, several times, before trusting it.
+* **One commit on this branch is authored `Node1 <node1@Node1.local>`** (`audit(B64): …`) rather
+  than `Pummelchen`, because a delegated worker committed without an identity override. It is not a
+  foreign or imported commit; it cannot be corrected without a force-push, which is forbidden, so it
+  is recorded here instead.
+* **B78 deleted `ProviderStatus.State.unavailable`**, and B76 is the one open task whose
+  expected-correct could want it back. B76's ledger note says so and explains why the deletion was
+  still right: B76 owns the producer and should introduce the state with its semantics rather than
+  inherit a renderer branch that never ran.
 
 ## How the work is done here (so it continues identically elsewhere)
 
@@ -76,7 +84,7 @@ Two things worth carrying forward:
   `node1` runs one (`mcps-searxng`, `127.0.0.1:8888`); its image ID matches the digest pinned in
   `deploy/docker-compose.yml`, so the fleet is in sync.
 
-## Open tasks (40, all S3)
+## Open tasks (37, all S3)
 
 The queue order is this table's order.
 
@@ -99,16 +107,13 @@ The queue order is this table's order.
 | B54 | S3 | bug | Concurrent first use of the Parallel provider performs the MCP handshake more than once | `Sources/WebSearchCore/Providers/ParallelMCPProvider.swift:162` |
 | B57 | S3 | logic | The per-provider "which variable enables me" contract is triplicated across units and already wrong for  | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:407` |
 | B58 | S3 | style | web_search and web_answer duplicate their argument parsing, and the two schemas have already drifted | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:186` |
-| B64 | S3 | bug | Malformed JSON from a node is reported as "unreachable" | `Sources/WebSearchCore/Monitor/NodeProbe.swift:102 (catch at :133` |
 | B66 | S3 | dead | Decoded-but-unused vendor DTO fields across five adapters | `Sources/WebSearchCore/Providers/MojeekProvider.swift:219 (and Ex` |
 | B70 | S3 | test | Subprocess harnesses advertise a timeout that a blocking read cannot enforce | `Tests/WebSearchCoreTests/StdioServerTests.swift:85 (loop :70-93)` |
 | B71 | S3 | test | Three copies of the same subprocess harness, already diverged | `Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift:30` |
 | B76 | S3 | logic | mcps-mon ignores SEARCH_DISABLED_PROVIDERS, labels disabled providers "ready", and probes them | `Sources/MCPSMonitor/main.swift:348 (and :292), Sources/WebSearch` |
-| B78 | S3 | dead | ProviderStatus.State.probing and .unavailable can never be produced, so their renderer branches are  | `Sources/WebSearchCore/Monitor/MonitorModel.swift:127 and :134` |
 | B79 | S3 | unsafe | A request-head Content-Length reserves up to 1 MiB per connection before any body arrives | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:167` |
 | B84 | S3 | unsafe | IPAddress.v6 is a public case that accepts any byte count, and its accessors index 16 bytes unconditio | `Sources/WebSearchCore/Fetch/URLPolicy.swift:289` |
 | B85 | S3 | docs | Query hashing for logs is a fast unsalted FNV-1a, but is documented as non-reversible | `Sources/WebSearchCore/Support/Logging.swift:93` |
-| B86 | S3 | unsafe | Provisioning writes through fixed, predictable /tmp paths and loads a container image from one | `deploy/provision-node.sh:71` |
 | B87 | S3 | docs | The Jina Reader fallback discloses the target URL to a third party by default, with no warning that it d | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:65` |
 | B88 | S3 | perf | The declared per-host DNS cache does not exist, and every redirect hop resolves twice | `Sources/WebSearchCore/Fetch/URLPolicy.swift:57` |
 | B89 | S3 | perf | SearchCache.pruneExpired rebuilds the whole dictionary on every read, write and stats call | `Sources/WebSearchCore/Search/SearchCache.swift:103` |
