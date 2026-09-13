@@ -18,8 +18,8 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 115 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102 and B103 found in Phase D) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 17 |
-| START (reproduced, expected behaviour written) | 98 |
+| DONE | 18 |
+| START (reproduced, expected behaviour written) | 97 |
 | BLOCKED | 0 |
 
 Severity of the folded set: S0 2, S1 6, S2 27, S3 66.
@@ -82,7 +82,7 @@ waived in writing.
 | B33 | S2 | `Sources/WebSearchCore/Fetch/WebFetcher.swift`, `Tests/WebSearchCoreTests/FetchFallbackTests.swift` | `Sources/WebSearchCore/Fetch/WebFetcher.swift:135` | `WebFetcher`'s Jina-failure fallback and error propagation are untested | test | START | this Mac (arm64) | Phase B L6-11 |
 | B34 | S2 | `Sources/WebSearchCore/Search/ResultNormalizer.swift` | `Sources/WebSearchCore/Search/ResultNormalizer.swift:68` | `ResultNormalizer`'s URL repair and text cleaning are untested | test | START | this Mac (arm64) | Phase B L6-12 |
 | B35 | S2 | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift`, `HTTPClientTests.swift`, `HTTPTransportTests.swift` | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift:500` | Timing-dependent tests: real sleeps, real clocks and an upper-bound wall-clock assertion | test | START | this Mac (arm64) | Phase B L6-13 |
-| B36 | S3 | repository root | `.gitignore:1-16` | `.gitignore` does not cover the LLVM profile output the documented sanitizer runs produce | style | START | this Mac (arm64) | Phase B L0-1 |
+| B36 | S3 | repository root | `.gitignore:1-16` | `.gitignore` does not cover the LLVM profile output the documented sanitizer runs produce | style | DONE | this Mac (arm64) | Phase B L0-1 |
 | B37 | S3 | `AUDIT/baseline/**` | `AUDIT/baseline/swiftlint.json:4` (first of 491 such lines), `AUDIT/baseline/swift-test-asan.log:58`, `AUDIT/baseline/swift-test.log:4`, `AUDIT/baseli | Committed baseline evidence embeds the auditor's absolute home path (491 lines) and 2.5 MB of generated output | unsafe | START | this Mac (arm64) | Phase B L0-2 |
 | B38 | S3 | `.github/workflows/ci.yml` | `.github/workflows/ci.yml:1-31` | The CI workflow declares no `permissions:`, so the job token keeps the default scope | unsafe | DONE | this Mac (arm64) | Phase B L0-3 |
 | B39 | S3 | `.github/workflows/ci.yml` | `.github/workflows/ci.yml:40-70` | CI does not pin the Swift toolchain, so "Swift 6.3" is whatever the runner image has | deps | START | this Mac (arm64) | Phase B L0-4 |
