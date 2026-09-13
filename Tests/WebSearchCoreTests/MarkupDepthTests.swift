@@ -78,6 +78,144 @@ final class MarkupDepthTests: XCTestCase {
         XCTAssertFalse(MarkupDepth.exceedsLimit("<style>a{content:'<div>'}</style>"))
     }
 
+    /// An unterminated raw-text element swallows the rest of the document.
+    ///
+    /// `skipRawText` returns `end` when no closing tag exists, and every raw-text fixture in this
+    /// file closed its element, so that branch was only reachable through markup that also
+    /// happened to pass `containsMarkup`. A browser treats everything after an unclosed
+    /// `<script>` as script text, so the thousands of `<div>`s inside it are not elements and
+    /// must not count — even though the same text without the opening tag is rejected by the
+    /// very next assertion (ledger B93).
+    func testUnterminatedRawTextSwallowsTheRestOfTheDocument() {
+        let unterminated = "<script>" + Self.nested(20_000)
+        XCTAssertGreaterThanOrEqual(
+            Self.nested(20_000).utf8.count, 90_000,
+            "the fixture must be full of markup, or the branch is not under test"
+        )
+        XCTAssertFalse(
+            MarkupDepth.exceedsLimit(unterminated),
+            "raw text that never closes holds no elements, so it cannot nest"
+        )
+        // The control: the same markup without the raw-text opening tag is rejected. Without
+        // this, the assertion above would also pass if `scan` simply stopped early.
+        XCTAssertTrue(MarkupDepth.exceedsLimit(Self.nested(20_000)))
+    }
+
+    /// No-raw-text fixture with no closing tag *and* markup after the opening tag, so the
+    /// scanner reaches `skipRawText`'s unterminated return rather than tripping earlier.
+    func testUnterminatedRawTextIsSkippedRatherThanScanned() {
+        // Exactly the limit in real elements, then an unclosed raw-text element whose content
+        // would be rejected on its own. The result is `false` only if the scanner skipped to the
+        // end of the input instead of scanning that content (ledger B93).
+        let html = Self.nested(MarkupDepth.maximumNesting) + "<style>" + Self.nested(20_000)
+        XCTAssertFalse(
+            MarkupDepth.exceedsLimit(html),
+            "the markup inside the unclosed style element is raw text, not nesting"
+        )
+        // The control: the same 20 000 levels without the raw-text opening tag are rejected.
+        XCTAssertTrue(MarkupDepth.exceedsLimit(Self.nested(20_000)))
+    }
+
+    /// A direct scan over a non-contiguous byte view must agree with the contiguous path.
+    ///
+    /// `exceedsLimit` scans `String.utf8` in place when it can and falls back to
+    /// `Array(html.utf8)[...]` when it cannot (`MarkupDepth.swift:34-40`). The fallback is a
+    /// different code path over a different `RandomAccessCollection`, and `scan` is internal, so
+    /// it is pinned directly by handing it a `ArraySlice` — the same type the fallback builds.
+    /// This mirrors the B93 expectation that the fallback be exercised without depending on a
+    /// string layout the compiler may change (ledger B93).
+    func testScanOverANonContiguousByteViewAgreesWithTheContiguousPath() {
+        let deepMarkup = Self.nested(MarkupDepth.maximumNesting + 1)
+        let shallowMarkup = Self.nested(MarkupDepth.maximumNesting)
+
+        XCTAssertTrue(MarkupDepth.exceedsLimit(deepMarkup))
+        XCTAssertFalse(MarkupDepth.exceedsLimit(shallowMarkup))
+
+        // `Array(...)[...]` is an `ArraySlice<UInt8>`: contiguous storage, but a non-zero
+        // `startIndex` in general and not the same collection type as `UnsafeBufferPointer`.
+        let copiedBytes = Array(deepMarkup.utf8)
+        XCTAssertTrue(MarkupDepth.scan(copiedBytes[...], limit: MarkupDepth.maximumNesting))
+        XCTAssertFalse(
+            MarkupDepth.scan(Array(shallowMarkup.utf8)[...], limit: MarkupDepth.maximumNesting)
+        )
+
+        // A slice that starts partway into a buffer is what a non-contiguous view can produce;
+        // the scanner must honour the slice's own indices rather than assume they start at
+        // zero. `Array(html.utf8)[...]` happens to have `startIndex == 0`, so the assertion
+        // uses `dropFirst`, which does not.
+        let padded = Array("padding".utf8) + copiedBytes
+        let offsetSlice = padded.dropFirst("padding".utf8.count)
+        XCTAssertEqual(offsetSlice.startIndex, "padding".utf8.count, "the slice must be offset")
+        XCTAssertTrue(MarkupDepth.scan(offsetSlice, limit: MarkupDepth.maximumNesting))
+    }
+
+    /// The projection of `markupDepthExceeded` onto the shared taxonomy and the model-visible
+    /// string.
+    ///
+    /// The four existing `markupDepthExceeded` assertions all compare the case value itself. The
+    /// category, the provider scope and `safeDescription` — what `web_search_status` and the tool
+    /// error actually render — were unpinned, so a case with no category or a message that
+    /// dropped the limit would have gone unnoticed (ledger B93).
+    func testMarkupDepthExceededProjectsOntoTheSharedTaxonomy() {
+        let error = SearchError.markupDepthExceeded(512)
+        XCTAssertEqual(error.category, .malformedResponse)
+        XCTAssertNil(error.provider, "the depth guard is not provider-scoped")
+        XCTAssertEqual(
+            error.safeDescription,
+            "The markup nests more than 512 elements deep, which cannot be parsed safely."
+        )
+        // The limit is carried through rather than hard-coded, so a message that dropped the
+        // actual bound would fail here.
+        XCTAssertTrue(
+            SearchError.markupDepthExceeded(4_096).safeDescription.contains("4096")
+        )
+    }
+
+    /// The end-to-end contract: `web_open` on a deeply nested page is a tool error, not a
+    /// successful extraction and not a crash.
+    ///
+    /// Every other `markupDepthExceeded` test calls `HTMLExtractor` directly or asserts the
+    /// thrown case. Nothing pinned what a model actually receives, which is the reason the guard
+    /// exists: the pre-fix failure mode was process death that took every connected client with
+    /// it (ledger A01/B93).
+    func testWebOpenOnADeeplyNestedPageIsAToolError() throws {
+        let page = try LoopbackServer(responses: [
+            .init(
+                status: 200,
+                headers: ["Content-Type": "text/html; charset=utf-8"],
+                body: "<html><body>" + Self.nested(20_000) + "</body></html>"
+            )
+        ])
+
+        let server = ServerProcess(
+            binary: try ServerTestSupport.binaryURL(),
+            environment: [
+                // The loopback page is on 127.0.0.1, which the SSRF policy refuses by design.
+                "SEARCH_ALLOW_PRIVATE_NETWORK": "1"
+            ]
+        )
+        try server.start()
+        defer { server.stop() }
+
+        try server.send([
+            "jsonrpc": "2.0",
+            "id": 90,
+            "method": "tools/call",
+            "params": ["name": "web_open", "arguments": ["url": page.baseURL.absoluteString]],
+        ])
+        let response = try server.readResponse(id: 90)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        XCTAssertEqual(result["isError"] as? Bool, true, "\(result)")
+
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        let text = content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        XCTAssertTrue(
+            text.contains("nests more than 512 elements deep"),
+            "the model must be told why the page was refused: \(text)"
+        )
+        XCTAssertGreaterThan(page.requestCount, 0, "the page must actually have been fetched")
+    }
+
     func testRealNestingAroundRawTextStillCounts() {
         let html = String(repeating: "<div>", count: 600) + "<script>x</script>"
         XCTAssertTrue(MarkupDepth.exceedsLimit(html))

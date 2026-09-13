@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 132 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 122 |
-| START (reproduced, expected behaviour written) | 10 |
+| DONE | 123 |
+| START (reproduced, expected behaviour written) | 9 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 87** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 77 are DONE and 10 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 78 are DONE and 9 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -146,7 +146,7 @@ waived in writing.
 | B90 | S3 | `SwiftWebSearchMCP` (`HTTPMCPHost`) | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:61` | The HTTP listener bounds the request body but nothing else, so idle or slow connections are unbounded | perf | DONE | this Mac (arm64) | Phase B L5-5 |
 | B91 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:42` | Log emission performs a synchronous blocking write to fd 2 from whatever task is logging | perf | DONE | this Mac (arm64) | Phase B L5-6 |
 | B92 | S3 | `WebSearchCore` / `Fetch` (`JinaReaderFetcher`) | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:125` | `web_open` reports the requested URL as `final_url` on the Jina path, and the reader's own `url` field is decoded but never used | logic | DONE | this Mac (arm64) | Phase B L5-7 |
-| B93 | S3 | `Sources/WebSearchCore/Fetch/MarkupDepth.swift`, `Search/SearchError.swift`, `SwiftWebSearchMCP/ToolHandlers.s | `Sources/WebSearchCore/Fetch/MarkupDepth.swift:190` | The new `MarkupDepth` regression suite still leaves four branches/contracts unpinned | test | START | this Mac (arm64) | Phase B L6-4 |
+| B93 | S3 | `Sources/WebSearchCore/Fetch/MarkupDepth.swift`, `Search/SearchError.swift`, `SwiftWebSearchMCP/ToolHandlers.s | `Sources/WebSearchCore/Fetch/MarkupDepth.swift:190` | The new `MarkupDepth` regression suite still leaves four branches/contracts unpinned | test | DONE | this Mac (arm64) | Phase B L6-4 |
 | B94 | S3 | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift`, `Sources/WebSearchCore/Search/SearchOrchestrator.swi | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift:716` | `testStatusCountsSuccessesAndFailures` never observes a failure | test | START | this Mac (arm64) | Phase B L6-14 |
 | B95 | S3 | `Tests/WebSearchCoreTests/MonitorTests.swift`, `Sources/WebSearchCore/Monitor/ProviderProbe.swift:50` | `Tests/WebSearchCoreTests/MonitorTests.swift:101` | The monitor's setup-hint test asserts a string the test itself constructed | test | START | this Mac (arm64) | Phase B L6-15 |
 | B96 | S3 | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift` | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift:46` | `HTTPStatusMapper.map`'s HTTPError branches and `validate`'s default/422 statuses are untested | test | START | this Mac (arm64) | Phase B L6-16 |
@@ -218,6 +218,45 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B93 — the `MarkupDepth` suite's four open branches are pinned
+
+**Severity S3** · **category** test · **status** DONE · **host** node1 (arm64)
+
+**Premise confirmed open.** `markupDepthExceeded` appeared in tests only in the three pre-existing
+case-value assertions in `MarkupDepthTests.swift`, and no other test file touched `MarkupDepth` or
+exceedsLimit`. All four gaps the finding names — `skipRawText`'s unterminated return, the
+`Array(html.utf8)[...]` path, the error's category/description projection, and the `web_open`
+end-to-end contract — were unexercised.
+
+**What was added.** Five test methods, no production change. Two pin the unterminated raw-text
+branch (an unclosed `<script>` full of 20 000 `<div>`s must be accepted because the markup is raw
+text; a document at exactly the limit followed by an unclosed `<style>` full of markup must also be
+accepted). One pins `scan` over an `ArraySlice` with a non-zero `startIndex`. One pins
+`category == .malformedResponse`, `provider == nil`, the exact `safeDescription` and that the limit
+is carried through. One drives a real stdio session against a loopback page nested 20 000 deep and
+requires `isError == true` plus the model-visible sentence.
+
+**Falsification, one mutation per assertion.** M1 (`skipRawText` unterminated `return end` ->
+`return start`) reds both unterminated tests. M2 (`case .markupDepthExceeded: .unknown`) reds only
+the projection test. M3 raises the limit to 10 000 and relinks the product so the spawned server
+carries it; the e2e test reds with `The markup nests more than 10000 elements deep`. M3's first
+value (100 000) knocked the runner over with `Bus error: 10`, which is the A01 failure mode the
+guard exists to prevent. Two mechanical traps are recorded in the artifact because they nearly
+produced a false proof: a source-only edit within the same second is not recompiled without a
+touch, and the spawned product must be relinked separately or the e2e test talks to the old
+server.
+
+**Restoration.** All mutated files restored byte-identical (`diff` empty; SHA-256
+`aed19c05…c547`, `3f7f6841…2e42`, `395cb2d6…09e3e6`).
+
+**Stated limitation.** The `withContiguousStorageIfAvailable` fallback cannot be reached from a
+test on this platform — a native `String` hands out contiguous UTF-8 however it is built — so the
+second assertion pins the slice semantics that fallback depends on rather than executing the
+fallback itself.
+
+Gate: 554 tests / 6 skipped / 0 failures; debug and release 0 warnings; swift-format 0;
+swiftlint 0; notices clean. Evidence: `AUDIT/evidence/B93-markupdepth-branches.txt`.
 
 ## B71 — three copies of the subprocess harness, already diverged
 
