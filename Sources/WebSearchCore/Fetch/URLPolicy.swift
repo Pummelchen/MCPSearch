@@ -432,7 +432,12 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
             let b = (value >> 16) & 0xFF
             if a >= 240 { return true }  // 240.0.0.0/4 reserved
             if a == 0 { return true }  // 0.0.0.0/8 "this network"; only 0.0.0.0 was caught
-            if a == 192, b == 0 { return true }  // 192.0.0.0/24
+            // Deliberately the whole 192.0.0.0/16, not only the IETF-assigned 192.0.0.0/24 the
+            // comment here used to name. The range holds protocol assignments, TEST-NET-1
+            // (192.0.2.0/24) and the 6to4 relay anycast block, none of which a web page fetch
+            // should ever reach; refusing the surrounding /16 as well errs towards refusal, which
+            // is the right direction for this check (ledger B62).
+            if a == 192, b == 0 { return true }
             if a == 198, (18...19).contains(b) { return true }  // benchmarking
             return false
         case .v6(let bytes):

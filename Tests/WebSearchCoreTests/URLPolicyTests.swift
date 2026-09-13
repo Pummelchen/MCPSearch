@@ -128,6 +128,26 @@ final class URLPolicyTests: XCTestCase {
         }
     }
 
+    /// The protocol-assignment block is refused across the whole `192.0.0.0/16`.
+    ///
+    /// The comment used to name `/24` while the code tested two octets, which reads as a bug; the
+    /// range is kept deliberately and now says so (ledger B62), because it holds IETF assignments,
+    /// TEST-NET-1 and the 6to4 relay anycast block — none of which a page fetch should reach.
+    func testRejectsTheEntireProtocolAssignmentSixteen() {
+        let subject = policy()
+        for raw in [
+            "http://192.0.0.1/",
+            "http://192.0.1.1/",
+            "http://192.0.2.1/",
+            "http://192.0.255.254/",
+        ] {
+            XCTAssertFalse(
+                subject.validateLexically(URL(string: raw)!).allowed,
+                "\(raw) must be rejected as non-public"
+            )
+        }
+    }
+
     func testRejectsObfuscatedIntegerAndHexForms() {
         let subject = policy()
         // Resolvers sometimes accept these; the policy must not.
