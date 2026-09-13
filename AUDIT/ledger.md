@@ -356,6 +356,8 @@ audit tooling):
 | B | `DuckDuckGoProvider.search` with HTTP 200 + junk body | `async` (cooperative task) | **CRASH** |
 | B102 | S3 | `WebSearchCore` (fetch) | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:245-256` (delegate), `Sources/WebSearchCore/Support/HTTPClient.swift:386` (message) | A cross-scheme redirect is refused by the transport, not by our policy, and surfaces as an opaque transport error | bug | START | this Mac (arm64) | Phase D (found while fixing B02) |
 | B103 | S3 | `SwiftWebSearchMCP` (tools) | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:91-93`, `:142-143`, `:237-238`, `:262-263` | The tool-layer cancellation branches are still not exercised by any test | test | START | this Mac (arm64) | Phase D (found while fixing B04) |
+| B104 | S2 | `MCPSMonitor` | (bisect required) | `mcps-mon` crashes on startup in a **debug** build, while release and the pre-audit baseline both run | bug | START | this Mac | Phase D (found while testing B10) |
+| B105 | S3 | repository hygiene | `scripts/__pycache__/*.pyc` (4 files) | Generated Python byte-code was committed to the branch | style | DONE | this Mac | Phase D (found while restoring the tree) |
 | C | `DuckDuckGoProvider.search` with HTTP 200 + well-formed empty HTML | `async` (cooperative task) | **ok** |
 
 Also: `HTMLExtractorTests` (SwiftSoup-heavy) ok, `testDuckDuckGoScraperEndToEnd` (real DDG

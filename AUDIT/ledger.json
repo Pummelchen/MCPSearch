@@ -2603,6 +2603,42 @@
       "commit_sha": "",
       "notes": "Coverage residual, not a known defect: B04's own tests pin the orchestrator and fetcher layers. Suggested test: through the stdio harness, start a search against a hanging provider and send the MCP cancellation notification, then assert the tool result is the \"cancelled\" error rather than a provider failure. raw record: found during B04 (not in a Phase B pass)",
       "blocked_reason": ""
+    },
+    {
+      "id": "B104",
+      "severity": "S2",
+      "project": "MCPSMonitor",
+      "module": "Monitor (debug build startup)",
+      "file_line": "unknown yet \u2014 the crash is not in AppConfiguration, Terminal or MCPSMonitor/main (each reverted to HEAD still crashes); bisect required",
+      "title": "mcps-mon crashes on startup in a debug build, while the release build and the pre-audit baseline both run",
+      "category": "bug",
+      "status": "START",
+      "host_used": "MacBook-AB.local (arm64, macOS 26.6.2)",
+      "discovered_by": "found while testing B10 with the PTY harness",
+      "evidence_before": "Reproduced with a minimal PTY probe (spawn mcps-mon with --node stub=http://127.0.0.1:9/ --interval 1, 40x120 window, scrubbed environment): the branch's *debug* binary prints the cursor-hide and clear-screen sequences and then dies \u2014 'Program crashed: Signal 11: Backtracing from 0x19f59b11c\u2026', 'Bad pointer dereference at 0x0000000000000008'. The Phase-A baseline debug binary (main's code) does NOT crash on the same probe, and the branch's own release binary does not either \u2014 which is why CI (which builds release) is green. Tests pass, because nothing exercises the monitor executable in process. Reverting AppConfiguration.swift and Monitor/Terminal.swift and MCPSMonitor/main.swift to HEAD still crashes, so the cause is elsewhere on the branch and needs a bisect.",
+      "fix_summary": "",
+      "evidence_after": "",
+      "commit_sha": "",
+      "notes": "Impact: the monitor is a shipped product surface; a developer running the default debug build gets a crash instead of the dashboard. Release is unaffected, so this does not block the go-live artefact, but Phase E's 'zero warnings, everything green' claim should not be made while a debug build of a shipped binary crashes. Next step: bisect between f3dd8d9 (main) and the branch tip by building only the MCPSMonitor target at each step and running the PTY probe; the first bad commit is the cause. The harness check that found this (a PTY probe asserting no crash) should be folded into scripts/monitor_tty_smoke.py so it cannot regress silently. raw record: found during B10 (not in a Phase B pass)",
+      "blocked_reason": ""
+    },
+    {
+      "id": "B105",
+      "severity": "S3",
+      "project": "repository hygiene",
+      "module": "scripts",
+      "file_line": "scripts/__pycache__/*.pyc (4 files)",
+      "title": "Generated Python byte-code was committed to the branch",
+      "category": "style",
+      "status": "DONE",
+      "host_used": "MacBook-AB.local (arm64, macOS 26.6.2)",
+      "discovered_by": "Phase D, found while restoring the working tree after B10",
+      "evidence_before": "`git diff --stat HEAD` listed four scripts/__pycache__/*.pyc files as deletions, i.e. they were tracked: commit 3ac18fe (A11) and 4807c93 (B17) used `git add scripts`, which picked up the byte-code that running the harnesses creates. .gitignore covers __pycache__/ since B36, but a tracked file stays tracked.",
+      "fix_summary": "Removed the four .pyc files from the index and the branch; .gitignore's __pycache__/ rule (B36) keeps them out from now on. No source change: the byte-code was inert, but generated artefacts do not belong in the repository.",
+      "evidence_after": "`git diff --stat HEAD` no longer lists them; `git ls-files scripts | grep pycache` is empty; the scripts still run (mcp_smoke stdio and --http PASSED, monitor_tty_smoke PASSED in CI at the previous commit).",
+      "commit_sha": "",
+      "notes": "Self-inflicted during this audit; recorded rather than quietly dropped.",
+      "blocked_reason": ""
     }
   ]
 }

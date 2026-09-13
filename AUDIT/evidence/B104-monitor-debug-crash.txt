@@ -1,0 +1,41 @@
+# B104 — mcps-mon crashes on startup in a debug build
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13 · found while testing B10
+
+## The observation
+
+A minimal PTY probe (spawn the binary with `--node stub=http://127.0.0.1:9/ --interval 1` in a 40×120
+pseudo-terminal, scrubbed environment, read for 4 s):
+
+```
+branch debug binary    cursor-hide, clear-screen, then:
+                       Program crashed: Signal 11: Backtracing from 0x19f59b11c…
+                       Program crashed: Bad pointer dereference at 0x0000000000000008
+
+Phase-A baseline debug  runs (10 bytes, no crash)
+branch release binary   runs (no crash)
+CI                      green — it builds and drives the *release* binary
+```
+
+## What it is not
+
+Reverting each of the three files B10 touched — `WebSearchCore/Support/AppConfiguration.swift`
+(B09), `WebSearchCore/Monitor/Terminal.swift` and `MCPSMonitor/main.swift` — to HEAD and rebuilding
+still crashes. So the cause is neither B10 nor B09 and lies elsewhere on the branch: a bisect is
+required.
+
+## Why it is S2 rather than S0/S1
+
+The release artefact — the thing that would ship — is unaffected, and the Swift suite passes
+because nothing exercises the monitor executable in process. But `mcps-mon` is a shipped product
+surface, a developer running the default debug build gets a crash instead of the dashboard, and
+Phase E should not claim "everything green" while a debug build of a shipped binary dies on
+startup.
+
+## Next step (recorded, not yet done)
+
+Bisect between `f3dd8d9` (main) and the branch tip, building only the `MCPSMonitor` target at each
+step and running the probe above; the first bad commit is the cause. Then fold the probe into
+`scripts/monitor_tty_smoke.py` as a "must not crash" check so it cannot regress silently — the
+existing harness only notices because the first frame never arrives, which reports as a timeout
+rather than a crash.
