@@ -314,11 +314,88 @@ final class ConfigurationTests: XCTestCase {
         XCTAssertNil(parsed["# a comment"])
     }
 
-    func testEnvironmentOverridesConfigFile() {
-        // Simulated by merging manually: file values first, environment second.
-        var merged = AppConfiguration.parseDotEnv("SEARCH_MAX_RESULTS=3")
-        merged["SEARCH_MAX_RESULTS"] = "11"
-        XCTAssertEqual(AppConfiguration.parse(merged).defaultMaxResults, 11)
+    /// Environment variables beat the config file, and the file fills what they are silent about.
+    ///
+    /// The previous version of this test merged a dictionary by hand and then called `parse`, so
+    /// `load` — the function the server actually calls — was never executed with a file at all
+    /// (ledger B31).
+    func testEnvironmentOverridesConfigFile() throws {
+        let file = try writeTemporaryConfig(
+            """
+            SEARCH_MAX_RESULTS=3
+            TAVILY_API_KEY=tvly-from-file
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+
+        let configuration = AppConfiguration.load(
+            environment: ["SEARCH_MAX_RESULTS": "11"],
+            configFileURL: file
+        )
+
+        XCTAssertEqual(configuration.defaultMaxResults, 11, "the environment must win")
+        XCTAssertEqual(configuration.tavilyAPIKey, "tvly-from-file", "the file fills the rest")
+        XCTAssertTrue(configuration.issues.isEmpty, "\(configuration.issues)")
+    }
+
+    /// `SEARCH_CONFIG_FILE` is the documented way to point at a file, and `load` must read it.
+    func testConfigFileNamedByTheEnvironmentIsLoaded() throws {
+        let file = try writeTemporaryConfig("SEARCH_MAX_RESULTS=4")
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+
+        let configuration = AppConfiguration.load(
+            environment: ["SEARCH_CONFIG_FILE": file.path],
+            configFileURL: nil
+        )
+
+        XCTAssertEqual(configuration.defaultMaxResults, 4)
+        XCTAssertTrue(configuration.issues.isEmpty, "\(configuration.issues)")
+    }
+
+    /// A config file that was asked for and is missing is an issue, not "no config file" (B09).
+    ///
+    /// Nothing exercised the `load` path that produces it; the existing issue tests build the
+    /// configuration from a dictionary (ledger B31).
+    func testMissingConfigFileIsReportedAsAnIssue() {
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent("missing-\(UUID().uuidString).env")
+
+        let configuration = AppConfiguration.load(
+            environment: ["SEARCH_CONFIG_FILE": missing.path],
+            configFileURL: nil
+        )
+
+        XCTAssertTrue(
+            configuration.issues.contains {
+                $0.kind == .unreadableConfigFile && $0.key == AppConfiguration.Key.configFile.rawValue
+            },
+            "a missing file must be reported: \(configuration.issues)"
+        )
+    }
+
+    /// A path that exists but cannot be read is reported too, never treated as an empty file.
+    func testUnreadableConfigFileIsReportedAsAnIssue() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("config-dir-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let configuration = AppConfiguration.load(environment: [:], configFileURL: directory)
+
+        XCTAssertTrue(
+            configuration.issues.contains { $0.kind == .unreadableConfigFile },
+            "an unreadable file must be reported: \(configuration.issues)"
+        )
+    }
+
+    /// A unique temporary dotenv; the caller removes its directory.
+    private func writeTemporaryConfig(_ contents: String) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mcps-config-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("config.env")
+        try contents.write(to: file, atomically: true, encoding: .utf8)
+        return file
     }
 
     func testUnknownProviderNamesInOrderAreIgnored() {

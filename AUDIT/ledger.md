@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 120 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 48 |
-| START (reproduced, expected behaviour written) | 72 |
+| DONE | 49 |
+| START (reproduced, expected behaviour written) | 71 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 75** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 30 are DONE and 4 open; of the 75 S3 tasks 7 are DONE and 68 open.
+are all DONE; of the 34 S2 tasks 31 are DONE and 3 open; of the 75 S3 tasks 7 are DONE and 68 open.
 
 
 Two cross-cutting gates are **not** tasks but acceptance criteria for Phase E: the whole
@@ -79,7 +79,7 @@ waived in writing.
 | B28 | S2 | `WebSearchCore` / `Fetch` (`HTMLExtractor`) | `Sources/WebSearchCore/Fetch/HTMLExtractor.swift:143` | `preferredContentRoot` re-serialises every candidate's subtree, giving quadratic work on crafted HTML | perf | DONE | this Mac (arm64) | Phase B L5-2 |
 | B29 | S2 | `Sources/WebSearchCore/Support/HTTPClient.swift` (`send` retry branch) | `Sources/WebSearchCore/Support/HTTPClient.swift:243` | `maxRetryAfter` (the cap that stops a hostile `Retry-After` stalling a search) is untested | test | DONE | this Mac (arm64) | Phase B L6-5 |
 | B30 | S2 | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift` | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:202` | `DirectHTTPFetcher`'s size cap, content-type gate, raw-text path and timeout mapping have no test | test | DONE | this Mac (arm64) | Phase B L6-6 |
-| B31 | S2 | `Tests/WebSearchCoreTests/CoreUnitTests.swift` (`ConfigurationTests`), `Sources/WebSearchCore/Support/AppConfi | `Tests/WebSearchCoreTests/CoreUnitTests.swift:317` | `AppConfiguration.load()` and its file-vs-environment precedence have no test | test | START | this Mac (arm64) | Phase B L6-9 |
+| B31 | S2 | `Tests/WebSearchCoreTests/CoreUnitTests.swift` (`ConfigurationTests`), `Sources/WebSearchCore/Support/AppConfi | `Tests/WebSearchCoreTests/CoreUnitTests.swift:317` | `AppConfiguration.load()` and its file-vs-environment precedence have no test | test | DONE | this Mac (arm64) | Phase B L6-9 |
 | B32 | S2 | `Sources/SwiftWebSearchMCP/ToolSchemas.swift` (`ToolArguments`), `Sources/SwiftWebSearchMCP/ToolHandlers.swift | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:477` | Tool-argument validation boundaries are untested; only three malformed cases exist | test | DONE | this Mac (arm64) | Phase B L6-10 |
 | B33 | S2 | `Sources/WebSearchCore/Fetch/WebFetcher.swift`, `Tests/WebSearchCoreTests/FetchFallbackTests.swift` | `Sources/WebSearchCore/Fetch/WebFetcher.swift:135` | `WebFetcher`'s Jina-failure fallback and error propagation are untested | test | START | this Mac (arm64) | Phase B L6-11 |
 | B34 | S2 | `Sources/WebSearchCore/Search/ResultNormalizer.swift` | `Sources/WebSearchCore/Search/ResultNormalizer.swift:68` | `ResultNormalizer`'s URL repair and text cleaning are untested | test | START | this Mac (arm64) | Phase B L6-12 |
