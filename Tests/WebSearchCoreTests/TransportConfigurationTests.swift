@@ -168,7 +168,7 @@ final class TransportConfigurationTests: XCTestCase {
     }
 
     func testMissingValuesAreRejected() {
-        for flag in ["--transport", "--port", "--host", "--http-path"] {
+        for flag in ["--transport", "--port", "--host", "--http-path", "--http-allowed-host"] {
             assertRejects([flag], expecting: .missingValue(flag))
         }
     }
@@ -192,12 +192,95 @@ final class TransportConfigurationTests: XCTestCase {
     /// The usage text must document every supported flag, so `--help` cannot drift from
     /// the parser.
     func testUsageDocumentsEveryFlag() {
-        for flag in ["--transport", "--port", "--host", "--http-path"] {
+        for flag in ["--transport", "--port", "--host", "--http-path", "--http-allowed-host"] {
             XCTAssertTrue(
                 ServerOptions.usage.contains(flag),
                 "usage text is missing \(flag)"
             )
         }
+    }
+
+    /// `--http-allowed-host` is a host name, not an address, so whitespace-only is a typo.
+    func testEmptyAllowedHostIsRejected() {
+        assertRejects(
+            ["--http-allowed-host", "   "],
+            expecting: .invalidValue(
+                flag: "--http-allowed-host",
+                value: "   ",
+                expected: "a host name such as search.example.com"
+            )
+        )
+    }
+
+    // MARK: - Origin policy
+
+    /// The default bind keeps exactly the SDK's loopback allow-list.
+    ///
+    /// A loopback server must not start accepting a LAN address just because one exists.
+    func testLoopbackBindAcceptsOnlyTheLoopbackAuthorities() {
+        let policy = HTTPTransportConfiguration().originPolicy(localAddresses: ["192.168.1.5"])
+        XCTAssertEqual(
+            policy.hosts,
+            ["127.0.0.1:8080", "localhost:8080", "[::1]:8080"]
+        )
+        XCTAssertEqual(
+            policy.origins,
+            ["http://127.0.0.1:8080", "http://localhost:8080", "http://[::1]:8080"]
+        )
+    }
+
+    /// A specific bind address is the deployment's own address and must be accepted.
+    ///
+    /// Hard-coding loopback answered the documented remote setup with `421 Misdirected Request`
+    /// (ledger B21).
+    func testNonLoopbackBindAcceptsItsOwnAddressAndStillRefusesOthers() {
+        let policy = HTTPTransportConfiguration(host: "192.168.1.5", port: 9000)
+            .originPolicy(localAddresses: [])
+        XCTAssertTrue(policy.hosts.contains("192.168.1.5:9000"))
+        XCTAssertTrue(policy.hosts.contains("192.168.1.5"), "a proxy may forward the bare name")
+        XCTAssertTrue(policy.origins.contains("http://192.168.1.5:9000"))
+        XCTAssertTrue(policy.hosts.contains("127.0.0.1:9000"), "local clients keep working")
+        XCTAssertFalse(policy.hosts.contains { $0.contains("attacker") })
+    }
+
+    /// A wildcard bind answers on every interface, so each of the machine's addresses is named.
+    func testWildcardBindAcceptsTheMachinesOwnAddresses() {
+        let policy = HTTPTransportConfiguration(host: "0.0.0.0", port: 8080)
+            .originPolicy(localAddresses: ["192.168.1.5", "100.64.0.9", "fe80::1"])
+        XCTAssertTrue(policy.hosts.contains("192.168.1.5:8080"))
+        XCTAssertTrue(policy.hosts.contains("100.64.0.9:8080"))
+        XCTAssertTrue(
+            policy.hosts.contains("[fe80::1]:8080"),
+            "an IPv6 literal is bracketed in a Host header"
+        )
+        XCTAssertFalse(policy.hosts.contains("0.0.0.0:8080"), "the wildcard itself is not a Host")
+    }
+
+    /// `--http-allowed-host` names the public host a TLS-terminating proxy forwards.
+    func testAllowedHostFlagAddsThePublicNameAndItsSecureOrigin() throws {
+        let options = try ServerOptions.parse([
+            "--host", "127.0.0.1",
+            "--http-allowed-host", "search.example.com",
+            "--http-allowed-host", "https://mcp.example.com:8443",
+        ])
+        let configuration = try XCTUnwrap(options.httpConfiguration)
+        let policy = configuration.originPolicy(localAddresses: [])
+        XCTAssertTrue(policy.hosts.contains("search.example.com:8080"))
+        XCTAssertTrue(policy.hosts.contains("search.example.com"))
+        XCTAssertTrue(policy.origins.contains("http://search.example.com:8080"))
+        XCTAssertTrue(policy.origins.contains("https://search.example.com:8080"))
+        XCTAssertTrue(
+            policy.hosts.contains("mcp.example.com:8443"),
+            "an explicit port is taken verbatim"
+        )
+        XCTAssertTrue(policy.origins.contains("https://mcp.example.com:8443"))
+        XCTAssertFalse(policy.origins.contains("https://mcp.example.com:8080"))
+    }
+
+    /// The flag selects the HTTP transport like the other HTTP settings.
+    func testAllowedHostImpliesHTTP() throws {
+        let options = try ServerOptions.parse(["--http-allowed-host", "search.example.com"])
+        XCTAssertEqual(options.httpConfiguration?.additionalAllowedHosts, ["search.example.com"])
     }
 
     // MARK: - Helper

@@ -21,6 +21,11 @@ public struct HTTPTransportConfiguration: Sendable, Equatable {
     public var port: Int
     /// MCP endpoint path.
     public var path: String
+    /// Extra host names this deployment answers to, from `--http-allowed-host`.
+    ///
+    /// A TLS-terminating proxy forwards the public name it was reached on, which need not be
+    /// the address the server binds, so the operator declares it here (ledger B21).
+    public var additionalAllowedHosts: [String] = []
 
     public static let defaultHost = "127.0.0.1"
     public static let defaultPort = 8080
@@ -58,6 +63,8 @@ public struct ServerOptions: Sendable {
           --transport <stdio|http>   Transport to serve on. Default: stdio.
           --port <n>                 HTTP port. Default: \(HTTPTransportConfiguration.defaultPort)
           --host <addr>              HTTP bind address. Default: \(HTTPTransportConfiguration.defaultHost)
+          --http-allowed-host <host> Extra Host this server answers to, repeatable. Setting it
+                                     selects the HTTP transport, like the flags above.
           --http-path <path>         MCP endpoint path. Default: \(HTTPTransportConfiguration.defaultPath)
 
         Setting any of --port, --host or --http-path selects the HTTP transport, so
@@ -150,6 +157,18 @@ public struct ServerOptions: Sendable {
                     )
                 }
                 httpConfiguration.host = raw
+                httpSettingsGiven = true
+
+            case argument == "--http-allowed-host" || argument.hasPrefix("--http-allowed-host="):
+                let raw = try value(for: "--http-allowed-host")
+                guard !raw.trimmingCharacters(in: .whitespaces).isEmpty else {
+                    throw OptionError.invalidValue(
+                        flag: "--http-allowed-host",
+                        value: raw,
+                        expected: "a host name such as search.example.com"
+                    )
+                }
+                httpConfiguration.additionalAllowedHosts.append(raw)
                 httpSettingsGiven = true
 
             case argument == "--http-path" || argument.hasPrefix("--http-path="):

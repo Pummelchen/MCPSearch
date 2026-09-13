@@ -1,0 +1,82 @@
+# B21 — the Host allow-list was hard-coded to loopback, so the documented remote setup got 421
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+```swift
+// HTTPMCPHost.init (before)
+self.validationPipeline = StandardValidationPipeline(validators: [
+    OriginValidator.localhost(port: configuration.port),
+    ...
+```
+
+`OriginValidator.localhost(port:)` matches `127.0.0.1:<port>`, `localhost:<port>` and
+`[::1]:<port>` **exactly** and validates the `Host` header against that list, answering
+`421 Misdirected Request` otherwise. The bind address was never consulted, yet
+`HTTPMCPHost` supports a non-loopback bind (warning only) and the README documents
+`--host` + a TLS-terminating reverse proxy as the remote path. Every such request was refused
+before MCP handling — and a proxy that forwards the public name breaks even a loopback bind,
+because `Host` is then the public name, not `127.0.0.1`.
+
+## Fails-before evidence
+
+With the validator put back to `OriginValidator.localhost(port:)` and the new flag still
+accepted, so the server starts:
+
+```
+$ swift test --filter testConfiguredPublicHostIsServedWhileAForeignHostIsRefused
+HTTPTransportTests.swift:472: error: XCTAssertEqual failed: ("421") is not equal to ("200") -
+  the host the deployment declared must reach MCP:
+  {"id":null,"jsonrpc":"2.0","error":{"message":"Invalid Request: Misdirected Request: Host header not allowed","code":-32600}}
+```
+
+That is the finding's symptom exactly: the server refuses its own deployment address.
+
+## The fix
+
+`HTTPTransportConfiguration` now derives the validator's allow-list, and gained
+`--http-allowed-host` (repeatable) for the public name a proxy forwards:
+
+```swift
+// HTTPMCPHost.init
+let policy = configuration.originPolicy
+OriginValidator(allowedHosts: policy.hosts, allowedOrigins: policy.origins)
+```
+
+`HTTPOriginPolicy` (`Sources/WebSearchCore/Support/HTTPOriginPolicy.swift`) builds it as:
+
+* the SDK's three loopback authorities, always, so local clients keep working whatever the
+  bind address — a test asserts the loopback bind's list is byte-identical to before;
+* the configured bind address with the port, plus the bare name (a TLS proxy on 443 forwards
+  no port) when the bind address is specific;
+* for a wildcard bind (`0.0.0.0`, `::`, `*`), every non-loopback address of an up interface
+  from `LocalInterfaces` (`getifaddrs`, `NI_NUMERICHOST`), because no single address names
+  the deployment then;
+* every `--http-allowed-host` entry: `host`, `host:port`, `[v6]:port` or a full origin. An
+  entry with a port is taken verbatim; otherwise the configured port and the bare name are
+  accepted. Declared hosts also get an `https://` origin (the proxy deployment the flag
+  exists for), unless the entry spells out `http://`.
+
+It stays an exact-match list, so DNS-rebinding protection is preserved rather than disabled: a
+name an attacker's page resolves to this machine matches nothing. The startup log now prints
+`allowed_hosts`, so a 421 is diagnosable without reading the SDK.
+
+## Verification
+
+```
+$ swift test --filter HTTPTransportTests
+Executed 10 tests, with 0 failures (0 unexpected)          # incl. declared host served, attacker host 421
+
+$ swift test
+Executed 440 tests, with 6 skipped and 0 failures (0 unexpected) in 11.583 seconds
+
+$ swift build --scratch-path $SCRATCH -Xswiftc -warnings-as-errors                  0 warnings, 0 errors
+$ swift build -c release --scratch-path $SCRATCH -Xswiftc -warnings-as-errors      0 warnings, 0 errors
+$ swift-format lint --recursive --strict Sources Tests                             0 diagnostics
+$ swiftlint lint --strict                                                          0 violations in 78 files
+```
+
+The integration test needs the executable rebuilt first (`swift build`), not just
+`swift test`: the tests exec the product from the build directory, which is the trap B104
+recorded in `AUDIT/environment.md`.

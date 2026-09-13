@@ -71,6 +71,18 @@ It binds `127.0.0.1` unless you pass `--host`, and it has no authentication, so 
 TLS-terminating reverse proxy in front before exposing it. Every local client uses the
 default stdio mode.
 
+The server answers only the `Host` names it knows — that is what stops a browser page on
+another site from reaching it — so when a proxy forwards a public name that is not the
+address the server binds, declare it (repeatable):
+
+```bash
+SwiftWebSearchMCP --transport http --host 0.0.0.0 \
+  --http-allowed-host search.example.com
+```
+
+A wildcard bind already accepts the machine's own interface addresses. An undeclared name is
+refused with `421 Misdirected Request` before any MCP handling.
+
 ## Tools
 
 | Tool | Purpose |

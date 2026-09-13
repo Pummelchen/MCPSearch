@@ -36,6 +36,7 @@ private struct RawHTTP {
         method: String,
         path: String,
         headers: [String: String] = [:],
+        host: String? = nil,
         body: Data? = nil,
         connectTimeout: TimeInterval = 5,
         readTimeoutMilliseconds: Int32 = 10_000
@@ -69,7 +70,10 @@ private struct RawHTTP {
         }
         guard connected == 0 else { throw Failure.connect(String(cString: strerror(errno))) }
 
-        var request = "\(method) \(path) HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nConnection: close\r\n"
+        // The Host header is a parameter because it is exactly what the DNS-rebinding validator
+        // decides on; a test cannot exercise that decision without choosing it (ledger B21).
+        let hostHeader = host ?? "127.0.0.1:\(port)"
+        var request = "\(method) \(path) HTTP/1.1\r\nHost: \(hostHeader)\r\nConnection: close\r\n"
         var effective = headers
         if let body { effective["Content-Length"] = String(body.count) }
         for (name, value) in effective.sorted(by: { $0.key < $1.key }) {
@@ -210,13 +214,14 @@ final class HTTPTransportTests: XCTestCase {
         return UInt16(bigEndian: actual.sin_port)
     }
 
-    private func startServer() throws {
+    private func startServer(extraArguments: [String] = []) throws {
         let binary = try ServerTestSupport.binaryURL()
         port = try Self.freeLoopbackPort()
 
         let process = Process()
         process.executableURL = binary
-        process.arguments = ["--transport", "http", "--port", String(port)]
+        process.arguments =
+            ["--transport", "http", "--port", String(port)] + extraArguments
         process.standardInput = FileHandle.nullDevice
         process.standardOutput = stdoutPipe
         process.standardError = stderrPipe
@@ -268,17 +273,7 @@ final class HTTPTransportTests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws -> (session: String, response: RawHTTP.Response) {
-        let payload: [String: Any] = [
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": [
-                "protocolVersion": "2025-06-18",
-                "capabilities": [String: Any](),
-                "clientInfo": ["name": "HTTPTransportTests", "version": "1.0.0"],
-            ],
-        ]
-        let body = try JSONSerialization.data(withJSONObject: payload)
+        let body = try initializeBody()
         let response = try RawHTTP.request(
             port: port,
             method: "POST",
@@ -297,6 +292,22 @@ final class HTTPTransportTests: XCTestCase {
             line: line
         )
         return (session, response)
+    }
+
+    /// A JSON-RPC `initialize` request, the only request that may create a session.
+    private func initializeBody() throws -> Data {
+        try JSONSerialization.data(
+            withJSONObject: [
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": [
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": [String: Any](),
+                    "clientInfo": ["name": "HTTPTransportTests", "version": "1.0.0"],
+                ],
+            ]
+        )
     }
 
     private func toolsListBody() throws -> Data {
@@ -438,6 +449,46 @@ final class HTTPTransportTests: XCTestCase {
             body: try toolsListBody()
         )
         XCTAssertEqual(local.status, 200)
+    }
+
+    /// A deployment's own host name is served; an attacker's name is still refused.
+    ///
+    /// The validator was hard-coded to `127.0.0.1`/`localhost`/`[::1]`, so the documented
+    /// `--host` plus TLS-proxy deployment answered every request with `421 Misdirected Request`
+    /// before MCP handling ran. The allow-list is derived from the configuration now, and stays
+    /// exact-match, so a browser page that resolves an attacker name to this machine still fails
+    /// (ledger B21).
+    func testConfiguredPublicHostIsServedWhileAForeignHostIsRefused() throws {
+        try startServer(extraArguments: ["--http-allowed-host", "search.example.com"])
+
+        let allowed = try RawHTTP.request(
+            port: port,
+            method: "POST",
+            path: "/mcp",
+            headers: Self.mcpHeaders,
+            host: "search.example.com:\(port)",
+            body: try initializeBody()
+        )
+        XCTAssertEqual(
+            allowed.status,
+            200,
+            "the host the deployment declared must reach MCP: \(allowed.body)"
+        )
+        XCTAssertNotNil(allowed.headers["mcp-session-id"])
+
+        let rebound = try RawHTTP.request(
+            port: port,
+            method: "POST",
+            path: "/mcp",
+            headers: Self.mcpHeaders,
+            host: "attacker.example.com:\(port)",
+            body: try initializeBody()
+        )
+        XCTAssertEqual(
+            rebound.status,
+            421,
+            "a name an attacker resolved to this machine must still be refused"
+        )
     }
 
     func testOversizedBodyIsRefusedWithPayloadTooLarge() throws {

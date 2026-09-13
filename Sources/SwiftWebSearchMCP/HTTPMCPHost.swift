@@ -44,6 +44,9 @@ final class HTTPMCPHost: @unchecked Sendable {
     typealias SessionFactory = @Sendable (StatefulHTTPServerTransport) async throws -> Server
 
     private let configuration: HTTPTransportConfiguration
+    /// The `Host`/`Origin` allow-list the validation pipeline was built with, kept so the
+    /// startup log can name it: a 421 is otherwise a puzzle for an operator (ledger B21).
+    private let originPolicy: HTTPOriginPolicy
     private let makeServer: SessionFactory
     private let log: Log
     private let group: EventLoopGroup
@@ -82,8 +85,13 @@ final class HTTPMCPHost: @unchecked Sendable {
         // The same validation for every session: origin, Accept, content type, protocol
         // version and session header. Origin validation costs nothing for server-to-server
         // callers and stops a browser page from driving the server.
+        // Derived from the configured bind address rather than hard-coded to loopback: the
+        // documented remote deployment puts a TLS proxy in front of `--host`, and every request
+        // it forwarded carried the deployment's own address in `Host` (ledger B21).
+        let policy = configuration.originPolicy
+        self.originPolicy = policy
         self.validationPipeline = StandardValidationPipeline(validators: [
-            OriginValidator.localhost(port: configuration.port),
+            OriginValidator(allowedHosts: policy.hosts, allowedOrigins: policy.origins),
             AcceptHeaderValidator(mode: .sseRequired),
             ContentTypeValidator(),
             ProtocolVersionValidator(),
@@ -233,6 +241,7 @@ final class HTTPMCPHost: @unchecked Sendable {
                 "url": "http://\(configuration.host):\(boundPort)\(configuration.path)",
                 "health": "http://\(configuration.host):\(boundPort)/health",
                 "loopback_only": "\(configuration.isLoopback)",
+                "allowed_hosts": originPolicy.hosts.joined(separator: ", "),
             ]
         )
 
