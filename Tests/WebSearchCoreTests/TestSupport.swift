@@ -315,6 +315,44 @@ final class MockSearchProvider: SearchProvider, @unchecked Sendable {
     }
 }
 
+// MARK: - Creeping clock
+
+/// A clock that advances by a fixed step on every `now()` read.
+///
+/// `TestClock` only moves when a test moves it, so it cannot reproduce a race whose whole shape
+/// is "the clock advanced between two reads of it". The orchestrator reads the clock once to
+/// decide a provider is throttled and again to estimate the remaining wait, so a clock that
+/// creeps on every read deterministically puts those two reads on opposite sides of a
+/// `minimumInterval` boundary — the boundary that was intermittent on a real clock (ledger
+/// B116).
+final class CreepingClock: Clock, @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: Date
+    private var uptime: UInt64
+    private let step: Duration
+
+    init(step: Duration, start: Date = Date(timeIntervalSince1970: 1_700_000_000)) {
+        self.step = step
+        self.current = start
+        self.uptime = 0
+    }
+
+    func now() -> Date {
+        lock.lock()
+        defer { lock.unlock() }
+        let value = current
+        current = current.addingTimeInterval(step.seconds)
+        uptime &+= UInt64(max(0, step.seconds) * 1_000_000_000)
+        return value
+    }
+
+    func uptimeNanoseconds() -> UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return uptime
+    }
+}
+
 // MARK: - Fixtures
 
 enum Fixtures {

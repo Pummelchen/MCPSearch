@@ -454,9 +454,15 @@ public actor SearchOrchestrator {
         allowWaiting: Bool
     ) async -> ProviderFailure? {
         guard let denial = await health.authorize(id) else { return nil }
-        guard allowWaiting, denial.category == .rateLimited,
-            let wait = await health.localWait(for: id),
-            wait <= SearchOrchestrator.maximumLocalWait,
+        guard allowWaiting, denial.category == .rateLimited else { return denial }
+        // `localWait` reports an already-cleared throttle as nil, and the throttle can clear in
+        // the microseconds between `authorize` and this second read: the denial is then stale and
+        // the request it refused is allowed. Retrying `authorize` here is what keeps that boundary
+        // race from turning a search that had a usable provider into an empty one (ledger B116).
+        guard let wait = await health.localWait(for: id) else {
+            return await health.authorize(id)
+        }
+        guard wait <= SearchOrchestrator.maximumLocalWait,
             wait.milliseconds
                 <= Int(Double(budget.milliseconds) * SearchOrchestrator.localWaitBudgetShare)
         else {

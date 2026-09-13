@@ -16,15 +16,15 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 
 | Metric | Count |
 | --- | --- |
-| Tasks enumerated | 128 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
+| Tasks enumerated | 129 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 88 |
+| DONE | 89 |
 | START (reproduced, expected behaviour written) | 40 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
-Severity of the whole set: **S0 3, S1 8, S2 34, S3 83** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 83 S3 tasks 43 are DONE and 40 open.
+Severity of the whole set: **S0 3, S1 8, S2 34, S3 84** — the S0 set (A01, B01, B02) and the S1 set
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 44 are DONE and 40 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -162,6 +162,7 @@ waived in writing.
 | B113 | S3 | `WebSearchCore` / `Support` + `SwiftWebSearchMCP` (`main`) | `Sources/SwiftWebSearchMCP/main.swift:16` and `:98` | Configuration is loaded and validated before the command line is parsed, so an unreadable config file pre-empts `--help` | logic | START | this Mac (arm64) | handover re-read L7 |
 | B114 | S3 | `SwiftWebSearchMCP` (`TransportConfiguration.usage`) | `Sources/WebSearchCore/Support/TransportConfiguration.swift:51-77` | `usage` under-documents the CLI, and the test that claims to check every flag locks the incomplete list in place | docs | START | this Mac (arm64) | handover re-read L7 |
 | B115 | S3 | repository root (`README.md`) | `README.md:120`, provider table `:122-134` | The README undercounts the keyless routes and its Startpage row omits the flag the adapter actually requires | docs | DONE | this Mac (arm64) | handover re-read L7 |
+| B116 | S3 | `WebSearchCore` / `Search` (`SearchOrchestrator`, `RateLimiter`) | `SearchOrchestrator.swift:456-462`, `RateLimiter.swift:97-104` | A local throttle that cleared between the authorise and the wait estimate was reported as a hard skip, making the suite intermittently red | bug | DONE | node1 (arm64) | Phase E baseline |
 | B117 | S3 | `scripts` (`mcp_smoke.py`) | `scripts/mcp_smoke.py` (`free_loopback_port`) | The HTTP smoke picks a free port by closing the socket before the child binds, so the child can lose the bind race | test | START | this Mac (arm64) | Phase C (residual B83 left) |
 
 ---
@@ -214,6 +215,45 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B116 — a local throttle that cleared between two reads was reported as a hard skip
+
+**Severity S3** (recorded) · **category** bug · **status** DONE · **host** node1 (arm64)
+
+**How it was found.** Establishing the baseline on the independent host showed the suite is **not**
+reliably green: `StdioServerTests.testToolArgumentClampsAreEnforced` failed about once in twenty
+runs, at `XCTUnwrap` on the second `web_search`'s structured results. That rate matches the
+observed 1-in-21, and a flaky end-to-end test is a Phase E blocker rather than a nuisance.
+
+**What was wrong.** Two defects on the same boundary. `authorizationAfterBoundedWait` combined the
+wait lookup into one `guard`: `authorize` denies because `elapsed` is just under the limiter's
+`minimumInterval`, then `localWait` re-reads the clock a few microseconds later and correctly
+reports "available now" by returning **nil** — which the guard read as "cannot wait" and returned
+the stale denial. The provider was recorded as `skippedLocally`, nothing was returned, and with a
+single provider the tool call became an error with no structured content. Separately,
+`RateLimiter.timeUntilAvailable`'s minimum-interval branch truncated (`Int(remaining * 1000)`) while
+the token branch below it rounded up, so an estimate could be up to a millisecond short — or
+`.milliseconds(0)` for a sub-millisecond remainder.
+
+**The fix.** A nil estimate now means the throttle already cleared, so `authorize` is retried once;
+only a non-nil estimate beyond either cap gives up. The remainder is rounded up and a value that
+rounds to zero reports nil, matching the token branch.
+
+**Verification.** The race is deterministic rather than sampled: a new `CreepingClock` advances 1 ms
+on every `now()` read, so the two reads land on opposite sides of the boundary every run. Three
+tests cover the race, the rounding property, and "elapsed interval is nil, not a zero wait". Each
+mutation goes red on its own test: reverting the orchestrator arm produces exactly the diagnosed
+`temporarilyUnavailable([...rateLimited])`, and reverting the rounding fails both rounding
+assertions. Debug and release build with 0 warnings under `-warnings-as-errors`; **489 tests, 6
+skipped, 0 failures** (the 486 baseline plus 3); `swift-format --strict` and `swiftlint --strict`
+clean. 33 consecutive full-suite runs were green, but the deterministic mutation is the proof — 32
+clean runs of a 1-in-20 flake is only about 81 % confidence. Artifact:
+`AUDIT/evidence/B116-local-throttle-race.txt`.
+
+**Noted, not changed.** `ProviderHealth.authorize` claims a half-open breaker probe before
+consulting the limiter, so in the unrelated half-open-plus-just-cleared-limiter case the retry can
+surface `circuitOpen` rather than `rateLimited`. The search outcome is the same skip, and it is
+outside this task's scope; recorded so it is not rediscovered as a surprise.
 
 ## B48 — `provision-node.sh` could not find a Homebrew Tailscale CLI on Apple Silicon
 
