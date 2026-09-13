@@ -500,11 +500,23 @@ final class DurationTests: XCTestCase {
         XCTAssertEqual(Duration.seconds(2).milliseconds, 2000)
     }
 
-    func testClockElapsedUsesNanoseconds() {
-        let clock = SystemClock()
+    /// The nanosecond-to-millisecond conversion, driven by a clock we control.
+    ///
+    /// The old version measured the real clock immediately after starting it and asserted the
+    /// result was non-negative — a division of an unsigned delta, which no implementation of that
+    /// signature can violate. The name promised nanosecond handling that was never exercised
+    /// (ledger B69).
+    func testElapsedMillisecondsConvertsANanosecondDelta() {
+        let clock = TestClock()
         let start = clock.uptimeNanoseconds()
-        let elapsed = clock.elapsedMilliseconds(since: start)
-        XCTAssertGreaterThanOrEqual(elapsed, 0)
+        XCTAssertEqual(clock.elapsedMilliseconds(since: start), 0, "no time has passed")
+
+        clock.advance(by: .milliseconds(1_500))
+        XCTAssertEqual(clock.elapsedMilliseconds(since: start), 1_500)
+
+        // Sub-second remainders are truncated, not rounded up.
+        clock.advance(by: .milliseconds(400))
+        XCTAssertEqual(clock.elapsedMilliseconds(since: start), 1_900)
     }
 
     func testTestClockAdvances() {
