@@ -1,0 +1,75 @@
+# A12 — nothing connected the server's environment keys to what configures it
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+`AppConfiguration.Key` is the server's source of truth for those names, but every other party
+spells them as plain strings: `example.env`, the Python harnesses, `deploy/docker-compose.yml`,
+`deploy/provision-node.sh` and `.github/workflows/ci.yml`. Nothing linked the two ends, so a
+rename would leave a consumer pointing at a variable the server no longer reads — the setting
+silently stops having any effect, and nothing fails.
+
+## Where the two ends stood
+
+Measured before writing the test (the tree is consistent today, so the test starts green and is a
+ratchet rather than a bug report): 30 `Key` cases, all 30 present in `example.env`, and exactly
+one variable named outside the server that is not a `Key` —
+`SEARCH_LIVE_TESTS`, which the test suite reads to opt into live provider calls and the server
+never reads.
+
+## Fails-before evidence
+
+Two mutations at once — the rename a developer would make, and the documentation line that
+would be lost with it:
+
+```swift
+- case maxResults = "SEARCH_MAX_RESULTS"
++ case maxResults = "SEARCH_MAX_RESULT"
+```
+```
+# example.env
+- # SEARCH_LOG_LEVEL=info
+```
+
+```
+$ swift test --filter EnvironmentContractTests
+error: ... example.env must document: SEARCH_MAX_RESULT, SEARCH_LOG_LEVEL
+error: ... these variables are named outside the server but are not AppConfiguration.Key cases:
+  ["SEARCH_MAX_RESULTS": ["example.env"]]
+Executed 4 tests, with 2 failures (0 unexpected)
+```
+
+Both directions are covered: the renamed key is reported as undocumented, the lost line as
+missing, and the now-stale `example.env` entry as a name the server does not read.
+
+## The fix
+
+`Tests/WebSearchCoreTests/EnvironmentContractTests.swift`, four assertions:
+
+* every `AppConfiguration.Key` appears in `example.env` — in either the `NAME=` or the
+  `# export NAME=` form the file uses;
+* every `SEARCH_*` / `*_API_KEY` literal in `example.env`, `scripts/`, `deploy/` and
+  `.github/workflows/` is a `Key`, with one exception (`SEARCH_LIVE_TESTS`, a test-suite switch);
+* an exception that is no longer used fails the suite, so the waiver list cannot rot into a
+  hiding place;
+* `Key` raw values are unique.
+
+The scope is the finding's. Tests and `docs/` are outside it on purpose: they *talk about* these
+names — including ones removed deliberately, such as the inert `SEARCH_CONNECT_TIMEOUT_MS` — and
+are not consumers of them.
+
+## Verification
+
+```
+$ swift test --filter EnvironmentContractTests
+Executed 4 tests, with 0 failures (0 unexpected) in 0.006 seconds
+
+$ swift test
+Executed 448 tests, with 6 skipped and 0 failures (0 unexpected) in 18.349 seconds
+
+$ swift build --scratch-path $SCRATCH -Xswiftc -warnings-as-errors                  0 warnings, 0 errors
+$ swift build -c release --scratch-path $SCRATCH -Xswiftc -warnings-as-errors      0 warnings, 0 errors
+$ swift-format lint --recursive --strict Sources Tests                             0 diagnostics
+$ swiftlint lint --strict                                                          0 violations in 80 files
+```

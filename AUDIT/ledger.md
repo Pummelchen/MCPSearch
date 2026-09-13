@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 120 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 45 |
-| START (reproduced, expected behaviour written) | 75 |
+| DONE | 46 |
+| START (reproduced, expected behaviour written) | 74 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 75** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 27 are DONE and 7 open; of the 75 S3 tasks 7 are DONE and 68 open.
+are all DONE; of the 34 S2 tasks 28 are DONE and 6 open; of the 75 S3 tasks 7 are DONE and 68 open.
 
 
 Two cross-cutting gates are **not** tasks but acceptance criteria for Phase E: the whole
@@ -48,7 +48,7 @@ waived in writing.
 | A09 | S3 | tests | `Tests/WebSearchCoreTests/URLPolicyTests.swift:46` | `detect-insecure-websocket` fires on the *rejection* fixture (false positive) | style | DONE | this Mac | audit baseline (semgrep) |
 | A10 | **S1** | CI | `.github/workflows/ci.yml`, `scripts/coverage_floor.py` | No gate for warnings-as-errors, formatter, linter, type checker, coverage floor or scanners | test | DONE | this Mac | audit baseline |
 | A11 | S2 | scripts | `ruff.toml` (new), `pyrightconfig.json` (new), `scripts/*.py` | Python is 3.14 with no strict type-checking config and no annotations | style | DONE | this Mac | audit baseline (pyright) |
-| A12 | S2 | cross-unit contracts | `Support/AppConfiguration.swift`, `scripts/*`, `deploy/*`, CI | Env-var contracts between units have no automated consistency check | logic | START | this Mac | scope discovery |
+| A12 | S2 | cross-unit contracts | `Support/AppConfiguration.swift`, `scripts/*`, `deploy/*`, CI | Env-var contracts between units have no automated consistency check | logic | DONE | this Mac (arm64) | scope discovery |
 | B01 | **S0** | `deploy/docker-compose.yml` (with `deploy/searxng/settings.yml`, `deploy/.env.example`) | `deploy/docker-compose.yml:33`, `deploy/searxng/settings.yml:13-22` | The documented compose secret-key override is the wrong variable, so the tracked placeholder is what signs the instance | placeholder | DONE | this Mac (arm64) | Phase B PLACEHOLDER-3 + L7-10 |
 | B02 | **S0** | `DirectHTTPFetcher` (redirect branch), `Tests/WebSearchCoreTests/FetchRedirectTests.swift` | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:81-101` | The manual redirect loop is the SSRF boundary for redirects and has no test at all | test | DONE | this Mac (arm64) | Phase B L6-1 |
 | B03 | S1 | `SwiftWebSearchMCP` (HTTP transport wiring) | `Sources/SwiftWebSearchMCP/main.swift:118` (one transport per process), `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:290` (non-POST refused before the | The HTTP transport serves exactly one MCP session per process, and that session can never be released | bug | DONE | this Mac (arm64) | Phase B L3-25 |
