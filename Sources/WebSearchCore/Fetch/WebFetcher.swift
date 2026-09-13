@@ -104,6 +104,10 @@ public actor WebFetcher {
         // Direct extraction was empty, too thin, or failed. Jina Reader renders the
         // page remotely, which is the sanctioned way to handle JS-heavy pages
         // without embedding a headless browser here.
+        //
+        // A cancelled caller never reaches the fallback: the second outbound request would be
+        // work for nobody, and the cancellation is what the caller should see (ledger B04).
+        try Task.checkCancellation()
         guard let jina else {
             guard let result = directResult else {
                 throw directError ?? SearchError.extractionFailed(request.url)

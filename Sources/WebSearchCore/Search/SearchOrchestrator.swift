@@ -64,10 +64,12 @@ public actor SearchOrchestrator {
         }
 
         let started = DispatchTime.now().uptimeNanoseconds
-        // The caller's cancellation is separate from our own budget timer: if the MCP
-        // client cancels the tool call we propagate `CancellationError`, but if our
-        // timer fires we degrade gracefully to partial results.
-        let callerCancelledBefore = Task.isCancelled
+        // Timeouts are budgets, not cancellations: the deadline produces partial results.
+        // `Task.isCancelled` on the calling task therefore means the caller cancelled, whether
+        // that happened before the call or while it was running, and both are propagated as
+        // `CancellationError`. Only the pre-call case was handled before, so a cancellation that
+        // arrived mid-flight was swallowed into partial results (ledger B04).
+        try Task.checkCancellation()
         let budget = configuration.timeout(for: request.mode)
 
         // Each provider gets a larger budget than the caller asked for, so fusion has
@@ -88,7 +90,9 @@ public actor SearchOrchestrator {
             request: scopedRequest,
             deadline: budget
         )
-        if Task.isCancelled, callerCancelledBefore { throw CancellationError() }
+        // A caller that cancelled mid-flight gets the cancellation, not partial results that no
+        // one is waiting for. Checked immediately after the fan-out and again before returning.
+        try Task.checkCancellation()
         accumulated.append(contentsOf: primary.responses)
         failures.append(contentsOf: primary.failures)
         attemptedRequests += primary.attempted
@@ -239,6 +243,9 @@ public actor SearchOrchestrator {
             )
         }
 
+        // Last checkpoint: everything above ran on behalf of a caller that may have gone away.
+        // Nothing is cached or returned for it.
+        try Task.checkCancellation()
         let response = SearchResponse(
             query: request.normalizedQuery,
             results: results,

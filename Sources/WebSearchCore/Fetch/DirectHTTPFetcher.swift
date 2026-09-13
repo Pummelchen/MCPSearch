@@ -191,7 +191,11 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
             case .timedOut:
                 throw SearchError.fetchFailed(request.url, reason: "request timed out")
             case .cancelled:
-                throw SearchError.fetchFailed(request.url, reason: "request was cancelled")
+                // The caller cancelled. Reporting this as a fetch failure would let the layer
+                // above read it as "the direct fetch did not work" and start a *second*
+                // outbound request — the Jina fallback — for a caller that has gone away
+                // (ledger B04).
+                throw CancellationError()
             default:
                 throw SearchError.fetchFailed(
                     request.url,
@@ -202,7 +206,7 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
             // Same shape as the old post-hoc cap check: the page is too large to extract.
             throw SearchError.extractionFailed(request.url)
         } catch is CancellationError {
-            throw SearchError.fetchFailed(request.url, reason: "request was cancelled")
+            throw CancellationError()
         }
 
         guard let httpResponse = response as? HTTPURLResponse else {

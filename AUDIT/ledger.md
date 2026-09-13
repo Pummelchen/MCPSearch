@@ -16,9 +16,9 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 
 | Metric | Count |
 | --- | --- |
-| Tasks enumerated | 114 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102 found in Phase D) |
+| Tasks enumerated | 115 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102 and B103 found in Phase D) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 6 |
+| DONE | 7 |
 | START (reproduced, expected behaviour written) | 108 |
 | BLOCKED | 0 |
 
@@ -50,7 +50,7 @@ waived in writing.
 | B01 | **S0** | `deploy/docker-compose.yml` (with `deploy/searxng/settings.yml`, `deploy/.env.example`) | `deploy/docker-compose.yml:33`, `deploy/searxng/settings.yml:13-22` | The documented compose secret-key override is the wrong variable, so the tracked placeholder is what signs the instance | placeholder | DONE | this Mac (arm64) | Phase B PLACEHOLDER-3 + L7-10 |
 | B02 | **S0** | `DirectHTTPFetcher` (redirect branch), `Tests/WebSearchCoreTests/FetchRedirectTests.swift` | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:81-101` | The manual redirect loop is the SSRF boundary for redirects and has no test at all | test | DONE | this Mac (arm64) | Phase B L6-1 |
 | B03 | S1 | `SwiftWebSearchMCP` (HTTP transport wiring) | `Sources/SwiftWebSearchMCP/main.swift:118` (one transport per process), `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:290` (non-POST refused before the | The HTTP transport serves exactly one MCP session per process, and that session can never be released | bug | START | this Mac (arm64) | Phase B L3-25 |
-| B04 | S1 | `Sources/WebSearchCore/Search/SearchOrchestrator.swift`, `Sources/SwiftWebSearchMCP/ToolHandlers.swift` | `Sources/WebSearchCore/Search/SearchOrchestrator.swift:91` | Caller cancellation is never tested, and mid-flight cancellation is observably swallowed | test | START | this Mac (arm64) | Phase B L6-3 |
+| B04 | **S1** | `WebSearchCore` (search) + `SwiftWebSearchMCP` (tools) | `Sources/WebSearchCore/Search/SearchOrchestrator.swift:66`, `Fetch/DirectHTTPFetcher.swift:190`, `Fetch/WebFetcher.swift:104` | Caller cancellation is never tested, and mid-flight cancellation is observably swallowed | bug | DONE | this Mac (arm64) | Phase B L6-3 + L2-6 |
 | B05 | S1 | `Tests/WebSearchCoreTests/AUDITDiagnosticsTests.swift` | `Tests/WebSearchCoreTests/AUDITDiagnosticsTests.swift:6` (also `:11`, `:83`, `:111`) | TEMPORARY audit tooling is committed to the go-live test target and can abort the whole suite | placeholder | DONE | MacBook-AB.local (arm64, macOS 26.6.2, Swift 6.3.3) | Phase B PLACEHOLDER-1 |
 | B06 | **S1** | `WebSearchCore` / `Support` + `Fetch`, `MCPSMonitor` | `Sources/WebSearchCore/Support/Logging.swift:128`, `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:142`, `Sources/MCPSMonitor/main.swift:171` | Untrusted seconds are converted `Double`->`Int` without a range check, so a hostile value traps the whole process | unsafe | DONE | this Mac (arm64) | Phase B L4-1 + L3-3 |
 | B07 | **S1** | `WebSearchCore` (transport) | `Sources/WebSearchCore/Support/BoundedResponseBody.swift`, `Support/HTTPClient.swift:299`, `Fetch/DirectHTTPFetcher.swift:176` | Response bodies are fully buffered in memory before the byte cap is applied, so one hostile page exhausts the process | perf | DONE | this Mac (arm64) | Phase B L5-1 |
@@ -355,6 +355,7 @@ audit tooling):
 | A | `ScraperSupport.parse` on the same 23-byte junk body | synchronous test (main thread) | **ok** |
 | B | `DuckDuckGoProvider.search` with HTTP 200 + junk body | `async` (cooperative task) | **CRASH** |
 | B102 | S3 | `WebSearchCore` (fetch) | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:245-256` (delegate), `Sources/WebSearchCore/Support/HTTPClient.swift:386` (message) | A cross-scheme redirect is refused by the transport, not by our policy, and surfaces as an opaque transport error | bug | START | this Mac (arm64) | Phase D (found while fixing B02) |
+| B103 | S3 | `SwiftWebSearchMCP` (tools) | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:91-93`, `:142-143`, `:237-238`, `:262-263` | The tool-layer cancellation branches are still not exercised by any test | test | START | this Mac (arm64) | Phase D (found while fixing B04) |
 | C | `DuckDuckGoProvider.search` with HTTP 200 + well-formed empty HTML | `async` (cooperative task) | **ok** |
 
 Also: `HTMLExtractorTests` (SwiftSoup-heavy) ok, `testDuckDuckGoScraperEndToEnd` (real DDG
