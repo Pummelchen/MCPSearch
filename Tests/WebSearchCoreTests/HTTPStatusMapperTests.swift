@@ -191,7 +191,9 @@ final class HTTPStatusMapperTests: XCTestCase {
             ),
             (
                 "invalidURL",
-                .invalidURL("the request URL could not be built"),
+                // The detail is URL-shaped and credential-bearing on purpose: `map` must replace
+                // it with curated text rather than forward it to the caller (ledger B121).
+                .invalidURL("https://api.mojeek.com/search?api_key=tvly-not-real"),
                 .unsupportedRequest(.tavily, "the request URL could not be built")
             ),
         ]
@@ -254,16 +256,16 @@ final class HTTPStatusMapperTests: XCTestCase {
     ///
     /// The URL never appears in the returned `SearchError`, whichever arm produced it.
     ///
-    /// `HTTPError.invalidURL` is deliberately absent. Its detail is interpolated verbatim into
-    /// `unsupportedRequest(provider, detail)`, so a URL-shaped detail *would* be echoed; no
-    /// production call site throws `invalidURL` today (it exists for the transport adapters), which
-    /// is why this is recorded as a latent hazard in the evidence rather than asserted as covered.
+    /// `HTTPError.invalidURL` is included: its detail is free-form, so `map` curates the
+    /// caller-facing text from the case instead of forwarding whatever the transport wrote. Before
+    /// that, a URL-shaped detail was echoed with any credential in it (ledger B121).
     func testMappedDescriptionsNeverEchoARequestURL() {
         let secretURL = URL(string: "https://api.mojeek.com/search?api_key=tvly-not-real")!
         let errors: [(name: String, error: any Error)] = [
             ("URLError", URLError(.cannotConnectToHost, userInfo: [NSURLErrorFailingURLErrorKey: secretURL])),
             ("HTTPError.connectionFailed", HTTPError.connectionFailed(label: "mojeek", reason: "connection refused")),
             ("HTTPError.transportFailure", HTTPError.transportFailure(label: "mojeek", reason: "connection reset")),
+            ("HTTPError.invalidURL", HTTPError.invalidURL(secretURL.absoluteString)),
         ]
 
         for testCase in errors {

@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 133 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 132 |
-| START (reproduced, expected behaviour written) | 1 |
+| DONE | 133 |
+| START (reproduced, expected behaviour written) | 0 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 88** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 88 S3 tasks 87 are DONE and 1 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 88 S3 tasks 88 are DONE and 0 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -167,7 +167,7 @@ waived in writing.
 | B118 | S3 | `SwiftWebSearchMCP` (`ServerOptions`) | `Sources/WebSearchCore/Support/TransportConfiguration.swift` (the `--transport` error) | The invalid `--transport` error names only two of the four accepted spellings that the usage text now documents | docs | DONE | node1 (arm64) | Phase C (found while doing B114) |
 | B119 | S3 | `scripts` (`monitor_tty_smoke.py`) | `scripts/monitor_tty_smoke.py` (the startup check) | The PTY harness polls the monitor only once, so a crash after the drain window but before the first frame is still reported as a timeout | test | DONE | node1 (arm64) | Phase C (found while verifying B106) |
 | B120 | S3 | `WebSearchCore` / `Fetch` (`DirectHTTPFetcher`) | `DirectHTTPFetcher.swift` (cross-scheme refusal) | Only the file-system transport codes are mapped, so a redirect to any other cross-scheme target still surfaces as an opaque transport reason | incomplete | DONE | node1 (arm64) | Phase C (residual B102 left) |
-| B121 | S3 | `WebSearchCore` / `Providers` (`HTTPStatusMapper`) | `HTTPStatusMapper.swift` (`unsupportedRequest`) | `HTTPError.invalidURL`'s detail is interpolated verbatim into the caller-facing message, so a URL-shaped detail would be echoed with any key in it | unsafe | START | node1 (arm64) | Phase C (surfaced by B96) |
+| B121 | S3 | `WebSearchCore` / `Providers` (`HTTPStatusMapper`) | `HTTPStatusMapper.swift` (`unsupportedRequest`) | `HTTPError.invalidURL`'s detail is interpolated verbatim into the caller-facing message, so a URL-shaped detail would be echoed with any key in it | unsafe | DONE | node1 (arm64) | Phase C (surfaced by B96) |
 
 ---
 
@@ -219,6 +219,45 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B121 — `HTTPError.invalidURL`'s detail was echoed into the caller-facing message
+
+**Severity S3** · **category** unsafe · **status** DONE · **host** node1 (arm64)
+
+**Premise confirmed, still dormant.** `HTTPStatusMapper.map` forwarded `HTTPError.invalidURL`'s
+free-form detail into `SearchError.unsupportedRequest(provider, detail)`, which renders as
+`"<Provider> cannot serve this request: <detail>"` in both `SearchError.safeDescription` and
+`ToolHandlers.errorMessage(for:)`, so a URL-shaped detail would reach the client with any credential
+in its query string. `git grep` finds no production call site that throws `invalidURL` — the only
+`Sources/` hits are the declaration, its `isTransient` arm and the mapper; the `invalidURL` in
+`AppConfiguration`/`main.swift` is a different enum (`ConfigurationIssue.invalidURL`). No thrower has
+appeared since the finding was written, so the grading stays **S3** and the severity does not change.
+
+**The fix.** The mapper's `invalidURL` arm now discards the detail and passes the curated phrase
+`the request URL could not be built`, exactly as the adjacent `URLError` arm curates from a code with
+`HTTPError.reason(for:)` (A07, commit `0edc66b`). This is the repository's existing redaction
+mechanism, not a second one. `HTTPError.invalidURL(String)` keeps its payload — an operator reading
+`String(describing:)` still sees it — and no public API signature changed.
+
+**The test.** `testMapClassifiesEveryHTTPErrorCase`'s `invalidURL` row now feeds
+`https://api.mojeek.com/search?api_key=tvly-not-real` and expects the curated text, so the table
+proves the detail is discarded rather than coincidentally matching. `testMappedDescriptionsNeverEchoARequestURL`
+gained an `invalidURL` row asserting the URL, the key and the host are all absent from the rendered
+description, and its stale "deliberately absent" comment is gone.
+
+**Falsification.** The mapper was mutated back to `case .invalidURL(let detail): return
+.unsupportedRequest(provider, detail)`, the source touched so the same-second staleness could not hide
+the edit, and the bundle rebuilt. Four assertions failed, rendering `Mojeek cannot serve this request:
+https://api.mojeek.com/search?api_key=tvly-not-real` and the raw mapped detail. `HTTPStatusMapper.swift`
+was restored byte-identical (`diff` empty, SHA-256
+`b7f30cfc6fd0767a8390560ba8198a0cf0bcc46c04ea0543a201bd9f522135b0`).
+
+**Unverified.** Because no production site throws `invalidURL`, the end-to-end claim is a proof about
+the mapper and the rendering rather than a live reproduction; the mutation is the closest available
+reproduction of the hazard.
+
+Gate: 588 tests / 6 skipped / 0 failures; debug and release 0 warnings; swift-format 0; swiftlint 0 in
+92 files; notices clean; harness tests 16/16. Evidence: `AUDIT/evidence/B121-invalid-url-echo.txt`.
 
 ## B103 — the tool layer's cancellation arms are now exercised, except the synthesis arm
 
