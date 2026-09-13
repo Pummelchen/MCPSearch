@@ -146,11 +146,16 @@ lives there.
 
 ```bash
 swift build                    # debug
-swift test                     # 368 tests, no network required
+swift test                     # 371 tests, no network required
 SEARCH_LIVE_TESTS=1 swift test --filter LiveProviderTests   # opt-in; calls real providers, also needs a key
 python3 scripts/mcp_smoke.py   # end-to-end stdio handshake
 python3 scripts/mcp_smoke.py --http   # end-to-end Streamable HTTP session
+python3 scripts/monitor_tty_smoke.py  # drives the dashboard through a pseudo-terminal
 ```
+
+`monitor_tty_smoke.py` is how the dashboard's key handling is tested without a desktop:
+it allocates a pseudo-terminal (a kernel object, so no window opens), types `p`/`r`/`e`/`c`/`q`
+into a live `mcps-mon`, and asserts on the escape sequences and frames that come back.
 
 There is also a live terminal dashboard for providers and nodes:
 
@@ -171,8 +176,8 @@ environment or a git-ignored `config.env`). A key alone does not activate them, 
 verified or unverified — see [docs/README.md](docs/README.md).
 
 CI runs on `macos-26` (Swift 6.3): build, test, release build, smoke tests over both
-transports, and a second test run with credentials present to prove the suite is
-hermetic.
+transports, the pseudo-terminal monitor test, and a second test run with credentials
+present to prove the suite is hermetic.
 
 ## License
 

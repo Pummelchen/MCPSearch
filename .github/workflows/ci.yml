@@ -104,6 +104,15 @@ jobs:
           python3 scripts/mcp_smoke.py "$BIN"
           python3 scripts/mcp_smoke.py --http "$BIN"
 
+      # The dashboard's key handling, colour and cursor control only run on a terminal, so
+      # a pipe cannot reach them and pressing keys by hand needs a window. This drives the
+      # display through a pseudo-terminal instead, against a loopback SearXNG stub, so the
+      # interactive path is covered here without a desktop and without any credentials.
+      - name: Monitor interactive smoke test (pseudo-terminal)
+        run: |
+          BIN="$(swift build -c release --show-bin-path)/mcps-mon"
+          python3 scripts/monitor_tty_smoke.py "$BIN"
+
       # Prove the hermeticity claim rather than assuming it: the default suite must
       # still pass when provider credentials are present in the environment.
       #
