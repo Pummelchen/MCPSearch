@@ -35,6 +35,12 @@ public enum SearchError: Error, Sendable, Hashable {
     case temporarilyUnavailable([ProviderFailure])
     case blockedURL(URL)
     case extractionFailed(URL)
+    /// The markup nests deeper than any parser in this package will accept.
+    ///
+    /// Kept distinct from `malformedResponse` and `extractionFailed` so an operator can tell
+    /// deliberate or pathological nesting apart from a provider defect or a JS-only page.
+    /// Non-transient: the same document will be rejected the same way every time.
+    case markupDepthExceeded(Int)
     /// A page fetch failed for a reason other than policy or extraction, such as a
     /// connection error or a timeout.
     ///
@@ -62,6 +68,7 @@ public enum SearchError: Error, Sendable, Hashable {
         case .temporarilyUnavailable: .rateLimited
         case .blockedURL: .unsupportedRequest
         case .extractionFailed: .malformedResponse
+        case .markupDepthExceeded: .malformedResponse
         case .fetchFailed: .network
         case .synthesisFailed: .unknown
         }
@@ -81,7 +88,7 @@ public enum SearchError: Error, Sendable, Hashable {
             id
         case .invalidRequest, .allProvidersFailed, .providersFailed,
              .temporarilyUnavailable, .blockedURL, .extractionFailed, .fetchFailed,
-             .synthesisFailed:
+             .markupDepthExceeded, .synthesisFailed:
             nil
         }
     }
@@ -128,6 +135,8 @@ public enum SearchError: Error, Sendable, Hashable {
             "Answer synthesis failed: \(reason)"
         case .extractionFailed(let url):
             "Could not extract readable content from \(url.host() ?? url.absoluteString)."
+        case .markupDepthExceeded(let limit):
+            "The markup nests more than \(limit) elements deep, which cannot be parsed safely."
         }
     }
 }

@@ -95,6 +95,42 @@ enum ScraperSupport {
         excludeHosts: [String],
         provider: ProviderID
     ) throws -> ParsedPage {
+        // A search page is HTML. A body with no markup at all is an error payload or a
+        // rate-limit notice wearing an HTTP 200; say so, instead of reporting "no results".
+        guard MarkupDepth.containsMarkup(html) else {
+            throw SearchError.malformedResponse(provider)
+        }
+        // Measured: a page nested a few thousand elements deep exhausts the stack of the
+        // cooperative task this runs on and kills the process. Depth is bounded before any
+        // recursive parser sees the markup (`MarkupDepth`), and the parser then gets a stack
+        // with room for the bound (`LargeStackParse`).
+        guard !MarkupDepth.exceedsLimit(html) else {
+            throw SearchError.markupDepthExceeded(MarkupDepth.maximumNesting)
+        }
+        return try LargeStackParse.run {
+            try parseOnCurrentThread(
+                html: html,
+                containerSelectors: containerSelectors,
+                linkSelectors: linkSelectors,
+                snippetSelectors: snippetSelectors,
+                base: base,
+                excludeHosts: excludeHosts,
+                provider: provider
+            )
+        }
+    }
+
+    /// The parse and selection themselves; recursive, so they run on `LargeStackParse`'s
+    /// thread in production and directly in tests that assert the thresholds.
+    static func parseOnCurrentThread(
+        html: String,
+        containerSelectors: [String],
+        linkSelectors: [String],
+        snippetSelectors: [String],
+        base: String,
+        excludeHosts: [String],
+        provider: ProviderID
+    ) throws -> ParsedPage {
         let document: Document
         do {
             document = try SwiftSoup.parse(html)

@@ -77,8 +77,22 @@ public enum HTMLExtractor {
 
     /// Extract readable text.
     ///
-    /// - Throws: `SearchError.invalidRequest` when the markup cannot be parsed.
+    /// - Throws: `SearchError.invalidRequest` when the markup cannot be parsed, and
+    ///   `SearchError.markupDepthExceeded` when it nests too deeply to parse safely.
     public static func extract(html: String) throws -> HTMLDocument.Extraction {
+        // Web pages are fetched from arbitrary URLs and parsed on a cooperative task, whose
+        // stack a deeply nested document overflows: measured, about 20 000 levels of nesting
+        // killed the process. Bound the depth before the recursive parser runs, then give the
+        // parser a stack with room for the bound.
+        guard !MarkupDepth.exceedsLimit(html) else {
+            throw SearchError.markupDepthExceeded(MarkupDepth.maximumNesting)
+        }
+        return try LargeStackParse.run { try extractOnCurrentThread(html: html) }
+    }
+
+    /// The parse and traversal themselves; recursive, so they run on `LargeStackParse`'s
+    /// thread in production and directly in tests that assert the threshold.
+    static func extractOnCurrentThread(html: String) throws -> HTMLDocument.Extraction {
         let document: Document
         do {
             document = try SwiftSoup.parse(html)
