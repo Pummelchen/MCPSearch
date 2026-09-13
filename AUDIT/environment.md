@@ -76,6 +76,21 @@ Already present before the audit (not installed by it): `swiftlint` 0.65.1, `git
 8.30.1, `semgrep` 1.176.0, `ruff` 0.16.7, `shellcheck`, `jq` 1.8.2, `node` v26.8.2,
 Docker 29.8.0, Homebrew, Swift 6.3.3 / Xcode 26.6, CPython 3.14.7.
 
+### Build artefacts lie: build the product into a fresh scratch path
+
+Found the hard way while investigating B104. Two traps, both of which cost a round:
+
+* **`swift build --target <executable>` does not link the executable.** It compiles the target and
+  leaves whatever binary was already in the build directory looking current.
+* **A long-lived scratch tree can hold a mixture of object files** compiled against two different
+  struct layouts. After B09 added a stored property to `AppConfiguration`, the monitor was being
+  probed as an executable from an earlier full build linked against a rebuilt library: it crashed
+  intermittently in debug (bad pointer dereference at a small offset) while a fresh build of the same
+  source was clean, and CI — which builds release from scratch — stayed green.
+
+Rule: when a crash is the thing being investigated, build the **product** into a **fresh scratch
+path** before drawing any conclusion. `swift build --product <name> --scratch-path <new directory>`.
+
 ### How the secret scan is run (and why it is `detect`, not `dir`)
 
 `gitleaks detect --source . --log-opts=--all` scans git-tracked content and its history; that is
