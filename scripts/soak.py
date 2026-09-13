@@ -202,6 +202,29 @@ class Server:
         return self.process.stderr.read()
 
 
+def silent_providers(providers: set[str], usage: dict[str, int]) -> list[str]:
+    """Requested providers that contributed to no query at all."""
+    return sorted(name for name in providers if usage.get(name, 0) == 0)
+
+
+def run_verdict(
+    queries: int, errors: int, providers: set[str], usage: dict[str, int]
+) -> str | None:
+    """Why the run must be reported as a failure, or None when it is a result to interpret.
+
+    A soak that errored on every query, or where a requested provider never contributed, says
+    something other than what its header claims. The second half of that sentence used to be only
+    a comment (ledger B44). Kept separate from `main` so the CI guard can drive every case without
+    running a soak.
+    """
+    if queries and errors == queries:
+        return "every query errored"
+    silent = silent_providers(providers, usage)
+    if silent:
+        return "requested provider(s) contributed to no query: " + ", ".join(silent)
+    return None
+
+
 def build_environment(providers: set[str]) -> dict[str, str]:
     """Environment with only the requested providers left enabled.
 
@@ -477,10 +500,11 @@ def main() -> int:
             print(f"\nSOAK FAILED: credential material appeared in stderr: {leaked}")
             return 1
 
-        # A soak that produced errors everywhere, or where the primary provider never
-        # contributed, is a failure of the run rather than a result to interpret.
-        if errors == len(queries) and queries:
-            print("\nSOAK FAILED: every query errored")
+        # A soak that produced errors everywhere, or where a requested provider never
+        # contributed, is a failure of the run rather than a result to interpret (ledger B44).
+        verdict = run_verdict(len(queries), errors, providers, usage_by_provider)
+        if verdict:
+            print(f"\nSOAK FAILED: {verdict}")
             return 1
         print("\nSOAK COMPLETE")
         return 0

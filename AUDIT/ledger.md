@@ -18,8 +18,8 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 120 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 59 |
-| START (reproduced, expected behaviour written) | 61 |
+| DONE | 61 |
+| START (reproduced, expected behaviour written) | 59 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
@@ -91,8 +91,8 @@ waived in writing.
 | B40 | S3 | `Package.swift`, `Package.resolved`, CI | `Package.swift:31-34`, `.github/workflows/ci.yml:89-96` | Nothing detects that `Package.resolved` has drifted from the manifests | deps | START | this Mac (arm64) | Phase B L0-5 |
 | B41 | S3 | `Package.swift`, repository root | `Package.swift:31-34` | Apache-2.0 `NOTICE` files of two dependencies are not carried with any distributed binary | deps | START | this Mac (arm64) | Phase B L0-6 |
 | B42 | S3 | `SwiftWebSearchMCP` (`HTTPMCPHost`) | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:448` | The hand-rolled `Origin` check accepts any host starting with `127.`, which is a bypass of the check it pretends to be | logic | DONE | this Mac (arm64) | Phase B L4-7 |
-| B43 | S3 | `AUDIT/plan.md` vs `AUDIT/baseline/` | `AUDIT/plan.md:38` | The baseline evidence table cites `gitleaks.json`, which is not in the repository | docs | START | this Mac (arm64) | Phase B L7-5 |
-| B44 | S3 | `scripts/soak.py` | `scripts/soak.py:473-479` | The soak test's comment promises a "provider never contributed" failure that the code never implements | incomplete | START | this Mac (arm64) | Phase B L7-6 |
+| B43 | S3 | `AUDIT/plan.md` vs `AUDIT/baseline/` | `AUDIT/plan.md:38` | The baseline evidence table cites `gitleaks.json`, which is not in the repository | docs | DONE | this Mac (arm64) | Phase B L7-5 |
+| B44 | S3 | `scripts/soak.py` | `scripts/soak.py:473-479` | The soak test's comment promises a "provider never contributed" failure that the code never implements | incomplete | DONE | this Mac (arm64) | Phase B L7-6 |
 | B45 | S3 | `scripts/mcp_smoke.py`, `scripts/monitor_tty_smoke.py` | `scripts/mcp_smoke.py:100-105`, `scripts/monitor_tty_smoke.py:186-194` | The "prove the scrub" loops in both smoke scripts are no-ops that cannot fail | dead | DONE | this Mac (arm64) | Phase B L7-7 |
 | B46 | S3 | `MCPSMonitor` | `Sources/MCPSMonitor/main.swift:45-78` (`--iterations  Stop after n refreshes (useful for scripting)`), `:533-580` | `mcps-mon` always exits 0, so `--iterations` cannot be used as a health check | incomplete | START | this Mac (arm64) | Phase B L7-8 |
 | B47 | S3 | `example.env` vs `deploy/` | `example.env:35-39` | `example.env` tells the operator to fix a SearXNG setting that the shipped files already set | docs | DONE | this Mac (arm64) | Phase B L7-9 |
