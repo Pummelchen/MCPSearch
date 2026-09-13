@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 129 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 91 |
-| START (reproduced, expected behaviour written) | 38 |
+| DONE | 92 |
+| START (reproduced, expected behaviour written) | 37 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 84** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 46 are DONE and 38 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 47 are DONE and 37 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -139,7 +139,7 @@ waived in writing.
 | B83 | S3 | `scripts/mcp_smoke.py` | `scripts/mcp_smoke.py:345-353` (port at `:350-357`, stderr only read at `:458`) | HTTP smoke can wait 20 s on a dead server and never checks that it is alive | bug | DONE | this Mac (arm64) | Phase B L3-41 |
 | B84 | S3 | `WebSearchCore` / `Fetch` (`URLPolicy`) | `Sources/WebSearchCore/Fetch/URLPolicy.swift:289` | `IPAddress.v6` is a public case that accepts any byte count, and its accessors index 16 bytes unconditionally | unsafe | START | this Mac (arm64) | Phase B L4-9 |
 | B85 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:93` | Query hashing for logs is a fast unsalted FNV-1a, but is documented as non-reversible | docs | START | this Mac (arm64) | Phase B L4-10 |
-| B86 | S3 | `deploy` (`provision-node.sh`) | `deploy/provision-node.sh:71` | Provisioning writes through fixed, predictable `/tmp` paths and loads a container image from one | unsafe | START | this Mac (arm64) | Phase B L4-12 |
+| B86 | S3 | `deploy` (`provision-node.sh`) | `deploy/provision-node.sh:71` | Provisioning writes through fixed, predictable `/tmp` paths and loads a container image from one | unsafe | DONE | this Mac (arm64) | Phase B L4-12 |
 | B87 | S3 | `WebSearchCore` / `Fetch` (`JinaReaderFetcher`) + `WebSearchCore` / `Search` (`SearchPipelineFactory`) | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:65` | The Jina Reader fallback discloses the target URL to a third party by default, with no warning that it did | docs | START | this Mac (arm64) | Phase B L4-13 |
 | B88 | S3 | `WebSearchCore` / `Fetch` (`URLPolicy` + `DirectHTTPFetcher`) | `Sources/WebSearchCore/Fetch/URLPolicy.swift:57` | The declared per-host DNS cache does not exist, and every redirect hop resolves twice | perf | START | this Mac (arm64) | Phase B L5-3 |
 | B89 | S3 | `WebSearchCore` / `Search` (`SearchCache`) | `Sources/WebSearchCore/Search/SearchCache.swift:103` | `SearchCache.pruneExpired` rebuilds the whole dictionary on every read, write and stats call | perf | START | this Mac (arm64) | Phase B L5-4 |
@@ -215,6 +215,32 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B86 — provisioning wrote through fixed, predictable `/tmp` paths and loaded an image from one
+
+**Severity S3** (recorded) · **category** unsafe · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** Nine writes went through fixed, predictable `/tmp` paths, and the container
+image was loaded from `/tmp/searxng-image.tar`. Separating the two: the **real exposure is the write
+targets**, because `>` follows a symlink, so any local user able to create `/tmp/brew-install.log`
+could make this cached-sudo run truncate a file that account can write (measured: a 29-byte target
+went to zero). The **unverified load is defence in depth**, not the primary control - the container
+is always *run* by the digest-pinned reference, so a tampered tarball cannot simply execute, and the
+missing check only let the load proceed unverified while the canary proved nothing about provenance.
+
+**The fix.** One private, unpredictable scratch directory (`mktemp -d`, then `install -d -m 700`)
+holds every log and the staged tarball, removed by an `EXIT` trap that prints bounded log tails on
+the failure path so the existing `see <path>` messages stay honest. The tarball is now explicit
+(`SEARXNG_IMAGE_TAR`) with no `/tmp` default, and after `docker load` its `RepoDigests` is compared
+to the pinned reference, failing closed on a mismatch.
+
+**Verification.** A harness extracting the blocks verbatim from the previous commit shows 9 of 10
+cases missing the fixed behaviour before and 10 of 10 present after; fail-closed is demonstrated
+behaviourally, not just asserted. `bash -n` passes and shellcheck's finding set is unchanged.
+Provisioning was not run. Artifact: `AUDIT/evidence/B86-provision-temp-paths.txt`.
+
+**Operator-visible change.** The tarball is no longer auto-picked up; it must be passed as
+`SEARXNG_IMAGE_TAR=…`, and if set but not a file the run stops rather than pulling.
 
 ## B78 — `ProviderStatus.State.probing` and `.unavailable` were unreachable
 
