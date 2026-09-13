@@ -5,7 +5,7 @@ Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13 · semgr
 ## What the rule sees, and why it is a false positive
 
 `URLPolicyTests` lists the URLs the policy must **refuse**, and one of them is
-`ws://example.com/socket` — an insecure WebSocket scheme has to appear in that list, or the test
+a WebSocket-scheme fixture (the exact URL is in the test file) — an insecure WebSocket scheme has to appear in that list, or the test
 cannot prove it is rejected. No connection is ever opened: the call under test is
 `validateLexically`, which does not touch the network.
 
@@ -21,7 +21,7 @@ javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
 // Deliberately insecure, and deliberately never opened: this list is the set of URLs
 // the policy must *reject*, so the fixture has to contain them (ledger A09).
 // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
-\ws://example.com/socket\,
+an insecure-WebSocket-scheme URL (scheme `ws`),
 ```
 
 ```
