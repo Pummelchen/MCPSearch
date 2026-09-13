@@ -7,7 +7,7 @@ server that gives local AI clients reliable public-web search and page fetching.
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Swift 6.3.3](https://img.shields.io/badge/Swift-6.3.3-orange.svg)
 [![Stars](https://img.shields.io/github/stars/Pummelchen/MCPSearch?style=flat-square&logo=github&label=Stars&color=e3b341)](https://github.com/Pummelchen/MCPSearch/stargazers)
-[![Visitors (14d)](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Pummelchen/MCPSearch/main/.github/traffic.json)](https://github.com/Pummelchen/MCPSearch)
+[![Views (14d)](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Pummelchen/MCPSearch/main/.github/traffic.json)](https://github.com/Pummelchen/MCPSearch)
 [![Last Commit](https://img.shields.io/github/last-commit/Pummelchen/MCPSearch?style=flat-square&logo=git&label=Last%20Commit&color=2ea44f)](https://github.com/Pummelchen/MCPSearch/commits/main)
 [![Contact](https://img.shields.io/badge/Contact-0xa0b1%40gmail.com-blue?style=flat-square&logo=gmail&logoColor=white)](mailto:0xa0b1@gmail.com)
 
