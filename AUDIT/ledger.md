@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 129 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 89 |
-| START (reproduced, expected behaviour written) | 40 |
+| DONE | 90 |
+| START (reproduced, expected behaviour written) | 39 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 84** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 44 are DONE and 40 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 45 are DONE and 39 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -117,7 +117,7 @@ waived in writing.
 | B61 | S3 | `WebSearchCore/Fetch/HTMLExtractor.swift` | `Sources/WebSearchCore/Fetch/HTMLExtractor.swift:63` (markers at `:36`, `:40`) | Hyphenated boilerplate markers are inert, and the prefix clause is unreachable | logic | DONE | this Mac (arm64) | Phase B L3-9 |
 | B62 | S3 | `WebSearchCore/Fetch/URLPolicy.swift` | `Sources/WebSearchCore/Fetch/URLPolicy.swift:435` | `isReserved` blocks all of `192.0.0.0/16` while documenting `192.0.0.0/24` | logic | DONE | this Mac (arm64) | Phase B L3-10 |
 | B63 | S3 | `WebSearchCore` / `Search` (`ResultNormalizer`) | `Sources/WebSearchCore/Search/ResultNormalizer.swift:155` | Entity decoding loops over its own output, so `&amp;lt;` becomes a live `<` in text returned to the model | bug | DONE | this Mac (arm64) | Phase B L4-14 |
-| B64 | S3 | `WebSearchCore/Monitor/NodeProbe.swift` | `Sources/WebSearchCore/Monitor/NodeProbe.swift:102` (catch at `:133-142`) | Malformed JSON from a node is reported as "unreachable" | bug | START | this Mac (arm64) | Phase B L3-12 |
+| B64 | S3 | `WebSearchCore/Monitor/NodeProbe.swift` | `Sources/WebSearchCore/Monitor/NodeProbe.swift:102` (catch at `:133-142`) | Malformed JSON from a node is reported as "unreachable" | bug | DONE | this Mac (arm64) | Phase B L3-12 |
 | B65 | S3 | `WebSearchCore/Monitor/MonitorModel.swift`, `Sources/MCPSMonitor/main.swift` | `Sources/WebSearchCore/Monitor/MonitorModel.swift:50` | `NodeStatus.State.skipped` is unreachable dead state | dead | DONE | this Mac (arm64) | Phase B L3-13 |
 | B66 | S3 | `WebSearchCore/Providers/*` | `Sources/WebSearchCore/Providers/MojeekProvider.swift:219` (and `ExaProvider.swift:174`, `SearXNGProvider.swift:174`, `TavilyProvider.swift:165`, `Bra | Decoded-but-unused vendor DTO fields across five adapters | dead | START | this Mac (arm64) | Phase B L3-14 |
 | B67 | S3 | `WebSearchCore/Monitor/Renderer.swift` | `Sources/WebSearchCore/Monitor/Renderer.swift:273` (data at `:288`) | Node table header and data disagree on the state column width | style | DONE | this Mac (arm64) | Phase B L3-17 |
@@ -215,6 +215,16 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B64 — a non-SearXNG body from a live node was reported as "unreachable"
+
+**Severity S3** (recorded) · **category** bug · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** `NodeProbe.probe` decoded the body with `JSONCoding.decoder().decode(SearXNGProbeResponse.self, …)`, which throws a `DecodingError` for anything that is not a SearXNG payload. That is neither a `SearchError` nor a transport error, so it fell through to the generic `catch` and produced `state: .down, error: "unreachable"`. An instance answering `200 OK` with an HTML error page under a JSON content type, a proxy's own JSON body, or a JSON error object was therefore shown as `DOWN / unreachable` - sending the operator after a network fault that does not exist, exactly the misdiagnosis the adjacent `403` branch was written to avoid.
+
+**The fix.** A dedicated `catch is DecodingError` reports `.degraded` with the parse reason `JSON response was not a SearXNG payload` and the elapsed latency (recomputed inside the catch, because a catch clause does not see the `do` block's locals). `.down`/`unreachable` now covers only genuine transport failures, and a client-level `SearchError` keeps its existing `.down` + `safeDescription` treatment.
+
+**Verification.** The old test pinned the defect by asserting `.down`, so it was replaced rather than left to contradict the fix: `testMalformedBodyIsDegradedNotUnreachable` covers a body that is not JSON at all and `testNonSearXNGJSONIsDegradedNotUnreachable` covers valid JSON of the wrong shape, while `testTransportFailureIsDown` still pins that a real connection failure stays `.down`. Deleting the new catch arm turns both new tests red (`down` vs `degraded`, `"unreachable"` vs the parse reason) and the file was then restored byte-identically (`diff` clean). Debug and release build with 0 warnings under `-warnings-as-errors`; **490 tests, 6 skipped, 0 failures** (489 + 1); `swift-format --strict` and `swiftlint --strict` clean. Artifact: `AUDIT/evidence/B64-malformed-json-reported-unreachable.txt`.
 
 ## B116 — a local throttle that cleared between two reads was reported as a hard skip
 

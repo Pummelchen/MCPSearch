@@ -102,14 +102,32 @@ final class NodeProbeTests: XCTestCase {
         XCTAssertNotNil(result.error)
     }
 
-    func testMalformedBodyIsDown() async {
+    /// A 200 whose body is not a SearXNG payload is a parse failure, not a network one.
+    ///
+    /// The decode threw a `DecodingError`, which is neither a `SearchError` nor a transport
+    /// error, so it fell into the generic catch and was reported as `unreachable` — the same
+    /// misdiagnosis the 403 branch above exists to avoid (ledger B64).
+    func testMalformedBodyIsDegradedNotUnreachable() async {
         let http = MockHTTPClient()
         http.respondJSON("this is not json")
 
         let result = await probe(http)
 
-        XCTAssertEqual(result.state, .down)
-        XCTAssertNotNil(result.error)
+        XCTAssertEqual(result.state, .degraded)
+        XCTAssertNotNil(result.latencyMilliseconds, "the instance answered, so its latency is known")
+        XCTAssertEqual(result.error, "JSON response was not a SearXNG payload")
+    }
+
+    /// Valid JSON of the wrong shape fails the same way as malformed JSON, so an API error
+    /// body served with a 200 is never shown as a network fault (ledger B64).
+    func testNonSearXNGJSONIsDegradedNotUnreachable() async {
+        let http = MockHTTPClient()
+        http.respondJSON(#"{"error":"too many requests"}"#)
+
+        let result = await probe(http)
+
+        XCTAssertEqual(result.state, .degraded)
+        XCTAssertEqual(result.error, "JSON response was not a SearXNG payload")
     }
 }
 

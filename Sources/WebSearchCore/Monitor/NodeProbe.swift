@@ -132,6 +132,23 @@ public struct NodeProbe: Sendable {
                 unavailableEngines: [],
                 error: error.safeDescription
             )
+        } catch is DecodingError {
+            // The instance answered, so it is reachable; what failed is the body. A 200 that
+            // is not a SearXNG payload (an HTML error page served with a JSON content type, or
+            // a proxy's own JSON) used to fall through to the generic catch below and be shown
+            // as "unreachable", which sends an operator after a network fault that does not
+            // exist — the same misdiagnosis the 403 branch above avoids (ledger B64). The
+            // elapsed time is recomputed here because a catch clause does not see the `do`
+            // block's locals, and this path answered.
+            let elapsed = Int((DispatchTime.now().uptimeNanoseconds - started) / 1_000_000)
+            return Result(
+                state: .degraded,
+                latencyMilliseconds: elapsed,
+                resultCount: 0,
+                engines: [],
+                unavailableEngines: [],
+                error: "JSON response was not a SearXNG payload"
+            )
         } catch {
             return Result(
                 state: .down,
