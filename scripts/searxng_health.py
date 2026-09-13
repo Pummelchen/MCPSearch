@@ -77,8 +77,16 @@ def main() -> int:
 
     if status != 200 or not isinstance(payload, dict):
         if args.json:
-            print(json.dumps({"healthy": False, "reason": "unexpected_response",
-                              "status": status, "detail": str(payload)[:200]}))
+            print(
+                json.dumps(
+                    {
+                        "healthy": False,
+                        "reason": "unexpected_response",
+                        "status": status,
+                        "detail": str(payload)[:200],
+                    }
+                )
+            )
         else:
             print(f"UNEXPECTED RESPONSE  HTTP {status}")
             print(f"  {str(payload)[:300]}")
@@ -95,20 +103,27 @@ def main() -> int:
     healthy = bool(results)
 
     if args.json:
-        print(json.dumps({
-            "healthy": healthy,
-            "base_url": args.base_url,
-            "result_count": len(results),
-            "engines": dict(engines.most_common()),
-            "unresponsive_engines": unresponsive,
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "healthy": healthy,
+                    "base_url": args.base_url,
+                    "result_count": len(results),
+                    "engines": dict(engines.most_common()),
+                    "unresponsive_engines": unresponsive,
+                },
+                indent=2,
+            )
+        )
         return 0 if healthy else 1
 
     print(f"instance   {args.base_url}   HTTP {status}, JSON enabled")
     print(f"query      {args.query!r}")
     print(f"results    {len(results)}")
     if engines:
-        print("engines    " + ", ".join(f"{name} ({count})" for name, count in engines.most_common()))
+        print(
+            "engines    " + ", ".join(f"{name} ({count})" for name, count in engines.most_common())
+        )
     else:
         print("engines    none contributed")
     if unresponsive:

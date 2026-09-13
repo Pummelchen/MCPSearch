@@ -1,0 +1,79 @@
+# A11 — Python tooling, evidence for the work done (task still open)
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13 · CPython 3.14.7, ruff 0.16.7, pyright 1.1.414
+
+## Correction to the finding's numbers
+
+The Phase B baseline text for A11 was read as "70 ruff findings"; the committed baseline log says
+**18 errors**, and the extra lines were the report's context lines. The corrected baseline: ruff 18
+errors + 4 files unformatted, pyright 2 errors.
+
+## Ruff: an explicit, reproducible rule set
+
+`ruff.toml` selects rules explicitly (E, F, W, I, UP, B, BLE, SIM, RUF, PERF, FURB) instead of
+inheriting whichever default the installed ruff happens to have — with ruff 0.16.7 the implicit
+default reports BLE001/S110/UP041/FURB/RUF findings that an older ruff did not, which is not a
+standard a repository can rely on. `S` (bandit) is excluded on purpose and the reason is in the
+file: these scripts exist to drive subprocesses, sockets and a PTY, and the security questions
+that matter here are covered by the semgrep pass and the Swift SSRF tests.
+
+All 18 findings fixed:
+
+```
+  4x EXE001  shebang without the executable bit   -> chmod 755 scripts/*.py
+  2x BLE001  blind except                        -> (OSError, ValueError), or a documented noqa on
+                                                   the top-level harness handler, whose whole job
+                                                   is to report *any* unexpected exception
+  2x S110    try/except/pass                     -> contextlib.suppress(OSError, ValueError)
+  1x SIM105  try/except/pass                    -> contextlib.suppress(ProcessLookupError)
+ 10x auto   F541, UP041, FURB167, FURB188, RUF100, FURB110
+```
+
+```
+$ ruff check scripts && ruff format --check scripts
+All checks passed!
+4 files already formatted
+```
+
+## Pyright: two real type bugs found and fixed
+
+`pyrightconfig.json` (include `scripts`, pythonVersion 3.14, `typeCheckingMode: standard`,
+reportMissingTypeStubs off) and both errors it reported were genuine:
+
+1. `mcp_smoke.py:237` was annotated `-> None` but returns the error text. The annotation was
+   wrong, not the code: corrected to `-> str`.
+2. `monitor_tty_smoke.py:144` overrode `BaseHTTPRequestHandler.log_message(self, *args)`,
+   which does not accept the base's keyword-capable `format` parameter. Signature now matches.
+
+```
+$ pyright
+0 errors, 0 warnings, 0 informations
+```
+
+## Runtime verification (the scripts are the CI harnesses)
+
+```
+$ python3 scripts/mcp_smoke.py  <server>          SMOKE TEST PASSED
+$ python3 scripts/mcp_smoke.py --http <server>   SMOKE TEST PASSED
+$ python3 scripts/monitor_tty_smoke.py <mcps-mon> MONITOR TTY SMOKE PASSED
+$ python3 scripts/soak.py --help                  exit 0
+$ python3 -m py_compile scripts/*.py              OK
+```
+
+Both smoke harnesses were run with the provider environment scrubbed (`env -i`, only HOME/PATH),
+so no live system was involved. One repair along the way: a `ruff --fix` pass left
+`except OSError, ValueError:` (Python 2 syntax) in `mcp_smoke.py`; caught by running the harness,
+which is exactly why the harness was run rather than only the linter.
+
+## What is still open in this task
+
+`typeCheckingMode` is `standard`, not `strict`. Raising it to strict currently reports **83 errors**:
+reportUnknownMemberType 38, reportUnknownArgumentType 19, reportUnknownVariableType 16,
+reportUnknownLambdaType 8, reportUnknownParameterType 1, reportMissingParameterType 1 — spread over
+`mcp_smoke.py` (34), `monitor_tty_smoke.py` (36) and `searxng_health.py` (13). The scripts are
+already annotated (only two defs lack annotations), so this is `Any`-propagation work: typed locals
+and casts where the standard library hands back `Any` (json, subprocess, pty).
+
+The task therefore stays **PROGRESS** rather than DONE: the ruff half and the type-check gate at
+`standard` are complete and verified, and the strict upgrade is the remainder of the same task, not a
+narrowing of it.

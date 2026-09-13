@@ -30,6 +30,7 @@ With no argument the binary is located via ``swift build -c release --show-bin-p
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import fcntl
 import http.server
@@ -134,14 +135,14 @@ class StubSearXNG:
     @staticmethod
     def _handler(payload: bytes) -> type[http.server.BaseHTTPRequestHandler]:
         class Handler(http.server.BaseHTTPRequestHandler):
-            def do_GET(self) -> None:  # noqa: N802 (stdlib naming)
+            def do_GET(self) -> None:
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
                 self.wfile.write(payload)
 
-            def log_message(self, *args: Any) -> None:
+            def log_message(self, format: str, *args: Any) -> None:
                 """Keep the stub quiet: its chatter would corrupt our transcript."""
 
         return Handler
@@ -163,11 +164,7 @@ def complete_frames(transcript: str) -> list[str]:
     how an assertion can pass locally and fail in CI: it was inspecting a frame whose node
     section had not been written yet.
     """
-    return [
-        piece
-        for piece in transcript.split(CURSOR_HOME)[1:]
-        if CLEAR_TO_END_OF_SCREEN in piece
-    ]
+    return [piece for piece in transcript.split(CURSOR_HOME)[1:] if CLEAR_TO_END_OF_SCREEN in piece]
 
 
 class Session:
@@ -248,10 +245,9 @@ class Session:
         raise Failure(f"timed out waiting for {description}")
 
     def close(self) -> None:
-        try:
+        # The process may already be gone; terminating it then raises ProcessLookupError.
+        with contextlib.suppress(ProcessLookupError):
             self.process.terminate()
-        except ProcessLookupError:
-            pass
         try:
             self.process.wait(timeout=5)
         except subprocess.TimeoutExpired:
@@ -321,8 +317,7 @@ def run(binary: str) -> None:
         plain = session.frame_text()
         session.send("e")
         session.wait_for(
-            lambda s: not engine_column(s.frame_text())
-            and "unavailable:" not in s.frame_text(),
+            lambda s: not engine_column(s.frame_text()) and "unavailable:" not in s.frame_text(),
             "the engine breakdown to be hidden, header included",
         )
         session.send("e")
@@ -368,13 +363,15 @@ def run(binary: str) -> None:
         )
         require("final:" in ANSI.sub("", tail), "the run should end with its summary")
 
-        print(f"  startup hid the cursor and cleared the screen")
-        print(f"  frames home the cursor and clear to the end of the line and screen")
-        print(f"  colour on by default; `c` switched it off ({len(session.frames())} frames painted)")
-        print(f"  `e` hid and restored the engine breakdown")
-        print(f"  `r` repainted immediately")
-        print(f"  `p` probed providers and the stub answered OK")
-        print(f"  `q` exited 0, restored the cursor and printed the summary")
+        print("  startup hid the cursor and cleared the screen")
+        print("  frames home the cursor and clear to the end of the line and screen")
+        print(
+            f"  colour on by default; `c` switched it off ({len(session.frames())} frames painted)"
+        )
+        print("  `e` hid and restored the engine breakdown")
+        print("  `r` repainted immediately")
+        print("  `p` probed providers and the stub answered OK")
+        print("  `q` exited 0, restored the cursor and printed the summary")
     finally:
         session.close()
         stub.stop()
@@ -392,7 +389,9 @@ def main() -> int:
     except Failure as error:
         print(f"MONITOR TTY SMOKE FAILED: {error}", file=sys.stderr)
         return 1
-    except Exception as error:  # pragma: no cover - surfaced rather than swallowed
+    # Any other exception is reported as a failure rather than a traceback: that is the point of a
+    # top-level harness handler, so the broad catch is deliberate rather than an oversight.
+    except Exception as error:  # noqa: BLE001  # pragma: no cover - surfaced, not swallowed
         print(f"MONITOR TTY SMOKE ERRORED: {error!r}", file=sys.stderr)
         return 1
 

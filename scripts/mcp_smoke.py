@@ -162,7 +162,7 @@ class Server:
         assert self.process.stderr is not None
         try:
             return self.process.stderr.read()
-        except Exception:  # pragma: no cover - best effort in a failure path
+        except OSError, ValueError:  # pragma: no cover - best effort in a failure path
             return "<unavailable>"
 
     def close(self) -> int:
@@ -234,7 +234,7 @@ def check_tools(server: Server) -> None:
     print(f"  tools/list ok ({len(tools)} tools, schema verified)")
 
 
-def check_unconfigured_search_is_a_tool_error(server: Server) -> None:
+def check_unconfigured_search_is_a_tool_error(server: Server) -> str:
     """With no provider configured, a search must fail cleanly and helpfully."""
     response = server.request(
         "tools/call",
@@ -259,9 +259,14 @@ def check_unconfigured_search_is_a_tool_error(server: Server) -> None:
 # ---------------------------------------------------------------------------
 
 
-def http_exchange(port: int, body: dict[str, Any], session: str | None = None,
-                  accept: str = "application/json, text/event-stream",
-                  path: str = "/mcp", origin: str | None = None):
+def http_exchange(
+    port: int,
+    body: dict[str, Any],
+    session: str | None = None,
+    accept: str = "application/json, text/event-stream",
+    path: str = "/mcp",
+    origin: str | None = None,
+):
     """POST one JSON-RPC message and return (status, headers, messages).
 
     The response is either a complete JSON body (initialize) or a chunked
@@ -287,7 +292,7 @@ def http_exchange(port: int, body: dict[str, Any], session: str | None = None,
         while True:
             try:
                 chunk = connection.recv(65536)
-            except socket.timeout:
+            except TimeoutError:
                 break
             if not chunk:
                 break
@@ -317,11 +322,11 @@ def http_exchange(port: int, body: dict[str, Any], session: str | None = None,
                 break
             if size == 0:
                 break
-            pieces.append(remaining[index + 2:index + 2 + size])
-            remaining = remaining[index + 2 + size + 2:]
+            pieces.append(remaining[index + 2 : index + 2 + size])
+            remaining = remaining[index + 2 + size + 2 :]
         rest = "".join(pieces)
 
-    messages = [json.loads(m) for m in re.findall(r"^data: (\{.*\})$", rest, re.M)]
+    messages = [json.loads(m) for m in re.findall(r"^data: (\{.*\})$", rest, re.MULTILINE)]
     if not messages and rest.strip().startswith("{"):
         messages = [json.loads(rest)]
     return status, headers, messages
@@ -332,12 +337,10 @@ def wait_for_health(port: int, timeout: float = 20.0) -> None:
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
-            with urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/health", timeout=2
-            ) as response:
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/health", timeout=2) as response:
                 if response.status == 200:
                     return
-        except (urllib.error.URLError, ConnectionError, OSError):
+        except urllib.error.URLError, ConnectionError, OSError:
             time.sleep(0.25)
     raise Failure(f"HTTP transport did not become healthy on port {port}")
 
@@ -390,8 +393,10 @@ def run_http_smoke(binary: str) -> None:
         session = headers.get("mcp-session-id")
         if not session:
             raise Failure("HTTP initialize did not return an Mcp-Session-Id header")
-        print(f"  initialize ok over HTTP (session issued, protocol "
-              f"{messages[0]['result']['protocolVersion']})")
+        print(
+            f"  initialize ok over HTTP (session issued, protocol "
+            f"{messages[0]['result']['protocolVersion']})"
+        )
 
         status, _, _ = http_exchange(
             port, {"jsonrpc": "2.0", "method": "notifications/initialized"}, session

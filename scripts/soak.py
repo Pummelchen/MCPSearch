@@ -23,6 +23,7 @@ credentials are absent are simply reported as unconfigured.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import subprocess
@@ -189,10 +190,10 @@ class Server:
 
     def close(self) -> str:
         assert self.process.stdin is not None
-        try:
+        # The child may already have closed its end; closing a pipe then raises OSError or
+        # ValueError, and there is nothing to recover.
+        with contextlib.suppress(OSError, ValueError):
             self.process.stdin.close()
-        except Exception:
-            pass
         try:
             self.process.wait(timeout=30)
         except subprocess.TimeoutExpired:
@@ -214,7 +215,11 @@ def build_environment(providers: set[str]) -> dict[str, str]:
     # Anything not explicitly requested is switched off, so the run is unambiguous.
     disabled = sorted(set(ALL_PROVIDERS) - providers)
     if disabled:
-        already = [p.strip() for p in environment.get("SEARCH_DISABLED_PROVIDERS", "").split(",") if p.strip()]
+        already = [
+            p.strip()
+            for p in environment.get("SEARCH_DISABLED_PROVIDERS", "").split(",")
+            if p.strip()
+        ]
         for provider in disabled:
             if provider not in already:
                 already.append(provider)
@@ -238,8 +243,7 @@ def parse_dotenv(contents: str) -> dict[str, str]:
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
-        if line.startswith("export "):
-            line = line[len("export "):]
+        line = line.removeprefix("export ")
         if "=" not in line:
             continue
         key, _, value = line.partition("=")
@@ -300,11 +304,15 @@ def main() -> int:
     parser.add_argument("binary", nargs="?", default=None)
     parser.add_argument("--queries", type=int, default=len(QUERIES))
     parser.add_argument("--mode", default="balanced", choices=["fast", "balanced", "thorough"])
-    parser.add_argument("--pause", type=float, default=1.0,
-                        help="seconds between queries, to imitate real usage")
-    parser.add_argument("--providers", default="tavily,duckduckgo,parallel",
-                        help="comma-separated providers to run; every other provider "
-                             "is explicitly disabled so the run matches this set")
+    parser.add_argument(
+        "--pause", type=float, default=1.0, help="seconds between queries, to imitate real usage"
+    )
+    parser.add_argument(
+        "--providers",
+        default="tavily,duckduckgo,parallel",
+        help="comma-separated providers to run; every other provider "
+        "is explicitly disabled so the run matches this set",
+    )
     parser.add_argument("--max-results", type=int, default=5)
     args = parser.parse_args()
 
@@ -312,8 +320,12 @@ def main() -> int:
         binary = args.binary
     else:
         try:
-            out = subprocess.run(["swift", "build", "-c", "release", "--show-bin-path"],
-                                 capture_output=True, text=True, check=True).stdout.strip()
+            out = subprocess.run(
+                ["swift", "build", "-c", "release", "--show-bin-path"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
         except subprocess.CalledProcessError as error:
             print(f"could not determine build path: {error}", file=sys.stderr)
             return 2
@@ -349,12 +361,9 @@ def main() -> int:
         server.notify("notifications/initialized")
 
         # Baseline: what the server thinks is usable before any traffic.
-        status = server.request(
-            "tools/call", {"name": "web_search_status", "arguments": {}}
-        )
+        status = server.request("tools/call", {"name": "web_search_status", "arguments": {}})
         initial = {
-            p["provider"]: p["status"]
-            for p in status["result"]["structuredContent"]["providers"]
+            p["provider"]: p["status"] for p in status["result"]["structuredContent"]["providers"]
         }
         print("provider status at start:")
         for name, state in sorted(initial.items()):
@@ -391,9 +400,7 @@ def main() -> int:
             payload = response.get("result", {})
             if payload.get("isError"):
                 errors += 1
-                text = " ".join(
-                    block.get("text", "") for block in payload.get("content", [])
-                )
+                text = " ".join(block.get("text", "") for block in payload.get("content", []))
                 print(f"{index:>3} {elapsed:>6}  ERROR  {text[:60]}")
             else:
                 structured = payload.get("structuredContent", {})
@@ -406,8 +413,10 @@ def main() -> int:
                 for failure in failed:
                     failures_by_provider[failure["provider"]] += 1
                     failures_by_category[failure["category"]] += 1
-                mark = "" if not failed else " ".join(
-                    f"{f['provider']}:{f['category']}" for f in failed
+                mark = (
+                    ""
+                    if not failed
+                    else " ".join(f"{f['provider']}:{f['category']}" for f in failed)
                 )
                 print(
                     f"{index:>3} {elapsed:>6} {count:>2} {','.join(used):<22} "
@@ -418,9 +427,7 @@ def main() -> int:
                 time.sleep(args.pause)
 
         wall = time.time() - started
-        status = server.request(
-            "tools/call", {"name": "web_search_status", "arguments": {}}
-        )
+        status = server.request("tools/call", {"name": "web_search_status", "arguments": {}})
         final = status["result"]["structuredContent"]["providers"]
 
         print("\n" + "=" * 78)
@@ -432,8 +439,10 @@ def main() -> int:
         print(f"  wall time          {wall:.1f}s  ({wall / max(1, len(queries)):.2f}s/query)")
         if latencies:
             ordered = sorted(latencies)
-            print(f"  latency min/med/max {ordered[0]}ms / "
-                  f"{ordered[len(ordered) // 2]}ms / {ordered[-1]}ms")
+            print(
+                f"  latency min/med/max {ordered[0]}ms / "
+                f"{ordered[len(ordered) // 2]}ms / {ordered[-1]}ms"
+            )
 
         print("\n  provider participation (queries each contributed to):")
         for name in sorted(providers):
@@ -443,17 +452,20 @@ def main() -> int:
         if not failures_by_provider:
             print("    none")
         for name, count in failures_by_provider.most_common():
-            print(f"    {name:16} {count:>3}  (categories: "
-                  f"{', '.join(sorted({c for c, _ in failures_by_category.items()}))})")
+            print(
+                f"    {name:16} {count:>3}  (categories: "
+                f"{', '.join(sorted({c for c, _ in failures_by_category.items()}))})"
+            )
         if failures_by_category:
-            print("    by category: " + ", ".join(
-                f"{c}={n}" for c, n in failures_by_category.most_common()
-            ))
+            print(
+                "    by category: "
+                + ", ".join(f"{c}={n}" for c, n in failures_by_category.most_common())
+            )
 
         print("\n  provider health at end:")
         for provider in final:
             name = provider["provider"]
-            if provider["requests"] or provider["status"] not in ("not_configured",):
+            if provider["requests"] or provider["status"] != "not_configured":
                 print(
                     f"    {name:16} {provider['status']:14} "
                     f"req={provider['requests']:>3} ok={provider['successes']:>3} "
@@ -463,7 +475,7 @@ def main() -> int:
 
         stderr = server.close()
         leaked = find_credential_leaks(stderr, load_secret_values())
-        print(f"\n  credential leak in stderr: {leaked if leaked else 'none'}")
+        print(f"\n  credential leak in stderr: {leaked or 'none'}")
 
         if leaked:
             # A credential in a diagnostic is a defect, not an observation to interpret.
