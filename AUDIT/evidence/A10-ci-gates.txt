@@ -53,3 +53,29 @@ cannot rot unnoticed.
 
 **Not claimed:** a green CI run at the time this file was written. The dispatch result is
 recorded in `AUDIT/ledger.md` as soon as the run finishes; until then the evidence is local.
+
+## The gates ran in CI, on this branch
+
+The workflow triggers on `main` pushes, PRs to `main` and `workflow_dispatch`, so a branch push runs
+nothing. It was therefore dispatched explicitly on the audit branch — the first CI run this work has
+ever had:
+
+```
+$ gh workflow run CI --ref audit/2026-09-13
+$ gh run watch 34735662690 --exit-status
+✓ build-and-test      (11 steps, including "Build (debug, warnings are errors)",
+                       "Coverage floor (Sources/)" and "Build (release, warnings are errors)")
+✓ static-analysis     (10 steps: swift-format, SwiftLint, ruff, pyright, semgrep,
+                       shellcheck, gitleaks, osv-scanner)
+exit 0    https://github.com/Pummelchen/MCPSearch/actions/runs/34735662690   commit 3dee92f
+```
+
+The coverage step reported the same number as the local run:
+
+```
+Sources/ line coverage: 6864/8062 = 85.1 % (floor 80 %)
+```
+
+The `static-analysis` job finished in 36 s, so the extra gate costs a fraction of the build job's
+budget. Note the run predates the B38 permissions change and the evidence-text repair, both of
+which are documentation/config-only.

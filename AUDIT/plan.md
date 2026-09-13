@@ -114,6 +114,12 @@ Any finding discovered at any time gets a new ledger id and the same treatment.
 
 ## Phase E — final verification (not started)
 
+**CI status on this branch.** A `workflow_dispatch` run of the branch's workflow succeeded:
+[run 34735662690](https://github.com/Pummelchen/MCPSearch/actions/runs/34735662690) at `3dee92f`,
+both jobs green, coverage `6864/8062 = 85.1 %` against the 80 % floor. Branch pushes still trigger
+nothing (the workflow listens on `main` pushes, PRs to `main` and manual dispatch), so the PR is
+what will keep exercising it.
+
 **CI coverage note (measured this round).** `.github/workflows/ci.yml` triggers on
 `push: branches: [main]`, `pull_request: branches: [main]` and `workflow_dispatch`. Pushing the
 audit branch therefore starts **no CI run at all** — the latest runs on GitHub are all from `main`
