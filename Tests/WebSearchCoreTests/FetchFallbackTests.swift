@@ -122,6 +122,66 @@ final class FetchFallbackTests: XCTestCase {
         XCTAssertTrue(request.url.absoluteString.contains("reader.invalid"))
     }
 
+    /// A reader that fails must not lose the native extraction, and must say so.
+    ///
+    /// The fallback chain's last arm — the reader threw, but the native fetch produced *something*
+    /// — had no test: the existing reader-failure tests all start from a direct fetch that
+    /// returned nothing. A regression here would either drop a serviceable page or hide that the
+    /// reader was consulted at all (ledger B33).
+    func testAReaderFailureReturnsTheThinNativeExtractionWithAWarning() async throws {
+        let server = try htmlServer(thinHTML())
+        let jinaHTTP = MockHTTPClient()
+        jinaHTTP.on("jina.reader") { _ in
+            throw HTTPError.connectionFailed(label: "jina.reader", reason: "reader is down")
+        }
+        let fetcher = WebFetcher(
+            direct: directFetcher(allowPrivateNetwork: true),
+            jina: jinaFetcher(jinaHTTP),
+            log: .disabled
+        )
+
+        let result = try await fetcher.open(FetchRequest(url: server.baseURL))
+
+        XCTAssertEqual(result.method, .htmlExtraction, "the native extraction is what we have")
+        XCTAssertEqual(result.title, "Thin")
+        XCTAssertTrue(result.text.contains("Short."), result.text)
+        XCTAssertTrue(
+            result.warnings.contains { $0.contains("Jina Reader fallback was unavailable") },
+            "the reader failure must be visible to the caller: \(result.warnings)"
+        )
+        XCTAssertFalse(
+            result.warnings.contains { $0.contains("used Jina Reader instead") },
+            "a failed reader was not used: \(result.warnings)"
+        )
+        XCTAssertEqual(jinaHTTP.requests(label: "jina.reader").count, 1, "the reader was tried once")
+    }
+
+    /// When the reader fails and the native fetch failed too, the caller sees the *direct*
+    /// reason — a DNS failure or a refused connection, not a generic extraction failure.
+    func testAReaderFailureWithNoNativeResultSurfacesTheDirectError() async throws {
+        let server = try LoopbackServer(responses: [.init(status: 503, body: "unavailable")])
+        let jinaHTTP = MockHTTPClient()
+        jinaHTTP.on("jina.reader") { _ in
+            throw HTTPError.connectionFailed(label: "jina.reader", reason: "reader is down")
+        }
+        let fetcher = WebFetcher(
+            direct: directFetcher(allowPrivateNetwork: true),
+            jina: jinaFetcher(jinaHTTP),
+            log: .disabled
+        )
+
+        do {
+            _ = try await fetcher.open(FetchRequest(url: server.baseURL))
+            XCTFail("expected both paths to fail")
+        } catch let error as SearchError {
+            guard case .fetchFailed(let url, let reason) = error else {
+                return XCTFail("the direct failure must surface, got \(error)")
+            }
+            XCTAssertEqual(url, server.baseURL)
+            XCTAssertTrue(reason.contains("503"), reason)
+        }
+    }
+
     /// A PDF is not text. It used to be on the allow-list, so the body was decoded as UTF-8 or
     /// Latin-1 and handed to the model as tens of thousands of characters of `%PDF-1.7 … stream`
     /// gibberish labelled `raw_text`. There is no PDF extraction here, so the direct fetch must
