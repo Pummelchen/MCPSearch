@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 129 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 93 |
-| START (reproduced, expected behaviour written) | 36 |
+| DONE | 94 |
+| START (reproduced, expected behaviour written) | 35 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 84** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 48 are DONE and 36 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 49 are DONE and 35 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -158,7 +158,7 @@ waived in writing.
 | B109 | S3 | `WebSearchCore` / `Search` (`RankFusion`) | `Sources/WebSearchCore/Search/RankFusion.swift:161-162` | The response-level resale discount is applied to every result of an aggregator response, defeating the per-result refinement the code documents | logic | DONE | this Mac (arm64) | handover re-read L2 |
 | B110 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, `web_answer` input) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:275-281` | `web_answer`'s `provider` argument lost the enum that `web_search`'s `provider` declares, though the schema documents itself as a mirror | logic | START | this Mac (arm64) | handover re-read L1 |
 | B111 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, nullable enums) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:62-66`, `:83-93`, `:94-101`, `:270-274` | Nullable enum arguments declare `["string", "null"]` with an `enum` that excludes `null`, so a strict client cannot legally send the null the design depends on | logic | START | this Mac (arm64) | handover re-read L1 |
-| B112 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, `web_search_status` input) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:350-358` | `statusInput` is the only object schema in the file that omits `required` | style | START | this Mac (arm64) | handover re-read L1 |
+| B112 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, `web_search_status` input) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:350-358` | `statusInput` is the only object schema in the file that omits `required` | style | DONE | this Mac (arm64) | handover re-read L1 |
 | B113 | S3 | `WebSearchCore` / `Support` + `SwiftWebSearchMCP` (`main`) | `Sources/SwiftWebSearchMCP/main.swift:16` and `:98` | Configuration is loaded and validated before the command line is parsed, so an unreadable config file pre-empts `--help` | logic | START | this Mac (arm64) | handover re-read L7 |
 | B114 | S3 | `SwiftWebSearchMCP` (`TransportConfiguration.usage`) | `Sources/WebSearchCore/Support/TransportConfiguration.swift:51-77` | `usage` under-documents the CLI, and the test that claims to check every flag locks the incomplete list in place | docs | START | this Mac (arm64) | handover re-read L7 |
 | B115 | S3 | repository root (`README.md`) | `README.md:120`, provider table `:122-134` | The README undercounts the keyless routes and its Startpage row omits the flag the adapter actually requires | docs | DONE | this Mac (arm64) | handover re-read L7 |
@@ -215,6 +215,40 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B112 — `statusInput` was the only object schema that omitted `required`
+
+**Severity S3** (recorded) · **category** style · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** Every object schema in `Sources/SwiftWebSearchMCP/ToolSchemas.swift`, including
+all the nested ones, declares an explicit `required` list; only the zero-argument `web_search_status`
+input did not. The comment inside `statusInput` shows the author was reasoning about
+strict-validation rules for exactly this schema and covered `properties` while missing `required`,
+so the tool advertised a structurally different contract from every other tool. The repository lint
+could not catch it: it inferred an absent `required` as the empty set and compared that to the
+(also empty) property set, so the omission was invisible to the guard that exists to catch it.
+
+**The fix.** `statusInput` declares `"required": []` — empty because there is nothing to require —
+and the file header bullet now states the rule for both keys. The structural lint was strengthened
+rather than duplicated: the same recursive check that already walks every advertised input and
+output schema now appends a violation when an object schema has no `required` key, and the rule
+table at the top of `SchemaCompatibilityTests` gained the matching row. No public signature changed,
+and no new test method was added: `testAllAdvertisedSchemasSatisfyCrossClientRules` fetches the real
+`tools/list` output from a freshly started server and is now strictly stronger.
+
+**Verification.** Mutation-proven twice. Removing `"required": []` from `statusInput` makes the lint
+fail with exactly `web_search_status.inputSchema: object schema without required`. Leaving the
+defect in place and reverting only the strengthened line makes the same test pass in 0.099 s, which
+is the omission the finding describes and shows the new check is load-bearing rather than incidental.
+Both files were restored from copies and verified byte-identical (`diff` empty, SHA-256 equal to the
+backups). Debug and release build with 0 warnings under `-warnings-as-errors`; **493 tests, 6
+skipped, 0 failures** (unchanged from B109, since this task strengthens an existing test rather than
+adding one); `swift-format --strict` and `swiftlint --strict` clean over 84 files. Artifact:
+`AUDIT/evidence/B112-status-input-required.txt`.
+
+**Noted, not changed.** `testRootIsAlwaysAClosedObject` still asserts `properties` on the root
+without asserting `required`; the recursive walk already covers every root, so a second assertion
+there would be the parallel check the finding asked not to add.
 
 ## B109 — the response-level resale discount overrode the per-result attribution
 

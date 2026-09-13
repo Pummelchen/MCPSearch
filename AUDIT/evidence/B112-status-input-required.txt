@@ -1,0 +1,151 @@
+# B112 — `statusInput` was the only object schema that omitted `required`
+
+Host: this Mac (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## What was wrong
+
+Every object schema in `Sources/SwiftWebSearchMCP/ToolSchemas.swift` — including every nested
+one — declares an explicit `required` list. Only the zero-argument `web_search_status` input did
+not:
+
+```swift
+// ToolSchemas.swift, before
+public static var statusInput: Value {
+    [
+        "type": "object",
+        // A zero-argument tool still declares `properties`. An object schema with no
+        // `properties` key at all is rejected by strict validation.
+        "properties": Value.object([:]),
+        "additionalProperties": false,
+    ]
+}
+```
+
+The comment shows the author was reasoning about strict-validation rules for exactly this schema
+and covered `properties` while missing `required`, so the tool advertised a structurally different
+contract from every other tool.
+
+The guard that exists to catch this could not: it inferred an absent `required` as the empty set,
+then compared it to the (also empty) property set, so the omission was invisible.
+
+```swift
+// SchemaCompatibilityTests.swift, before
+let properties = Set((object["properties"] as? [String: Any])?.keys ?? [:].keys)
+let required = Set(object["required"] as? [String] ?? [])
+if properties != required { ... }
+```
+
+## The fix
+
+`statusInput` declares both keys, with `required` empty because there is nothing to require. The
+file's own header bullet now states the rule for both keys.
+
+```
+$ git diff -- Sources/SwiftWebSearchMCP/ToolSchemas.swift
+@@ -350,9 +351,12 @@ public enum ToolSchemas {
+     public static var statusInput: Value {
+         [
+             "type": "object",
+-            // A zero-argument tool still declares `properties`. An object schema with no
+-            // `properties` key at all is rejected by strict validation.
++            // A zero-argument tool still declares `properties` and `required`: an object
++            // schema with no `properties` key at all is rejected by strict validation, and
++            // the schema lint requires every object to carry an explicit `required` list
++            // rather than reading an absent one as empty (ledger B112).
+             "properties": Value.object([:]),
++            "required": [],
+             "additionalProperties": false,
+         ]
+     }
+```
+
+The structural lint was strengthened rather than duplicated: the same recursive check that already
+walks every advertised input and output schema now requires the key to be present, instead of
+treating absence as an empty list. The rule is also added to the doc table at the top of the test
+file.
+
+```
+$ git diff -- Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift
+@@ -136,6 +137,13 @@ final class SchemaCompatibilityTests: XCTestCase {
+                 if object["additionalProperties"] as? Bool != false {
+                     found.append("\(path): `additionalProperties` must be false")
+                 }
++                // An absent `required` must not be read as "the empty set": that made a
++                // zero-argument object indistinguishable from one that simply forgot the key.
++                // The contract is about the declared keyword, so every object schema must
++                // carry it, even when there is nothing to require (ledger B112).
++                if object["required"] == nil {
++                    found.append("\(path): object schema without `required`")
++                }
+                 let properties = Set((object["properties"] as? [String: Any])?.keys ?? [:].keys)
+                 let required = Set(object["required"] as? [String] ?? [])
+                 if properties != required {
+```
+
+No new test method was added: `testAllAdvertisedSchemasSatisfyCrossClientRules` is the lint that
+already walks the real `tools/list` output, and it is now strictly stronger. The advertised schema
+is fetched from a freshly started `SwiftWebSearchMCP` over stdio, so the check sees what a client
+sees.
+
+## Proof the lint can fail (mutation, not assertion)
+
+M1 — remove `"required": []` from `statusInput` (the original defect), with the strengthened lint in
+place:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter "SchemaCompatibilityTests/testAllAdvertisedSchemasSatisfyCrossClientRules"
+Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift:192: error: -[WebSearchCoreTests.SchemaCompatibilityTests testAllAdvertisedSchemasSatisfyCrossClientRules] : XCTAssertTrue failed - schemas violate cross-client rules:
+  web_search_status.inputSchema: object schema without `required`
+Test Case '-[WebSearchCoreTests.SchemaCompatibilityTests testAllAdvertisedSchemasSatisfyCrossClientRules]' failed (0.862 seconds).
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.862 (0.862) seconds
+```
+
+The violation names the exact schema and the exact missing keyword.
+
+M2 — leave the defect in place and revert only the strengthened line, which is the pre-fix test:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter "SchemaCompatibilityTests/testAllAdvertisedSchemasSatisfyCrossClientRules"
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.099 (0.099) seconds
+```
+
+That is the omission the finding describes: the old lint read the absent key as the empty set and
+passed a schema that declared no `required` at all. It also shows M1's failure comes from the new
+check and not from something incidental, and that the strengthening is load-bearing.
+
+Both files were then restored from copies and verified byte-identical (`diff` empty; SHA-256 of
+each restored file equals its backup's). The class is green again:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter SchemaCompatibilityTests
+	 Executed 6 tests, with 0 failures (0 unexpected) in 1.342 (1.343) seconds
+```
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (5.09s)                                                     0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+	 Executed 493 tests, with 6 tests skipped and 0 failures (0 unexpected)
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (6.06s)                                                     0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+0 diagnostics                                                               exit=0
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 84 files.                    exit=0
+```
+
+The count is 493, unchanged from B109: this task strengthens an existing test rather than adding
+one. Every run reports the same 6 pre-existing environment-gated skips.
+
+## Noted, not changed
+
+`testRootIsAlwaysAClosedObject` still asserts `properties` on the root without asserting
+`required`; the recursive `violations` walk covers every root as well, so a second assertion there
+would be the parallel check the finding asked not to add. No other object schema in the file
+omitted `required` — verified by the strengthened lint passing on the full advertised surface.

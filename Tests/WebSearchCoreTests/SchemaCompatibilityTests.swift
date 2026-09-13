@@ -17,6 +17,7 @@ import XCTest
 /// | no `default` | Not a supported keyword; rejected outright by some OpenAI-compatible deployments. |
 /// | no `oneOf` / `allOf` / `not` | Unsupported; `anyOf` is the permitted combinator. |
 /// | every object declares `properties` | An object schema without it is rejected. |
+/// | every object declares `required` | An absent key must not be read as "the empty set"; the declared set is the contract. |
 /// | every array declares `items` | Required for a well-formed schema. |
 /// | root is a closed object, never a union | Non-object roots are rejected. |
 /// | tool names at most 64 characters | Documented limit across clients. |
@@ -135,6 +136,13 @@ final class SchemaCompatibilityTests: XCTestCase {
                 }
                 if object["additionalProperties"] as? Bool != false {
                     found.append("\(path): `additionalProperties` must be false")
+                }
+                // An absent `required` must not be read as "the empty set": that made a
+                // zero-argument object indistinguishable from one that simply forgot the key.
+                // The contract is about the declared keyword, so every object schema must
+                // carry it, even when there is nothing to require (ledger B112).
+                if object["required"] == nil {
+                    found.append("\(path): object schema without `required`")
                 }
                 let properties = Set((object["properties"] as? [String: Any])?.keys ?? [:].keys)
                 let required = Set(object["required"] as? [String] ?? [])

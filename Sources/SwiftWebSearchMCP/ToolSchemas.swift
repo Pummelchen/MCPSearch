@@ -31,8 +31,9 @@ import WebSearchCore
 ///   on some OpenAI-compatible deployments. Defaults live in the description text and
 ///   are applied by the argument parser.
 /// - **No `oneOf` / `allOf` / `not`.** Combinators, if ever needed, must be `anyOf`.
-/// - **Zero-argument tools still declare `properties`** (as an empty object); an object
-///   schema with no `properties` key is rejected.
+/// - **Zero-argument tools still declare `properties` and `required`** (as an empty object and
+///   an empty array); an object schema with no `properties` key is rejected, and an absent
+///   `required` is not the same contract as an empty one.
 /// - The root is always a closed object, never a union.
 public enum ToolSchemas {
     public static let searchToolName = "web_search"
@@ -350,9 +351,12 @@ public enum ToolSchemas {
     public static var statusInput: Value {
         [
             "type": "object",
-            // A zero-argument tool still declares `properties`. An object schema with no
-            // `properties` key at all is rejected by strict validation.
+            // A zero-argument tool still declares `properties` and `required`: an object
+            // schema with no `properties` key at all is rejected by strict validation, and
+            // the schema lint requires every object to carry an explicit `required` list
+            // rather than reading an absent one as empty (ledger B112).
             "properties": Value.object([:]),
+            "required": [],
             "additionalProperties": false,
         ]
     }
