@@ -97,6 +97,19 @@ was 974 MB created in a synced folder in a few seconds. Every SwiftPM command in
 `--scratch-path ~/Library/Caches/MCPSearch/audit-a01`; `.build` is git-ignored and carries a
 `com.dropbox.ignored` marker so Dropbox leaves it alone, and it must stay empty.
 
+### Committed evidence carries no absolute paths
+
+Baselines and evidence are committed on purpose — a claim with no artifact is a claim — but the
+artifacts are rewritten before they land (B37):
+
+* paths are repository-relative (`.`) or `~`, never `/Users/<name>/...`: the repository's only remote
+  is public, and an absolute path publishes the operator's user name and directory layout;
+* raw dumps that are one line per finding with a path on each line are replaced by a **summary**
+  that keeps the numbers (`baseline/swiftlint-summary.txt`, `baseline/swift-format-lint-summary.txt`)
+  rather than committing megabytes of generated output;
+* scanner reports that would carry matched secret values are never committed — see
+  `baseline/gitleaks-summary.txt` and the note in `AUDIT/plan.md`.
+
 ### How the secret scan is run (and why it is `detect`, not `dir`)
 
 `gitleaks detect --source . --log-opts=--all` scans git-tracked content and its history; that is

@@ -1,0 +1,42 @@
+# B37 — committed baseline evidence published the auditor's absolute paths
+
+Host: this Mac (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+The baselines are committed on purpose — a claim with no artifact is a claim — but they were
+committed as the tools printed them, so the auditing machine's absolute paths (the operator's user
+name and Dropbox layout) appeared on 491 lines of `swiftlint.json`, on the test and analyser logs,
+and throughout a 1.8 MB `swift-format-lint.txt`: one line per diagnostic, each with the same prefix.
+The repository's only remote is public.
+
+## The fix
+
+* **Paths rewritten.** Every committed log under `AUDIT/` now carries repository-relative paths; the
+  prefix is gone and any remaining absolute path is `~`-relative.
+* **Raw dumps summarised.** The two files that were one line per finding — the 172 KB SwiftLint JSON
+  and the 1.8 MB swift-format dump — are replaced by value-free summaries that keep the numbers the
+  audit actually cites: `baseline/swiftlint-summary.txt` (491 findings, 452 warning / 39 error, with
+  the per-rule histogram: `trailing_comma` 251, `identifier_name` 41, `function_body_length` 33,
+  `nesting` 31, `opening_brace` 25, `line_length` 23, `file_length` 19, `type_body_length` 16, …) and
+  `baseline/swift-format-lint-summary.txt` (19 155 diagnostics across 68 files).
+* **Policy recorded.** `AUDIT/environment.md` gained "Committed evidence carries no absolute paths",
+  covering all three rules, including the existing one that scanner reports carrying matched secret
+  values are never committed.
+
+## Verification
+
+```
+$ du -sh AUDIT/baseline
+464K                     # was ~2.5 MB, dominated by the 1.8 MB dump
+
+$ grep -rl '<the home-path prefix>' AUDIT/ | wc -l
+0
+
+$ grep -n "findings per rule" -A 3 AUDIT/baseline/swiftlint-summary.txt
+```
+
+The baseline table in `AUDIT/plan.md` now cites the summaries, the finding record keeps its history
+with a note pointing at this fix, and nothing in the repository references the removed files. The
+Swift suite does not read `AUDIT/` (only the environment-contract test reads `example.env` and
+`scripts/`), so it is unaffected: 477 tests / 6 skipped / 0 failures.

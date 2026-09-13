@@ -30,8 +30,8 @@ Branch: `audit/2026-09-13` from `main` @ `f3dd8d9`. Never force-pushed; `main` i
 | Coverage — `MCPSMonitor` | 29.5 % lines | `coverage-sources.txt` |
 | AddressSanitizer (test suite) | **CRASH** — see A01 | `swift-test-asan.log` |
 | ThreadSanitizer (test suite) | **clean** — 371 executed, 0 data races | `swift-test-tsan.log` |
-| `swiftlint` | 491 findings (251 `trailing_comma`, 41 `identifier_name`, 33 `function_body_length`, …) | `swiftlint.json` |
-| `swift-format lint` | 19 155 diagnostics (default style ≠ project style) | `swift-format-lint.txt` |
+| `swiftlint` | 491 findings (251 `trailing_comma`, 41 `identifier_name`, 33 `function_body_length`, …) | `baseline/swiftlint-summary.txt` |
+| `swift-format lint` | 19 155 diagnostics (default style ≠ project style) | `baseline/swift-format-lint-summary.txt` |
 | `ruff check` (4 scripts) | 70 findings; `ruff format --check` → 4 files would be reformatted | `ruff-check.txt`, `ruff-format.txt` |
 | `pyright` (default mode, 4 scripts) | 2 errors | `pyright.txt` |
 | `shellcheck` (`-S style`) | 13 style notes, 0 warnings/errors | `shellcheck.txt` |

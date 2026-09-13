@@ -55,7 +55,7 @@ Working copy of https://github.com/apple/swift-atomics.git resolved at 1.3.1
 Creating working copy for https://github.com/modelcontextprotocol/swift-sdk.git
 Working copy of https://github.com/modelcontextprotocol/swift-sdk.git resolved at 0.12.1
 Building for debugging...
-[0/52] /Users/andreborchert/Library/Caches/MCPSearch/audit-asan/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift
+[0/52] ~/Library/Caches/MCPSearch/audit-asan/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift
 [1/52] Write sources
 [2/52] Write SwiftWebSearchMCP-entitlement.plist
 [2/52] Write sources
@@ -703,24 +703,24 @@ Test Suite 'HTTPTransportTests' passed at 2026-09-13 09:29:49.336.
 	 Executed 7 tests, with 0 failures (0 unexpected) in 0.978 (0.979) seconds
 Test Suite 'LiveProviderTests' started at 2026-09-13 09:29:49.336.
 Test Case '-[WebSearchCoreTests.LiveProviderTests testInvalidKeyIsClassifiedAsAuthenticationFailure]' started.
-/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/LiveProviderTests.swift:112: -[WebSearchCoreTests.LiveProviderTests testInvalidKeyIsClassifiedAsAuthenticationFailure] : Test skipped - Live tests skipped: set SEARCH_LIVE_TESTS=1 to run tests that spend real provider credits.
+./Tests/WebSearchCoreTests/LiveProviderTests.swift:112: -[WebSearchCoreTests.LiveProviderTests testInvalidKeyIsClassifiedAsAuthenticationFailure] : Test skipped - Live tests skipped: set SEARCH_LIVE_TESTS=1 to run tests that spend real provider credits.
 Test Case '-[WebSearchCoreTests.LiveProviderTests testInvalidKeyIsClassifiedAsAuthenticationFailure]' skipped (0.001 seconds).
 Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveOrchestratedSearchFusesAndCaches]' started.
-/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/LiveProviderTests.swift:112: -[WebSearchCoreTests.LiveProviderTests testLiveOrchestratedSearchFusesAndCaches] : Test skipped - Live tests skipped: set SEARCH_LIVE_TESTS=1 to run tests that spend real provider credits.
+./Tests/WebSearchCoreTests/LiveProviderTests.swift:112: -[WebSearchCoreTests.LiveProviderTests testLiveOrchestratedSearchFusesAndCaches] : Test skipped - Live tests skipped: set SEARCH_LIVE_TESTS=1 to run tests that spend real provider credits.
 Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveOrchestratedSearchFusesAndCaches]' skipped (0.001 seconds).
 Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveSearchReturnsNormalizedResults]' started.
-/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/LiveProviderTests.swift:112: -[WebSearchCoreTests.LiveProviderTests testLiveSearchReturnsNormalizedResults] : Test skipped - Live tests skipped: set SEARCH_LIVE_TESTS=1 to run tests that spend real provider credits.
+./Tests/WebSearchCoreTests/LiveProviderTests.swift:112: -[WebSearchCoreTests.LiveProviderTests testLiveSearchReturnsNormalizedResults] : Test skipped - Live tests skipped: set SEARCH_LIVE_TESTS=1 to run tests that spend real provider credits.
 Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveSearchReturnsNormalizedResults]' skipped (0.000 seconds).
 Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveSearchWithRecencyReturnsDates]' started.
-/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/LiveProviderTests.swift:112: -[WebSearchCoreTests.LiveProviderTests testLiveSearchWithRecencyReturnsDates] : Test skipped - Live tests skipped: set SEARCH_LIVE_TESTS=1 to run tests that spend real provider credits.
+./Tests/WebSearchCoreTests/LiveProviderTests.swift:112: -[WebSearchCoreTests.LiveProviderTests testLiveSearchWithRecencyReturnsDates] : Test skipped - Live tests skipped: set SEARCH_LIVE_TESTS=1 to run tests that spend real provider credits.
 Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveSearchWithRecencyReturnsDates]' skipped (0.000 seconds).
 Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveStatusReportsTavilyReadyWithoutLeakingKey]' started.
-/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/LiveProviderTests.swift:112: -[WebSearchCoreTests.LiveProviderTests testLiveStatusReportsTavilyReadyWithoutLeakingKey] : Test skipped - Live tests skipped: set SEARCH_LIVE_TESTS=1 to run tests that spend real provider credits.
+./Tests/WebSearchCoreTests/LiveProviderTests.swift:112: -[WebSearchCoreTests.LiveProviderTests testLiveStatusReportsTavilyReadyWithoutLeakingKey] : Test skipped - Live tests skipped: set SEARCH_LIVE_TESTS=1 to run tests that spend real provider credits.
 Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveStatusReportsTavilyReadyWithoutLeakingKey]' skipped (0.000 seconds).
 Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveTestsRequireAnExplicitOptIn]' started.
 Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveTestsRequireAnExplicitOptIn]' passed (0.000 seconds).
 Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveThoroughModeUsesAdvancedDepth]' started.
-/Users/andreborchert/Library/CloudStorage/Dropbox/Coding/MCPSearch/Tests/WebSearchCoreTests/LiveProviderTests.swift:112: -[WebSearchCoreTests.LiveProviderTests testLiveThoroughModeUsesAdvancedDepth] : Test skipped - Live tests skipped: set SEARCH_LIVE_TESTS=1 to run tests that spend real provider credits.
+./Tests/WebSearchCoreTests/LiveProviderTests.swift:112: -[WebSearchCoreTests.LiveProviderTests testLiveThoroughModeUsesAdvancedDepth] : Test skipped - Live tests skipped: set SEARCH_LIVE_TESTS=1 to run tests that spend real provider credits.
 Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveThoroughModeUsesAdvancedDepth]' skipped (0.000 seconds).
 Test Case '-[WebSearchCoreTests.LiveProviderTests testPlaceholderCredentialsAreNotTreatedAsUsable]' started.
 Test Case '-[WebSearchCoreTests.LiveProviderTests testPlaceholderCredentialsAreNotTreatedAsUsable]' passed (0.000 seconds).
@@ -819,7 +819,7 @@ Test Case '-[WebSearchCoreTests.ProviderContractTests testBraveOrdinary422IsNotA
 Test Case '-[WebSearchCoreTests.ProviderContractTests testBraveTaxonomy]' started.
 Test Case '-[WebSearchCoreTests.ProviderContractTests testBraveTaxonomy]' passed (0.000 seconds).
 Test Case '-[WebSearchCoreTests.ProviderContractTests testDuckDuckGoBotChallengeIsAProviderFailure]' started.
-Test Case '-[WebSearchCoreTests.ProviderContractTests testDuerror: Process '/Applications/Xcode.app/Contents/Developer/usr/bin/xctest /Users/andreborchert/Library/Caches/MCPSearch/audit-asan/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.xctest' exited with unexpected signal code 6
+Test Case '-[WebSearchCoreTests.ProviderContractTests testDuerror: Process '/Applications/Xcode.app/Contents/Developer/usr/bin/xctest ~/Library/Caches/MCPSearch/audit-asan/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.xctest' exited with unexpected signal code 6
 ckDuckGoBotChallengeIsAProviderFailure]' passed (0.000 seconds).
 Test Case '-[WebSearchCoreTests.ProviderContractTests testDuckDuckGoChangedMarkupFailsCleanly]' started.
 Test Case '-[WebSearchCoreTests.ProviderContractTests testDuckDuckGoChangedMarkupFailsCleanly]' passed (0.001 seconds).
