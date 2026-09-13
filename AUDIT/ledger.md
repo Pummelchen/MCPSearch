@@ -31,7 +31,7 @@ waived in writing.
 
 | id | sev | unit | file:line | title | category | status | host | discovered-by |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| A01 | **S1** (raised to S0 if it reproduces without ASan) | `WebSearchCore` (scrapers) | `Providers/DuckDuckGoProvider.swift:105`, `Providers/ScraperSupport.swift:100` | HTML parse on a cooperative task stack exhausts the stack and kills the process | unsafe | START | this Mac (arm64) | audit baseline (ASan) |
+| A01 | **S0** | `WebSearchCore` (scrapers + fetch) | `Providers/DuckDuckGoProvider.swift:105`, `Providers/ScraperSupport.swift:100` | HTML parse on a cooperative task stack exhausts the stack and kills the process | unsafe | START | this Mac (arm64) | audit baseline (ASan) |
 | A02 | S2 | repo-wide Swift | `Sources/**`, `Tests/**` | `swift-format` reports 19 155 diagnostics: no config encodes the project's style | style | START | this Mac | audit baseline |
 | A03 | S2 | repo-wide Swift | `Sources/**`, `Tests/**` | SwiftLint reports 491 findings with no repository config; genuine rules drown in style noise | style | START | this Mac | audit baseline |
 | A04 | S1 | `SwiftWebSearchMCP`, `MCPSMonitor` | `Sources/SwiftWebSearchMCP/**`, `Sources/MCPSMonitor/**` | The executables' coverage is unmeasured (0 % / 29.5 %): the MCP surface is driven as a subprocess | test | START | this Mac | audit baseline (coverage) |
@@ -48,8 +48,30 @@ waived in writing.
 
 ## A01 — HTML parse on a cooperative task stack exhausts the stack and kills the process
 
-**Severity** S1, and S0 if it reproduces without a sanitizer · **category** unsafe ·
-**status** START (reproduced; expected behaviour written)
+**Severity S0** — go-live blocker: remote denial of service / crash on a normal path ·
+**category** unsafe · **status** START (reproduced; expected behaviour written)
+
+**It reproduces WITHOUT any sanitizer, and that is what makes it S0.** A deeply nested HTML
+document exhausts the stack and the process dies (SIGBUS, signal 10):
+
+```bash
+swift test --filter 'AUDITDiagnosticsTests/testD_deepNestingThresholdWithoutASan'
+#  AUDIT depth=1000 start / survived (error: malformedResponse)
+#  AUDIT depth=5000  start  ->  exited with unexpected signal code 10
+
+swift test --filter 'AUDITDiagnosticsTests/testE_deepNestingThroughHTMLExtraction'
+#  AUDIT extract depth=20000 start  ->  exited with unexpected signal code 10
+```
+
+* Scraper path (`DuckDuckGoProvider` → `ScraperSupport.parse` → `SwiftSoup.parse`): survives
+  1,000 levels, **dies at 5,000** — about 25 KB of `"<div>"` repeated, on a cooperative task.
+* `web_open` path (`HTMLExtractor.extract`, which parses arbitrary fetched pages): **dies at
+  20,000** levels — about 100 KB of markup.
+
+Both inputs are attacker-controlled and tiny. `web_open` is reachable from any MCP client
+with one tool call against a hostile URL, and the failure mode is **process death**: every
+connected client loses service until the server is restarted. That is why it is graded S0
+rather than the S1 the ASan-only observation first suggested.
 
 **Reproduction**
 
@@ -94,6 +116,14 @@ parser (`Fetch/HTMLExtractor.swift`), so the same guarantee is required there.
 inflates per-frame stack usage; without it the suite passes. But the *class* of input is
 untrusted and remotely reachable, the failure mode is process death (every connected MCP
 client loses service), and the margin is unknown — so this is fixed as a guard, not waived.
+
+**Threshold measurement** (no sanitizer, debug build, this Mac):
+
+| Path | Depth | Result |
+| --- | --- | --- |
+| `DuckDuckGoProvider.search` (HTTP 200, nested markup) | 1,000 | clean `malformedResponse` |
+| same | 5,000 | **SIGBUS — process death** |
+| `HTMLExtractor.extract` | 20,000 | **SIGBUS — process death** |
 
 **Planned fix (Phase C, in this order)**
 

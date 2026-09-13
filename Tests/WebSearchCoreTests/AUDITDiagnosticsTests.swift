@@ -71,3 +71,53 @@ final class AUDITDiagnosticsTests: XCTestCase {
         _ = try? await provider.search(Fixtures.request())
     }
 }
+
+// MARK: - Deep-nesting threshold probe (temporary audit tooling, A01)
+
+extension AUDITDiagnosticsTests {
+
+    /// D. How deep can untrusted HTML be before the parse dies *without* a sanitizer?
+    ///
+    /// Prints the depth to stderr and flushes before each attempt, so a crash identifies
+    /// the threshold. Runs through the DuckDuckGo provider, i.e. on a cooperative task.
+    func testD_deepNestingThresholdWithoutASan() async {
+        for depth in [1_000, 5_000, 20_000, 100_000, 300_000] {
+            FileHandle.standardError.write(Data("AUDIT depth=\(depth) start\n".utf8))
+            let html = String(repeating: "<div>", count: depth) + "text"
+            let http = MockHTTPClient()
+            http.onAny { request in
+                HTTPResponse(
+                    statusCode: 200,
+                    headers: ["content-type": "text/html"],
+                    body: Data(html.utf8),
+                    url: request.url
+                )
+            }
+            let provider = DuckDuckGoProvider(
+                http: http,
+                configuration: Fixtures.configuration(enableScrapers: true),
+                scrapersEnabled: true
+            )
+            do {
+                _ = try await provider.search(Fixtures.request())
+                FileHandle.standardError.write(Data("AUDIT depth=\(depth) survived (results)\n".utf8))
+            } catch {
+                FileHandle.standardError.write(Data("AUDIT depth=\(depth) survived (error: \(error))\n".utf8))
+            }
+        }
+    }
+
+    /// E. The same shape through `web_open`'s extraction path.
+    func testE_deepNestingThroughHTMLExtraction() async {
+        for depth in [20_000, 100_000, 300_000] {
+            FileHandle.standardError.write(Data("AUDIT extract depth=\(depth) start\n".utf8))
+            let html = String(repeating: "<div>", count: depth) + "text"
+            do {
+                _ = try HTMLExtractor.extract(html: html)
+                FileHandle.standardError.write(Data("AUDIT extract depth=\(depth) survived\n".utf8))
+            } catch {
+                FileHandle.standardError.write(Data("AUDIT extract depth=\(depth) survived (error: \(error))\n".utf8))
+            }
+        }
+    }
+}

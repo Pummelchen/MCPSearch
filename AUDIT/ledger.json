@@ -10,21 +10,21 @@
   "tasks": [
     {
       "id": "A01",
-      "severity": "S1",
-      "severity_note": "S1 as reproduced; S0 if it ever reproduces without a sanitizer, or if the trigger is reachable from a plain web_open of a remote page",
+      "severity": "S0",
+      "severity_note": "Go-live blocker: reproduced WITHOUT a sanitizer. Remote denial of service (process death) reachable from one web_open call.",
       "project": "WebSearchCore",
       "module": "Providers (scrapers)",
-      "file_line": "Sources/WebSearchCore/Providers/DuckDuckGoProvider.swift:105 (parser call), Sources/WebSearchCore/Providers/ScraperSupport.swift:100 (SwiftSoup.parse)",
+      "file_line": "Sources/WebSearchCore/Providers/DuckDuckGoProvider.swift:105, Sources/WebSearchCore/Providers/ScraperSupport.swift:100, Sources/WebSearchCore/Fetch/HTMLExtractor.swift:81",
       "title": "HTML parse on a cooperative task stack exhausts the stack and kills the process",
       "category": "unsafe",
       "status": "START",
       "host_used": "MacBook-AB.local (arm64, macOS 26.6.2, Swift 6.3.3)",
       "discovered_by": "audit baseline: swift test --sanitize=address",
-      "evidence_before": "swift test --sanitize=address --filter ProviderContractTests/testDuckDuckGoTaxonomy => signal 6; AddressSanitizer BUS in _platform_memset on thread 'Task 3' (cooperative); lldb cannot unwind past frame 0; fault address is a stack address at the guard page. Attribution: ScraperSupport.parse on the same 23-byte body synchronously = ok; DuckDuckGoProvider async on the same body = crash; DuckDuckGoProvider async on well-formed empty HTML = ok; HTMLExtractorTests ok; testDuckDuckGoScraperEndToEnd ok; TSan clean.",
+      "evidence_before": "Without any sanitizer: `swift test --filter AUDITDiagnosticsTests/testD_deepNestingThresholdWithoutASan` survives depth 1000 (clean malformedResponse) and DIES at depth 5000 with signal 10 (SIGBUS); `testE_deepNestingThroughHTMLExtraction` dies at depth 20000. With ASan the same failure appears at much lower depths and as a BUS in _platform_memset on a cooperative task (Task 3), which is how it was first found: `swift test --sanitize=address --filter ProviderContractTests/testDuckDuckGoTaxonomy` => signal 6. Attribution matrix: ScraperSupport.parse synchronously on the junk body = ok; DDG provider async on the same body = crash; DDG provider async on well-formed empty HTML = ok; TSan clean.",
       "fix_summary": "",
       "evidence_after": "",
       "commit_sha": "",
-      "notes": "Planned fix: (1) reject non-markup bodies before parsing via content-type plus a cheap markup sniff; (2) bound nesting depth and body size before the recursive parser; (3) parse HTML on a dedicated large-stack thread; (4) regression tests for the scraper path and web_open extraction. Temporary diagnostic lives in Tests/WebSearchCoreTests/AUDITDiagnosticsTests.swift and is removed before merge.",
+      "notes": "Reachability: web_open parses arbitrary attacker-controlled pages; the scraper path is opt-in but enabled in some deployments. Depth 5000 is ~25 KB of markup, 20000 is ~100 KB, both far below the 4 MiB response cap, so size limits do not bound depth. Fix: (1) reject non-markup bodies before parsing; (2) bound nesting depth and body size before the recursive parser with a clean ProviderFailure; (3) parse HTML on a dedicated large-stack thread; (4) regression tests at depth > threshold for both paths (they fail before the fix by killing the process). Temporary diagnostics live in Tests/WebSearchCoreTests/AUDITDiagnosticsTests.swift.",
       "blocked_reason": ""
     },
     {
