@@ -554,6 +554,22 @@ final class LoggingTests: XCTestCase {
         XCTAssertEqual(Log.escape("a\nb\tc\"d\\e"), "a\\nb\\tc\\\"d\\\\e")
     }
 
+    /// A value must not be able to drive the terminal through a diagnostic.
+    ///
+    /// Keeping the line intact is not enough: `ESC[2J` and the C1 range were passed through, so a
+    /// query could clear the screen or move the cursor of whoever was reading stderr (ledger B51).
+    func testEscapeMakesControlCharactersInert() {
+        let hostile = "q\u{1B}[2J\u{07}\u{9B}31m\u{200B}"
+        let escaped = Log.escape(hostile)
+        XCTAssertEqual(escaped, "q\\u{1B}[2J\\u{07}\\u{9B}31m\\u{200B}")
+        XCTAssertFalse(
+            escaped.unicodeScalars.contains {
+                $0.properties.generalCategory == .control || $0.properties.generalCategory == .format
+            },
+            "no control or format scalar may survive: \(escaped.debugDescription)"
+        )
+    }
+
     func testLogRespectsLevelThreshold() {
         nonisolated(unsafe) var lines: [String] = []
         let lock = NSLock()

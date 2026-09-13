@@ -106,6 +106,13 @@ public struct Log: Sendable {
     }
 
     /// Escape a value so a single log line stays a single line.
+    /// Render a value so a diagnostic is one line *and* inert.
+    ///
+    /// The escape set used to be the three whitespace controls plus quote and backslash, which kept
+    /// the line intact but let every other control character through: a query containing `ESC[2J`
+    /// or a C1 byte reached the operator's terminal and was executed there (ledger B51). Every `Cc`
+    /// and `Cf` scalar is now escaped — `\u{1B}`, `\u{9B}` — so the value stays readable and cannot
+    /// drive anything.
     static func escape(_ value: String) -> String {
         var escaped = ""
         escaped.reserveCapacity(value.count)
@@ -116,7 +123,15 @@ public struct Log: Sendable {
             case "\n": escaped += "\\n"
             case "\r": escaped += "\\r"
             case "\t": escaped += "\\t"
-            default: escaped.append(character)
+            default:
+                for scalar in character.unicodeScalars {
+                    switch scalar.properties.generalCategory {
+                    case .control, .format:
+                        escaped += String(format: "\\u{%02X}", scalar.value)
+                    default:
+                        escaped.append(Character(scalar))
+                    }
+                }
             }
         }
         return escaped
