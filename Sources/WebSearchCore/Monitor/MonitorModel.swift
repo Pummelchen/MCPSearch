@@ -121,6 +121,13 @@ public struct ProviderStatus: Sendable, Identifiable {
         case healthy
         case failing
         case notConfigured
+        /// The operator switched this provider off, so the monitor does not probe it.
+        ///
+        /// B78 deleted this case because nothing produced it; B76 owns the producer and
+        /// reintroduces it here with its semantics — a provider listed in
+        /// `SEARCH_DISABLED_PROVIDERS` is shown as switched off rather than as ready to
+        /// probe, which is what a dashboard agreeing with server eligibility means.
+        case unavailable
 
         public var label: String {
             switch self {
@@ -128,6 +135,7 @@ public struct ProviderStatus: Sendable, Identifiable {
             case .healthy: "OK"
             case .failing: "FAIL"
             case .notConfigured: "NO KEY"
+            case .unavailable: "OFF"
             }
         }
     }
@@ -164,13 +172,28 @@ public struct ProviderStatus: Sendable, Identifiable {
 
     public var isConfigured: Bool { state != .notConfigured }
 
-    public static func pending(provider: ProviderID, configured: Bool, hint: String) -> ProviderStatus {
+    /// Whether the run expects this provider to serve: it holds its inputs and the operator
+    /// has not switched it off.
+    ///
+    /// `NO KEY` and `OFF` are both expected states rather than failures, so a health check
+    /// that counts providers must not treat a deliberately disabled one as a problem
+    /// (ledger B76, used by the monitor's exit status from ledger B46).
+    public var isInService: Bool { state != .notConfigured && state != .unavailable }
+
+    public static func pending(
+        provider: ProviderID,
+        configured: Bool,
+        enabled: Bool = true,
+        hint: String
+    ) -> ProviderStatus {
         ProviderStatus(
             provider: provider,
             displayName: provider.displayName,
             kind: ProviderStatus.kind(of: provider),
             setupHint: hint,
-            state: configured ? .configuredButIdle : .notConfigured,
+            // Being switched off is reported ahead of a missing credential: it is the
+            // reason the provider will not run, and it is the operator's own doing.
+            state: !enabled ? .unavailable : (configured ? .configuredButIdle : .notConfigured),
             lastLatencyMilliseconds: nil,
             lastResultCount: 0,
             probes: 0,

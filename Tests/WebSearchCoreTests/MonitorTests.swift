@@ -381,6 +381,37 @@ final class RendererTests: XCTestCase {
         XCTAssertTrue(lines.contains("TAVILY_API_KEY"), "the hint should name the variable")
     }
 
+    /// A disabled provider must read as switched off, and must not be invited to be probed.
+    ///
+    /// It used to render as an idle provider with "ready — press p to probe", so the operator
+    /// was told to press a key that would spend a credit on a provider the server refuses to
+    /// use (ledger B76).
+    func testDisabledProviderIsShownAsOffRatherThanReady() {
+        let disabled = ProviderStatus.pending(
+            provider: .tavily,
+            configured: true,
+            enabled: false,
+            hint: "TAVILY_API_KEY"
+        )
+        let rendered = Renderer(useColour: false).render(
+            model(providers: [disabled]),
+            columns: 140,
+            rows: 40
+        ).joined(separator: "\n")
+
+        XCTAssertTrue(rendered.contains("OFF"), rendered)
+        XCTAssertTrue(
+            rendered.contains("disabled via SEARCH_DISABLED_PROVIDERS"),
+            "the reason must name the switch that caused it: \(rendered)"
+        )
+        XCTAssertFalse(
+            rendered.contains("ready — press p to probe"),
+            "a provider that will not be probed must not be advertised as ready: \(rendered)"
+        )
+        XCTAssertFalse(rendered.contains("set TAVILY_API_KEY"), rendered)
+        XCTAssertTrue(rendered.contains("1 disabled"), "the summary must carry the count: \(rendered)")
+    }
+
     func testDegradedNodeShowsUnavailableEngines() {
         let lines = Renderer(useColour: false, showEngines: true).render(
             model(nodes: [node("node1", state: .up)]),
@@ -585,6 +616,50 @@ final class MonitorModelTests: XCTestCase {
         XCTAssertEqual(ProviderStatus.kind(of: .startpage), "scraper")
         XCTAssertEqual(ProviderStatus.kind(of: .searxng), "aggregator")
         XCTAssertEqual(ProviderStatus.kind(of: .parallel), "aggregator")
+    }
+
+    /// A provider the operator disabled is unavailable, not ready and not "no key": the two
+    /// reasons a provider is inert are distinct, and only one of them is a credential
+    /// problem (ledger B76, reintroducing the state B78 removed).
+    func testPendingProviderDistinguishesDisabledFromUnconfigured() {
+        let ready = ProviderStatus.pending(
+            provider: .tavily,
+            configured: true,
+            hint: "TAVILY_API_KEY"
+        )
+        XCTAssertEqual(ready.state, .configuredButIdle)
+        XCTAssertEqual(ready.state.label, "IDLE")
+        XCTAssertTrue(ready.isInService)
+
+        let keyless = ProviderStatus.pending(
+            provider: .tavily,
+            configured: false,
+            hint: "TAVILY_API_KEY"
+        )
+        XCTAssertEqual(keyless.state, .notConfigured)
+        XCTAssertEqual(keyless.state.label, "NO KEY")
+        XCTAssertFalse(keyless.isInService)
+
+        let disabled = ProviderStatus.pending(
+            provider: .tavily,
+            configured: true,
+            enabled: false,
+            hint: "TAVILY_API_KEY"
+        )
+        XCTAssertEqual(disabled.state, .unavailable)
+        XCTAssertEqual(disabled.state.label, "OFF")
+        XCTAssertFalse(disabled.isInService, "a switched-off provider is not a failure to count")
+
+        let disabledKeyless = ProviderStatus.pending(
+            provider: .tavily,
+            configured: false,
+            enabled: false,
+            hint: "TAVILY_API_KEY"
+        )
+        XCTAssertEqual(
+            disabledKeyless.state, .unavailable,
+            "being switched off is reported ahead of a missing credential"
+        )
     }
 }
 

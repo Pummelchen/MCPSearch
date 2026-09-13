@@ -138,13 +138,15 @@ final class ProviderProbeTests: XCTestCase {
         _ providers: [any SearchProvider],
         order: [ProviderID]? = nil,
         enableParallel: Bool = false,
-        parallelURL: URL? = AppConfiguration().parallelMCPURL
+        parallelURL: URL? = AppConfiguration().parallelMCPURL,
+        disabled: Set<ProviderID> = []
     ) -> ProviderProbe {
         var configuration = Fixtures.configuration(
             providerOrder: order ?? AppConfiguration.defaultProviderOrder,
             enableParallel: enableParallel
         )
         configuration.parallelMCPURL = parallelURL
+        for id in disabled { configuration.providerEnabled[id] = false }
         return ProviderProbe(
             registry: ProviderRegistry(providers: providers, configuration: configuration),
             configuration: configuration
@@ -223,6 +225,56 @@ final class ProviderProbeTests: XCTestCase {
     func testProbeTargetsFollowTheConfiguredOrder() {
         let probe = makeProbe([], order: [.exa, .tavily])
         XCTAssertEqual(probe.probeTargets(), [.exa, .tavily])
+    }
+
+    /// The probe set is the configured order minus everything the operator disabled and
+    /// everything without inputs.
+    ///
+    /// `SEARCH_DISABLED_PROVIDERS` is the server's own eligibility rule, so a monitor that
+    /// ignored it both labelled a disabled provider ready and sent it a real search — a
+    /// credit spent on a provider the server would never use (ledger B76).
+    func testProbeableTargetsExcludeDisabledAndUnconfiguredProviders() {
+        let configured = MockSearchProvider.returning(.tavily, results: [])
+        let keyless = MockSearchProvider(id: .brave, configured: false) { _ in
+            ProviderSearchResponse(provider: .brave, results: [])
+        }
+        // An adapter that is present and usable but switched off, so the disabled dimension
+        // is exercised independently of a missing adapter.
+        let switchedOff = MockSearchProvider.returning(.exa, results: [])
+        let probe = makeProbe(
+            [configured, keyless, switchedOff],
+            order: [.tavily, .brave, .exa],
+            disabled: [.exa]
+        )
+
+        XCTAssertEqual(
+            probe.probeTargets(), [.tavily, .brave, .exa],
+            "the display order itself is unchanged: a disabled provider is still listed"
+        )
+        XCTAssertTrue(probe.isConfigured(.exa), "the disabled provider has its inputs")
+        XCTAssertEqual(probe.probeableTargets(), [.tavily])
+    }
+
+    /// Probing a disabled provider directly must be refused, not merely avoided by the caller:
+    /// `probe` is public and a call would spend a provider credit.
+    func testDisabledProviderIsNeverProbedAndReportsWhy() async {
+        let provider = MockSearchProvider.returning(
+            .tavily,
+            results: [("A", "https://example.com/a", nil)]
+        )
+        let probe = makeProbe([provider], disabled: [.tavily])
+
+        XCTAssertFalse(probe.isEnabled(.tavily))
+        XCTAssertFalse(probe.mayProbe(.tavily))
+        XCTAssertTrue(probe.isConfigured(.tavily), "the credential is still present")
+        XCTAssertTrue(probe.probeableTargets().isEmpty)
+
+        let outcome = await probe.probe(.tavily, query: "swift")
+
+        XCTAssertFalse(outcome.succeeded)
+        XCTAssertEqual(outcome.category, .notConfigured)
+        XCTAssertEqual(outcome.error, "disabled via SEARCH_DISABLED_PROVIDERS")
+        XCTAssertEqual(provider.callCount, 0, "a disabled provider must not be probed")
     }
 
     /// The monitor's hint names the variables the *server* would tell the operator to set,

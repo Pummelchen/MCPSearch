@@ -36,6 +36,7 @@ public struct Renderer: Sendable {
         case .configuredButIdle: Terminal.colour("○", .cyan, enabled: useColour)
         case .failing: Terminal.colour("✖", .brightRed, enabled: useColour)
         case .notConfigured: Terminal.colour("–", .grey, enabled: useColour)
+        case .unavailable: Terminal.colour("◐", .brightYellow, enabled: useColour)
         }
     }
 
@@ -45,6 +46,7 @@ public struct Renderer: Sendable {
         case .healthy: return Terminal.colour(label, .brightGreen, enabled: useColour)
         case .failing: return Terminal.colour(label, .brightRed, enabled: useColour)
         case .notConfigured: return Terminal.colour(label, .grey, enabled: useColour)
+        case .unavailable: return Terminal.colour(label, .brightYellow, enabled: useColour)
         default: return Terminal.colour(label, .cyan, enabled: useColour)
         }
     }
@@ -177,11 +179,17 @@ public struct Renderer: Sendable {
         let ok = model.providers.filter { $0.state == .healthy }.count
         let bad = model.providers.filter { $0.state == .failing }.count
         let off = model.providers.filter { $0.state == .notConfigured }.count
-        let summary = [
+        let disabled = model.providers.filter { $0.state == .unavailable }.count
+        var summaryParts = [
             "\(ok) ok",
             bad > 0 ? Terminal.colour("\(bad) failing", .brightRed, enabled: useColour) : "0 failing",
             "\(off) without credentials",
-        ].joined(separator: Terminal.colour(" · ", .grey, enabled: useColour))
+        ]
+        // Named only when there is one: a deliberately disabled provider is not a problem
+        // to report on every frame, but its absence from the summary would make the
+        // OFF rows look like a miscount (ledger B76).
+        if disabled > 0 { summaryParts.append("\(disabled) disabled") }
+        let summary = summaryParts.joined(separator: Terminal.colour(" · ", .grey, enabled: useColour))
 
         lines.append("  " + Terminal.bold("PROVIDERS", enabled: useColour) + "   " + summary)
         lines.append(
@@ -247,6 +255,15 @@ public struct Renderer: Sendable {
             note = Terminal.colour(Terminal.sanitize(error), .brightRed, enabled: useColour)
         } else if status.state == .notConfigured {
             note = Terminal.colour("set \(status.setupHint)", .grey, enabled: useColour)
+        } else if status.state == .unavailable {
+            // The variable is not the fix here: the operator deliberately switched the
+            // provider off, and the dashboard must not invite a probe it will refuse
+            // (ledger B76).
+            note = Terminal.colour(
+                "disabled via SEARCH_DISABLED_PROVIDERS",
+                .grey,
+                enabled: useColour
+            )
         } else if status.state == .configuredButIdle {
             note = Terminal.colour("ready — press p to probe", .cyan, enabled: useColour)
         } else if status.state == .healthy, let at = status.lastSuccessAt {

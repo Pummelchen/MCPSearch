@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 132 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 118 |
-| START (reproduced, expected behaviour written) | 14 |
+| DONE | 119 |
+| START (reproduced, expected behaviour written) | 13 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 87** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 73 are DONE and 14 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 74 are DONE and 13 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -129,7 +129,7 @@ waived in writing.
 | B73 | S3 | `scripts/soak.py` | `scripts/soak.py:446` | Soak report attributes every failure category to every provider | bug | DONE | this Mac (arm64) | Phase B L3-24 |
 | B74 | S3 | `MCPSMonitor` (option parsing) | `Sources/MCPSMonitor/main.swift:200` (`--no-nodes` at `:143`, custom nodes at `:160`) | `--no-nodes` is silently ignored whenever a `--node` is also present | logic | DONE | this Mac (arm64) | Phase B L3-29 |
 | B75 | S3 | `MCPSMonitor` (option parsing); same helper copied in `WebSearchCore/Support/TransportConfiguration.swift` | `Sources/MCPSMonitor/main.swift:155` (helper `:127-135`); `Sources/WebSearchCore/Support/TransportConfiguration.swift:97` | `--node` accepts a relative URL and can swallow the next flag as its value | logic | DONE | this Mac (arm64) | Phase B L3-30 |
-| B76 | S3 | `MCPSMonitor` (provider selection); `WebSearchCore/Search/ProviderRegistry.swift` | `Sources/MCPSMonitor/main.swift:348` (and `:292`), `Sources/WebSearchCore/Search/ProviderRegistry.swift:34` | `mcps-mon` ignores `SEARCH_DISABLED_PROVIDERS`, labels disabled providers "ready", and probes them | logic | START | this Mac (arm64) | Phase B L3-31 |
+| B76 | S3 | `MCPSMonitor` (provider selection); `WebSearchCore/Search/ProviderRegistry.swift` | `Sources/MCPSMonitor/main.swift:348` (and `:292`), `Sources/WebSearchCore/Search/ProviderRegistry.swift:34` | `mcps-mon` ignores `SEARCH_DISABLED_PROVIDERS`, labels disabled providers "ready", and probes them | logic | DONE | this Mac (arm64) | Phase B L3-31 |
 | B77 | S3 | `SwiftWebSearchMCP` (argument parsing) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:464` | `ToolArguments.bool(_:)` has no caller | dead | DONE | this Mac (arm64) | Phase B L3-33 |
 | B78 | S3 | `MCPSMonitor` view state; `WebSearchCore/Monitor/Renderer.swift` | `Sources/WebSearchCore/Monitor/MonitorModel.swift:127` and `:134` | `ProviderStatus.State.probing` and `.unavailable` can never be produced, so their renderer branches are unreachable | dead | DONE | this Mac (arm64) | Phase B L3-34 |
 | B79 | S3 | `SwiftWebSearchMCP` (HTTP host body cap) | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:167` | A request-head `Content-Length` reserves up to 1 MiB per connection before any body arrives | unsafe | START | this Mac (arm64) | Phase B L3-36 |
@@ -218,6 +218,24 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B76 — the monitor was labelling and probing disabled providers
+
+**Severity S3** · **category** logic · **status** DONE · **host** node1 (arm64)
+
+**Premise holds.** `ProviderRegistry.isEnabled` (the `SEARCH_DISABLED_PROVIDERS` map) was consulted only by `isEligible`; `ProviderProbe.isConfigured` delegated to `isConfigured`, `Monitor.refresh` filtered the probe set on it, `ProviderProbe.probe` guarded only on the adapter's `isConfigured`, and `Monitor.init` built every status at `.configuredButIdle`/`.notConfigured`. A provider the server refuses to use was therefore shown as ready, listed for probing, and sent a real search on the first pass or `--probe`.
+
+**`.unavailable` is back, with a producer.** B78 deleted the case because nothing produced it and recorded that B76 owns the producer. `ProviderStatus.pending(provider:configured:enabled:hint:)` (new `enabled:` parameter, default `true`) starts at `.unavailable` when `enabled` is false, ahead of a missing credential — the two reasons a provider is inert are distinct. `isInService` fails for both `notConfigured` and `unavailable`, which is what `Options.exitCode` now uses, so an all-disabled set is not an unhealthy fleet.
+
+**The probe set.** `ProviderProbe.mayProbe` is `isEnabled && isConfigured`, `probeableTargets()` is the display order filtered by it, `Monitor.refresh` calls it, and `probe` refuses a disabled provider before touching the adapter, so a direct call cannot spend a credit either.
+
+**The display.** `Renderer` gained the `◐`/bright-yellow `OFF` row, the note `disabled via SEARCH_DISABLED_PROVIDERS`, and a `N disabled` summary term that appears only when non-zero (so ordinary frames are unchanged).
+
+**Falsification.** M1 reverts `mayProbe`/the `probe` guard and reddens the two `ProviderProbe` tests (the disabled provider re-enters the probe set and `callCount` becomes 1) with 7 failures. M2 makes `pending` ignore `enabled` and reddens the model and renderer tests with 8 failures, including `("IDLE") is not equal to ("OFF")`. Both files restored byte-identical (`diff` empty; SHA-256 `70896d61…`, `bbb6c058…`).
+
+**Measured.** `SEARCH_DISABLED_PROVIDERS=searxng` with a usable-looking SearXNG endpoint: the frame renders `◐ SearXNG aggregator OFF … disabled via SEARCH_DISABLED_PROVIDERS` and `1 disabled` in the summary, exit 0.
+
+**Noted.** `ProviderStatus.isConfigured` still means "state is not `.notConfigured`" and is true for a disabled provider that holds its inputs; nothing depends on it for the disabled case, and `isInService` is the predicate callers should use. The Monitor actor still has no direct unit test (B98); the changed wiring is the one call to the tested `probeableTargets()`.
 
 ## B58 — the discovery parser is shared, not copied
 

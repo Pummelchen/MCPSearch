@@ -338,6 +338,32 @@ final class MonitorOptionsTests: XCTestCase {
         XCTAssertEqual(options.exitCode(for: keyless), 0)
     }
 
+    /// A provider the operator disabled is expected too: `SEARCH_DISABLED_PROVIDERS` is a
+    /// deliberate switch, so an all-disabled provider set is not a failed health check
+    /// (ledger B76 extends B46's contract to the reintroduced `unavailable` state).
+    func testDisabledProvidersDoNotFailTheHealthCheck() throws {
+        let options = try Options.parse(["--iterations", "1"])
+        let disabled = model(
+            nodes: [node("this-mac", state: .up)],
+            providers: [
+                provider(.tavily, state: .unavailable),
+                provider(.brave, state: .unavailable),
+            ]
+        )
+        XCTAssertEqual(options.exitCode(for: disabled), 0)
+
+        // A disabled provider does not rescue a run whose only in-service provider failed:
+        // the enabled-and-failing one still decides the status.
+        let mixed = model(
+            nodes: [node("this-mac", state: .up)],
+            providers: [
+                provider(.tavily, state: .unavailable),
+                provider(.brave, state: .failing),
+            ]
+        )
+        XCTAssertEqual(options.exitCode(for: mixed), 1)
+    }
+
     func testRunThatCheckedNothingIsNotAFailure() throws {
         let options = try Options.parse(["--no-nodes", "--iterations", "1"])
         XCTAssertEqual(options.exitCode(for: model()), 0)

@@ -41,8 +41,35 @@ public struct ProviderProbe: Sendable {
     }
 
     /// Whether a provider has what it needs to run.
+    ///
+    /// Deliberately not "may the monitor use it": `SEARCH_DISABLED_PROVIDERS` is a separate
+    /// question (`isEnabled`), and conflating the two made the dashboard label a provider the
+    /// server refuses to use as ready (ledger B76).
     public func isConfigured(_ id: ProviderID) -> Bool {
         registry.isConfigured(id)
+    }
+
+    /// Whether the operator has left this provider switched on.
+    public func isEnabled(_ id: ProviderID) -> Bool {
+        registry.isEnabled(id)
+    }
+
+    /// Whether this run may probe the provider at all: switched on and holding its inputs.
+    ///
+    /// This is the monitor's copy of the server's eligibility rule, so a disabled provider is
+    /// neither labelled ready nor sent a real search that spends a credit the server would
+    /// never have spent (ledger B76).
+    public func mayProbe(_ id: ProviderID) -> Bool {
+        isEnabled(id) && isConfigured(id)
+    }
+
+    /// The providers this run will probe: the configured display order minus everything the
+    /// operator disabled and everything without inputs.
+    ///
+    /// The monitor probes through here rather than filtering at the call site, so the set is
+    /// asserted by a test instead of re-derived by reading the refresh loop.
+    public func probeableTargets() -> [ProviderID] {
+        probeTargets().filter { mayProbe($0) }
     }
 
     /// The variables that would make an inactive provider run, from the one enablement
@@ -59,6 +86,12 @@ public struct ProviderProbe: Sendable {
     /// The query rotates through a small cheap set so repeated probes do not all hit the
     /// same cached page upstream, while result counts stay comparable between refreshes.
     public func probe(_ id: ProviderID, query: String) async -> ProbeOutcome {
+        // Checked here as well as in `probeableTargets`, because `probe` is public and a
+        // direct call must not spend a request on a provider the server refuses to use
+        // (ledger B76).
+        guard isEnabled(id) else {
+            return .failure(error: "disabled via SEARCH_DISABLED_PROVIDERS", category: .notConfigured)
+        }
         guard let provider = registry.provider(id) else {
             return .failure(error: "no adapter registered", category: .notConfigured)
         }

@@ -77,8 +77,9 @@ struct Options: Sendable {
         let noNodeAnswered = !model.nodes.isEmpty && model.healthyNodes == 0
 
         // An unconfigured provider is an expected state (`NO KEY`), not a failure, and a
-        // monitor with no keyed provider at all is not a failed health check.
-        let configured = model.providers.filter { $0.state != .notConfigured }
+        // monitor with no keyed provider at all is not a failed health check. A provider the
+        // operator switched off is expected too, so it does not count either (ledger B76).
+        let configured = model.providers.filter(\.isInService)
         let noProviderWorked = !configured.isEmpty && model.healthyProviders == 0
 
         return noNodeAnswered || noProviderWorked ? 1 : 0
@@ -364,12 +365,15 @@ actor Monitor {
         // Start with every provider visible but unprobed, so the first frame already
         // shows what is configured rather than an empty table. Configured state comes
         // from the registry, not from the provider merely being listed: a provider with
-        // no credentials must read as such rather than as ready to probe.
+        // no credentials must read as such rather than as ready to probe, and one the
+        // operator disabled via SEARCH_DISABLED_PROVIDERS must read as switched off
+        // rather than as ready (ledger B76).
         let providers = configuration.providerOrder
             .map { id in
                 ProviderStatus.pending(
                     provider: id,
                     configured: providerProbe.isConfigured(id),
+                    enabled: providerProbe.isEnabled(id),
                     hint: providerProbe.setupHint(for: id)
                 )
             }
@@ -425,7 +429,7 @@ actor Monitor {
 
         let query = options.probeQueries.next()
         let nodeTargets = options.nodes
-        let providerIDs = providerProbe.probeTargets().filter { providerProbe.isConfigured($0) }
+        let providerIDs = providerProbe.probeableTargets()
 
         async let nodes = probeNodes(nodeTargets)
         async let providers =
