@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 132 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 124 |
-| START (reproduced, expected behaviour written) | 8 |
+| DONE | 125 |
+| START (reproduced, expected behaviour written) | 7 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 87** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 79 are DONE and 8 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 80 are DONE and 7 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -148,7 +148,7 @@ waived in writing.
 | B92 | S3 | `WebSearchCore` / `Fetch` (`JinaReaderFetcher`) | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:125` | `web_open` reports the requested URL as `final_url` on the Jina path, and the reader's own `url` field is decoded but never used | logic | DONE | this Mac (arm64) | Phase B L5-7 |
 | B93 | S3 | `Sources/WebSearchCore/Fetch/MarkupDepth.swift`, `Search/SearchError.swift`, `SwiftWebSearchMCP/ToolHandlers.s | `Sources/WebSearchCore/Fetch/MarkupDepth.swift:190` | The new `MarkupDepth` regression suite still leaves four branches/contracts unpinned | test | DONE | this Mac (arm64) | Phase B L6-4 |
 | B94 | S3 | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift`, `Sources/WebSearchCore/Search/SearchOrchestrator.swi | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift:716` | `testStatusCountsSuccessesAndFailures` never observes a failure | test | DONE | this Mac (arm64) | Phase B L6-14 |
-| B95 | S3 | `Tests/WebSearchCoreTests/MonitorTests.swift`, `Sources/WebSearchCore/Monitor/ProviderProbe.swift:50` | `Tests/WebSearchCoreTests/MonitorTests.swift:101` | The monitor's setup-hint test asserts a string the test itself constructed | test | START | this Mac (arm64) | Phase B L6-15 |
+| B95 | S3 | `Tests/WebSearchCoreTests/MonitorTests.swift`, `Sources/WebSearchCore/Monitor/ProviderProbe.swift:50` | `Tests/WebSearchCoreTests/MonitorTests.swift:101` | The monitor's setup-hint test asserts a string the test itself constructed | test | DONE | this Mac (arm64) | Phase B L6-15 |
 | B96 | S3 | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift` | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift:46` | `HTTPStatusMapper.map`'s HTTPError branches and `validate`'s default/422 statuses are untested | test | START | this Mac (arm64) | Phase B L6-16 |
 | B97 | S3 | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift`, `Tests/WebSearchCoreTests/AnswerSynthesizerTests.swift | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift:349` | `AnswerSynthesizer`'s completion edge cases, token usage and locale prompt are untested | test | START | this Mac (arm64) | Phase B L6-17 |
 | B98 | S3 | `Sources/MCPSMonitor/main.swift` (`Monitor`), `Tests/MCPSMonitorTests/MonitorOptionsTests.swift` | `Sources/MCPSMonitor/main.swift:337` | The `Monitor` actor's refresh/counting/warning logic has no Swift test | test | START | this Mac (arm64) | Phase B L6-18 |
@@ -218,6 +218,36 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B95 — the monitor's setup-hint test asserted a string it had constructed itself
+
+**Severity S3** · **category** test · **status** DONE · **host** node1 (arm64)
+
+**Premise confirmed open after B57.** B57 replaced the five hand-written enablement mappings with
+`ProviderEnablement` and rewired `ProviderProbe.setupHint`, and `ProbeTests` pins that mapping
+per provider. It did not touch `MonitorTests.swift`, where `RendererTests.provider(_:state:…)` still
+handed `hint: "TAVILY_API_KEY"` to every provider and `testUnconfiguredProviderShowsItsSetupHint`
+asserted that literal on a Brave row: the test verified only that the renderer echoed the string the
+test had written. A renderer printing a constant would have passed.
+
+**What changed.** A `setupHint(for:)` helper builds the same `ProviderProbe(registry:configuration:)`
+the monitor builds and returns `setupHint(for:)`, so every fixture row carries the real authority's
+value. The test asserts that the authority's Brave hint is `BRAVE_SEARCH_API_KEY`, that it differs
+from Tavily's, that the rendered row contains `set <that hint>`, and that it does not contain
+Tavily's variable. No production change; `ProbeTests` still owns the authority's own table, so this
+does not duplicate it.
+
+**Falsification.** M1 reverts the fixture to its old hard-coded `"TAVILY_API_KEY"` and keeps the new
+test: it reds on both halves (`XCTAssertTrue failed - the row must show the hint the fixture
+carried` and `XCTAssertFalse failed - the renderer must not substitute a different provider's
+variable`), which is precisely the state the old body passed. M2 mutates `Renderer.swift` to print
+`set TAVILY_API_KEY` unconditionally; the test reds on both halves again. `MonitorTests.swift` and
+`Renderer.swift` were restored byte-identical (`diff` empty; SHA-256
+`18cf98cbba7a2188a819ff890c1c4379cfdc0def9bc64daf1d7e0bea07b8190e` and
+`7853eb6b36ec565c257872c06e91ee84bcc00a7cb727b2b7a9defe840b46eb88`).
+
+Gate: 554 tests / 6 skipped / 0 failures; debug and release 0 warnings; swift-format 0;
+swiftlint 0; notices clean. Evidence: `AUDIT/evidence/B95-monitor-hint-authority.txt`.
 
 ## B94 — `testStatusCountsSuccessesAndFailures` never observed a failure
 

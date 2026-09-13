@@ -137,6 +137,20 @@ final class RendererTests: XCTestCase {
         )
     }
 
+    /// The setup hint the real authority would give this provider.
+    ///
+    /// The fixture used to hard-code `"TAVILY_API_KEY"` for every provider, so a test could
+    /// "check" a Brave row against Tavily's variable (ledger B95). Reading the same
+    /// `ProviderProbe.setupHint` the monitor reads is what makes a hint assertion about the real
+    /// mapping instead of about a string the test wrote itself.
+    private func setupHint(for id: ProviderID) -> String {
+        let configuration = Fixtures.configuration()
+        return ProviderProbe(
+            registry: ProviderRegistry(providers: [], configuration: configuration),
+            configuration: configuration
+        ).setupHint(for: id)
+    }
+
     private func provider(
         _ id: ProviderID,
         state: ProviderStatus.State,
@@ -145,7 +159,11 @@ final class RendererTests: XCTestCase {
         failures: Int = 0,
         error: String? = nil
     ) -> ProviderStatus {
-        var status = ProviderStatus.pending(provider: id, configured: state != .notConfigured, hint: "TAVILY_API_KEY")
+        var status = ProviderStatus.pending(
+            provider: id,
+            configured: state != .notConfigured,
+            hint: setupHint(for: id)
+        )
         status.state = state
         status.probes = probes
         status.successes = successes
@@ -370,7 +388,23 @@ final class RendererTests: XCTestCase {
         XCTAssertTrue(lines.contains("temporarily unavailable"), lines)
     }
 
+    /// An unconfigured row must show the hint the enablement authority gives that provider.
+    ///
+    /// The fixture used to hand Tavily's variable to every provider, so this asserted that a
+    /// string the test had constructed appeared in its own output: a Brave row was checked
+    /// against `TAVILY_API_KEY`, and a renderer that ignored `ProviderStatus.setupHint` and
+    /// printed a constant would have passed. The expectation now comes from the same
+    /// `ProviderProbe.setupHint` the monitor calls, and the assertion that Brave's own hint
+    /// differs from Tavily's is what stops the constant from satisfying it (ledger B95).
     func testUnconfiguredProviderShowsItsSetupHint() {
+        let braveHint = setupHint(for: .brave)
+        XCTAssertEqual(braveHint, "BRAVE_SEARCH_API_KEY", "the authority must name Brave's variable")
+        XCTAssertNotEqual(
+            braveHint,
+            setupHint(for: .tavily),
+            "the two providers must not share a hint, or this test could pass on a constant"
+        )
+
         let lines = Renderer(useColour: false).render(
             model(providers: [
                 provider(.brave, state: .notConfigured, probes: 0, successes: 0)
@@ -378,7 +412,15 @@ final class RendererTests: XCTestCase {
             columns: 140,
             rows: 40
         ).joined(separator: "\n")
-        XCTAssertTrue(lines.contains("TAVILY_API_KEY"), "the hint should name the variable")
+
+        XCTAssertTrue(
+            lines.contains("set \(braveHint)"),
+            "the row must show the hint the fixture carried: \(lines)"
+        )
+        XCTAssertFalse(
+            lines.contains(setupHint(for: .tavily)),
+            "the renderer must not substitute a different provider's variable: \(lines)"
+        )
     }
 
     /// A disabled provider must read as switched off, and must not be invited to be probed.
