@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 131 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 109 |
-| START (reproduced, expected behaviour written) | 22 |
+| DONE | 110 |
+| START (reproduced, expected behaviour written) | 21 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 86** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 86 S3 tasks 64 are DONE and 22 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 86 S3 tasks 65 are DONE and 21 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -165,7 +165,7 @@ waived in writing.
 | B116 | S3 | `WebSearchCore` / `Search` (`SearchOrchestrator`, `RateLimiter`) | `SearchOrchestrator.swift:456-462`, `RateLimiter.swift:97-104` | A local throttle that cleared between the authorise and the wait estimate was reported as a hard skip, making the suite intermittently red | bug | DONE | node1 (arm64) | Phase E baseline |
 | B117 | S3 | `scripts` (`mcp_smoke.py`) | `scripts/mcp_smoke.py` (`free_loopback_port`) | The HTTP smoke picks a free port by closing the socket before the child binds, so the child can lose the bind race | test | DONE | this Mac (arm64) | Phase C (residual B83 left) |
 | B118 | S3 | `SwiftWebSearchMCP` (`ServerOptions`) | `Sources/WebSearchCore/Support/TransportConfiguration.swift` (the `--transport` error) | The invalid `--transport` error names only two of the four accepted spellings that the usage text now documents | docs | DONE | node1 (arm64) | Phase C (found while doing B114) |
-| B119 | S3 | `scripts` (`monitor_tty_smoke.py`) | `scripts/monitor_tty_smoke.py` (the startup check) | The PTY harness polls the monitor only once, so a crash after the drain window but before the first frame is still reported as a timeout | test | START | node1 (arm64) | Phase C (found while verifying B106) |
+| B119 | S3 | `scripts` (`monitor_tty_smoke.py`) | `scripts/monitor_tty_smoke.py` (the startup check) | The PTY harness polls the monitor only once, so a crash after the drain window but before the first frame is still reported as a timeout | test | DONE | node1 (arm64) | Phase C (found while verifying B106) |
 
 ---
 
@@ -217,6 +217,41 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B119 — the PTY harness polled the monitor once, so a late startup crash was a timeout
+
+**Severity S3** · **category** test · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** B106 made a monitor that dies during startup report its exit status instead
+of a first-frame timeout by polling the child once, immediately after `session.drain(3.0)`.
+`Session.wait_for` — the frame wait that follows — never polled again, so a monitor that started,
+crashed after the drain window and never painted a complete frame reached that wait with `poll()`
+still `None` and was reported as "timed out waiting for the first frame": the same conflation
+B106 removed, just moved later.
+
+**The fix.** `wait_for` polls the child on every read turn and, when it has exited, raises
+`Failure` naming the exit status and the last 300 characters of the transcript, mirroring B106's
+startup check. An exit is therefore classified as an exit whenever it is observed, and every frame
+wait in `run()` — colour, engine breakdown, refresh, provider probe — gets the same diagnosis.
+`Session.drain` keeps no poll because the `q` and signal paths use it in loops where an exit is
+the expected outcome.
+
+**Verification, with stubs only.** No Swift build is involved. An executable stub at
+`$HOME/Library/Caches/MCPSearch/B119/crash_after_drain.py` hides the cursor, clears the screen,
+sleeps five seconds, writes `boom: startup failed while rendering` and exits 3 without ever writing
+a cursor-home frame. With the fix, `python3 scripts/monitor_tty_smoke.py <stub>` fails in ~6.1 s
+with `the monitor exited with 3 while waiting for the first frame: 'boom: startup failed while
+rendering'`. **Falsification.** Removing the new poll from `wait_for` makes the same command fail
+with `timed out waiting for the first frame` after ~15.6 s (three-second drain plus twelve-second
+timeout), which is the pre-fix message verbatim. The harness was restored byte-identical (`diff`
+empty, SHA-256 `abba36f2…130bb9`). The PTY harness was **not** exercised against the real
+`mcps-mon` binary for this task: the proof is stub-only as required. No in-repository test was
+added because the repository has no Python test infrastructure and B99 is the open task that owns
+one. `ruff check scripts`, `ruff format --check scripts` and `pyright scripts/monitor_tty_smoke.py`
+are clean; debug and release builds are 0 warnings under `-warnings-as-errors`; the suite is 508
+tests, 6 skipped, 0 failures; `swift-format --strict` and `swiftlint --strict` are clean (85
+files); `third_party_notices.py` is clean. Evidence:
+`AUDIT/evidence/B119-tty-frame-wait-polls-child.txt`.
 
 ## B102 — a cross-scheme redirect surfaced as an opaque transport error
 

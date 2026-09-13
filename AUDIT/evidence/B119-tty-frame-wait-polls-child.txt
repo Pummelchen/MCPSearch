@@ -1,0 +1,151 @@
+# B119 — the PTY harness polled the monitor once, so a late startup crash was a timeout
+
+Host: node1 (arm64, macOS 26.6.2, Python 3.14.7) · branch audit/2026-09-13
+
+## What was wrong
+
+B106 made a monitor that dies during startup report its exit status instead of a first-frame
+timeout, by polling the child once, immediately after the fixed `session.drain(3.0)`.
+`Session.wait_for` — the frame wait that follows — never polled again:
+
+```python
+# monitor_tty_smoke.py, before
+def wait_for(self, predicate, description, timeout=12.0):
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        self.drain(0.4)
+        if predicate(self):
+            return
+    raise Failure(f"timed out waiting for {description}")
+```
+
+A monitor that starts, then crashes after the drain window but before it ever paints a complete
+frame reached that wait with `poll()` still `None` and was reported as "timed out waiting for the
+first frame" — the same conflation B106 removed, just moved later.
+
+## The fix
+
+`wait_for` now polls the child on every read turn and reports an exit as an exit, with its status
+and the tail of the transcript:
+
+```python
+# monitor_tty_smoke.py, after
+while time.monotonic() < deadline:
+    self.drain(0.4)
+    exit_code = self.process.poll()
+    if exit_code is not None:
+        raise Failure(
+            f"the monitor exited with {exit_code} while waiting for {description}: "
+            f"{ANSI.sub('', self.transcript)[-300:]!r}"
+        )
+    if predicate(self):
+        return
+raise Failure(f"timed out waiting for {description}")
+```
+
+Every frame wait in `run()` benefits: a crash while waiting for colour, the engine breakdown,
+a refresh or the provider probe is now diagnosed as a crash rather than as an absent frame. The
+exit check is the mirror of B106's startup check, so an exit is classified as an exit whenever it
+is observed.
+
+## The proof, with a stub
+
+No Swift build is involved. The stub below lives at
+`$HOME/Library/Caches/MCPSearch/B119/crash_after_drain.py` and is executable. It does exactly what
+B119 describes: starts, hides the cursor and clears the screen (so the B106 startup checks pass),
+sleeps past the three-second drain window, writes a crash banner and exits 3 — and never writes a
+cursor-home frame, so the first-frame wait is still outstanding when it dies.
+
+```python
+#!/usr/bin/env python3
+"""Monitor stand-in: starts, sleeps past the harness's drain window, writes a crash banner and
+exits nonzero without ever painting a cursor-home frame (ledger B119 probe)."""
+import sys
+import time
+
+sys.stdout.write("\x1b[?25l\x1b[2J")  # hide cursor, clear screen: the startup checks pass
+sys.stdout.flush()
+time.sleep(5)
+sys.stdout.write("boom: startup failed while rendering\n")
+sys.stdout.flush()
+sys.exit(3)
+```
+
+With the fix in place:
+
+```
+$ python3 scripts/monitor_tty_smoke.py "$HOME/Library/Caches/MCPSearch/B119/crash_after_drain.py"
+MONITOR TTY SMOKE FAILED: the monitor exited with 3 while waiting for the first frame: 'boom: startup failed while rendering\r\n'
+smoke-testing the interactive display of $HOME/Library/Caches/MCPSearch/B119/crash_after_drain.py
+[stderr]
+
+real	0m6.128s
+```
+
+The failure names the exit status and the banner, and it is reached about five seconds in — as soon
+as the child dies — rather than after the wait expires.
+
+## Proof the fix is load-bearing (mutation, not assertion)
+
+Removing the exit poll from `wait_for` restores the pre-fix behaviour, and the same command
+reproduces the conflation verbatim:
+
+```
+$ python3 scripts/monitor_tty_smoke.py "$HOME/Library/Caches/MCPSearch/B119/crash_after_drain.py"
+MONITOR TTY SMOKE FAILED: timed out waiting for the first frame
+smoke-testing the interactive display of $HOME/Library/Caches/MCPSearch/B119/crash_after_drain.py
+[stderr]
+
+real	0m15.630s
+```
+
+Fifteen seconds (three-second drain plus the twelve-second first-frame timeout) and a message that
+says the frame never arrived, when the truth is that the process exited 3. The harness was restored
+from a saved copy and verified byte-identical (`diff` empty; SHA-256 of the restored file equals the
+backup's, `abba36f2…130bb9`).
+
+**The PTY harness was not exercised against the real `mcps-mon` binary for this task.** The proof
+is stub-only by design, as the task requires; the Swift package is still built and tested by the
+gates below.
+
+## Gates
+
+```
+$ ruff check scripts
+All checks passed!                                                          exit=0
+
+$ ruff format --check scripts
+6 files already formatted                                                   exit=0
+
+$ pyright scripts/monitor_tty_smoke.py
+0 errors, 0 warnings, 0 informations                                        exit=0
+
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete!                                                             0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+	 Executed 508 tests, with 6 tests skipped and 0 failures (0 unexpected) in 20.356 (20.416) seconds
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete!                                                             0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+0 diagnostics                                                               exit=0
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 85 files.                    exit=0
+
+$ python3 scripts/third_party_notices.py
+exit=0
+```
+
+508 tests is unchanged: this task changes a Python harness, not the Swift suite (the 6 skips are
+the pre-existing environment-gated ones).
+
+## Noted, not changed
+
+No in-repository test was added for the harness: there is no Python test infrastructure in this
+repository, and **B99** is the open task that would add one (a pytest-style test for the harnesses).
+The stub run recorded here is the evidence for this fix; committing the stub would duplicate B99's
+scope. `Session.drain` was deliberately left without a poll, because the `q`/signal paths use it in
+loops where the child exiting is the expected outcome.

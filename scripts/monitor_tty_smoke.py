@@ -276,10 +276,22 @@ class Session:
     def wait_for(
         self, predicate: Callable[[Session], bool], description: str, timeout: float = 12.0
     ) -> None:
-        """Read frames until the predicate holds, or fail with the description."""
+        """Read frames until the predicate holds, or fail with the description.
+
+        A child that dies while we wait is reported as a crash with its exit status, not as a
+        frame that never arrived. Polling only once, immediately after the fixed startup drain,
+        left the conflation B106 removed in place for a monitor that starts and then dies before
+        it ever paints a frame (ledger B119).
+        """
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             self.drain(0.4)
+            exit_code = self.process.poll()
+            if exit_code is not None:
+                raise Failure(
+                    f"the monitor exited with {exit_code} while waiting for {description}: "
+                    f"{ANSI.sub('', self.transcript)[-300:]!r}"
+                )
             if predicate(self):
                 return
         raise Failure(f"timed out waiting for {description}")
