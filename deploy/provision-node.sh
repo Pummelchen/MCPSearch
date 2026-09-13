@@ -65,11 +65,28 @@ done
 
 if ! command -v brew >/dev/null 2>&1; then
     say "installing Homebrew (non-interactive)"
+    # Downloaded to a file and checked against a pinned digest instead of being piped into a
+    # shell. A pipe runs whatever arrived — a truncated download, a proxy's error page — and
+    # nothing ties the bytes to a reviewed script. The digest below is the whole of that tie,
+    # so when upstream changes this stops with instructions rather than running something new
+    # (audit task A07).
+    HOMEBREW_INSTALLER_URL="https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh"
+    HOMEBREW_INSTALLER_SHA256="25548e1da7930c1563dbbe2cb05834a4131c4da09234540b6fdac812fda3c287"
+    installer="$(mktemp -t homebrew-install)"
+    if ! curl -fsSL "${HOMEBREW_INSTALLER_URL}" -o "${installer}"; then
+        rm -f "${installer}"
+        fail "could not download the Homebrew installer"
+    fi
+    actual="$(shasum -a 256 "${installer}" | awk '{print $1}')"
+    if [ "${actual}" != "${HOMEBREW_INSTALLER_SHA256}" ]; then
+        rm -f "${installer}"
+        fail "Homebrew installer digest changed (expected ${HOMEBREW_INSTALLER_SHA256}, got ${actual}); review ${HOMEBREW_INSTALLER_URL} and update the pin in this script"
+    fi
     # NONINTERACTIVE avoids the "press RETURN" prompt; sudo is already cached above.
-    NONINTERACTIVE=1 /bin/bash -c \
-        "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
-        >/tmp/brew-install.log 2>&1 \
-        || fail "Homebrew install failed; see /tmp/brew-install.log"
+    NONINTERACTIVE=1 /bin/bash "${installer}" >/tmp/brew-install.log 2>&1
+    install_status=$?
+    rm -f "${installer}"
+    [ "${install_status}" -eq 0 ] || fail "Homebrew install failed; see /tmp/brew-install.log"
     for prefix in /opt/homebrew /usr/local; do
         [ -x "${prefix}/bin/brew" ] && eval "$("${prefix}/bin/brew" shellenv)" && break
     done
