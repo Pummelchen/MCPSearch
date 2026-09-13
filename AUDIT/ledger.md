@@ -16,13 +16,15 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 
 | Metric | Count |
 | --- | --- |
-| Tasks enumerated | 115 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102 and B103 found in Phase D) |
+| Tasks enumerated | 119 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 29 |
-| START (reproduced, expected behaviour written) | 86 |
+| DONE | 43 |
+| START (reproduced, expected behaviour written) | 76 |
+| PROGRESS | 0 |
 | BLOCKED | 0 |
 
-Severity of the folded set: S0 2, S1 6, S2 27, S3 66.
+Severity of the whole set: **S0 3, S1 8, S2 34, S3 74** — the S0 set (A01, B01, B02) and the S1 set
+are all DONE; of the 34 S2 tasks 25 are DONE and 9 open; of the 74 S3 tasks 7 are DONE and 67 open.
 
 
 Two cross-cutting gates are **not** tasks but acceptance criteria for Phase E: the whole
