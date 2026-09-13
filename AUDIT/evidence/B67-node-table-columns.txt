@@ -1,0 +1,45 @@
+# B67 — the node table's header did not line up with its data
+
+Host: this Mac (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+Two divergences put the node header's `latency`/`results`/`ok` labels to the right of the values
+they describe, on every frame:
+
+* the header padded the state column to 10 (`Terminal.pad("state", to: 10)`) while every data row
+  rendered it through `stateText(_: NodeStatus.State)`, which padded to 8;
+* the header added a two-space indent *before* the 16-wide name column, which the data rows already
+  carry inside theirs.
+
+A new test that compares the column at which the header's `latency` label ends with the column at
+which a data row's `900ms` ends found the second cause: after only the width fix the columns were
+still two apart (37 vs 35). The first cause is what the finding describes; the second is the same
+defect one level out, and both had to go for the table to line up.
+
+## Fails-before evidence
+
+```
+$ swift test --filter testNodeTableHeaderAlignsWithItsData
+- with the state width back at 8:   ("Optional(37)") is not equal to ("Optional(33)")
+- with only the width fixed:        ("Optional(37)") is not equal to ("Optional(35)")
+- with both fixed:                  passes
+```
+
+## The fix
+
+The node state column is 10 wide in the data rows as well as in the header (which is also what the
+`used` estimate in `nodeSection` assumes), and the header no longer repeats the indent.
+
+## Verification
+
+```
+$ swift test --filter testNodeTableHeaderAlignsWithItsData
+Executed 1 test, with 0 failures (0 unexpected)
+
+$ swift test
+Executed 484 tests, with 6 skipped and 0 failures (0 unexpected) in 18.632 seconds
+
+$ swift-format lint --recursive --strict Sources Tests    0 diagnostics
+$ swiftlint lint --strict                                 0 violations in 83 files
+```

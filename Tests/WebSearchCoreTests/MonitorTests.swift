@@ -415,6 +415,35 @@ final class RendererTests: XCTestCase {
         XCTAssertEqual(Renderer.duration(3725), "1h02m")
     }
 
+    /// The node table's header and data columns line up.
+    ///
+    /// The header padded the state column to 10 while every data row padded it to 8, so the
+    /// header's latency/results/ok labels sat two characters right of the values they described on
+    /// every frame (ledger B67).
+    func testNodeTableHeaderAlignsWithItsData() {
+        let lines = Renderer(useColour: false).render(
+            model(
+                nodes: [node("node1", state: .up)],
+                providers: [provider(.tavily, state: .healthy)]
+            ),
+            columns: 140,
+            rows: 40
+        )
+
+        let header = lines.first { $0.contains("latency") } ?? ""
+        let row = lines.first { $0.contains("900ms") } ?? ""
+        let headerEnd = header.range(of: "latency").map {
+            Terminal.displayWidth(String(header[header.startIndex..<$0.upperBound]))
+        }
+        let rowEnd = row.range(of: "900ms").map {
+            Terminal.displayWidth(String(row[row.startIndex..<$0.upperBound]))
+        }
+
+        XCTAssertNotNil(headerEnd, "the node table must have a header")
+        XCTAssertNotNil(rowEnd, "the node table must show the stub latency")
+        XCTAssertEqual(headerEnd, rowEnd, "the latency column ends at the same column in both rows")
+    }
+
     func testMillisecondFormatting() {
         XCTAssertEqual(Renderer.milliseconds(.milliseconds(750)), "750ms")
         XCTAssertEqual(Renderer.milliseconds(.milliseconds(1500)), "1.5s")

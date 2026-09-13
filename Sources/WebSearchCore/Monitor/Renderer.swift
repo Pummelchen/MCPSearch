@@ -54,7 +54,10 @@ public struct Renderer: Sendable {
     }
 
     private func stateText(_ state: NodeStatus.State) -> String {
-        let label = Terminal.pad(state.label, to: 8)
+        // 10, to match the node table's header and the `used` estimate in `nodeSection`: at 8 the
+        // header's latency/results/ok columns started two characters right of the data's, on every
+        // frame (ledger B67).
+        let label = Terminal.pad(state.label, to: 10)
         switch state {
         case .up: return Terminal.colour(label, .brightGreen, enabled: useColour)
         case .degraded: return Terminal.colour(label, .brightYellow, enabled: useColour)
@@ -277,7 +280,10 @@ public struct Renderer: Sendable {
         lines.append("  " + Terminal.bold("SEARXNG NODES", enabled: useColour) + "   " + summary)
         lines.append(
             Terminal.colour(
-                "  " + Self.leadingColumn("  node", width: 16) + Terminal.pad("state", to: 10)
+                // No extra indent here: the data rows carry their two spaces inside the name
+                // column, and adding them again put the whole header two columns right of the
+                // values it labels (ledger B67).
+                Self.leadingColumn("  node", width: 16) + Terminal.pad("state", to: 10)
                     + Terminal.pad("latency", to: 9, alignment: .right)
                     + Terminal.pad("results", to: 9, alignment: .right)
                     + Terminal.pad("ok", to: 5, alignment: .right)

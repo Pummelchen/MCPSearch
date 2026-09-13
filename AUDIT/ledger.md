@@ -18,8 +18,8 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 120 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 73 |
-| START (reproduced, expected behaviour written) | 47 |
+| DONE | 75 |
+| START (reproduced, expected behaviour written) | 45 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
@@ -115,12 +115,12 @@ waived in writing.
 | B64 | S3 | `WebSearchCore/Monitor/NodeProbe.swift` | `Sources/WebSearchCore/Monitor/NodeProbe.swift:102` (catch at `:133-142`) | Malformed JSON from a node is reported as "unreachable" | bug | START | this Mac (arm64) | Phase B L3-12 |
 | B65 | S3 | `WebSearchCore/Monitor/MonitorModel.swift`, `Sources/MCPSMonitor/main.swift` | `Sources/WebSearchCore/Monitor/MonitorModel.swift:50` | `NodeStatus.State.skipped` is unreachable dead state | dead | START | this Mac (arm64) | Phase B L3-13 |
 | B66 | S3 | `WebSearchCore/Providers/*` | `Sources/WebSearchCore/Providers/MojeekProvider.swift:219` (and `ExaProvider.swift:174`, `SearXNGProvider.swift:174`, `TavilyProvider.swift:165`, `Bra | Decoded-but-unused vendor DTO fields across five adapters | dead | START | this Mac (arm64) | Phase B L3-14 |
-| B67 | S3 | `WebSearchCore/Monitor/Renderer.swift` | `Sources/WebSearchCore/Monitor/Renderer.swift:273` (data at `:288`) | Node table header and data disagree on the state column width | style | START | this Mac (arm64) | Phase B L3-17 |
+| B67 | S3 | `WebSearchCore/Monitor/Renderer.swift` | `Sources/WebSearchCore/Monitor/Renderer.swift:273` (data at `:288`) | Node table header and data disagree on the state column width | style | DONE | this Mac (arm64) | Phase B L3-17 |
 | B68 | S3 | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift` | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift:499` | Stale "detached task" comment plus a 60 ms sleep that waits for nothing | test | DONE | this Mac (arm64) | Phase B L3-18 |
 | B69 | S3 | `Tests/WebSearchCoreTests/CoreUnitTests.swift` | `Tests/WebSearchCoreTests/CoreUnitTests.swift:344` | Clock test asserts a property that cannot fail | test | DONE | this Mac (arm64) | Phase B L3-20 |
 | B70 | S3 | `Tests/WebSearchCoreTests/StdioServerTests.swift` (same pattern in `ErrorReportingTests.swift`, `SchemaCompati | `Tests/WebSearchCoreTests/StdioServerTests.swift:85` (loop `:70-93`) | Subprocess harnesses advertise a timeout that a blocking read cannot enforce | test | START | this Mac (arm64) | Phase B L3-21 |
 | B71 | S3 | `Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift` | `Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift:30` | Three copies of the same subprocess harness, already diverged | test | START | this Mac (arm64) | Phase B L3-22 |
-| B72 | S3 | `Tests/WebSearchCoreTests/TestSupport.swift` | `Tests/WebSearchCoreTests/TestSupport.swift:178` (body `:170-189`) | `assertNoCredentialLeak` documents a check it does not perform and passes vacuously | test | START | this Mac (arm64) | Phase B L3-23 |
+| B72 | S3 | `Tests/WebSearchCoreTests/TestSupport.swift` | `Tests/WebSearchCoreTests/TestSupport.swift:178` (body `:170-189`) | `assertNoCredentialLeak` documents a check it does not perform and passes vacuously | test | DONE | this Mac (arm64) | Phase B L3-23 |
 | B73 | S3 | `scripts/soak.py` | `scripts/soak.py:446` | Soak report attributes every failure category to every provider | bug | START | this Mac (arm64) | Phase B L3-24 |
 | B74 | S3 | `MCPSMonitor` (option parsing) | `Sources/MCPSMonitor/main.swift:200` (`--no-nodes` at `:143`, custom nodes at `:160`) | `--no-nodes` is silently ignored whenever a `--node` is also present | logic | DONE | this Mac (arm64) | Phase B L3-29 |
 | B75 | S3 | `MCPSMonitor` (option parsing); same helper copied in `WebSearchCore/Support/TransportConfiguration.swift` | `Sources/MCPSMonitor/main.swift:155` (helper `:127-135`); `Sources/WebSearchCore/Support/TransportConfiguration.swift:97` | `--node` accepts a relative URL and can swallow the next flag as its value | logic | START | this Mac (arm64) | Phase B L3-30 |
