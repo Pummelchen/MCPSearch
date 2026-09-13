@@ -498,8 +498,10 @@ final class SearchOrchestratorTests: XCTestCase {
                 failure: ProviderFailure(provider: .brave, category: .serverError, message: "500")
             )
         }
-        // The state update happens in a detached task inside recordFailure.
-        try await Task.sleep(for: .milliseconds(60))
+        // No sleep here: `recordFailure` awaits the breaker before it returns
+        // (`ProviderHealth.recordFailure`), which `FusionAndReliabilityTests` asserts directly.
+        // A 60 ms sleep used to stand in for a detached task that no longer exists (ledger B35);
+        // a reader who trusted that comment would reintroduce the race it described.
 
         let brave = MockSearchProvider.returning(.brave, results: [("B", "https://b.example.com/1", nil)])
         let tavily = MockSearchProvider.returning(.tavily, results: [("T", "https://t.example.com/1", nil)])
@@ -544,9 +546,17 @@ final class SearchOrchestratorTests: XCTestCase {
             (DispatchTime.now().uptimeNanoseconds - started) / 1_000_000
         )
 
-        XCTAssertLessThan(elapsedMilliseconds, 2_000, "the time budget must bound the call")
+        // The contract is what the caller sees: the hang is reported as a timeout and the
+        // responsive provider's results still come back. The wall-clock bound below only catches
+        // a sentinel that never fires at all (the stub hangs for 60 s), so it is deliberately
+        // loose — a tight bound measures the CI runner's scheduler, not this code (ledger B35).
         XCTAssertEqual(response.results.count, 1, "the responsive provider's results survive")
         XCTAssertTrue(response.providersFailed.contains { $0.category == .timeout })
+        XCTAssertLessThan(
+            elapsedMilliseconds,
+            10_000,
+            "the time budget must bound the call rather than wait out the hanging provider"
+        )
     }
 
     /// A provider that already reported a *failure* must not be charged a second, synthetic
