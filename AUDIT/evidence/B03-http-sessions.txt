@@ -64,3 +64,17 @@ $ scripts/coverage_floor.py Sources/ 80                             85.1 % >= 80
 
 Coverage is unchanged at 85.1 % because the session code runs in the server *process*, which
 the test process's profile does not instrument — exactly the gap ledger A04 records.
+
+## CI, on this branch
+
+```
+$ gh workflow run CI --ref audit/2026-09-13
+$ gh run watch 34736818618 --exit-status
+✓ build-and-test    in 5m1s   (includes the stdio and Streamable HTTP smoke tests)
+✓ static-analysis   in 41s    (formatter, linter, ruff, pyright, semgrep, shellcheck,
+                               gitleaks, osv-scanner)
+exit 0   https://github.com/Pummelchen/MCPSearch/actions/runs/34736818618
+```
+
+The HTTP smoke test performs a real Streamable HTTP handshake against this build, so the
+per-session path is exercised in CI as well as by the unit tests.
