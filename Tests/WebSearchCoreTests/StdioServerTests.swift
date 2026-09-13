@@ -320,7 +320,18 @@ final class StdioServerTests: XCTestCase {
         let schema = try XCTUnwrap(search["inputSchema"] as? [String: Any])
         let properties = try XCTUnwrap(schema["properties"] as? [String: Any])
         let provider = try XCTUnwrap(properties["provider"] as? [String: Any])
-        let enumValues = try XCTUnwrap(provider["enum"] as? [String])
+        // The list may also carry JSON null, because the property is a nullable union;
+        // only the string entries name a provider. Reading the list as `[Any]` rather
+        // than `[String]` keeps this test about which *providers* are advertised, which
+        // is its subject, instead of about whether anything else is present.
+        let enumEntries = try XCTUnwrap(provider["enum"] as? [Any])
+        for entry in enumEntries {
+            XCTAssertTrue(
+                entry is String || entry is NSNull,
+                "the provider enum may only contain ids and null, found \(entry)"
+            )
+        }
+        let enumValues = enumEntries.compactMap { $0 as? String }
 
         // Every search-capable provider must be offered, plus `auto`.
         let expected = Set(

@@ -19,6 +19,7 @@ import XCTest
 /// | every object declares `properties` | An object schema without it is rejected. |
 /// | every object declares `required` | An absent key must not be read as "the empty set"; the declared set is the contract. |
 /// | every array declares `items` | Required for a well-formed schema. |
+/// | mirrored tools agree property by property | `web_answer` advertises the same discovery arguments as `web_search`; a constraint that reaches only one of them is a client-visible divergence. |
 /// | root is a closed object, never a union | Non-object roots are rejected. |
 /// | tool names at most 64 characters | Documented limit across clients. |
 ///
@@ -118,15 +119,85 @@ final class SchemaCompatibilityTests: XCTestCase {
         "propertyNames", "unevaluatedProperties", "unevaluatedItems",
     ]
 
+    /// A canonical form for comparing two schema fragments.
+    ///
+    /// `JSONSerialization` preserves array order, which matters for `enum`: the
+    /// advertised order is part of what a client shows a model, so two lists with the
+    /// same members in a different order are a drift worth reporting.
+    private func canonical(_ value: Any?) -> String {
+        guard
+            let value,
+            let data = try? JSONSerialization.data(
+                withJSONObject: value, options: [.sortedKeys, .fragmentsAllowed]
+            )
+        else {
+            return "<none>"
+        }
+        return String(bytes: data, encoding: .utf8) ?? "<none>"
+    }
+
     /// Walk a schema and collect every cross-client violation.
+    ///
+    /// `mirror` is the schema of the tool this one documents itself as a mirror of, when
+    /// there is one. `web_answer` advertises the same discovery arguments as
+    /// `web_search`, so the two are compared property by property: a constraint can
+    /// otherwise reach one tool and not the other, which is how `web_answer.provider`
+    /// lost its `enum` with every structural rule still green (ledger B110).
     private func violations(
         in node: Any,
         path: String,
+        mirror: [String: Any]? = nil,
         into found: inout [String]
     ) {
         if let object = node as? [String: Any] {
             for keyword in SchemaCompatibilityTests.bannedKeywords where object[keyword] != nil {
                 found.append("\(path): banned keyword `\(keyword)`")
+            }
+
+            // Compare the shared discovery arguments, keyed by the property itself so
+            // the result does not depend on either schema's declaration order. Only
+            // the keywords that constrain a value are compared: prose may legitimately
+            // differ because the two tools describe what they do with it, but a
+            // constraint may not. `provider` is held to the whole property, because
+            // the closed set of ids is the contract a client discovers (ledger B110).
+            if let mirror, let properties = object["properties"] as? [String: Any],
+                let mirrored = mirror["properties"] as? [String: Any]
+            {
+                let mirroredKeys = Set(mirrored.keys).subtracting(["query"])
+                let declaredKeys = Set(properties.keys).subtracting(["query"])
+                if mirroredKeys != declaredKeys {
+                    found.append(
+                        "\(path): discovery arguments differ from the mirrored schema "
+                            + "(missing: \(mirroredKeys.subtracting(declaredKeys).sorted()), "
+                            + "extra: \(declaredKeys.subtracting(mirroredKeys).sorted()))"
+                    )
+                }
+                for key in declaredKeys.intersection(mirroredKeys) {
+                    guard
+                        let declared = properties[key] as? [String: Any],
+                        let expected = mirrored[key] as? [String: Any]
+                    else {
+                        found.append("\(path): discovery argument `\(key)` is not an object")
+                        continue
+                    }
+                    if key == "provider" {
+                        if canonical(declared) != canonical(expected) {
+                            found.append(
+                                "\(path): discovery argument `provider` differs from the schema "
+                                    + "this tool mirrors, so a client cannot discover the ids "
+                                    + "the server accepts"
+                            )
+                        }
+                        continue
+                    }
+                    let base = Set(declared.keys).union(expected.keys).subtracting(["description"])
+                    for field in base.sorted() where canonical(declared[field]) != canonical(expected[field]) {
+                        found.append(
+                            "\(path): discovery argument `\(key).\(field)` differs from the "
+                                + "mirrored schema"
+                        )
+                    }
+                }
             }
 
             // A `type` may be a string or an array of strings (nullable unions).
@@ -161,7 +232,8 @@ final class SchemaCompatibilityTests: XCTestCase {
             }
 
             for (key, value) in object {
-                violations(in: value, path: "\(path).\(key)", into: &found)
+                let nested = (mirror?["properties"] as? [String: Any])?[key]
+                violations(in: value, path: "\(path).\(key)", mirror: nested as? [String: Any], into: &found)
             }
         } else if let array = node as? [Any] {
             for (index, value) in array.enumerated() {
@@ -178,13 +250,19 @@ final class SchemaCompatibilityTests: XCTestCase {
         XCTAssertFalse(tools.isEmpty)
 
         var allViolations: [String] = []
+        // `web_answer` declares itself a mirror of `web_search`'s discovery arguments,
+        // so its input schema is walked against web_search's as the baseline.
+        let searchInput =
+            tools.first { $0["name"] as? String == "web_search" }?["inputSchema"]
+            as? [String: Any]
         for tool in tools {
             let name = tool["name"] as? String ?? "?"
 
             for (label, key) in [("inputSchema", "inputSchema"), ("outputSchema", "outputSchema")] {
                 guard let schema = tool[key] else { continue }
+                let mirror = key == "inputSchema" && name == "web_answer" ? searchInput : nil
                 var found: [String] = []
-                violations(in: schema, path: "\(name).\(label)", into: &found)
+                violations(in: schema, path: "\(name).\(label)", mirror: mirror, into: &found)
                 allViolations.append(contentsOf: found)
             }
         }
@@ -308,6 +386,52 @@ final class SchemaCompatibilityTests: XCTestCase {
             XCTAssertTrue(
                 description.contains(expected),
                 "\(key) description must document its default (\(expected)): \(description)"
+            )
+        }
+    }
+
+    /// `provider` must advertise the closed set of ids the runtime parser accepts.
+    ///
+    /// The list is derived from `ProviderID.allCases` in the schema, so this pins the
+    /// public contract down independently of that derivation: both tools must offer
+    /// every id, and a value that no longer parses must not survive in either. A
+    /// spelling-only assumption is what let `web_answer.provider` lose its `enum`
+    /// without any structural rule noticing (ledger B110).
+    func testProviderEnumListsTheAcceptedProviderIDs() throws {
+        // `auto` is not a `ProviderID`: the parsers translate it to "let the
+        // orchestrator choose" before a provider is resolved.
+        let accepted: Set<String> = [
+            "auto", "tavily", "brave", "mojeek", "exa", "searxng",
+            "open_web_search", "duckduckgo", "startpage", "parallel",
+        ]
+        let tools = try advertisedTools()
+        let search = try XCTUnwrap(tools.first { $0["name"] as? String == "web_search" })
+        let searchSchema = try XCTUnwrap(search["inputSchema"] as? [String: Any])
+        let searchProperties = try XCTUnwrap(searchSchema["properties"] as? [String: Any])
+
+        for tool in tools where tool["name"] as? String == "web_search" || tool["name"] as? String == "web_answer" {
+            let name = try XCTUnwrap(tool["name"] as? String)
+            let schema = try XCTUnwrap(tool["inputSchema"] as? [String: Any])
+            let properties = try XCTUnwrap(schema["properties"] as? [String: Any])
+            let provider = try XCTUnwrap(properties["provider"] as? [String: Any])
+            // The list also carries `null`, because the property is a nullable union;
+            // this test is about the ids a client may send.
+            let listed = Set(
+                (provider["enum"] as? [Any] ?? []).compactMap { $0 as? String }.map {
+                    $0.lowercased()
+                }
+            )
+
+            XCTAssertEqual(
+                listed, accepted,
+                "\(name).provider must advertise exactly the parser's accepted ids "
+                    + "(missing: \(accepted.subtracting(listed).sorted()), "
+                    + "unexpected: \(listed.subtracting(accepted).sorted()))"
+            )
+            XCTAssertEqual(
+                provider["description"] as? String,
+                searchProperties["provider"].flatMap { ($0 as? [String: Any])?["description"] as? String },
+                "\(name).provider must document the same default as `web_search`"
             )
         }
     }

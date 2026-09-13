@@ -34,12 +34,45 @@ import WebSearchCore
 /// - **Zero-argument tools still declare `properties` and `required`** (as an empty object and
 ///   an empty array); an object schema with no `properties` key is rejected, and an absent
 ///   `required` is not the same contract as an empty one.
+/// - **A tool that mirrors another tool's arguments declares the same constraints, not
+///   copies of them.** `web_answer` runs the same discovery pass as `web_search`, so the
+///   shared properties come from one definition and the schema lint compares them; a
+///   hand-maintained copy had already lost `provider`'s `enum` (ledger B110).
 /// - The root is always a closed object, never a union.
 public enum ToolSchemas {
     public static let searchToolName = "web_search"
     public static let openToolName = "web_open"
     public static let statusToolName = "web_search_status"
     public static let answerToolName = "web_answer"
+
+    /// The `provider` discovery argument, spelled once for both search tools.
+    ///
+    /// `web_answer` runs the same discovery pass as `web_search`, and the two tools
+    /// must not teach a client two different sets of legal ids. An earlier hand-written
+    /// copy on `web_answer` silently lost its `enum`, so a strict `tools/list` consumer
+    /// could not discover the accepted ids for that tool at all (ledger B110). Deriving
+    /// the list from `ProviderID.allCases` also removes the second failure mode a shared
+    /// literal would keep: a provider added to the core enum but forgotten here would be
+    /// rejected by this file's own advertised contract.
+    ///
+    /// `auto` is not a `ProviderID`; it is the sentinel both argument parsers translate
+    /// into "let the orchestrator choose". `null` belongs to the list because the
+    /// property is a nullable union and the schema's own lint requires an `enum` to
+    /// admit every value its `type` admits (ledger B111).
+    private static var providerDiscoverySchema: Value {
+        .object([
+            "description": .string(
+                "Force a single search provider by id, or \"auto\" (default) to select "
+                    + "automatically"
+            ),
+            "enum": .array(
+                [.string("auto")]
+                    + ProviderID.allCases.map { Value.string($0.rawValue) }
+                    + [.null]
+            ),
+            "type": .array([.string("string"), .string("null")]),
+        ])
+    }
 
     // MARK: - web_search
 
@@ -81,17 +114,7 @@ public enum ToolSchemas {
                     "type": ["string", "null"],
                     "description": "Optional locale such as en-US or de-DE",
                 ],
-                "provider": [
-                    "type": ["string", "null"],
-                    "enum": [
-                        "auto", "tavily", "brave", "mojeek", "exa", "searxng",
-                        "open_web_search", "duckduckgo", "startpage", "parallel",
-                    ],
-                    "description": Value.string(
-                        "Force a single provider instead of automatic selection; "
-                            + "default \"auto\""
-                    ),
-                ],
+                "provider": Self.providerDiscoverySchema,
                 "mode": [
                     "type": ["string", "null"],
                     "enum": ["fast", "balanced", "thorough"],
@@ -273,13 +296,7 @@ public enum ToolSchemas {
                     "enum": ["fast", "balanced", "thorough"],
                     "description": "Search depth before answering; default \"balanced\"",
                 ],
-                "provider": [
-                    "type": ["string", "null"],
-                    "description": Value.string(
-                        "Force one search provider by id, or \"auto\" (default) to "
-                            + "select automatically"
-                    ),
-                ],
+                "provider": Self.providerDiscoverySchema,
             ],
             "required": [
                 "query", "max_results", "recency", "include_domains", "exclude_domains",

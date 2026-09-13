@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 129 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 95 |
-| START (reproduced, expected behaviour written) | 34 |
+| DONE | 96 |
+| START (reproduced, expected behaviour written) | 33 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 84** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 50 are DONE and 34 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 84 S3 tasks 51 are DONE and 33 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -156,7 +156,7 @@ waived in writing.
 | B100 | S3 | `Sources/SwiftWebSearchMCP/ToolSchemas.swift` (`ToolOutputFormatter`) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:526` | `ToolOutputFormatter`'s fallback and diagnostic branches are untested | test | START | this Mac (arm64) | Phase B L6-20 |
 | B101 | S3 | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift`, `Tests/WebSearchCoreTests/HTTPTransportTests.swift` | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:79` | `HTTPMCPHost`'s startup-failure and internal-error paths are untested | test | START | this Mac (arm64) | Phase B L6-21 |
 | B109 | S3 | `WebSearchCore` / `Search` (`RankFusion`) | `Sources/WebSearchCore/Search/RankFusion.swift:161-162` | The response-level resale discount is applied to every result of an aggregator response, defeating the per-result refinement the code documents | logic | DONE | this Mac (arm64) | handover re-read L2 |
-| B110 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, `web_answer` input) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:275-281` | `web_answer`'s `provider` argument lost the enum that `web_search`'s `provider` declares, though the schema documents itself as a mirror | logic | START | this Mac (arm64) | handover re-read L1 |
+| B110 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, `web_answer` input) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:275-281` | `web_answer`'s `provider` argument lost the enum that `web_search`'s `provider` declares, though the schema documents itself as a mirror | logic | DONE | this Mac (arm64) | handover re-read L1 |
 | B111 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, nullable enums) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:62-66`, `:83-93`, `:94-101`, `:270-274` | Nullable enum arguments declare `["string", "null"]` with an `enum` that excludes `null`, so a strict client cannot legally send the null the design depends on | logic | START | this Mac (arm64) | handover re-read L1 |
 | B112 | S3 | `SwiftWebSearchMCP` (`ToolSchemas`, `web_search_status` input) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:350-358` | `statusInput` is the only object schema in the file that omits `required` | style | DONE | this Mac (arm64) | handover re-read L1 |
 | B113 | S3 | `WebSearchCore` / `Support` + `SwiftWebSearchMCP` (`main`) | `Sources/SwiftWebSearchMCP/main.swift:16` and `:98` | Configuration is loaded and validated before the command line is parsed, so an unreadable config file pre-empts `--help` | logic | START | this Mac (arm64) | handover re-read L7 |
@@ -215,6 +215,56 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B110 — `web_answer`'s `provider` argument lost the enum that `web_search`'s declares
+
+**Severity S3** (recorded) · **category** logic · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** `web_search.provider` advertised the closed set of provider ids, and
+`web_answer.provider` — the same argument, resolved by a copy of the same parsing block in
+`ToolHandlers` — advertised a bare nullable string. Both handlers reject an unknown id at runtime
+with the same message, so the missing `enum` cost a strict `tools/list` consumer the only place it
+could learn the legal values and gained the server nothing. The doc comment on `webAnswerInput`
+claims the tool "deliberately mirrors `web_search`'s discovery arguments"; the mirror was a
+hand-maintained copy that had already drifted.
+
+**The fix — structural, not a copied enum.** The obvious repair is to paste the ten values into
+`web_answer`, which would repeat the mistake that caused the defect. Both tools now reference one
+private `providerDiscoverySchema`, and its `enum` is derived from `ProviderID.allCases` plus the
+`auto` sentinel rather than from a literal, so a provider added to the core enum cannot be omitted
+from the advertised contract. `null` is part of that derived list because the property is a
+nullable union; the lint that requires an enum to admit every type it declares is B111, the next
+commit, and the comment cross-refers to it. The `web_answer` description intentionally adopts the
+`web_search` wording: the two tools have one `provider` contract and that text names the default
+explicitly. No public signature changed.
+
+**The lint.** The recursive `violations` walk in `SchemaCompatibilityTests` now accepts the schema
+a tool mirrors and, for `web_answer.inputSchema`, compares it with `web_search.inputSchema`: the set
+of declared discovery arguments must be identical, and so must every keyword that constrains a
+value (`type`, `enum`, `minimum`, `maximum`, `maxItems`, `items`) for each shared property, with
+`provider` compared whole — description included, because that is where the default is documented.
+Each tool's own description prose is exempt, since `web_answer` describes grounding an answer
+rather than returning results; an earlier version compared whole properties and reported four false
+positives, which is why the comparison is scoped by keyword. The focused test
+`testProviderEnumListsTheAcceptedProviderIDs` asserts that both tools advertise exactly the ten ids
+the runtime parser accepts, which the parity comparison alone cannot see: two tools that lost the
+same value together would still agree with each other. `StdioServerTests.testProviderEnumMatchesSelectableProviders` read the enum as `[String]` and now reads `[Any]`, filtering the string members; its subject is unchanged and the null-count assertion is left to B111.
+
+**Verification.** Mutation-proven twice. Restoring the original defect in `web_answer` alone makes
+the lint fail with exactly `web_answer.inputSchema: discovery argument provider differs from the
+schema this tool mirrors, so a client cannot discover the ids the server accepts`, and the focused
+test reports the complete missing id set plus the description divergence. Running the **pre-fix**
+test file against that same defective tree passes (6 tests, 0 failures, 0.651 s), which is the
+omission the finding describes and shows the new comparison is load-bearing rather than incidental.
+Both files were restored from copies and verified byte-identical (`diff` empty; SHA-256 equal to the
+backups). Debug and release build with 0 warnings under `-warnings-as-errors`; **494 tests, 6
+skipped, 0 failures** (493 plus the one new test method); `swift-format --strict` 0 diagnostics and
+`swiftlint --strict` 0 violations in 84 files. Artifact:
+`AUDIT/evidence/B110-web-answer-provider-enum.txt`.
+
+**Noted, not changed.** `web_answer.mode` and `web_search.mode` remain two literals with the same
+three values; the parity lint now fails the build if either changes alone. The duplicated *parsing*
+block in `ToolHandlers` is B58's subject and is untouched.
 
 ## B50 — provisioning destroyed the working instance before its replacement was proven
 
