@@ -10,7 +10,7 @@
 # hand every time (ledger B36).
 *.profraw
 *.profdata
-coverage.json
+coverage*.json
 coverage.lcov
 
 # Python byte-code caches, from running the scripts in `scripts/`.

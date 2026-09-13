@@ -18,8 +18,8 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 115 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102 and B103 found in Phase D) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 19 |
-| START (reproduced, expected behaviour written) | 96 |
+| DONE | 20 |
+| START (reproduced, expected behaviour written) | 95 |
 | BLOCKED | 0 |
 
 Severity of the folded set: S0 2, S1 6, S2 27, S3 66.
@@ -38,7 +38,7 @@ waived in writing.
 | A01 | **S0** | `WebSearchCore` (scrapers + fetch) | `Fetch/MarkupDepth.swift`, `Fetch/LargeStackParse.swift`, `Providers/ScraperSupport.swift:89`, `Fetch/HTMLExtractor.swift:81` | HTML parse on a cooperative task stack exhausts the stack and kills the process | unsafe | DONE | this Mac (arm64) | audit baseline (ASan) |
 | A02 | S2 | repo-wide Swift | `.swift-format` (new), `Sources/**`, `Tests/**` | `swift-format` reports 19 155 diagnostics: no config encodes the project's style | style | DONE | this Mac | audit baseline |
 | A03 | S2 | repo-wide Swift | `.swiftlint.yml` (new), `URLPolicy.swift:491`, 7 test files | SwiftLint reports 491 findings with no repository config; genuine rules drown in style noise | style | DONE | this Mac | audit baseline |
-| A04 | S1 | `SwiftWebSearchMCP`, `MCPSMonitor` | `Sources/SwiftWebSearchMCP/**`, `Sources/MCPSMonitor/**` | The executables' coverage is unmeasured (0 % / 29.5 %): the MCP surface is driven as a subprocess | test | START | this Mac | audit baseline (coverage) |
+| A04 | **S1** | `SwiftWebSearchMCP`, `MCPSMonitor` | `Tests/WebSearchCoreTests/TestSupport.swift`, `scripts/coverage_floor.py`, `.github/workflows/ci.yml` | The executables' coverage is unmeasured (0 % / 29.5 %): the MCP surface is driven as a subprocess | test | DONE | this Mac | audit baseline (coverage) |
 | A05 | S2 | SwiftPM | `Package.swift:26-30` | `swift-nio` is pinned by range while the other direct dependencies are exact | deps | START | this Mac | scope discovery |
 | A06 | S2 | `Tests/` + history | `Tests/WebSearchCoreTests/StdioServerTests.swift`, `AnswerSynthesizerTests.swift`, `.gitleaks.toml` | 5 secret-scan findings across full history are synthetic test literals | deps | DONE | this Mac | audit baseline (gitleaks) |
 | A07 | S3 | deploy | `deploy/provision-node.sh:69` | Homebrew installed by piping a remote script into bash (supply chain) | unsafe | DONE | this Mac | audit baseline (semgrep) |

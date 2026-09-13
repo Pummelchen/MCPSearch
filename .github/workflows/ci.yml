@@ -108,12 +108,26 @@ jobs:
           set -euo pipefail
           BIN="$(swift build --show-bin-path)"
           XCTEST="$BIN/SwiftWebSearchMCPPackageTests.xctest/Contents/MacOS/SwiftWebSearchMCPPackageTests"
-          xcrun llvm-cov export "$XCTEST" \
-            -instr-profile "$BIN/codecov/default.profdata" > coverage.json
-          # 80 % against 85.1 % measured when the floor was introduced: enough headroom for a
-          # toolchain difference, tight enough that losing a tested path fails the build.
-          # Only this repository's own Sources/ counts — see the script for why.
-          python3 scripts/coverage_floor.py "$PWD/Sources/" 80 coverage.json
+
+          # The MCP server and the monitor only run as subprocesses, and each of them writes
+          # its own profile (see `ServerTestSupport.childEnvironment`). Merging every profile
+          # and exporting once per binary is what makes their code measurable at all — before
+          # this the server reported 0 % while being thoroughly exercised (ledger A04).
+          xcrun llvm-profdata merge -sparse "$BIN"/codecov/*.profraw \
+            -o "$BIN/codecov/merged.profdata"
+          rm -f coverage-*.json
+          for binary in "$XCTEST" "$BIN/SwiftWebSearchMCP" "$BIN/mcps-mon"; do
+            xcrun llvm-cov export "$binary" \
+              -instr-profile "$BIN/codecov/merged.profdata" \
+              > "coverage-$(basename "$binary").json"
+          done
+
+          # The floor covers this repository's own Sources/ — the library *and* the two
+          # executables, which only became measurable once the subprocesses started emitting
+          # profiles. Measured 87.1 % (WebSearchCore 91.3 %, the MCP server 86.1 %, the monitor
+          # 30.1 %); the floor sits below that with room for a toolchain difference while still
+          # failing if a tested path is lost.
+          python3 scripts/coverage_floor.py "$PWD/Sources/" 80 coverage-*.json
 
       - name: Build (release, warnings are errors)
         run: swift build -c release -Xswiftc -warnings-as-errors

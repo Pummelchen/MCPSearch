@@ -227,7 +227,7 @@ final class HTTPTransportTests: XCTestCase {
             environment.removeValue(forKey: key)
         }
         environment["SEARCH_LOG_LEVEL"] = "warning"
-        process.environment = environment
+        process.environment = ServerTestSupport.childEnvironment(base: environment)
 
         try process.run()
         self.process = process

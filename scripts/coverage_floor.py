@@ -7,8 +7,14 @@ the audit baseline was 40 % unfiltered against 84.3 % for ``Sources/`` alone. On
 repository's own ``Sources/`` directory are counted, which is what makes the number meaningful and
 what makes a floor usable as a gate.
 
+Several reports are accepted because the same code is reached from different processes: the test
+bundle covers ``WebSearchCore``, while the MCP server and the monitor are only exercised as
+subprocesses and emit their own profiles (ledger A04). Each binary gets its own ``llvm-cov
+export``, and the counts are added up here — a file appears in exactly one of them, and a file
+that somehow appeared in two is counted once.
+
 Usage:
-    coverage_floor.py <repo-sources-prefix> <floor-percent> <llvm-cov-export.json>
+    coverage_floor.py <repo-sources-prefix> <floor-percent> <llvm-cov-export.json>...
 """
 
 from __future__ import annotations
@@ -19,25 +25,32 @@ from typing import Any, cast
 
 
 def main() -> int:
-    if len(sys.argv) != 4:
+    if len(sys.argv) < 4:
         print(__doc__)
         return 2
-    prefix, floor_text, report_path = sys.argv[1], sys.argv[2], sys.argv[3]
+    prefix, floor_text = sys.argv[1], sys.argv[2]
+    report_paths = sys.argv[3:]
     floor = float(floor_text)
 
-    with open(report_path, encoding="utf-8") as handle:
-        report = cast("dict[str, Any]", json.load(handle))
-
     covered = total = 0
-    for entry in report["data"][0]["files"]:
-        if not entry["filename"].startswith(prefix):
-            continue
-        summary = entry["summary"]["lines"]
-        covered += summary["covered"]
-        total += summary["count"]
+    counted: set[str] = set()
+    for report_path in report_paths:
+        with open(report_path, encoding="utf-8") as handle:
+            report = cast("dict[str, Any]", json.load(handle))
+        for entry in report["data"][0]["files"]:
+            name = entry["filename"]
+            if not name.startswith(prefix) or name in counted:
+                continue
+            counted.add(name)
+            summary = entry["summary"]["lines"]
+            covered += summary["covered"]
+            total += summary["count"]
 
     percent = 100.0 * covered / total if total else 0.0
-    print(f"Sources/ line coverage: {covered}/{total} = {percent:.1f} % (floor {floor:.0f} %)")
+    print(
+        f"Sources/ line coverage: {covered}/{total} = {percent:.1f} % "
+        f"(floor {floor:.0f} %, {len(counted)} files from {len(report_paths)} report(s))"
+    )
     if percent < floor:
         print(
             f"::error::Sources/ line coverage is {percent:.1f} %, below the {floor:.0f} % floor. "

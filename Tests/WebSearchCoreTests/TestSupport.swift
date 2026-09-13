@@ -31,6 +31,29 @@ enum ServerTestSupport {
         ProcessInfo.processInfo.environment["CI"] != nil
     }
 
+    /// Environment for a spawned server or monitor process.
+    ///
+    /// `swift test --enable-code-coverage` instruments every target and hands the *test*
+    /// process a profile path through `LLVM_PROFILE_FILE`. A child that inherits that setting
+    /// writes its counters into the same file and corrupts both, so for as long as the
+    /// subprocesses ran with the inherited value the MCP surface measured **0 %** while being
+    /// thoroughly exercised (ledger A04). Each child now gets its own file, and the coverage
+    /// step merges every profile in the directory.
+    ///
+    /// `%c` puts the profiling runtime in continuous mode, which is what makes this work for a
+    /// *terminated* child: the runtime normally flushes at exit, and these harnesses stop their
+    /// server with a signal, so an at-exit-only profile is written empty. `%p` keeps two
+    /// children started in the same second from colliding.
+    static func childEnvironment(base: [String: String] = [:]) -> [String: String] {
+        var environment = base
+        if let parent = ProcessInfo.processInfo.environment["LLVM_PROFILE_FILE"], !parent.isEmpty {
+            let directory = URL(fileURLWithPath: parent).deletingLastPathComponent()
+            let name = "child-\(UUID().uuidString.prefix(8))-%c-%p.profraw"
+            environment["LLVM_PROFILE_FILE"] = directory.appendingPathComponent(name).path
+        }
+        return environment
+    }
+
     /// Locate the executable `swift build` produced next to the test bundle.
     ///
     /// A missing binary means the end-to-end coverage did not run at all. Locally that

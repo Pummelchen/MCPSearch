@@ -36,7 +36,7 @@ final class ErrorReportingTests: XCTestCase {
                 env.removeValue(forKey: key)
             }
             for (key, value) in environment { env[key] = value }
-            process.environment = env
+            process.environment = ServerTestSupport.childEnvironment(base: env)
         }
 
         func start() throws { try process.run() }

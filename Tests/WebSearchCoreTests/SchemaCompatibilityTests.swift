@@ -39,9 +39,9 @@ final class SchemaCompatibilityTests: XCTestCase {
             process.standardOutput = stdout
             process.standardError = Pipe()
             // Hermetic: no provider credentials can influence the tool list.
-            process.environment = [
+            process.environment = ServerTestSupport.childEnvironment(base: [
                 "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
-            ]
+            ])
         }
 
         func start() throws { try process.run() }

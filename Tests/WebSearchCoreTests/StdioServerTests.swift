@@ -49,7 +49,7 @@ final class StdioServerTests: XCTestCase {
                 merged.removeValue(forKey: key)
             }
             for (key, value) in environment { merged[key] = value }
-            process.environment = merged
+            process.environment = ServerTestSupport.childEnvironment(base: merged)
         }
 
         func start() throws {
