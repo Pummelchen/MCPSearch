@@ -57,6 +57,11 @@ CLEAR_TO_END_OF_SCREEN = "\x1b[J"
 # is what the renderer emits; "[H" is the short form it does *not* use.
 CURSOR_HOME = "\x1b[1;1H"
 
+# How much to read from the PTY at once. A small value reproduces a slow consumer, which
+# is what a loaded CI runner is: it guarantees the transcript ends mid-frame and proves the
+# assertions only ever look at complete ones. Override with MONITOR_SMOKE_READ_CHUNK.
+READ_CHUNK = int(os.environ.get("MONITOR_SMOKE_READ_CHUNK", "65536"))
+
 # An SGR sequence: the colour attributes the renderer wraps text in.
 SGR = re.compile(r"\x1b\[[0-9;]*m")
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
@@ -150,6 +155,21 @@ class StubSearXNG:
         self.server.server_close()
 
 
+def complete_frames(transcript: str) -> list[str]:
+    """The frames whose closing clear-to-end-of-screen has arrived.
+
+    Reads from a PTY are chunked, so the tail of the transcript can be half a frame. A fast
+    machine delivers a whole frame per read and a loaded CI runner does not, which is exactly
+    how an assertion can pass locally and fail in CI: it was inspecting a frame whose node
+    section had not been written yet.
+    """
+    return [
+        piece
+        for piece in transcript.split(CURSOR_HOME)[1:]
+        if CLEAR_TO_END_OF_SCREEN in piece
+    ]
+
+
 class Session:
     """A monitor process attached to a pseudo-terminal."""
 
@@ -194,7 +214,7 @@ class Session:
             if not ready:
                 continue
             try:
-                chunk = os.read(self.master, 65536)
+                chunk = os.read(self.master, READ_CHUNK)
             except OSError as error:
                 if error.errno in (errno.EIO, errno.EBADF):
                     break
@@ -208,8 +228,8 @@ class Session:
         os.write(self.master, key.encode())
 
     def frames(self) -> list[str]:
-        """Everything painted so far, one entry per cursor-home repaint."""
-        return self.transcript.split(CURSOR_HOME)[1:]
+        """Complete frames painted so far, one entry per cursor-home repaint."""
+        return complete_frames(self.transcript)
 
     def frame_text(self) -> str:
         """The most recent frame with the escape sequences stripped."""
@@ -272,7 +292,10 @@ def run(binary: str) -> None:
             require(expected in text, f"the frame is missing {expected!r}")
 
         # 3. Colour is on for a terminal; `c` turns it off and keeps the layout.
-        require(SGR.search(frame) is not None, "a terminal frame should carry colour")
+        session.wait_for(
+            lambda s: SGR.search(s.frames()[-1]) is not None,
+            "colour in the frame",
+        )
         session.send("c")
         session.wait_for(
             lambda s: SGR.search(s.frames()[-1]) is None,
@@ -291,10 +314,11 @@ def run(binary: str) -> None:
                     return True
             return False
 
-        require(
-            "unavailable:" in plain and engine_column(plain),
-            "the engine breakdown should be visible by default",
+        session.wait_for(
+            lambda s: "unavailable:" in s.frame_text() and engine_column(s.frame_text()),
+            "the engine breakdown in the node rows and header",
         )
+        plain = session.frame_text()
         session.send("e")
         session.wait_for(
             lambda s: not engine_column(s.frame_text())
