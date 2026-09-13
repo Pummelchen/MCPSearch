@@ -84,7 +84,14 @@ public enum ResultNormalizer {
         guard let url = URL(string: candidate),
             let scheme = url.scheme?.lowercased(),
             scheme == "http" || scheme == "https",
-            let host = url.host(), !host.isEmpty
+            let host = url.host(), !host.isEmpty,
+            // A repaired URL must not carry credentials. `mailto:someone@example.com` has no
+            // `://`, so the repair prefixed `https://` and produced
+            // `https://mailto:someone@example.com`: the provider's scheme became userinfo and the
+            // link pointed at an unrelated host. `URLPolicy` refuses credentials before any fetch,
+            // so rejecting them here keeps this function's "absolute, web-only" contract honest
+            // instead of handing a caller a URL that can only be refused later (ledger B34).
+            url.user == nil, url.password == nil
         else { return nil }
 
         return url
@@ -158,10 +165,4 @@ public enum ResultNormalizer {
         return output
     }
 
-    /// Extract a human-readable domain for display: the registrable-ish name with
-    /// `www.` removed.
-    public static func displayDomain(_ url: URL) -> String {
-        guard let host = url.host()?.lowercased() else { return "" }
-        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
-    }
 }
