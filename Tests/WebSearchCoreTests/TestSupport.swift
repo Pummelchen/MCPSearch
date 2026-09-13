@@ -90,6 +90,163 @@ enum ServerTestSupport {
 /// Anchor so `Bundle(for:)` resolves to the test bundle from a static helper.
 private final class ServerTestSupportAnchor {}
 
+// MARK: - Newline-JSON subprocess harness
+
+/// Why a harness read ended without a response.
+enum ServerTestError: Error, CustomStringConvertible {
+    case timeout
+    case malformedResponse(String)
+    case unexpectedEOF(stderr: String)
+
+    var description: String {
+        switch self {
+        case .timeout: "timed out waiting for a response"
+        case .malformedResponse(let text): "malformed JSON-RPC line: \(text)"
+        case .unexpectedEOF(let stderr): "server exited early; stderr: \(stderr)"
+        }
+    }
+}
+
+/// One running subprocess spoken to with newline-delimited JSON, stdout to stdin.
+///
+/// The deadline is enforced at the read, not merely checked between reads. The loop this
+/// replaces was `while Date() < deadline { … availableData }`, and `availableData` blocks
+/// until data arrives or the pipe reaches EOF, so a wedged server that still held the write
+/// end hung the suite indefinitely while the 15 s/20 s "timeout" it advertised never fired
+/// (ledger B70). Each read now `poll`s the descriptor first, so the bound is real.
+final class ServerProcess {
+    let process = Process()
+    /// The write end is held as a stored property because `Process.standardInput` owns the
+    /// pipe, not the handle, and the harness closes this handle to signal end of input.
+    let stdinPipe = Pipe()
+    private let stdoutPipe = Pipe()
+    private let stderrPipe = Pipe()
+    private var stdoutBuffer = Data()
+    private var stderrBuffer = Data()
+
+    /// Start a child with a scrubbed environment.
+    ///
+    /// Hermetic on purpose: starting from PATH alone and removing every documented provider
+    /// variable means an ambient `TAVILY_API_KEY`/`BRAVE_SEARCH_API_KEY` — exactly what the
+    /// README tells a user to export — cannot make a stub-provider test contact the live vendor
+    /// and report a false failure.
+    init(
+        binary: URL,
+        environment: [String: String] = [:],
+        arguments: [String] = []
+    ) {
+        process.executableURL = binary
+        process.arguments = arguments
+        process.standardInput = stdinPipe
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        var merged: [String: String] = [
+            "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+        ]
+        for key in ServerTestSupport.providerEnvironmentVariables {
+            merged.removeValue(forKey: key)
+        }
+        for (key, value) in environment { merged[key] = value }
+        process.environment = ServerTestSupport.childEnvironment(base: merged)
+    }
+
+    func start() throws {
+        try process.run()
+    }
+
+    func send(_ object: [String: Any]) throws {
+        var line = try JSONSerialization.data(withJSONObject: object)
+        line.append(UInt8(ascii: "\n"))
+        stdinPipe.fileHandleForWriting.write(line)
+    }
+
+    /// Read one JSON object from stdout, blocking until a full line arrives.
+    ///
+    /// The wait blocks in `poll` with the remaining budget rather than in `availableData`, so
+    /// expiry throws even while the child is alive and silent. `poll` is restarted on `EINTR`
+    /// for the time that is left, so a signal does not silently reset the bound.
+    func readMessage(timeout: TimeInterval) throws -> [String: Any] {
+        let deadline = Date().addingTimeInterval(timeout)
+        while true {
+            // Serve any complete line already buffered: a poll after the deadline would
+            // discard an answer that had already arrived.
+            if let newlineIndex = stdoutBuffer.firstIndex(of: UInt8(ascii: "\n")) {
+                let lineData = stdoutBuffer[stdoutBuffer.startIndex..<newlineIndex]
+                stdoutBuffer = Data(stdoutBuffer[stdoutBuffer.index(after: newlineIndex)...])
+                if lineData.isEmpty { continue }
+                guard
+                    let object = try JSONSerialization.jsonObject(with: Data(lineData))
+                        as? [String: Any]
+                else {
+                    throw ServerTestError.malformedResponse(
+                        String(bytes: lineData, encoding: .utf8) ?? "<not valid UTF-8>"
+                    )
+                }
+                return object
+            }
+
+            // Rounded up so a sub-millisecond remainder still polls once rather than
+            // expiring early; a negative remainder is discarded by `guard`.
+            let remaining = Int32((deadline.timeIntervalSinceNow * 1_000).rounded(.up))
+            guard remaining > 0 else { throw ServerTestError.timeout }
+
+            var descriptor = pollfd(
+                fd: stdoutPipe.fileHandleForReading.fileDescriptor,
+                events: Int16(POLLIN),
+                revents: 0
+            )
+            let ready = poll(&descriptor, 1, remaining)
+            if ready == 0 { throw ServerTestError.timeout }
+            if ready < 0 {
+                if errno == EINTR { continue }
+                throw ServerTestError.timeout
+            }
+
+            let chunk = stdoutPipe.fileHandleForReading.availableData
+            if chunk.isEmpty {
+                // EOF: the process exited without answering.
+                throw ServerTestError.unexpectedEOF(stderr: stderrText())
+            }
+            stdoutBuffer.append(chunk)
+        }
+    }
+
+    /// Read messages until one has the requested JSON-RPC id.
+    ///
+    /// One deadline covers the whole call, so a stream of notifications cannot extend it.
+    func readResponse(id: Int, timeout: TimeInterval = 15) throws -> [String: Any] {
+        let deadline = Date().addingTimeInterval(timeout)
+        while true {
+            let remaining = deadline.timeIntervalSinceNow
+            guard remaining > 0 else { throw ServerTestError.timeout }
+            let message = try readMessage(timeout: remaining)
+            if let messageID = message["id"] as? Int, messageID == id { return message }
+            // Notifications are skipped; this server sends none, but tolerate them.
+        }
+    }
+
+    /// Everything the child has written to stderr so far.
+    ///
+    /// The reads and the buffer are shared across calls, so a diagnostic drained while
+    /// waiting for a response is still available to the assertion that needs it and
+    /// nothing is consumed twice. Reading opportunistically cannot truncate a later
+    /// diagnostic, because `availableData` returns only bytes already delivered.
+    func stderrText() -> String {
+        let chunk = stderrPipe.fileHandleForReading.availableData
+        if !chunk.isEmpty { stderrBuffer.append(chunk) }
+        return String(bytes: stderrBuffer, encoding: .utf8) ?? "<not valid UTF-8>"
+    }
+
+    func stop() {
+        try? stdinPipe.fileHandleForWriting.close()
+        if process.isRunning {
+            process.terminate()
+        }
+        process.waitUntilExit()
+    }
+}
+
 // MARK: - Mock transport
 
 /// A scripted `HTTPClient` so provider contract tests never touch the network.

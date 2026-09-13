@@ -1,0 +1,147 @@
+# B70 — the subprocess harness "timeout" could not fire
+
+Host: `node1 (arm64, macOS 26.6.2)` · branch `audit/2026-09-13` · Swift 6.3.3
+
+## Premise check: still open
+
+The three stdio harnesses each read stdout like this:
+
+```swift
+// before — StdioServerTests.swift:107-136 (same shape in the other two)
+let deadline = Date().addingTimeInterval(timeout)
+while Date() < deadline {
+    if let newlineIndex = stdoutBuffer.firstIndex(of: UInt8(ascii: "\n")) { ... return object }
+    let chunk = stdoutPipe.fileHandleForReading.availableData   // blocks
+    if chunk.isEmpty { throw ...unexpectedEOF(...) }
+    stdoutBuffer.append(chunk)
+}
+throw ServerTestError.timeout
+```
+
+`FileHandle.availableData` blocks until data arrives or the pipe reaches EOF, and the child
+holds the write end open, so an infinite loop inside the server is an infinite block inside the
+harness. The `while Date() < deadline` test can only run *after* a read returns, which is the
+one thing a wedged server never lets happen. The 15 s (`StdioServerTests`, `readMessage`) and
+20 s (`ErrorReportingTests`, `SchemaCompatibilityTests`) bounds were therefore decoration.
+
+Confirmed live rather than by reading: with the pre-fix loop in place, the new regression test
+below hangs (see the mutation section) instead of failing after its 0.3 s budget.
+
+## The fix
+
+One change, in the shared harness the other two copies are being folded into (B71): every read
+now waits in `poll(2)` on the stdout descriptor with the time that is actually left, so expiry
+is enforced while the child is alive and silent.
+
+```swift
+// TestSupport.swift — ServerProcess.readMessage
+// Rounded up so a sub-millisecond remainder still polls once rather than
+// expiring early; a negative remainder is discarded by `guard`.
+let remaining = Int32((deadline.timeIntervalSinceNow * 1_000).rounded(.up))
+guard remaining > 0 else { throw ServerTestError.timeout }
+
+var descriptor = pollfd(fd: stdoutPipe.fileHandleForReading.fileDescriptor, events: Int16(POLLIN), revents: 0)
+let ready = poll(&descriptor, 1, remaining)
+if ready == 0 { throw ServerTestError.timeout }
+if ready < 0 {
+    if errno == EINTR { continue }   // a signal must not reset the bound
+    throw ServerTestError.timeout
+}
+
+let chunk = stdoutPipe.fileHandleForReading.availableData
+if chunk.isEmpty { throw ServerTestError.unexpectedEOF(stderr: stderrText()) }
+stdoutBuffer.append(chunk)
+```
+
+Two details that a naive `poll` conversion gets wrong:
+
+* A complete line already buffered is served **before** the deadline is consulted, so an
+  answer that arrived on the previous read is never discarded as a timeout.
+* `poll` is restarted on `EINTR` with the recomputed remainder, so an unrelated signal does
+  not silently extend the wait.
+
+`readResponse(id:timeout:)` likewise carries one deadline across the notifications it skips,
+instead of passing `max(0.1, …)` into a helper that could then block for that floor.
+
+The harness now also owns a shared stderr buffer: `stderrText()` accumulates what it drains, so
+the two `StdioServerTests` assertions that used to read `stderrPipe` directly cannot consume a
+diagnostic before the assertion that needs it (and the pipe stays private to the harness).
+
+## The test
+
+`StdioServerTests.testHarnessDeadlinePreemptsABlockedRead` runs a child that writes a partial
+line and then holds the pipe open, and requires the read to throw the harness timeout rather
+than block:
+
+```swift
+let server = ServerProcess(
+    binary: URL(fileURLWithPath: "/bin/sh"),
+    arguments: ["-c", "printf 'partial line with no newline'; sleep 60"]
+)
+try server.start()
+defer { server.stop() }
+
+let started = Date()
+XCTAssertThrowsError(try server.readResponse(id: 1, timeout: 0.3)) { error in
+    XCTAssertEqual(String(describing: error), "timed out waiting for a response", ...)
+}
+XCTAssertLessThan(Date().timeIntervalSince(started), 10, ...)
+```
+
+`/bin/sh` stands in for the server because the defect is in the read loop, not the binary; the
+`printf` with no newline is what makes it a *blocking* read (the loop has data in its buffer
+but no complete line, so a poll-less implementation parks in `availableData`).
+
+## Proof the test can fail (mutation of the harness)
+
+M1 — restore the pre-fix blocking read in `ServerProcess.readMessage` (deadline checked only
+between reads), keep the new test:
+
+```
+$ timeout 30 xcrun xctest -XCTest WebSearchCoreTests.StdioServerTests/testHarnessDeadlinePreemptsABlockedRead \
+      "$SCRATCH/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.xctest"
+Test Suite 'Selected tests' started at 2026-09-14 00:25:27.139.
+Test Suite 'SwiftWebSearchMCPPackageTests.xctest' started at 2026-09-14 00:25:27.140.
+Test Suite 'StdioServerTests' started at 2026-09-14 00:25:27.140.
+Test Case '-[WebSearchCoreTests.StdioServerTests testHarnessDeadlinePreemptsABlockedRead]' started.
+[30 s of silence; the runner is killed by `timeout`, exit 124]
+```
+
+That is the reported defect exactly: the advertised bound never fired and the run hung. (The
+same mutation under `timeout 45 swift test --filter …` also exited 124 with no further output.)
+
+`TestSupport.swift` was restored from a copy and verified byte-identical — `diff` empty, SHA-256
+`ac98f22dd6f7750902351f7dcf99f6d773138bb9eea46150c8433245fe314d05` for both the restored file
+and the backup.
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (6.21s)                                          0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+Executed 549 tests, with 6 tests skipped and 0 failures (0 unexpected) in 25.956 (26.022) seconds
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (0.53s)                                          0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+exit 0                                                           0 diagnostics
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 87 files.         exit 0
+
+$ python3 scripts/third_party_notices.py
+THIRD-PARTY-NOTICES.md covers all 8 resolved packages at the pinned versions
+```
+
+549 is the 548 baseline plus this one test. The 6 skips are the pre-existing environment-gated
+ones.
+
+## Notes
+
+* Production code is untouched: this is a test-harness defect, pinned by a harness test.
+* `ErrorReportingTests` and `SchemaCompatibilityTests` still hold their own copies of the
+  broken loop at this commit; B71 folds both into this harness next, which is what makes the
+  enforced deadline apply to all three rather than to one.

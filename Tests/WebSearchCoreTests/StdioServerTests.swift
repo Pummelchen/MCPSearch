@@ -63,115 +63,47 @@ final class StdioServerTests: XCTestCase {
         )
     }
 
-    /// A running server process with newline-delimited JSON-RPC framing.
-    private final class ServerProcess {
-        let process = Process()
-        let stdinPipe = Pipe()
-        let stdoutPipe = Pipe()
-        let stderrPipe = Pipe()
-        private var stdoutBuffer = Data()
+    // MARK: - Harness
 
-        init(binary: URL, environment: [String: String]) {
-            process.executableURL = binary
-            process.standardInput = stdinPipe
-            process.standardOutput = stdoutPipe
-            process.standardError = stderrPipe
+    /// The subprocess harness is shared with `ErrorReportingTests` and
+    /// `SchemaCompatibilityTests`; see `ServerProcess` in `TestSupport.swift`. One copy means
+    /// the deadline below cannot be enforced in one harness and skipped in another (ledger
+    /// B70/B71).
 
-            // Hermetic environment: start from PATH only, then remove every documented
-            // provider variable, then apply this test's overrides. Without this, an
-            // ambient TAVILY_API_KEY/BRAVE_SEARCH_API_KEY (exactly what the README
-            // tells a user to export) would make a stub-provider test contact the live
-            // vendor and report a false failure.
-            var merged: [String: String] = [
-                "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
-            ]
-            for key in ServerTestSupport.providerEnvironmentVariables {
-                merged.removeValue(forKey: key)
-            }
-            for (key, value) in environment { merged[key] = value }
-            process.environment = ServerTestSupport.childEnvironment(base: merged)
+    /// The harness deadline must be a real bound, even while the child is alive and silent.
+    ///
+    /// The read loop used to block in `FileHandle.availableData`, so the check
+    /// `while Date() < deadline` could only run after a read returned: a server that never
+    /// wrote hung the run instead of failing it, and the 15 s/20 s deadline these harnesses
+    /// advertise was never enforced (ledger B70). The child here is a shell that writes a
+    /// partial line and then holds the pipe open, so this can only pass if the deadline
+    /// preempts a blocked read.
+    func testHarnessDeadlinePreemptsABlockedRead() throws {
+        let binary = URL(fileURLWithPath: "/bin/sh")
+        try XCTSkipUnless(
+            FileManager.default.isExecutableFile(atPath: binary.path),
+            "the deadline probe needs a shell to stand in for a wedged server"
+        )
+        let server = ServerProcess(
+            binary: binary,
+            arguments: ["-c", "printf 'partial line with no newline'; sleep 60"]
+        )
+        try server.start()
+        defer { server.stop() }
+
+        let started = Date()
+        XCTAssertThrowsError(try server.readResponse(id: 1, timeout: 0.3)) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "timed out waiting for a response",
+                "a silent child must raise the harness timeout, not block"
+            )
         }
-
-        func start() throws {
-            try process.run()
-        }
-
-        func send(_ object: [String: Any]) throws {
-            let data = try JSONSerialization.data(withJSONObject: object)
-            var line = data
-            line.append(UInt8(ascii: "\n"))
-            stdinPipe.fileHandleForWriting.write(line)
-        }
-
-        /// Read one JSON object from stdout, blocking until a full line arrives.
-        func readMessage(timeout: TimeInterval = 15) throws -> [String: Any] {
-            let deadline = Date().addingTimeInterval(timeout)
-            while Date() < deadline {
-                // Serve any complete line already buffered.
-                if let newlineIndex = stdoutBuffer.firstIndex(of: UInt8(ascii: "\n")) {
-                    let lineData = stdoutBuffer[stdoutBuffer.startIndex..<newlineIndex]
-                    stdoutBuffer = Data(stdoutBuffer[stdoutBuffer.index(after: newlineIndex)...])
-                    if lineData.isEmpty { continue }
-                    guard
-                        let object = try JSONSerialization.jsonObject(with: Data(lineData))
-                            as? [String: Any]
-                    else {
-                        throw ServerTestError.malformedResponse(
-                            (String(bytes: lineData, encoding: .utf8) ?? "<not valid UTF-8>"))
-                    }
-                    return object
-                }
-
-                let chunk = stdoutPipe.fileHandleForReading.availableData
-                if chunk.isEmpty {
-                    // EOF: the process exited without answering.
-                    throw ServerTestError.unexpectedEOF(
-                        stderr: String(bytes: stderrPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8)
-                            ?? "<not valid UTF-8>"
-                    )
-                }
-                stdoutBuffer.append(chunk)
-            }
-            throw ServerTestError.timeout
-        }
-
-        /// Read messages until one has the requested JSON-RPC id.
-        func readResponse(id: Int, timeout: TimeInterval = 15) throws -> [String: Any] {
-            let deadline = Date().addingTimeInterval(timeout)
-            while Date() < deadline {
-                let message = try readMessage(timeout: max(0.1, deadline.timeIntervalSinceNow))
-                if let messageID = message["id"] as? Int, messageID == id { return message }
-                // Notifications are skipped; this server sends none, but tolerate them.
-            }
-            throw ServerTestError.timeout
-        }
-
-        func stderrText() -> String {
-            let data = stderrPipe.fileHandleForReading.availableData
-            return (String(bytes: data, encoding: .utf8) ?? "<not valid UTF-8>")
-        }
-
-        func stop() {
-            try? stdinPipe.fileHandleForWriting.close()
-            if process.isRunning {
-                process.terminate()
-            }
-            process.waitUntilExit()
-        }
-    }
-
-    private enum ServerTestError: Error, CustomStringConvertible {
-        case timeout
-        case malformedResponse(String)
-        case unexpectedEOF(stderr: String)
-
-        var description: String {
-            switch self {
-            case .timeout: "timed out waiting for a response"
-            case .malformedResponse(let text): "malformed JSON-RPC line: \(text)"
-            case .unexpectedEOF(let stderr): "server exited early; stderr: \(stderr)"
-            }
-        }
+        XCTAssertLessThan(
+            Date().timeIntervalSince(started),
+            10,
+            "the read returned only because the deadline fired, not because the child exited"
+        )
     }
 
     /// The protocol revisions this server build understands.
@@ -1363,8 +1295,7 @@ final class StdioServerTests: XCTestCase {
         // And the operator-facing diagnostics are on stderr.
         try server.send(["jsonrpc": "2.0", "id": 61, "method": "tools/list"])
         _ = try server.readResponse(id: 61)
-        let stderr =
-            (String(bytes: server.stderrPipe.fileHandleForReading.availableData, encoding: .utf8) ?? "<not valid UTF-8>")
+        let stderr = server.stderrText()
         XCTAssertTrue(
             stderr.contains("SwiftWebSearchMCP"),
             "expected startup diagnostics on stderr, got: \(stderr.prefix(400))"
@@ -1381,8 +1312,7 @@ final class StdioServerTests: XCTestCase {
 
         try server.send(["jsonrpc": "2.0", "id": 70, "method": "tools/list"])
         _ = try server.readResponse(id: 70)
-        let stderr =
-            (String(bytes: server.stderrPipe.fileHandleForReading.availableData, encoding: .utf8) ?? "<not valid UTF-8>")
+        let stderr = server.stderrText()
         for variable in [
             "TAVILY_API_KEY", "BRAVE_SEARCH_API_KEY", "MOJEEK_API_KEY", "EXA_API_KEY",
             "SEARXNG_BASE_URL", "OPEN_WEB_SEARCH_URL", "SEARCH_ENABLE_SCRAPERS",

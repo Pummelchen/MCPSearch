@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 132 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 120 |
-| START (reproduced, expected behaviour written) | 12 |
+| DONE | 121 |
+| START (reproduced, expected behaviour written) | 11 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 87** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 75 are DONE and 12 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 76 are DONE and 11 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -123,7 +123,7 @@ waived in writing.
 | B67 | S3 | `WebSearchCore/Monitor/Renderer.swift` | `Sources/WebSearchCore/Monitor/Renderer.swift:273` (data at `:288`) | Node table header and data disagree on the state column width | style | DONE | this Mac (arm64) | Phase B L3-17 |
 | B68 | S3 | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift` | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift:499` | Stale "detached task" comment plus a 60 ms sleep that waits for nothing | test | DONE | this Mac (arm64) | Phase B L3-18 |
 | B69 | S3 | `Tests/WebSearchCoreTests/CoreUnitTests.swift` | `Tests/WebSearchCoreTests/CoreUnitTests.swift:344` | Clock test asserts a property that cannot fail | test | DONE | this Mac (arm64) | Phase B L3-20 |
-| B70 | S3 | `Tests/WebSearchCoreTests/StdioServerTests.swift` (same pattern in `ErrorReportingTests.swift`, `SchemaCompati | `Tests/WebSearchCoreTests/StdioServerTests.swift:85` (loop `:70-93`) | Subprocess harnesses advertise a timeout that a blocking read cannot enforce | test | START | this Mac (arm64) | Phase B L3-21 |
+| B70 | S3 | `Tests/WebSearchCoreTests/StdioServerTests.swift` (same pattern in `ErrorReportingTests.swift`, `SchemaCompati | `Tests/WebSearchCoreTests/StdioServerTests.swift:85` (loop `:70-93`) | Subprocess harnesses advertise a timeout that a blocking read cannot enforce | test | DONE | this Mac (arm64) | Phase B L3-21 |
 | B71 | S3 | `Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift` | `Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift:30` | Three copies of the same subprocess harness, already diverged | test | START | this Mac (arm64) | Phase B L3-22 |
 | B72 | S3 | `Tests/WebSearchCoreTests/TestSupport.swift` | `Tests/WebSearchCoreTests/TestSupport.swift:178` (body `:170-189`) | `assertNoCredentialLeak` documents a check it does not perform and passes vacuously | test | DONE | this Mac (arm64) | Phase B L3-23 |
 | B73 | S3 | `scripts/soak.py` | `scripts/soak.py:446` | Soak report attributes every failure category to every provider | bug | DONE | this Mac (arm64) | Phase B L3-24 |
@@ -218,6 +218,44 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B70 — the subprocess harness "timeout" could not fire
+
+**Severity S3** · **category** test · **status** DONE · **host** node1 (arm64)
+
+**Premise confirmed, not stale.** All three stdio harnesses read with
+`while Date() < deadline { … FileHandle.availableData }`. `availableData` blocks until data
+arrives or the pipe reaches EOF, and the child holds the write end open, so the deadline test
+could only run after a read returned — the one thing a wedged server never allows. The 15 s and
+20 s bounds were never enforced.
+
+**What changed.** The shared harness (introduced here, in `TestSupport.swift`, because B71 folds
+the other two copies into it next) waits in `poll(2)` on the stdout descriptor for exactly the
+time remaining before each read, so expiry fires while the child is alive and silent. A complete
+line already buffered is served before the deadline is consulted, so an answer that arrived on
+the previous read is never discarded; `poll` restarts on `EINTR` with the recomputed remainder so
+a signal cannot extend the bound; and `readResponse` now carries one deadline across the
+notifications it skips instead of passing a 0.1 s floor to each read. The harness also owns a
+shared stderr buffer, which is what lets the two `StdioServerTests` assertions stop reaching into
+the pipe directly.
+
+**Falsification.** The new `testHarnessDeadlinePreemptsABlockedRead` runs `/bin/sh -c "printf
+'partial line with no newline'; sleep 60"` — a child that has *some* output pending but no
+complete line, so a poll-less read parks in `availableData` — and requires
+`readResponse(id: 1, timeout: 0.3)` to throw the timeout. With the pre-fix blocking read restored
+the test hangs: `xcrun xctest` printed `Test Case … started.` and was killed 30 s later (exit
+124). `TestSupport.swift` was restored byte-identical (`diff` empty; SHA-256
+`ac98f22dd6f7750902351f7dcf99f6d773138bb9eea46150c8433245fe314d05`).
+
+**No production change.** The defect is in the test harness, and the ledger item is category
+`test`; `Sources/` is untouched.
+
+**Sequencing note.** `ErrorReportingTests` and `SchemaCompatibilityTests` still hold their own
+copies of the broken loop at this commit. B71 is the next task and routes both through this
+harness, so the enforced deadline lands on all three rather than one.
+
+Gate: 549 tests / 6 skipped / 0 failures; debug and release 0 warnings; swift-format 0;
+swiftlint 0; notices clean. Evidence: `AUDIT/evidence/B70-harness-deadline.txt`.
 
 ## B79 — a request head could allocate 1 MiB per connection
 
