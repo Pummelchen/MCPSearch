@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 128 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 87 |
-| START (reproduced, expected behaviour written) | 41 |
+| DONE | 88 |
+| START (reproduced, expected behaviour written) | 40 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 83** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 83 S3 tasks 42 are DONE and 41 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 83 S3 tasks 43 are DONE and 40 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -101,7 +101,7 @@ waived in writing.
 | B45 | S3 | `scripts/mcp_smoke.py`, `scripts/monitor_tty_smoke.py` | `scripts/mcp_smoke.py:100-105`, `scripts/monitor_tty_smoke.py:186-194` | The "prove the scrub" loops in both smoke scripts are no-ops that cannot fail | dead | DONE | this Mac (arm64) | Phase B L7-7 |
 | B46 | S3 | `MCPSMonitor` | `Sources/MCPSMonitor/main.swift:45-78` (`--iterations  Stop after n refreshes (useful for scripting)`), `:533-580` | `mcps-mon` always exits 0, so `--iterations` cannot be used as a health check | incomplete | START | this Mac (arm64) | Phase B L7-8 |
 | B47 | S3 | `example.env` vs `deploy/` | `example.env:35-39` | `example.env` tells the operator to fix a SearXNG setting that the shipped files already set | docs | DONE | this Mac (arm64) | Phase B L7-9 |
-| B48 | S3 | `deploy/provision-node.sh` | `deploy/provision-node.sh:296-297` | `provision-node.sh` cannot find a Homebrew-installed Tailscale CLI on Apple Silicon | bug | START | this Mac (arm64) | Phase B L7-11 |
+| B48 | S3 | `deploy/provision-node.sh` | `deploy/provision-node.sh:296-297` | `provision-node.sh` cannot find a Homebrew-installed Tailscale CLI on Apple Silicon | bug | DONE | this Mac (arm64) | Phase B L7-11 |
 | B49 | S3 | `deploy/provision-node.sh` | `deploy/provision-node.sh:192-199`, `:203-235` | The generated SearXNG `settings.yml` inherits the umask, so the per-node secret key is world-readable | unsafe | DONE | this Mac (arm64) | Phase B L7-12 |
 | B50 | S3 | `deploy/provision-node.sh` | `deploy/provision-node.sh:255-284` | Provisioning destroys the working instance before its replacement is proven on the production port, with no rollback | incomplete | START | this Mac (arm64) | Phase B L7-13 |
 | B51 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:119` | `Log.escape` leaves every control character except `\n`, `\r` and `\t`, so a query can inject terminal escapes into stderr | unsafe | DONE | this Mac (arm64) | Phase B L4-8 |
@@ -214,6 +214,32 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B48 — `provision-node.sh` could not find a Homebrew Tailscale CLI on Apple Silicon
+
+**Severity S3** (recorded) · **category** bug · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** The READY-address lookup tried exactly two hard-coded locations:
+`/usr/local/bin/tailscale` (the Intel Homebrew prefix) and then the `.app` bundle. On an Apple
+Silicon node with the Homebrew formula installed the CLI is at `/opt/homebrew/bin/tailscale`, which
+neither path covers, so the script printed a LAN fallback address instead of the Tailscale address
+the monitor and the wiki use - and, per the comment it defeated, sent an operator hunting for a
+network fault that was really a lookup miss.
+
+**The fix.** `tailscale_cli()` tries `command -v tailscale` first, which works because the
+Homebrew section earlier in the script has already applied this node's `shellenv`, and then falls
+back over the three explicit known paths. It returns the path rather than probing a directory plus
+a basename: on the case-insensitive macOS filesystem `[ -x "$dir/tailscale" ]` is true when only
+`$dir/Tailscale` exists, so that approach printed a filename not on disk. There is no `|| fail`
+because nothing mutates and a missing CLI intentionally falls through to the LAN address.
+
+**Verification.** A harness extracts `tailscale_cli()` verbatim for GREEN and the pre-fix two-line
+lookup verbatim for RED, against fake bin directories whose stubs record their own `$0`, so it
+asserts the path selected and not merely an address: RED selects nothing in 5 of 6 cases
+(including the decisive `/opt/homebrew/bin` row), GREEN selects the expected path in 6 of 6, and
+integrating the real call-site lines with the fake `/opt/homebrew` stub on `PATH` yields the
+expected CLI and canned IP. `bash -n` passes; shellcheck's finding set is unchanged. No node was
+provisioned. Artifact: `AUDIT/evidence/B48-tailscale-discovery.txt`.
 
 ## B83 — HTTP smoke could wait 20 s on a dead server and never check that it was alive
 

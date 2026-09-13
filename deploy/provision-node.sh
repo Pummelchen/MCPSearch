@@ -341,8 +341,38 @@ fi
 
 # Report an address that exists. Printing a hostname as if it were a URL sent operators
 # hunting for a network fault that was really a missing Tailscale install.
-TAILSCALE_IP="$(/usr/local/bin/tailscale ip -4 2>/dev/null | head -1)"
-[ -n "$TAILSCALE_IP" ] || TAILSCALE_IP="$(/Applications/Tailscale.app/Contents/MacOS/Tailscale ip -4 2>/dev/null | head -1)"
+#
+# Resolve the CLI instead of assuming where it was installed. `command -v` is tried first
+# because the Homebrew section above already applied this node's `shellenv`, so it finds the
+# formula from whichever prefix the node actually uses — /opt/homebrew/bin on Apple Silicon,
+# /usr/local/bin on Intel. The old lookup tried only the Intel prefix, so an Apple Silicon
+# node with the formula installed fell through to the LAN address (ledger B48). The app
+# bundle is not on PATH and its binary is named `Tailscale`, unlike the formula's `tailscale`,
+# so those known paths are tried after `command -v`.
+tailscale_cli() {
+    local found candidate
+    found="$(command -v tailscale 2>/dev/null)"
+    if [ -n "${found}" ]; then
+        printf '%s\n' "${found}"
+        return 0
+    fi
+    for candidate in "$@"; do
+        if [ -x "${candidate}" ]; then
+            printf '%s\n' "${candidate}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+TAILSCALE_CLI="$(tailscale_cli \
+    /opt/homebrew/bin/tailscale \
+    /usr/local/bin/tailscale \
+    /Applications/Tailscale.app/Contents/MacOS/Tailscale)"
+TAILSCALE_IP=""
+if [ -n "${TAILSCALE_CLI}" ]; then
+    TAILSCALE_IP="$("${TAILSCALE_CLI}" ip -4 2>/dev/null | head -1)"
+fi
 
 if [ -n "$TAILSCALE_IP" ]; then
     say "READY  searxng http://${TAILSCALE_IP}:${SEARXNG_PORT} (Tailscale)"
