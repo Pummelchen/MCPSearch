@@ -7,10 +7,10 @@ authoritative; `AUDIT/ledger.json` carries every field. This page is orientation
 
 | | |
 | --- | --- |
-| Branch | `audit/2026-09-13` at **`61eb015`**, pushed to `origin` (never merged; `main` untouched at `f3dd8d9`) |
+| Branch | `audit/2026-09-13` at **`2add1e7`**, pushed to `origin` (never merged; `main` untouched at `f3dd8d9`) |
 | Relationship | `main` is a **strict ancestor** of this branch — `git rev-list --count origin/audit/2026-09-13..origin/main` is 0, so the eventual merge is a fast-forward |
-| Tasks | **92 DONE, 0 PROGRESS, 37 START, 0 BLOCKED** (129 enumerated; all open work is S3) |
-| Suite | **490 tests, 6 skipped, 0 failures** (486 baseline + 3 from B116) |
+| Tasks | **94 DONE, 0 PROGRESS, 35 START, 0 BLOCKED** (129 enumerated; all open work is S3) |
+| Suite | **493 tests, 6 skipped, 0 failures** (486 baseline + 3 from B116) |
 | Builds | debug + release, 0 warnings under `-warnings-as-errors` |
 | Linters | `swift-format --strict` 0 · `swiftlint --strict` 0 · ruff clean · pyright strict 0 |
 | Phases | A, B and D complete; C in progress (all S0/S1/S2 closed); **E not started** |
@@ -22,7 +22,7 @@ Established the baseline on the independent host first, which was the right orde
 the suite was **not** reliably green. `StdioServerTests.testToolArgumentClampsAreEnforced` failed
 about once in twenty runs, root-caused to a local-throttle boundary race and fixed as **B116** with
 a deterministic clock rather than by re-running. Then it closed **B41, B48, B49, B64, B78, B80, B81, B82,
-B83, B86, B108, B115**, folded seven findings the re-read turned up as **B109–B115**, and recorded
+B83, B86, B108, B112, B115** and, in a second pass, **B109** and **B112**, folded seven findings the re-read turned up as **B109–B115**, and recorded
 B83's deliberately-left residual as **B117**.
 
 Two things worth carrying forward:
@@ -84,7 +84,7 @@ Two things worth carrying forward:
   `node1` runs one (`mcps-searxng`, `127.0.0.1:8888`); its image ID matches the digest pinned in
   `deploy/docker-compose.yml`, so the fleet is in sync.
 
-## Open tasks (37, all S3)
+## Open tasks (35, all S3)
 
 The queue order is this table's order.
 
@@ -95,10 +95,8 @@ The queue order is this table's order.
 | B102 | S3 | bug | A cross-scheme redirect is refused by the transport, not by our policy, and surfaces as an opaque transp | `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:245-256 (NoR` |
 | B103 | S3 | test | The tool-layer cancellation branches are still not exercised by any test | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:91-93, 142-143, 237` |
 | B106 | S3 | test | The PTY harness reports a crashing monitor as a first-frame timeout | `scripts/monitor_tty_smoke.py` |
-| B109 | S3 | logic | The response-level resale discount is applied to every result of an aggregator response, defeating the p | `Sources/WebSearchCore/Search/RankFusion.swift:161-162 (comment a` |
 | B110 | S3 | logic | web_answer's provider argument lost the enum that web_search's provider declares, though the sch | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:275-281 (compare web` |
 | B111 | S3 | logic | Nullable enum arguments declare ["string", "null"] with an enum that excludes null, so a strict cl | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:62-66 (recency), :83` |
-| B112 | S3 | style | statusInput is the only object schema in the file that omits required, so its structural invariants  | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:350-358` |
 | B113 | S3 | logic | Configuration is loaded and validated before the command line is parsed, so an unreadable config file pr | `Sources/WebSearchCore/Support/AppConfiguration.swift:264-268 and` |
 | B114 | S3 | docs | usage under-documents the CLI it exists to describe, and the test that claims to check every flag lock | `Sources/WebSearchCore/Support/TransportConfiguration.swift:51-77` |
 | B117 | S3 | test | The HTTP smoke picks a free port by closing the socket before the child binds, so the child can lose the | `scripts/mcp_smoke.py (free_loopback_port, and its use in run_htt` |
