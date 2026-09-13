@@ -16,15 +16,15 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 
 | Metric | Count |
 | --- | --- |
-| Tasks enumerated | 130 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
+| Tasks enumerated | 131 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 104 |
+| DONE | 105 |
 | START (reproduced, expected behaviour written) | 26 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
-Severity of the whole set: **S0 3, S1 8, S2 34, S3 85** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 85 S3 tasks 59 are DONE and 26 open.
+Severity of the whole set: **S0 3, S1 8, S2 34, S3 86** — the S0 set (A01, B01, B02) and the S1 set
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 86 S3 tasks 60 are DONE and 26 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -165,6 +165,7 @@ waived in writing.
 | B116 | S3 | `WebSearchCore` / `Search` (`SearchOrchestrator`, `RateLimiter`) | `SearchOrchestrator.swift:456-462`, `RateLimiter.swift:97-104` | A local throttle that cleared between the authorise and the wait estimate was reported as a hard skip, making the suite intermittently red | bug | DONE | node1 (arm64) | Phase E baseline |
 | B117 | S3 | `scripts` (`mcp_smoke.py`) | `scripts/mcp_smoke.py` (`free_loopback_port`) | The HTTP smoke picks a free port by closing the socket before the child binds, so the child can lose the bind race | test | DONE | this Mac (arm64) | Phase C (residual B83 left) |
 | B118 | S3 | `SwiftWebSearchMCP` (`ServerOptions`) | `Sources/WebSearchCore/Support/TransportConfiguration.swift` (the `--transport` error) | The invalid `--transport` error names only two of the four accepted spellings that the usage text now documents | docs | DONE | node1 (arm64) | Phase C (found while doing B114) |
+| B119 | S3 | `scripts` (`monitor_tty_smoke.py`) | `scripts/monitor_tty_smoke.py` (the startup check) | The PTY harness polls the monitor only once, so a crash after the drain window but before the first frame is still reported as a timeout | test | START | node1 (arm64) | Phase C (found while verifying B106) |
 
 ---
 
@@ -286,6 +287,37 @@ byte-identically (`diff` empty; SHA-256 equal). Debug and release build with 0 w
 `swift-format --strict` and `swiftlint --strict` clean over 84 files; the third-party notices check
 reports all 8 pinned packages covered. Artifact:
 `AUDIT/evidence/B87-jina-third-party-disclosure.txt`.
+
+## B106 — the PTY harness reported a crashing monitor as a first-frame timeout
+
+**Severity S3** (recorded) · **category** test · **status** DONE · **host** node1 (arm64)
+
+**This task was already fixed and had been left open.** The fix is commit `761966b1`
+("audit(B106): report a crashing monitor as a crash, and pin Ctrl-C in the harness"), which
+`git merge-base --is-ancestor` confirms is an ancestor of HEAD, and `scripts/monitor_tty_smoke.py`
+is byte-identical to it. `B106` was the **only** START task in this ledger with a resolving
+`audit(<ID>)` commit: the change had landed and only its evidence artifact was missing. That is why
+it still read START, and it would have blocked Phase E's "ledger containing only DONE or
+BLOCKED-with-owner" gate.
+
+**The fix, as committed.** The harness attaches the child's stdin/stdout/stderr to one PTY, so a
+crash banner arrives in the transcript. After the startup drain it polls: an exited child fails with
+"the monitor exited during startup with <status>: <transcript tail>", while a live-but-silent child
+still falls through to the first-frame wait and times out. A crash and a hang no longer produce the
+same message.
+
+**Verification added.** A stub-based check drives the real `run()` against a monitor that exits 3
+with a crash banner and one that starts and blocks. RED (the six check lines removed in place, then
+restored byte-identically) reports `timed out waiting for the first frame` for **both** and fails
+four assertions; GREEN names the exit status and the stderr for the crash and still reports a
+timeout for the hang, passing six. The real `main()` entry point reproduces it end to end. ruff,
+`ruff format --check` and pyright strict are clean.
+
+**Separate residual, folded as B119.** The check runs once after a fixed `drain(3.0)`, so a monitor
+that crashes *after* that window but before its first frame is still reported as a timeout. That is
+outside this task's expected-correct and is recorded rather than quietly closed.
+
+Artifact: `AUDIT/evidence/B106-pty-crash-vs-hang.txt`.
 
 ## B85 — the log query digest was a public FNV-1a documented as non-reversible
 
@@ -1194,7 +1226,7 @@ audit tooling):
 | B103 | S3 | `SwiftWebSearchMCP` (tools) | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:91-93`, `:142-143`, `:237-238`, `:262-263` | The tool-layer cancellation branches are still not exercised by any test | test | START | this Mac (arm64) | Phase D (found while fixing B04) |
 | B104 | S3 | build/environment | `AppConfiguration.swift` + the audit scratch tree | `mcps-mon` appeared to crash on startup in a debug build: a stale incremental build, not a code defect | bug | DONE | this Mac | Phase D (found while testing B10) |
 | B105 | S3 | repository hygiene | `scripts/__pycache__/*.pyc` (4 files) | Generated Python byte-code was committed to the branch | style | DONE | this Mac | Phase D (found while restoring the tree) |
-| B106 | S3 | tests/scripts | `scripts/monitor_tty_smoke.py` | The PTY harness reports a crashing monitor as a first-frame timeout | test | START | this Mac | Phase D (found during B104) |
+| B106 | S3 | tests/scripts | `scripts/monitor_tty_smoke.py` | The PTY harness reports a crashing monitor as a first-frame timeout | test | DONE | this Mac | Phase D (found during B104) |
 | B107 | **S2** | `MCPSMonitor` | `Sources/MCPSMonitor/main.swift`, `Monitor/Terminal.swift:165-171` | An externally delivered SIGINT or SIGTERM leaves the terminal in raw mode with the cursor hidden | bug | DONE | this Mac (arm64) | Phase D (found while fixing B10) |
 | B108 | S3 | `.github` | `.github/workflows/ci.yml` (checkout/cache pins) | The pinned GitHub Actions still target Node 20, which the runner is deprecating, so every job runs on a forced Node 24 | deps | DONE | — | Phase D (CI annotations this round) |
 | C | `DuckDuckGoProvider.search` with HTTP 200 + well-formed empty HTML | `async` (cooperative task) | **ok** |
