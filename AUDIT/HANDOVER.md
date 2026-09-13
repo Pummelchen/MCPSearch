@@ -7,10 +7,10 @@ authoritative; `AUDIT/ledger.json` carries every field. This page is orientation
 
 | | |
 | --- | --- |
-| Branch | `audit/2026-09-13` at **`a6390f4`**, pushed to `origin` (never merged; `main` untouched at `f3dd8d9`) |
+| Branch | `audit/2026-09-13` at **`35d50a1`**, pushed to `origin` (never merged; `main` untouched at `f3dd8d9`) |
 | Relationship | `main` is a **strict ancestor** of this branch — `git rev-list --count origin/audit/2026-09-13..origin/main` is 0, so the eventual merge is a fast-forward |
-| Tasks | **120 DONE, 0 PROGRESS, 12 START, 0 BLOCKED** (132 enumerated; all open work is S3) |
-| Suite | **548 tests, 6 skipped, 0 failures** (486 baseline + 3 from B116) |
+| Tasks | **126 DONE, 0 PROGRESS, 7 START, 0 BLOCKED** (133 enumerated; all open work is S3) |
+| Suite | **564 tests, 6 skipped, 0 failures** (486 baseline + 3 from B116) |
 | Builds | debug + release, 0 warnings under `-warnings-as-errors` |
 | Linters | `swift-format --strict` 0 · `swiftlint --strict` 0 · ruff clean · pyright strict 0 |
 | Phases | A, B and D complete; C in progress (all S0/S1/S2 closed); **E not started** |
@@ -116,7 +116,7 @@ Two things worth carrying forward:
   `node1` runs one (`mcps-searxng`, `127.0.0.1:8888`); its image ID matches the digest pinned in
   `deploy/docker-compose.yml`, so the fleet is in sync.
 
-## Open tasks (12, all S3)
+## Open tasks (7, all S3)
 
 The queue order is this table's order.
 
@@ -125,12 +125,7 @@ The queue order is this table's order.
 | B100 | S3 | test | ToolOutputFormatter's fallback and diagnostic branches are untested | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:526` |
 | B101 | S3 | test | HTTPMCPHost's startup-failure and internal-error paths are untested | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:79` |
 | B103 | S3 | test | The tool-layer cancellation branches are still not exercised by any test | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:91-93, 142-143, 237` |
-| B70 | S3 | test | Subprocess harnesses advertise a timeout that a blocking read cannot enforce | `Tests/WebSearchCoreTests/StdioServerTests.swift:85 (loop :70-93)` |
-| B71 | S3 | test | Three copies of the same subprocess harness, already diverged | `Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift:30` |
-| B93 | S3 | test | The new MarkupDepth regression suite still leaves four branches/contracts unpinned | `Sources/WebSearchCore/Fetch/MarkupDepth.swift:190` |
-| B94 | S3 | test | testStatusCountsSuccessesAndFailures never observes a failure | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift:716` |
-| B95 | S3 | test | The monitor's setup-hint test asserts a string the test itself constructed | `Tests/WebSearchCoreTests/MonitorTests.swift:101` |
-| B96 | S3 | test | HTTPStatusMapper.map's HTTPError branches and validate's default/422 statuses are untested | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift:46` |
+| B121 | S3 | unsafe | HTTPError.invalidURL's detail is interpolated verbatim into the caller-facing message, so a URL-shaped | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift (unsuppor` |
 | B97 | S3 | test | AnswerSynthesizer's completion edge cases, token usage and locale prompt are untested | `Sources/WebSearchCore/Search/AnswerSynthesizer.swift:349` |
 | B98 | S3 | test | The Monitor actor's refresh/counting/warning logic has no Swift test | `Sources/MCPSMonitor/main.swift:337` |
 | B99 | S3 | test | No test ties the Swift test harnesses to the Python harnesses, and two scripts are untested entirely | `Tests/WebSearchCoreTests/TestSupport.swift:12` |
@@ -148,6 +143,11 @@ The queue order is this table's order.
 
 * `AUDIT/environment.md` lists the host facts, the fleet, the secret-scan method and the build
   traps. Its Dropbox sections describe the **first** machine, not this one.
+* **A false green is the specific danger when mutating for a RED.** B93 hit two mechanical traps that
+  together produced one: `swift build --build-tests` does not reliably recompile the library for a
+  source-only edit made within the same second (a `touch` forces it), and the spawned product must be
+  relinked separately or an end-to-end test still talks to the old server. If a mutation does not turn
+  a test red, suspect the build before concluding the test is blind.
 * **Build artefacts lie.** `swift build --target <executable>` does not link the executable, and a
   long-lived scratch tree can hold object files compiled against two different struct layouts. When
   a crash is the thing being investigated, build the **product** into a **fresh** scratch path.
