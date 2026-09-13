@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 131 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 107 |
-| START (reproduced, expected behaviour written) | 24 |
+| DONE | 108 |
+| START (reproduced, expected behaviour written) | 23 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 86** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 86 S3 tasks 62 are DONE and 24 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 86 S3 tasks 63 are DONE and 23 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -145,7 +145,7 @@ waived in writing.
 | B89 | S3 | `WebSearchCore` / `Search` (`SearchCache`) | `Sources/WebSearchCore/Search/SearchCache.swift:103` | `SearchCache.pruneExpired` rebuilds the whole dictionary on every read, write and stats call | perf | START | this Mac (arm64) | Phase B L5-4 |
 | B90 | S3 | `SwiftWebSearchMCP` (`HTTPMCPHost`) | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:61` | The HTTP listener bounds the request body but nothing else, so idle or slow connections are unbounded | perf | START | this Mac (arm64) | Phase B L5-5 |
 | B91 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:42` | Log emission performs a synchronous blocking write to fd 2 from whatever task is logging | perf | START | this Mac (arm64) | Phase B L5-6 |
-| B92 | S3 | `WebSearchCore` / `Fetch` (`JinaReaderFetcher`) | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:125` | `web_open` reports the requested URL as `final_url` on the Jina path, and the reader's own `url` field is decoded but never used | logic | START | this Mac (arm64) | Phase B L5-7 |
+| B92 | S3 | `WebSearchCore` / `Fetch` (`JinaReaderFetcher`) | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:125` | `web_open` reports the requested URL as `final_url` on the Jina path, and the reader's own `url` field is decoded but never used | logic | DONE | this Mac (arm64) | Phase B L5-7 |
 | B93 | S3 | `Sources/WebSearchCore/Fetch/MarkupDepth.swift`, `Search/SearchError.swift`, `SwiftWebSearchMCP/ToolHandlers.s | `Sources/WebSearchCore/Fetch/MarkupDepth.swift:190` | The new `MarkupDepth` regression suite still leaves four branches/contracts unpinned | test | START | this Mac (arm64) | Phase B L6-4 |
 | B94 | S3 | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift`, `Sources/WebSearchCore/Search/SearchOrchestrator.swi | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift:716` | `testStatusCountsSuccessesAndFailures` never observes a failure | test | START | this Mac (arm64) | Phase B L6-14 |
 | B95 | S3 | `Tests/WebSearchCoreTests/MonitorTests.swift`, `Sources/WebSearchCore/Monitor/ProviderProbe.swift:50` | `Tests/WebSearchCoreTests/MonitorTests.swift:101` | The monitor's setup-hint test asserts a string the test itself constructed | test | START | this Mac (arm64) | Phase B L6-15 |
@@ -217,6 +217,44 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B92 — `web_open`'s Jina path hard-set `final_url` to the requested URL
+
+**Severity S3** · **category** logic · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** `JinaReaderFetcher.fetch` decoded the reader's JSON envelope but read only
+`data.content` and `data.title`; `finalURL` was hard-set to `request.url`, and `code`/`status`
+were decoded and unused. `ToolOutputFormatter.openStructured` therefore reported `final_url`
+equal to the requested URL on the Jina path while the direct-HTTP path reports the URL it actually
+reached, so the two extraction methods disagreed about what `final_url` means.
+
+**What the reader actually reports.** The ledger's note says the field carries the URL the reader
+resolved to. Reading the reader's source (the open-source branch the README says was
+re-synchronised with the SaaS code in 2026-04) shows `src/services/snapshot-formatter.ts` builds it
+as `url: nominalUrl?.toString() || snapshot.href?.trim()`, and the crawler passes the requested
+`targetUrl` as `nominalUrl`. For `r.jina.ai` the field is therefore the **nominal target**, not the
+post-redirect URL, and no response header exposes the resolved URL. The fix was still made — the
+field is third-party input that was rendered verbatim and is now validated, and a reader that does
+report a resolved URL is now followed — but it does not deliver redirect transparency for the
+hosted reader, and no in-process fix can without duplicating the fetch and its policy hop.
+
+**The fix.** `data.url` is parsed through the new `resolvedURL(_:)` helper and used as `finalURL`
+when it parses to an absolute `http`/`https` URL with a non-empty host; absent, relative, `file:`,
+`javascript:` and `https://` all fall back to `request.url`. The unused `code`/`status` fields were
+dropped from `ReaderResponse`. The markdown/text path is unchanged and still reports the
+requested URL; the `URL Source:` line was deliberately not parsed because the reader fills it from
+the same nominal value.
+
+**Verification.** Two tests in the existing `FetchFallbackTests.swift`: one where the envelope's
+`data.url` differs from the request and `finalURL` must follow it, and a table over seven unusable
+values that must each fall back. **Falsification.** M1 reverting `finalURL` to `request.url`
+reddens the follow test (1 failure); M2 removing the scheme/host validation reddens the fallback
+test with five failures, showing that without the check a relative, `file:` or `javascript:` string
+could become `final_url`. The file was restored byte-identical after each (`diff` empty, SHA-256
+`465d57f6…399a37`). Debug and release builds are 0 warnings under `-warnings-as-errors`; the suite
+is 508 tests, 6 skipped, 0 failures; `swift-format --strict` and `swiftlint --strict` are clean
+(85 files); `third_party_notices.py` is clean. Evidence:
+`AUDIT/evidence/B92-jina-final-url.txt`.
 
 ## B84 — `IPAddress.v6` accepted any byte count while its accessors indexed 16 bytes
 

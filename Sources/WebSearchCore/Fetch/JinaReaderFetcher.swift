@@ -102,14 +102,17 @@ public struct JinaReaderFetcher: Sendable {
         // with `{code, status, data:{title,url,content}}`, so both shapes are handled.
         let text: String
         let title: String?
+        let reportedURL: URL?
         let contentType = response.header("Content-Type")?.lowercased() ?? ""
         if contentType.contains("json") || response.body.first == UInt8(ascii: "{") {
             let payload = try? JSONCoding.decoder().decode(ReaderResponse.self, from: response.body)
             text = payload?.data?.content ?? ""
             title = payload?.data?.title
+            reportedURL = JinaReaderFetcher.resolvedURL(payload?.data?.url)
         } else {
             text = response.text()
             title = JinaReaderFetcher.leadingTitle(in: text)
+            reportedURL = nil
         }
 
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -138,7 +141,11 @@ public struct JinaReaderFetcher: Sendable {
         )
 
         return FetchResult(
-            finalURL: request.url,
+            // The reader reports the URL it handled; trust it only when it is an absolute
+            // http(s) URL, and otherwise fall back to what was asked for (ledger B92). This
+            // cannot invent a redirect the reader did not report — see the note on
+            // `resolvedURL(from:)`.
+            finalURL: reportedURL ?? request.url,
             statusCode: response.statusCode,
             contentType: contentType.isEmpty ? "text/markdown" : contentType,
             title: title,
@@ -175,9 +182,29 @@ public struct JinaReaderFetcher: Sendable {
         return nil
     }
 
+    /// The URL reported by the reader in its JSON envelope, when it is usable.
+    ///
+    /// The field is third-party input rendered verbatim as the result's `final_url`, so it is
+    /// accepted only when it parses to an absolute `http`/`https` URL with a host. Anything
+    /// else — absent, relative, `file:`, `javascript:` — returns nil so the caller falls back
+    /// to the requested URL rather than reporting a URL that was never fetched (ledger B92).
+    ///
+    /// What the hosted reader actually puts here: `src/services/snapshot-formatter.ts` sets
+    /// `url: nominalUrl?.toString() || snapshot.href?.trim()`, so `r.jina.ai` reports the
+    /// *nominal* target it was given, not the post-redirect URL, and this change therefore
+    /// does not by itself make the Jina path report redirects. It does make the reader's own
+    /// report authoritative (a self-hosted or future reader that reports the resolved URL is
+    /// now followed) and it validates an attacker-influenced field instead of ignoring it.
+    static func resolvedURL(_ reported: String?) -> URL? {
+        guard let reported, let url = URL(string: reported) else { return nil }
+        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
+            return nil
+        }
+        guard let host = url.host(), !host.isEmpty else { return nil }
+        return url
+    }
+
     struct ReaderResponse: Decodable {
-        let code: Int?
-        let status: String?
         let data: Data?
 
         struct Data: Decodable {

@@ -538,6 +538,60 @@ final class FetchFallbackTests: XCTestCase {
         XCTAssertEqual(result.text, "Envelope body.")
     }
 
+    /// The reader's JSON envelope carries the URL it handled, and `final_url` must follow it
+    /// rather than echoing the request (ledger B92).
+    func testReaderJSONEnvelopeURLBecomesFinalURL() async throws {
+        let http = MockHTTPClient()
+        http.on("jina.reader") { request in
+            HTTPResponse(
+                statusCode: 200,
+                headers: ["content-type": "application/json"],
+                body: Data(
+                    #"{"code":200,"status":"ok","data":{"title":"Resolved","url":"https://example.com/resolved","content":"Envelope body."}}"#
+                        .utf8
+                ),
+                url: request.url
+            )
+        }
+
+        let result = try await fetchThroughReader(http)
+
+        XCTAssertEqual(result.finalURL.absoluteString, "https://example.com/resolved")
+    }
+
+    /// A reported URL that is absent, relative or not `http(s)` must not become `final_url`.
+    /// The field is third-party input rendered verbatim as the fetched URL, so the requested
+    /// URL is the only trustworthy fallback (ledger B92).
+    func testReaderFallsBackToTheRequestedURLWhenTheReportedURLIsUnusable() async throws {
+        let unusable: [String?] = [
+            nil, "", "example.com/page", "//example.com/page",
+            "file:///etc/hosts", "javascript:alert(1)", "https://",
+        ]
+        for reported in unusable {
+            let http = MockHTTPClient()
+            let urlField = reported.map { "\"url\":\"\($0)\"," } ?? ""
+            http.on("jina.reader") { request in
+                HTTPResponse(
+                    statusCode: 200,
+                    headers: ["content-type": "application/json"],
+                    body: Data(
+                        #"{"code":200,"status":"ok","data":{\#(urlField)"title":"T","content":"Body."}}"#
+                            .utf8
+                    ),
+                    url: request.url
+                )
+            }
+
+            let result = try await fetchThroughReader(http)
+
+            XCTAssertEqual(
+                result.finalURL.absoluteString,
+                "https://example.com/page",
+                "reported \(reported ?? "nil") must fall back to the requested URL"
+            )
+        }
+    }
+
     func testReader429ReportsTheBodyRetryDelayAsAFetchFailure() async {
         let http = MockHTTPClient()
         http.on("jina.reader") { request in
