@@ -36,6 +36,25 @@ final class MonitorOptionsTests: XCTestCase {
         XCTAssertTrue(try Options.parse(["--no-nodes"]).nodes.isEmpty)
     }
 
+    /// `--no-nodes` must win whichever order it appears in.
+    ///
+    /// It sets an empty node list inside the parse loop, and the custom `--node` list was applied
+    /// unconditionally after the loop, so `--node n1=… --no-nodes` still probed n1 while
+    /// `--no-nodes --node n1=…` probably did too — the flags were order-independent in the usage
+    /// text and order-dependent in the code (ledger B74).
+    func testNoNodesOverridesACustomNodeListInEitherOrder() throws {
+        for arguments in [
+            ["--node", "stub=http://127.0.0.1:8888", "--no-nodes"],
+            ["--no-nodes", "--node", "stub=http://127.0.0.1:8888"],
+        ] {
+            let options = try Options.parse(arguments)
+            XCTAssertTrue(
+                options.nodes.isEmpty,
+                "\(arguments) must probe nothing, got \(options.nodes.map(\.name))"
+            )
+        }
+    }
+
     func testCustomNodesReplaceTheDefaults() throws {
         let options = try Options.parse([
             "--node", "alpha=http://10.0.0.1:8888",

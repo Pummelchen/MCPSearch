@@ -130,6 +130,10 @@ struct Options: Sendable {
             probeQueries: ProbeQueries()
         )
         var customNodes: [NodeProbe.Target] = []
+        /// `--no-nodes` says "do not probe", so it must win over a `--node` list rather than
+        /// depending on which came last. The two flags are order-independent in the usage text;
+        /// before this, `--node n1=… --no-nodes` still probed n1 (ledger B74).
+        var nodesDisabled = false
         var index = 0
 
         func value(for flag: String) throws -> String {
@@ -150,6 +154,7 @@ struct Options: Sendable {
 
             case argument == "--no-nodes":
                 options.nodes = []
+                nodesDisabled = true
 
             case argument == "--node" || argument.hasPrefix("--node="):
                 let raw = try value(for: "--node")
@@ -210,7 +215,14 @@ struct Options: Sendable {
             index += 1
         }
 
-        if !customNodes.isEmpty { options.nodes = customNodes }
+        if nodesDisabled {
+            if !customNodes.isEmpty {
+                options.notes.append("--no-nodes overrides the --node list; no node is probed")
+            }
+            options.nodes = []
+        } else if !customNodes.isEmpty {
+            options.nodes = customNodes
+        }
 
         // Continuous provider probing spends real credits. A basic Tavily search costs
         // one credit, so at the default 10s interval a single keyed provider would burn

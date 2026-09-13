@@ -18,8 +18,8 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 120 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 66 |
-| START (reproduced, expected behaviour written) | 54 |
+| DONE | 68 |
+| START (reproduced, expected behaviour written) | 52 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
@@ -107,7 +107,7 @@ waived in writing.
 | B56 | S3 | WebSearchCore (Providers) | `Sources/WebSearchCore/Providers/ScraperSupport.swift:24` | `ScraperSupport.BlockKind.noResults` is never produced, so an empty result page is reported as unparseable | dead | START | this Mac (arm64) | Phase B L2-12 |
 | B57 | S3 | SwiftWebSearchMCP (with WebSearchCore) | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:407` | The per-provider "which variable enables me" contract is triplicated across units and already wrong for `parallel` | logic | START | this Mac (arm64) | Phase B L1-1 |
 | B58 | S3 | SwiftWebSearchMCP | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:186` | `web_search` and `web_answer` duplicate their argument parsing, and the two schemas have already drifted | style | START | this Mac (arm64) | Phase B L1-2 |
-| B59 | S3 | `WebSearchCore/Support/AppConfiguration.swift` | `Sources/WebSearchCore/Support/AppConfiguration.swift:330` | `PARALLEL_MCP_URL=` cannot clear the default endpoint: the branch is unreachable in production | dead | START | this Mac (arm64) | Phase B L3-7 |
+| B59 | S3 | `WebSearchCore/Support/AppConfiguration.swift` | `Sources/WebSearchCore/Support/AppConfiguration.swift:330` | `PARALLEL_MCP_URL=` cannot clear the default endpoint: the branch is unreachable in production | dead | DONE | this Mac (arm64) | Phase B L3-7 |
 | B60 | S3 | `WebSearchCore/Providers/DuckDuckGoProvider.swift` | `Sources/WebSearchCore/Providers/DuckDuckGoProvider.swift:70` | DuckDuckGo region hint sends the region twice instead of region-language | bug | START | this Mac (arm64) | Phase B L3-8 |
 | B61 | S3 | `WebSearchCore/Fetch/HTMLExtractor.swift` | `Sources/WebSearchCore/Fetch/HTMLExtractor.swift:63` (markers at `:36`, `:40`) | Hyphenated boilerplate markers are inert, and the prefix clause is unreachable | logic | START | this Mac (arm64) | Phase B L3-9 |
 | B62 | S3 | `WebSearchCore/Fetch/URLPolicy.swift` | `Sources/WebSearchCore/Fetch/URLPolicy.swift:435` | `isReserved` blocks all of `192.0.0.0/16` while documenting `192.0.0.0/24` | logic | START | this Mac (arm64) | Phase B L3-10 |
@@ -122,7 +122,7 @@ waived in writing.
 | B71 | S3 | `Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift` | `Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift:30` | Three copies of the same subprocess harness, already diverged | test | START | this Mac (arm64) | Phase B L3-22 |
 | B72 | S3 | `Tests/WebSearchCoreTests/TestSupport.swift` | `Tests/WebSearchCoreTests/TestSupport.swift:178` (body `:170-189`) | `assertNoCredentialLeak` documents a check it does not perform and passes vacuously | test | START | this Mac (arm64) | Phase B L3-23 |
 | B73 | S3 | `scripts/soak.py` | `scripts/soak.py:446` | Soak report attributes every failure category to every provider | bug | START | this Mac (arm64) | Phase B L3-24 |
-| B74 | S3 | `MCPSMonitor` (option parsing) | `Sources/MCPSMonitor/main.swift:200` (`--no-nodes` at `:143`, custom nodes at `:160`) | `--no-nodes` is silently ignored whenever a `--node` is also present | logic | START | this Mac (arm64) | Phase B L3-29 |
+| B74 | S3 | `MCPSMonitor` (option parsing) | `Sources/MCPSMonitor/main.swift:200` (`--no-nodes` at `:143`, custom nodes at `:160`) | `--no-nodes` is silently ignored whenever a `--node` is also present | logic | DONE | this Mac (arm64) | Phase B L3-29 |
 | B75 | S3 | `MCPSMonitor` (option parsing); same helper copied in `WebSearchCore/Support/TransportConfiguration.swift` | `Sources/MCPSMonitor/main.swift:155` (helper `:127-135`); `Sources/WebSearchCore/Support/TransportConfiguration.swift:97` | `--node` accepts a relative URL and can swallow the next flag as its value | logic | START | this Mac (arm64) | Phase B L3-30 |
 | B76 | S3 | `MCPSMonitor` (provider selection); `WebSearchCore/Search/ProviderRegistry.swift` | `Sources/MCPSMonitor/main.swift:348` (and `:292`), `Sources/WebSearchCore/Search/ProviderRegistry.swift:34` | `mcps-mon` ignores `SEARCH_DISABLED_PROVIDERS`, labels disabled providers "ready", and probes them | logic | START | this Mac (arm64) | Phase B L3-31 |
 | B77 | S3 | `SwiftWebSearchMCP` (argument parsing) | `Sources/SwiftWebSearchMCP/ToolSchemas.swift:464` | `ToolArguments.bool(_:)` has no caller | dead | DONE | this Mac (arm64) | Phase B L3-33 |
