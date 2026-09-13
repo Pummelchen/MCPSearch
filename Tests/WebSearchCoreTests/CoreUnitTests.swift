@@ -647,4 +647,84 @@ final class LoggingTests: XCTestCase {
         log.error("should not appear")
         XCTAssertEqual(count, 0)
     }
+
+    // MARK: Standard-error queue (ledger B91)
+
+    /// The default sink frames each event and hands it to the queue; it must not write to fd 2
+    /// itself, because that write is what blocked the logging task.
+    func testTheDefaultSinkRoutesFramedLinesThroughTheQueue() {
+        nonisolated(unsafe) var written: [String] = []
+        let lock = NSLock()
+        let queue = StderrQueue(limit: 8) { line in
+            lock.lock()
+            written.append(line)
+            lock.unlock()
+        }
+        defer { queue.finish() }
+
+        let sink = Log.makeStandardErrorSink(queue: queue)
+        sink("first")
+        sink("second")
+        XCTAssertTrue(queue.flush(), "the queue must drain")
+
+        lock.lock()
+        let captured = written
+        lock.unlock()
+        XCTAssertEqual(captured, ["first\n", "second\n"], "one framed line per call, in order")
+    }
+
+    /// A full queue drops the newest line rather than blocking the caller or growing without
+    /// bound, and the lines it does write keep their order.
+    ///
+    /// The writer is parked inside the injected writer closure, which is what makes this
+    /// deterministic: `submit` must return while the consumer is stopped, and the drop counter is
+    /// observed directly instead of being timed.
+    func testAFullQueueDropsInsteadOfBlockingTheCaller() {
+        nonisolated(unsafe) var written: [String] = []
+        let lock = NSLock()
+        let took = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        let queue = StderrQueue(limit: 2) { line in
+            took.signal()
+            release.wait()
+            lock.lock()
+            written.append(line)
+            lock.unlock()
+        }
+        defer {
+            queue.finish()
+            for _ in 0..<4 { release.signal() }
+        }
+
+        queue.submit("one\n")
+        // Wait until the writer holds "one" and is parked, so only the queue's two slots remain.
+        XCTAssertEqual(took.wait(timeout: .now() + 5), .success, "the writer thread must start")
+
+        queue.submit("two\n")
+        queue.submit("three\n")
+        // Full and stopped: this call must return, not wait for the writer.
+        queue.submit("four\n")
+        XCTAssertEqual(queue.droppedLines, 1, "a full queue must drop the newest line")
+
+        // Release the writer for the drop note, for "two" and for "three"; the last release lets
+        // "three" finish, and `flush` then waits for that write rather than for the queue to
+        // empty.
+        for _ in 0..<3 {
+            release.signal()
+            XCTAssertEqual(took.wait(timeout: .now() + 5), .success, "the writer must continue")
+        }
+        release.signal()
+        XCTAssertTrue(queue.flush(), "the writer must drain once it is released")
+
+        lock.lock()
+        let captured = written
+        lock.unlock()
+        let dropped = captured.filter { $0.contains("dropped 1 log lines") }
+        XCTAssertEqual(dropped.count, 1, "the gap must be reported once: \(captured)")
+        XCTAssertEqual(
+            captured.filter { !$0.contains("dropped 1 log lines") },
+            ["one\n", "two\n", "three\n"],
+            "order and framing must survive the queue"
+        )
+    }
 }

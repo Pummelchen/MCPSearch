@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 132 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 113 |
-| START (reproduced, expected behaviour written) | 19 |
+| DONE | 114 |
+| START (reproduced, expected behaviour written) | 18 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 87** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 68 are DONE and 19 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 69 are DONE and 18 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -144,7 +144,7 @@ waived in writing.
 | B88 | S3 | `WebSearchCore` / `Fetch` (`URLPolicy` + `DirectHTTPFetcher`) | `Sources/WebSearchCore/Fetch/URLPolicy.swift:57` | The declared per-host DNS cache does not exist, and every redirect hop resolves twice | perf | DONE | this Mac (arm64) | Phase B L5-3 |
 | B89 | S3 | `WebSearchCore` / `Search` (`SearchCache`) | `Sources/WebSearchCore/Search/SearchCache.swift:103` | `SearchCache.pruneExpired` rebuilds the whole dictionary on every read, write and stats call | perf | DONE | this Mac (arm64) | Phase B L5-4 |
 | B90 | S3 | `SwiftWebSearchMCP` (`HTTPMCPHost`) | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:61` | The HTTP listener bounds the request body but nothing else, so idle or slow connections are unbounded | perf | DONE | this Mac (arm64) | Phase B L5-5 |
-| B91 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:42` | Log emission performs a synchronous blocking write to fd 2 from whatever task is logging | perf | START | this Mac (arm64) | Phase B L5-6 |
+| B91 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:42` | Log emission performs a synchronous blocking write to fd 2 from whatever task is logging | perf | DONE | this Mac (arm64) | Phase B L5-6 |
 | B92 | S3 | `WebSearchCore` / `Fetch` (`JinaReaderFetcher`) | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:125` | `web_open` reports the requested URL as `final_url` on the Jina path, and the reader's own `url` field is decoded but never used | logic | DONE | this Mac (arm64) | Phase B L5-7 |
 | B93 | S3 | `Sources/WebSearchCore/Fetch/MarkupDepth.swift`, `Search/SearchError.swift`, `SwiftWebSearchMCP/ToolHandlers.s | `Sources/WebSearchCore/Fetch/MarkupDepth.swift:190` | The new `MarkupDepth` regression suite still leaves four branches/contracts unpinned | test | START | this Mac (arm64) | Phase B L6-4 |
 | B94 | S3 | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift`, `Sources/WebSearchCore/Search/SearchOrchestrator.swi | `Tests/WebSearchCoreTests/SearchOrchestratorTests.swift:716` | `testStatusCountsSuccessesAndFailures` never observes a failure | test | START | this Mac (arm64) | Phase B L6-14 |
@@ -218,6 +218,52 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B91 — log emission blocked the task that logged
+
+**Severity S3** · **category** perf · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** `Log.emit` called `standardErrorSink` synchronously, and the sink looped on
+`write(2, …)` on the calling task's thread. A stdio MCP host runs with stderr on a pipe, so once
+that pipe filled and its reader stopped draining, the search or fetch that logged blocked with it;
+`written <= 0` also abandoned a line on `EINTR`.
+
+**Why the bounded queue, not `O_NONBLOCK`.** The finding's first option (set fd 2 non-blocking,
+drop on `EAGAIN`) has two costs it does not price in. `O_NONBLOCK` lives on the open file
+description, so setting it on fd 2 changes how the Swift runtime's own diagnostics and the MCP
+transport's swift-log handler behave on the same descriptor — this package would be making another
+component's output lossy. And `PIPE_BUF` is 512 bytes on this host (measured), so a longer line can
+be transferred partially before `EAGAIN`, truncating a diagnostic and concatenating the next one to
+it; that is the one-line framing the same sentence asks to keep. The finding offers the bounded
+queue as the alternative, so that is the bounded version taken.
+
+**The fix.** `StderrQueue` is a bounded FIFO (1024 lines) between the sink and fd 2. `submit`
+appends under an `NSCondition`, starts one writer thread on first use, and drops plus counts the
+newest line when full, so it never blocks the caller. The writer takes lines in order and writes
+each whole line with a retrying `write(2, …)`: `EINTR` is retried, partial writes continue, any
+other error drops the rest of that line. After drops it emits one
+`level=warning msg="dropped N log lines: the stderr consumer is not draining"` line before the next
+real line. `flush(timeout:)` waits for the queue to empty and the current write to finish, and is
+registered with `atexit`, so a normal exit keeps the tail; it is bounded so a stopped consumer
+cannot turn shutdown into a hang. The sink still writes to fd 2 only.
+
+**Verification.** Two tests in `LoggingTests`. `testTheDefaultSinkRoutesFramedLinesThroughTheQueue`
+points the sink at a queue whose writer records, and asserts exactly `["first\n", "second\n"]`.
+`testAFullQueueDropsInsteadOfBlockingTheCaller` parks an injected writer with semaphores (no timing),
+holds one line, fills a `limit: 2` queue, and asserts that a fourth `submit` returns, that
+`droppedLines == 1`, that the gap is reported once, and that the three real lines keep order and
+framing. **Falsification.** Reverting the sink to a direct write reddens the first test (`("[]")`
+against the framed lines); removing the limit guard reddens the second with the unbounded queue
+contents, `["one\n", "two\n", "three\n", "four\n"]`. The file was restored byte-identical
+(`diff` empty, SHA-256 `f335d70c…51919b`). The "`submit` does not wait" property is proven by
+construction, not by an assertion: the drop assertion is only reachable if the fourth `submit`
+returned while the writer was parked, so a waiting `submit` would hang rather than redden, and that
+is stated rather than claimed.
+
+**Not changed.** The shipped constant is `makeStandardErrorSink(queue: .shared)`; the tests pin the
+helper and the queue, not a future edit that bypassed the helper from the constant. A consumer that
+never drains still parks the writer thread; bounding that thread would mean giving up delivery under
+backpressure, which is the trade this design deliberately refuses.
 
 ## B90 — the HTTP listener bounded the request body and nothing else
 

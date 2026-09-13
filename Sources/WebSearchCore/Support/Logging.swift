@@ -31,21 +31,25 @@ public struct Log: Sendable {
     /// A logger that discards everything, for tests.
     public static let disabled = Log(level: .none, logQueries: false) { _ in }
 
-    /// Default sink: one line per event, written atomically to fd 2.
-    public static let standardErrorSink: @Sendable (String) -> Void = { line in
-        var text = line
-        text.append("\n")
-        let bytes = Array(text.utf8)
-        bytes.withUnsafeBufferPointer { buffer in
-            guard let base = buffer.baseAddress else { return }
-            var offset = 0
-            while offset < buffer.count {
-                let written = write(2, base + offset, buffer.count - offset)
-                if written <= 0 { break }
-                offset += written
-            }
+    /// Build a sink that frames each line and hands it to `queue`.
+    ///
+    /// Internal so a test can supply a queue whose writer it controls; the shipped sink is the
+    /// same code with the process-wide queue (ledger B91).
+    static func makeStandardErrorSink(queue: StderrQueue) -> @Sendable (String) -> Void {
+        { line in
+            queue.submit(line + "\n")
         }
     }
+
+    /// Default sink: one line per event, handed to the process-wide writer queue.
+    ///
+    /// The sink used to perform the `write(2, …)` itself, on whatever task was logging. A stdio
+    /// MCP host runs with stderr on a pipe, and a pipe whose reader stops draining fills up and
+    /// blocks the writer — so a stopped log consumer stalled searches and fetches. The line is
+    /// framed here and queued; `StderrQueue` owns the descriptor and the blocking (ledger B91).
+    public static let standardErrorSink: @Sendable (String) -> Void = makeStandardErrorSink(
+        queue: .shared
+    )
 
     // MARK: - Levels
 
@@ -150,6 +154,172 @@ public struct Log: Sendable {
             }
         }
         return escaped
+    }
+}
+
+// MARK: - Standard error queue
+
+/// Flush the standard-error queue at process exit.
+///
+/// `atexit` takes a C function pointer, so this cannot be a closure that captures the queue; it
+/// reaches the process-wide instance instead (ledger B91).
+private func flushStandardErrorQueueAtExit() {
+    StderrQueue.shared.flush()
+}
+
+/// A bounded, ordered hand-off between a logging call and fd 2.
+///
+/// `Log.emit` used to call `write(2, …)` on the calling task's thread, so a stderr consumer that
+/// stopped draining blocked the search or fetch that happened to log (ledger B91). `submit` never
+/// blocks: the caller hands over the line, one background thread writes whole lines in order, and
+/// a full queue drops the newest line rather than growing without bound or waiting on the consumer.
+///
+/// A queue rather than an `O_NONBLOCK` fd 2, for two reasons. Setting `O_NONBLOCK` is process-wide:
+/// it changes how the Swift runtime's own diagnostics and the MCP transport's logger behave on the
+/// same descriptor, which is outside this package's business. And on Darwin `PIPE_BUF` is 512
+/// bytes, so with `O_NONBLOCK` a longer line can be transferred partially before `EAGAIN`, which
+/// truncates the diagnostic and leaves the next one concatenated to it. One writer of whole lines
+/// keeps the one-line framing under every outcome.
+final class StderrQueue: @unchecked Sendable {
+    /// The process-wide queue.
+    ///
+    /// fd 2 is one resource and lines must keep their order across every `Log` value, so this is
+    /// shared rather than per logger.
+    static let shared: StderrQueue = {
+        let queue = StderrQueue(limit: 1_024) { text in
+            Log.writeToStandardError(text)
+        }
+        // A normal exit must not lose the tail of the log just because the hand-off is async;
+        // the flush is bounded, so a stopped consumer cannot turn shutdown into a hang.
+        _ = atexit(flushStandardErrorQueueAtExit)
+        return queue
+    }()
+
+    private let condition = NSCondition()
+    private let limit: Int
+    private let write: @Sendable (String) -> Void
+    private var pending: [String] = []
+    private var dropped = 0
+    private var started = false
+    /// True while the writer thread holds a line it has taken but not finished writing, so
+    /// `flush` waits for the write and not merely for the queue to empty (ledger B91).
+    private var writing = false
+    private var finished = false
+
+    init(limit: Int, write: @escaping @Sendable (String) -> Void) {
+        self.limit = max(1, limit)
+        self.write = write
+    }
+
+    /// Hand a framed line to the writer. Never blocks; a full queue drops it.
+    func submit(_ line: String) {
+        condition.lock()
+        defer { condition.unlock() }
+        guard !finished else { return }
+        guard pending.count < limit else {
+            dropped += 1
+            return
+        }
+        pending.append(line)
+        if !started {
+            started = true
+            Thread.detachNewThread { [self] in drain() }
+        }
+        condition.broadcast()
+    }
+
+    /// Wait until every queued line has been written, or the deadline passes.
+    ///
+    /// Returns false when the deadline passed with lines still queued, which is what a stopped
+    /// consumer looks like from here.
+    @discardableResult
+    func flush(timeout: Duration = .seconds(2)) -> Bool {
+        let deadline = Date().addingTimeInterval(timeout.seconds)
+        condition.lock()
+        defer { condition.unlock() }
+        while !pending.isEmpty || writing {
+            if !condition.wait(until: deadline) { return false }
+        }
+        return true
+    }
+
+    /// Lines dropped because the queue was full, for tests and operator diagnostics.
+    var droppedLines: Int {
+        condition.lock()
+        defer { condition.unlock() }
+        return dropped
+    }
+
+    /// Stop the writer thread and discard anything still queued.
+    ///
+    /// Only tests that own an instance call this; the process-wide queue lives as long as the
+    /// process does.
+    func finish() {
+        condition.lock()
+        finished = true
+        pending.removeAll()
+        condition.broadcast()
+        condition.unlock()
+    }
+
+    /// Write queued lines in order until `finish()` is called.
+    private func drain() {
+        while true {
+            condition.lock()
+            while pending.isEmpty && !finished {
+                condition.wait()
+            }
+            if finished {
+                condition.unlock()
+                return
+            }
+            let line = pending.removeFirst()
+            writing = true
+            // Report dropped lines once the backlog clears, before the line that follows the
+            // gap, so a reader can tell a gap from a quiet period (ledger B91).
+            var note: String?
+            if dropped > 0 {
+                note = "dropped \(dropped) log lines: the stderr consumer is not draining"
+                dropped = 0
+            }
+            condition.unlock()
+
+            if let note {
+                write("\(Log.timestamp()) level=warning msg=\"\(note)\"\n")
+            }
+            write(line)
+
+            condition.lock()
+            writing = false
+            condition.broadcast()
+            condition.unlock()
+        }
+    }
+}
+
+extension Log {
+    /// Write one framed line to fd 2, retrying `EINTR` and finishing partial writes.
+    ///
+    /// This runs on the queue's writer thread, so blocking is contained there: a consumer that has
+    /// stopped draining parks this thread, the queue fills, and `submit` drops instead of blocking
+    /// a search (ledger B91). `EINTR` is retried because the bytes were not transferred, and any
+    /// other failure drops the rest of the line rather than spinning.
+    static func writeToStandardError(_ text: String) {
+        let bytes = Array(text.utf8)
+        bytes.withUnsafeBufferPointer { buffer in
+            guard let base = buffer.baseAddress else { return }
+            var offset = 0
+            while offset < buffer.count {
+                let written = write(2, base + offset, buffer.count - offset)
+                if written > 0 {
+                    offset += written
+                } else if written < 0, errno == EINTR {
+                    continue
+                } else {
+                    break
+                }
+            }
+        }
     }
 }
 

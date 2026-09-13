@@ -1,0 +1,146 @@
+# B91 — log emission blocked the task that logged
+
+Host: this Mac (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## What was wrong
+
+```swift
+// Logging.swift, before
+public static let standardErrorSink: @Sendable (String) -> Void = { line in
+    var text = line
+    text.append("\n")
+    let bytes = Array(text.utf8)
+    bytes.withUnsafeBufferPointer { buffer in
+        guard let base = buffer.baseAddress else { return }
+        var offset = 0
+        while offset < buffer.count {
+            let written = write(2, base + offset, buffer.count - offset)
+            if written <= 0 { break }
+            offset += written
+        }
+    }
+}
+```
+
+`Log.emit` calls this synchronously, from whatever task logs. A stdio MCP host runs with stderr
+on a pipe; once that pipe's buffer fills and the reader has stopped draining, `write` blocks and
+the search or fetch that happened to log stops with it. The `written <= 0` break also abandoned a
+line on `EINTR`, truncating a diagnostic.
+
+## Why the queue, not `O_NONBLOCK`
+
+The finding's first option was "make the sink non-blocking and lossy — retry on `EINTR`, drop on
+`EAGAIN`". That option cannot be taken here without two costs the finding does not price in:
+
+1. **The flag is process-wide.** `O_NONBLOCK` lives on the open file description, so setting it on
+   fd 2 changes how *everything else* in the process writes there: the Swift runtime's own
+   `fatalError`/assertion output and the MCP transport's swift-log handler. This package would be
+   silently making another component's diagnostics lossy.
+2. **It breaks the framing the same sentence asks to keep.** On this host `PIPE_BUF` is **512**
+   bytes (measured: `os.fpathconf(pipe_write_fd, 'PC_PIPE_BUF')`), so a line longer than that is
+   not written atomically with `O_NONBLOCK`: the kernel can transfer part of it and return
+   `EAGAIN`, leaving a truncated diagnostic with no terminator and the next line concatenated to
+   it. Log lines routinely exceed 512 bytes once metadata is attached.
+
+The finding offers the bounded queue as the alternative, so that is the bounded version taken.
+
+## The fix
+
+`StderrQueue` is a bounded FIFO between `Log.emit` and fd 2:
+
+* `submit` **never blocks**: it appends under `NSCondition`, starts one writer thread on first use,
+  and when the queue is at its limit (1 024 lines) drops the newest line and counts it.
+* One writer thread takes lines in order and writes each **whole** line with a retrying
+  `write(2, …)`: `EINTR` is retried (the bytes were not transferred), a partial write continues
+  from where it stopped, and any other error drops the rest of that line. Because there is exactly
+  one writer and it never interleaves lines, the one-line framing survives every outcome.
+* When the backlog clears after drops, the writer emits one synthetic
+  `level=warning msg="dropped N log lines: the stderr consumer is not draining"` line before the
+  next real line, so a gap in the log is attributable.
+* `flush(timeout:)` waits for the queue to empty *and* the writer to finish the line in hand, and
+  is registered with `atexit`, so a normal exit does not lose the tail of the log. It is bounded
+  (2 s), so a stopped consumer cannot turn shutdown into a hang — the same reason `submit` drops
+  rather than waits.
+
+The sink still writes to fd 2 only, and only through this queue; stdout is untouched (the existing
+`StdioServerTests.testLoggingNeverContaminatesStdout` still passes). `Log.standardErrorSink` keeps
+its public type and name; the only changed signature anywhere is the new internal
+`Log.makeStandardErrorSink(queue:)` seam for tests, and the internal `StderrQueue` type.
+
+## The tests
+
+Two tests in `LoggingTests` (`Tests/WebSearchCoreTests/CoreUnitTests.swift`):
+
+* `testTheDefaultSinkRoutesFramedLinesThroughTheQueue` — the sink, pointed at a queue whose writer
+  records instead of writing, produces exactly `["first\n", "second\n"]`: the line is framed and
+  handed over, and the sink itself never touches fd 2.
+* `testAFullQueueDropsInsteadOfBlockingTheCaller` — a writer parked inside an injected closure
+  (released by the test one line at a time through semaphores, so nothing is timed) holds one line
+  while two more fill a `limit: 2` queue. A fourth `submit` returns, `droppedLines == 1`, the drop
+  is reported once, and the three real lines keep their order and framing.
+
+## Proof the tests can fail (two mutations)
+
+M1 — `makeStandardErrorSink` writes fd 2 directly again, the pre-fix shape:
+
+```
+.../CoreUnitTests.swift:673: error: -[... testTheDefaultSinkRoutesFramedLinesThroughTheQueue] : XCTAssertEqual failed: ("[]") is not equal to ("["first\n", "second\n"]") - one framed line per call, in order
+Test Case '-[WebSearchCoreTests.LoggingTests testTheDefaultSinkRoutesFramedLinesThroughTheQueue]' failed (0.096 seconds).
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.096 (0.097) seconds
+```
+
+M2 — the limit guard is removed, so the queue grows instead of dropping:
+
+```
+.../CoreUnitTests.swift:707: error: -[... testAFullQueueDropsInsteadOfBlockingTheCaller] : XCTAssertEqual failed: ("0") is not equal to ("1") - a full queue must drop the newest line
+.../CoreUnitTests.swift:723: error: -[... testAFullQueueDropsInsteadOfBlockingTheCaller] : XCTAssertEqual failed: ("0") is not equal to ("1") - the gap must be reported once: ["one\n", "two\n", "three\n", "four\n"]
+.../CoreUnitTests.swift:724: error: -[... testAFullQueueDropsInsteadOfBlockingTheCaller] : XCTAssertEqual failed: ("["one\n", "two\n", "three\n", "four\n"]") is not equal to ("["one\n", "two\n", "three\n"]") - order and framing must survive the queue
+Test Case '-[WebSearchCoreTests.LoggingTests testAFullQueueDropsInsteadOfBlockingTheCaller]' failed (0.096 seconds).
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.096 (0.096) seconds
+```
+
+`Logging.swift` was restored from a copy and verified byte-identical (`diff` empty; SHA-256
+`f335d70c…51919b` on both).
+
+**The third property — that `submit` does not wait for the writer — is proven by construction
+rather than by an assertion.** The `droppedLines` assertion in M2's test is only reachable if the
+fourth `submit` returned while the writer was still parked, so a `submit` that waited for room
+would hang the test instead of reddening it. That is a real failure signal in CI (the suite times
+out) but it is not a captured RED, so it is called out here rather than claimed.
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (5.89s)                                                     0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+	 Executed 520 tests, with 6 tests skipped and 0 failures (0 unexpected) in 25.996 (26.057) seconds
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (21.11s)                                                    0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+0 diagnostics                                                               exit=0
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 85 files.                    exit=0
+
+$ python3 scripts/third_party_notices.py
+THIRD-PARTY-NOTICES.md covers all 8 resolved packages at the pinned versions  exit=0
+```
+
+520 is the 518 from B90 plus these two tests; the 6 skips are the pre-existing
+environment-gated ones. The full suite includes `StdioServerTests`, which reads a child process's
+stderr to assert the startup diagnostics are there — it passes with the async hand-off, which is
+the deliverability check for the common (draining) case.
+
+## Noted, not changed
+
+* The shipped `standardErrorSink` constant is `makeStandardErrorSink(queue: .shared)`. The tests
+  pin the framing/routing helper and the queue contract; a future edit that bypassed the helper
+  from the constant would not be caught by them, because the constant's only behaviour is to name
+  the shared queue.
+* A consumer that never drains still parks the writer thread forever; that thread is one of the
+  process's, and the queue bounds what it can be fed. Bounding the thread itself would mean giving
+  up on delivery under backpressure, which is the trade this design deliberately refuses.
