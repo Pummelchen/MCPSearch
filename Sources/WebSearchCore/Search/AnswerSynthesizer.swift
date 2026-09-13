@@ -101,8 +101,12 @@ public struct SynthesizedAnswer: Sendable, Hashable, Codable {
 /// - **The visible answer is what matters**, so `reasoning_content` is never treated
 ///   as the answer.
 /// - **Citations are validated, not trusted.** Markers are checked against the
-///   supplied range; out-of-range markers are stripped from the text and the affected
-///   answer is flagged, so a model cannot cite a source that was never fetched.
+///   supplied range, and `http(s)` links in the prose are checked against the supplied
+///   results' URLs; anything that matches neither is stripped from the text and the
+///   answer is flagged. The guarantee is bounded by that: a link the model writes in
+///   some other form (a bare hostname, a non-`http` scheme, a shortened URL) is not
+///   recognised as a link at all, so it is neither validated nor presented as a
+///   citation. The structured `citations` array is the authoritative list.
 public struct AnswerSynthesizer: Sendable {
     /// System prompt. Kept in one place so tests can assert the grounding rules.
     public static let systemPrompt = """
@@ -263,6 +267,11 @@ public struct AnswerSynthesizer: Sendable {
             text +=
                 "\n\n> Note: \(validated.strippedMarkers) citation marker(s) in the "
                 + "model's answer did not match a supplied result and were removed."
+        }
+        if validated.strippedLinks > 0 {
+            text +=
+                "\n\n> Note: \(validated.strippedLinks) link(s) in the model's answer did not "
+                + "match a fetched result and were removed."
         }
 
         return SynthesizedAnswer(
@@ -448,6 +457,31 @@ public struct AnswerSynthesizer: Sendable {
         var citations: [SynthesizedAnswer.Citation]
         /// Markers that referenced an index outside the supplied range.
         var strippedMarkers: Int
+        /// `http(s)` links in the prose that matched no supplied result.
+        var strippedLinks: Int
+    }
+
+    /// Compiled once, and a failure here is a programming error rather than a silent
+    /// no-validation: `try?` per call plus `?? []` meant an uncompilable pattern returned an
+    /// empty match list, i.e. "everything validated" (ledger B26).
+    private static func compile(_ pattern: String) -> NSRegularExpression {
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            preconditionFailure("\(pattern) is not a valid regular expression")
+        }
+        return regex
+    }
+
+    static let markerPattern = compile(#"\[(\d{1,3})\]"#)
+    /// Matches `http(s)` URLs in prose, including inside a Markdown link target.
+    static let linkPattern = compile(#"https?://[^\s<>()\[\]"']+"#)
+
+    /// Lowercased and without trailing slashes: enough to compare a link in prose with a
+    /// supplied result, and deliberately not a general URL normaliser. A link that differs by
+    /// more than that (a query, a fragment, a different path) counts as a different link.
+    static func comparableURL(_ raw: String) -> String {
+        var text = raw.lowercased()
+        while text.hasSuffix("/") { text.removeLast() }
+        return text
     }
 
     /// Validate `[n]` markers against the supplied results.
@@ -460,12 +494,10 @@ public struct AnswerSynthesizer: Sendable {
         resultCount: Int,
         results: [SearchResult]
     ) -> ValidatedCitations {
-        let pattern = try? NSRegularExpression(pattern: #"\[(\d{1,3})\]"#)
-        let matches =
-            pattern?.matches(
-                in: text,
-                range: NSRange(text.startIndex..<text.endIndex, in: text)
-            ) ?? []
+        let matches = markerPattern.matches(
+            in: text,
+            range: NSRange(text.startIndex..<text.endIndex, in: text)
+        )
 
         // First pass: which indices are valid, in order of appearance.
         var order: [Int] = []
@@ -519,10 +551,36 @@ public struct AnswerSynthesizer: Sendable {
         }
         rewritten += text[cursor..<text.endIndex]
 
+        // Links get the same treatment as markers. A model that writes a URL the corpus does
+        // not contain is asserting a source it was never given, and the tool's own
+        // documentation promised it could not (ledger B26).
+        let supplied = Set(results.map { comparableURL($0.url.absoluteString) })
+        var strippedLinks = 0
+        var withLinks = ""
+        var linkCursor = rewritten.startIndex
+        let linkMatches = linkPattern.matches(
+            in: rewritten,
+            range: NSRange(rewritten.startIndex..<rewritten.endIndex, in: rewritten)
+        )
+        for match in linkMatches {
+            guard let range = Range(match.range, in: rewritten) else { continue }
+            let token = String(rewritten[range])
+            withLinks += rewritten[linkCursor..<range.lowerBound]
+            if supplied.contains(comparableURL(token)) {
+                withLinks += token
+            } else {
+                strippedLinks += 1
+                withLinks += "[link removed: not one of the fetched results]"
+            }
+            linkCursor = range.upperBound
+        }
+        withLinks += rewritten[linkCursor..<rewritten.endIndex]
+
         return ValidatedCitations(
-            text: rewritten.trimmingCharacters(in: .whitespacesAndNewlines),
+            text: withLinks.trimmingCharacters(in: .whitespacesAndNewlines),
             citations: citations,
-            strippedMarkers: invalidCount
+            strippedMarkers: invalidCount,
+            strippedLinks: strippedLinks
         )
     }
 

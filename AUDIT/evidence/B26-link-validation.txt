@@ -1,0 +1,55 @@
+# B26 — only `[n]` markers were validated, so the prose could carry fabricated URLs
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+The synthesizer's documentation promised that "a model cannot cite a source that was never
+fetched", and the implementation delivered that for bracketed markers only: a single regular
+expression over `\[(\d{1,3})\]`, with out-of-range markers stripped and counted. A model that
+wrote `see https://evil.example/login` or `[the docs](https://evil.example/x)` had that text
+returned verbatim — a fabricated source, presented to the caller once removed from the tool's own
+guardrails. The pattern was also compiled per call with `try? … ?? []`, so an uncompilable pattern
+would have produced an *empty match list*, which reads as "everything validated".
+
+## Fails-before evidence
+
+```
+$ swift test --filter 'AnswerSynthesizerTests/testLinksToResultsTheCorpusDoesNotContainAreRemoved|
+                    AnswerSynthesizerTests/testTheStrippedLinkCountIsReportedInTheAnswer'
+  # with the link pass disabled:
+  XCTAssertFalse failed - a link no result contains must be removed:
+    Linux dominates the list [1], and see https://evil.example/login for more.
+  XCTAssertFalse failed - See https://evil.example/login for the details.
+```
+
+## The fix
+
+* **Links are validated like markers.** After the marker renumbering, every `http(s)`
+  URL-shaped token in the prose is compared with the supplied results' URLs (lowercased, no
+  trailing slash). A token that matches nothing is replaced with
+  `[link removed: not one of the fetched results]` and counted; the count is appended to the
+  answer text as a note, exactly as the marker count is.
+* **The comparison is deliberately narrow**, and says so: lowercasing and trailing slashes are
+  not a difference, anything else is. A link that differs by a query or fragment counts as a
+  different link and is removed — conservative in the direction that matters.
+* **The documented guarantee was narrowed to what is implemented.** The doc now states the
+  bound: a bare hostname or a non-`http` scheme is not recognised as a link at all, so it is
+  neither validated nor presented as a citation, and the structured `citations` array is the
+  authoritative list.
+* **Both patterns are compiled once**, through a helper that treats a failure as a programming
+  error instead of an empty match list. A test asserts both compile and that the link pattern
+  finds the URLs it is supposed to.
+
+## Verification
+
+```
+$ swift test --filter AnswerSynthesizerTests
+Executed 27 tests, with 0 failures (0 unexpected)      (5 new)
+
+$ swift test
+Executed 423 tests, with 6 skipped and 0 failures (0 unexpected)
+
+$ swift build --build-tests -Xswiftc -warnings-as-errors   0 warnings, 0 errors
+$ swift-format --strict / swiftlint --strict              0 diagnostics / exit 0
+```

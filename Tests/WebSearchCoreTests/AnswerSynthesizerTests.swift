@@ -407,6 +407,94 @@ final class AnswerSynthesizerTests: XCTestCase {
         XCTAssertTrue(corpus.contains("omitted for length"))
     }
 
+    // MARK: Link validation
+
+    /// Markers were validated; `http(s)` links in the prose were not, so the tool's documented
+    /// promise — "a model cannot cite a source that was never fetched" — did not hold for a URL
+    /// written out in full (ledger B26).
+    func testLinksToResultsTheCorpusDoesNotContainAreRemoved() throws {
+        let text = """
+            Linux dominates the list [1], and see https://evil.example/login for more.
+            The authoritative page is [the docs](https://example.com/unix-death) though.
+            """
+        let validated = AnswerSynthesizer.validateCitations(
+            text,
+            resultCount: sampleResults.count,
+            results: sampleResults
+        )
+
+        XCTAssertFalse(
+            validated.text.contains("evil.example"),
+            "a link no result contains must be removed: \(validated.text)"
+        )
+        XCTAssertTrue(
+            validated.text.contains("[link removed: not one of the fetched results]"),
+            validated.text
+        )
+        XCTAssertTrue(
+            validated.text.contains("https://example.com/unix-death"),
+            "a link that *is* a supplied result must survive: \(validated.text)"
+        )
+        XCTAssertEqual(validated.strippedLinks, 1)
+        XCTAssertEqual(validated.strippedMarkers, 0)
+    }
+
+    /// The visible text of a link stays; only the unverified target goes.
+    func testOnlyTheUnverifiedLinkTargetIsRemoved() throws {
+        let validated = AnswerSynthesizer.validateCitations(
+            "[the docs](https://evil.example/x)",
+            resultCount: sampleResults.count,
+            results: sampleResults
+        )
+        XCTAssertTrue(validated.text.contains("the docs"), validated.text)
+        XCTAssertFalse(validated.text.contains("evil.example"), validated.text)
+    }
+
+    /// Trailing slashes and case are not a difference; anything else is.
+    func testLinkComparisonIsDeliberatelyNarrow() {
+        XCTAssertEqual(
+            AnswerSynthesizer.comparableURL("HTTPS://Example.COM/Page/"),
+            AnswerSynthesizer.comparableURL("https://example.com/Page")
+        )
+        XCTAssertNotEqual(
+            AnswerSynthesizer.comparableURL("https://example.com/page?q=1"),
+            AnswerSynthesizer.comparableURL("https://example.com/page")
+        )
+    }
+
+    /// A failed pattern must not read as "everything validated", which is what
+    /// `try? … ?? []` did (ledger B26).
+    func testTheValidationPatternsCompile() {
+        XCTAssertEqual(AnswerSynthesizer.markerPattern.numberOfCaptureGroups, 1)
+        XCTAssertEqual(AnswerSynthesizer.linkPattern.numberOfCaptureGroups, 0)
+        let matches = AnswerSynthesizer.linkPattern.matches(
+            in: "see https://example.com/a?b=1 and http://x.example/c",
+            range: NSRange(
+                "see https://example.com/a?b=1 and http://x.example/c".startIndex...,
+                in: "see https://example.com/a?b=1 and http://x.example/c"
+            )
+        )
+        XCTAssertEqual(matches.count, 2)
+    }
+
+    /// The removed-link count reaches the answer text, the same way markers do.
+    func testTheStrippedLinkCountIsReportedInTheAnswer() async throws {
+        let client = MockHTTPClient()
+        client.respondJSON(
+            Self.completion("See https://evil.example/login for the details."),
+            label: "deepseek.synthesize"
+        )
+        let answer = try await synthesizer(client).synthesize(
+            query: "q",
+            results: sampleResults
+        )
+        XCTAssertFalse(answer.text.contains("evil.example"), answer.text)
+        XCTAssertTrue(
+            answer.text.contains("link(s) in the model's answer did not match a fetched result"),
+            answer.text
+        )
+    }
+
     // MARK: Error mapping
 
     func testAuthenticationFailureDoesNotEchoTheResponseBody() async throws {
