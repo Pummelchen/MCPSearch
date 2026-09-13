@@ -140,7 +140,21 @@ public actor ProviderHealth {
                     )
                 }
             } else {
-                _ = await breaker.shouldAttempt()
+                // `.halfOpen` admits exactly one probe: `shouldAttempt` claims it for the first
+                // caller and refuses the rest. Discarding that refusal let every concurrent caller
+                // through, so a provider recovering from failures took the whole fan-out instead
+                // of one request (ledger B11). `.closed` always returns true, so this cannot
+                // refuse a healthy provider.
+                let allowed = await breaker.shouldAttempt()
+                if !allowed {
+                    return ProviderFailure(
+                        provider: provider,
+                        category: .circuitOpen,
+                        message:
+                            "\(provider.displayName) is being probed after failures; this request "
+                            + "is skipped until that probe finishes."
+                    )
+                }
             }
         }
 
