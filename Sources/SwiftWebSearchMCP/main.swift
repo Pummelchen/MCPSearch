@@ -109,36 +109,28 @@ case .stdio:
     }
 
 case .http(let httpConfiguration):
-    // The stateful transport owns MCP sessions and streams responses as Server-Sent
-    // Events, so the `Accept` validator requires the client to accept both JSON and
-    // `text/event-stream`. That is what the Streamable HTTP transport specifies, and
-    // what OpenAI's and Anthropic's MCP clients send. Origin validation is kept: it
-    // costs nothing for server-to-server callers and stops a browser page from driving
-    // the server.
-    let transport = StatefulHTTPServerTransport(
-        validationPipeline: StandardValidationPipeline(validators: [
-            OriginValidator.localhost(port: httpConfiguration.port),
-            AcceptHeaderValidator(mode: .sseRequired),
-            ContentTypeValidator(),
-            ProtocolVersionValidator(),
-            SessionValidator(),
-        ]),
-        logger: Logger(label: "mcp.transport.http")
-    )
+    // One Server and one transport per session. The SDK's stateful transport is single-session
+    // and one-shot — it refuses a second `initialize` and answers 404 forever after a
+    // termination — so a shared instance meant exactly one HTTP client per process, for the
+    // life of the process (ledger B03). The streamable transport owns the session header,
+    // Accept negotiation and SSE framing; the host routes by session id.
+    let makeSessionServer: HTTPMCPHost.SessionFactory = { transport in
+        let sessionServer = await MCPServerFactory.make(handlers: handlers, log: log)
+        try await sessionServer.start(transport: transport)
+        return sessionServer
+    }
 
     do {
-        try await server.start(transport: transport)
-
         let host = HTTPMCPHost(
             configuration: httpConfiguration,
-            transport: transport,
+            makeServer: makeSessionServer,
             log: log
         )
         try await host.start()
 
         // Serve until the process is asked to stop.
-        await server.waitUntilCompleted()
-        await shutdown(server: server, host: host)
+        await host.waitUntilStopped()
+        await host.stop()
         log.info("MCP server stopped")
     } catch {
         log.error("MCP server failed to start", metadata: ["error": "\(error)"])

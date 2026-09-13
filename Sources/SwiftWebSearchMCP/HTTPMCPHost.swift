@@ -5,6 +5,7 @@ import NIOCore
 import NIOHTTP1
 import NIOPosix
 import WebSearchCore
+import os
 
 /// A minimal, correct HTTP/1.1 server that fronts the MCP SDK's Streamable HTTP
 /// transport.
@@ -24,39 +25,180 @@ import WebSearchCore
 ///   deployment must terminate TLS somewhere.
 /// - **No OAuth.** Both vendors prefer OAuth for remote servers; this serves the
 ///   no-auth case, which is the documented behaviour for anonymous endpoints.
-/// - **No server-initiated streaming.** The SDK's stateless transport answers each
-///   request with a complete JSON response, which is what the JSON transport path
-///   requires. `text/event-stream` payloads are relayed if the SDK ever produces one.
+/// - **No server-initiated streaming.** Responses are complete JSON bodies; if the SDK
+///   produces a `text/event-stream` payload it is relayed verbatim rather than re-framed.
+/// - **One session per client, and as many clients as connect.** The SDK's stateful
+///   transport is single-session and one-shot: it refuses a second `initialize` and, once
+///   terminated, answers 404 forever. This host therefore keeps a registry of sessions,
+///   creating a fresh `Server` + transport pair per `initialize` and routing every later
+///   request by the `Mcp-Session-Id` the SDK issues — `DELETE` included, which releases the
+///   session (ledger B03).
 ///
 /// A separate port serves a plain liveness check at `/health`, so a container or proxy
 /// can probe the process without speaking MCP.
 final class HTTPMCPHost: @unchecked Sendable {
+    /// Builds and starts the MCP server for one session.
+    ///
+    /// Every session needs its own `Server`, because `Server.start(transport:)` binds one
+    /// transport for the life of that server.
+    typealias SessionFactory = @Sendable (StatefulHTTPServerTransport) async throws -> Server
+
     private let configuration: HTTPTransportConfiguration
-    private let transport: StatefulHTTPServerTransport
+    private let makeServer: SessionFactory
     private let log: Log
     private let group: EventLoopGroup
+    private let validationPipeline: any HTTPRequestValidationPipeline
     private var channel: Channel?
+
+    /// Live sessions, keyed by the id the SDK issued. Lock-guarded rather than actor-isolated
+    /// because the request path is entered from NIO handlers.
+    private let sessions = OSAllocatedUnfairLock<[String: SessionContext]>(initialState: [:])
+
+    /// Resumed by `stop()` so `waitUntilStopped()` can park the process.
+    private let shutdown = OSAllocatedUnfairLock<CheckedContinuation<Void, Never>?>(initialState: nil)
+
+    struct SessionContext: Sendable {
+        let server: Server
+        let transport: StatefulHTTPServerTransport
+    }
+
+    /// Fixed ids: the host has to know a session's id before its transport issues one.
+    private struct FixedSessionIDGenerator: SessionIDGenerator {
+        let sessionID: String
+        func generateSessionID() -> String { sessionID }
+    }
 
     /// Windows-style CRLF is what HTTP/1.1 requires.
     private static let crlf = "\r\n"
 
     init(
         configuration: HTTPTransportConfiguration,
-        transport: StatefulHTTPServerTransport,
+        makeServer: @escaping SessionFactory,
         log: Log
     ) {
         self.configuration = configuration
-        self.transport = transport
+        self.makeServer = makeServer
         self.log = log
+        // The same validation for every session: origin, Accept, content type, protocol
+        // version and session header. Origin validation costs nothing for server-to-server
+        // callers and stops a browser page from driving the server.
+        self.validationPipeline = StandardValidationPipeline(validators: [
+            OriginValidator.localhost(port: configuration.port),
+            AcceptHeaderValidator(mode: .sseRequired),
+            ContentTypeValidator(),
+            ProtocolVersionValidator(),
+            SessionValidator(),
+        ])
         // One thread per core is the NIO default; a search server is I/O bound.
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
+    }
+
+    /// Route one request: to its session when it names one, or into a new session when it is
+    /// an `initialize`.
+    ///
+    /// A request that carries a known `Mcp-Session-Id` goes to that session's transport,
+    /// whatever the method — `POST` for messages, `GET` for the server-sent stream the SDK
+    /// offers, `DELETE` to release the session. A request without a usable session may only be
+    /// a POST carrying `initialize`; anything else is a client error rather than a silently
+    /// shared session (ledger B03).
+    func handle(
+        request: MCP.HTTPRequest,
+        method: HTTPMethod,
+        body: Data?,
+        log: Log
+    ) async -> MCP.HTTPResponse {
+        // `request.header(_:)` is the SDK's case-insensitive accessor: a client may send
+        // `Mcp-Session-Id` in any casing, and HTTP header names are case-insensitive.
+        if let sessionID = request.header(HTTPHeaderName.sessionID),
+            let session = sessions.withLock({ $0[sessionID] })
+        {
+            let response = await session.transport.handleRequest(request)
+            if method == .DELETE, case .ok = response {
+                await closeSession(id: sessionID)
+            }
+            return response
+        }
+
+        guard method == .POST, HTTPMCPHost.isInitializeRequest(body) else {
+            // Say which of the two is wrong instead of answering 405, which said nothing
+            // about sessions at all.
+            guard request.header(HTTPHeaderName.sessionID) == nil else {
+                return .error(
+                    statusCode: 404,
+                    .invalidRequest(
+                        "Not Found: session is unknown or has been released. Initialize again."
+                    )
+                )
+            }
+            return .error(
+                statusCode: 400,
+                .invalidRequest("Bad Request: a POST carrying initialize is required to start a session.")
+            )
+        }
+
+        return await createSession(request: request, log: log)
+    }
+
+    /// Whether the body is a single JSON-RPC `initialize` request.
+    ///
+    /// Parsed here rather than asked of the SDK, because the host has to decide *before* it has
+    /// a transport whether this request may create a session.
+    private static func isInitializeRequest(_ body: Data?) -> Bool {
+        guard let body, !body.isEmpty,
+            let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+        else { return false }
+        return object["method"] as? String == "initialize"
+    }
+
+    /// Create a session's `Server` and transport, then hand it this request.
+    private func createSession(request: MCP.HTTPRequest, log: Log) async -> MCP.HTTPResponse {
+        let sessionID = UUID().uuidString
+        let transport = StatefulHTTPServerTransport(
+            sessionIDGenerator: FixedSessionIDGenerator(sessionID: sessionID),
+            validationPipeline: validationPipeline,
+            logger: Logger(label: "mcp.transport.http")
+        )
+
+        do {
+            let server = try await makeServer(transport)
+            sessions.withLock { $0[sessionID] = SessionContext(server: server, transport: transport) }
+            let response = await transport.handleRequest(request)
+            if case .error = response {
+                // The initialize itself was refused (protocol version, Accept, Origin…): do
+                // not keep a session nobody can use.
+                await closeSession(id: sessionID)
+            }
+            return response
+        } catch {
+            log.error("HTTP session could not be started", metadata: ["error": "\(error)"])
+            await transport.disconnect()
+            return .error(statusCode: 500, .internalError("Could not start an MCP session."))
+        }
+    }
+
+    /// Release a session, if it is still registered.
+    private func closeSession(id: String) async {
+        guard let session = sessions.withLock({ $0.removeValue(forKey: id) }) else { return }
+        await session.transport.disconnect()
+        await session.server.stop()
+        log.info("HTTP session released", metadata: ["sessions": "\(sessions.withLock { $0.count })"])
+    }
+
+    /// Number of live sessions, for tests.
+    var sessionCount: Int { sessions.withLock { $0.count } }
+
+    /// Park until `stop()` is called, so the process lives while sessions come and go.
+    func waitUntilStopped() async {
+        await withCheckedContinuation { continuation in
+            shutdown.withLock { $0 = continuation }
+        }
     }
 
     /// Start listening. Returns once the socket is bound.
     func start() async throws {
         let configuration = self.configuration
-        let transport = self.transport
         let log = self.log
+        let host = self
 
         let bootstrap = ServerBootstrap(group: group)
             .serverChannelOption(ChannelOptions.backlog, value: 256)
@@ -66,7 +208,7 @@ final class HTTPMCPHost: @unchecked Sendable {
                     channel.pipeline.addHandler(
                         HTTPMCPHandler(
                             configuration: configuration,
-                            transport: transport,
+                            host: host,
                             log: log
                         )
                     )
@@ -108,7 +250,21 @@ final class HTTPMCPHost: @unchecked Sendable {
         if let channel {
             try? await channel.close().get()
         }
+        // Release every session's server and transport before the event loop group goes away.
+        let live = sessions.withLock { dictionary -> [SessionContext] in
+            let values = Array(dictionary.values)
+            dictionary.removeAll()
+            return values
+        }
+        for session in live {
+            await session.transport.disconnect()
+            await session.server.stop()
+        }
         try? await group.shutdownGracefully()
+        shutdown.withLock { continuation in
+            continuation?.resume()
+            continuation = nil
+        }
     }
 }
 
@@ -132,7 +288,7 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
     typealias OutboundOut = HTTPServerResponsePart
 
     private let configuration: HTTPTransportConfiguration
-    private let transport: StatefulHTTPServerTransport
+    private let host: HTTPMCPHost
     private let log: Log
 
     private var requestHead: HTTPRequestHead?
@@ -146,11 +302,11 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
 
     init(
         configuration: HTTPTransportConfiguration,
-        transport: StatefulHTTPServerTransport,
+        host: HTTPMCPHost,
         log: Log
     ) {
         self.configuration = configuration
-        self.transport = transport
+        self.host = host
         self.log = log
     }
 
@@ -192,8 +348,7 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
             bodyBuffer.clear()
 
             let handler = self
-            let configuration = self.configuration
-            let transport = self.transport
+            let host = self.host
             let log = self.log
             let eventLoop = context.eventLoop
             let channel = context.channel
@@ -206,8 +361,7 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
                 await handler.dispatch(
                     head: head,
                     body: body,
-                    configuration: configuration,
-                    transport: transport,
+                    host: host,
                     log: log
                 )
             }.whenComplete { result in
@@ -259,11 +413,16 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
     }
 
     /// Route and handle one request.
+    ///
+    /// A request that carries a known `Mcp-Session-Id` goes to that session's transport,
+    /// whatever its method — `POST` for messages, `GET` for the server-sent stream the SDK
+    /// offers, `DELETE` to release the session. A request without one may only be a POST
+    /// carrying `initialize`, which creates a session; anything else is a client error
+    /// rather than a silently shared session (ledger B03).
     private func dispatch(
         head: HTTPRequestHead,
         body: Data?,
-        configuration: HTTPTransportConfiguration,
-        transport: StatefulHTTPServerTransport,
+        host: HTTPMCPHost,
         log: Log
     ) async -> PreparedResponse {
         let method = head.method
@@ -284,19 +443,6 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
                 status: .notFound,
                 headers: [("Content-Type", "text/plain; charset=utf-8")],
                 body: Data("Not Found. The MCP endpoint is \(configuration.path)".utf8)
-            )
-        }
-
-        // Only POST is meaningful to the stateless transport; it produces 405 for
-        // anything else, but rejecting here keeps the error message clearer.
-        guard method == .POST else {
-            return PreparedResponse(
-                status: .methodNotAllowed,
-                headers: [
-                    ("Content-Type", "text/plain; charset=utf-8"),
-                    ("Allow", "POST"),
-                ],
-                body: Data("Method Not Allowed. Use POST for MCP messages.".utf8)
             )
         }
 
@@ -322,14 +468,17 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
         }
 
         let request = MCP.HTTPRequest(
-            method: "POST",
+            method: method.rawValue,
             headers: headers,
             body: body,
             path: path
         )
 
-        let response = await transport.handleRequest(request)
-        return HTTPMCPHandler.prepare(response)
+        // Session routing, including creating a session for an `initialize`, is the host's
+        // business; this layer only speaks HTTP.
+        return HTTPMCPHandler.prepare(
+            await host.handle(request: request, method: method, body: body, log: log)
+        )
     }
 
     /// Convert the SDK's response into status, headers, body and optional stream.

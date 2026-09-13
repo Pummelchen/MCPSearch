@@ -458,20 +458,100 @@ final class HTTPTransportTests: XCTestCase {
         XCTAssertTrue(response.body.contains("too large"), response.body)
     }
 
-    func testUnknownPathIsNotFoundAndNonPostIsRejected() throws {
+    func testUnknownPathIsNotFoundAndASessionlessNonInitializeIsBadRequest() throws {
         try startServer()
 
         let missing = try RawHTTP.request(port: port, method: "GET", path: "/nope")
         XCTAssertEqual(missing.status, 404)
         XCTAssertTrue(missing.body.contains("/mcp"), missing.body)
 
-        let wrongMethod = try RawHTTP.request(
+        // No session and not an `initialize`: the server must say which of the two is wrong.
+        // It used to answer 405 with `Allow: POST`, which described the single-transport
+        // design rather than the protocol (ledger B03).
+        let sessionless = try RawHTTP.request(
             port: port,
-            method: "GET",
+            method: "POST",
             path: "/mcp",
-            headers: ["Accept": "application/json, text/event-stream"]
+            headers: Self.mcpHeaders,
+            body: try toolsListBody()
         )
-        XCTAssertEqual(wrongMethod.status, 405)
-        XCTAssertEqual(wrongMethod.headers["allow"], "POST")
+        XCTAssertEqual(sessionless.status, 400)
+        XCTAssertTrue(sessionless.body.contains("initialize"), sessionless.body)
+
+        let unknownSession = try RawHTTP.request(
+            port: port,
+            method: "POST",
+            path: "/mcp",
+            headers: Self.mcpHeaders.merging(["Mcp-Session-Id": "not-a-session"]) { _, new in new },
+            body: try toolsListBody()
+        )
+        XCTAssertEqual(unknownSession.status, 404)
+        XCTAssertTrue(unknownSession.body.contains("unknown"), unknownSession.body)
+    }
+
+    // MARK: - Sessions
+
+    /// The transport used to be one per process, so a second client could never initialize
+    /// (the SDK answers `400 Session already initialized`) for the life of the process. Two
+    /// independent clients must now both work, with different session ids (ledger B03).
+    func testTwoClientsEachGetTheirOwnSession() throws {
+        try startServer()
+        let (first, _) = try initializeSession()
+        let (second, _) = try initializeSession()
+
+        XCTAssertNotEqual(first, second, "each initialize must issue its own session id")
+
+        for (label, session) in [("first", first), ("second", second)] {
+            let response = try RawHTTP.request(
+                port: port,
+                method: "POST",
+                path: "/mcp",
+                headers: Self.mcpHeaders.merging(["Mcp-Session-Id": session]) { _, new in new },
+                body: try toolsListBody()
+            )
+            XCTAssertEqual(response.status, 200, "\(label) client must be served")
+            let object =
+                try JSONSerialization.jsonObject(
+                    with: Data(Self.jsonMessage(from: response.body).utf8)
+                ) as? [String: Any]
+            let result = try XCTUnwrap(object?["result"] as? [String: Any], label)
+            XCTAssertNotNil(result["tools"] as? [[String: Any]], label)
+        }
+    }
+
+    /// `DELETE` must reach the transport and release the session, so the same process can
+    /// serve a client that reconnects with a new one (ledger B03).
+    func testDeletingASessionReleasesItAndAllowsReconnecting() throws {
+        try startServer()
+        let (session, _) = try initializeSession()
+
+        let released = try RawHTTP.request(
+            port: port,
+            method: "DELETE",
+            path: "/mcp",
+            headers: Self.mcpHeaders.merging(["Mcp-Session-Id": session]) { _, new in new }
+        )
+        XCTAssertEqual(released.status, 200, "the SDK acknowledges termination with 200")
+
+        let afterRelease = try RawHTTP.request(
+            port: port,
+            method: "POST",
+            path: "/mcp",
+            headers: Self.mcpHeaders.merging(["Mcp-Session-Id": session]) { _, new in new },
+            body: try toolsListBody()
+        )
+        XCTAssertEqual(afterRelease.status, 404, "a released session must not be served")
+
+        // The point of releasing: the process can serve the next client.
+        let (reconnected, _) = try initializeSession()
+        XCTAssertNotEqual(reconnected, session)
+        let served = try RawHTTP.request(
+            port: port,
+            method: "POST",
+            path: "/mcp",
+            headers: Self.mcpHeaders.merging(["Mcp-Session-Id": reconnected]) { _, new in new },
+            body: try toolsListBody()
+        )
+        XCTAssertEqual(served.status, 200)
     }
 }
