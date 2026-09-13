@@ -349,6 +349,15 @@ final class RendererTests: XCTestCase {
             rows: 40
         ).joined(separator: "\n")
         XCTAssertFalse(lines.contains("unavailable"))
+        // The column header must go with the data: leaving it says the table shows engines
+        // when it does not.
+        XCTAssertFalse(
+            lines.split(separator: "\n").contains {
+                $0.trimmingCharacters(in: .whitespaces).hasPrefix("node")
+                    && $0.trimmingCharacters(in: .whitespaces).hasSuffix("engines")
+            },
+            lines
+        )
     }
 
     func testDurationFormatting() {

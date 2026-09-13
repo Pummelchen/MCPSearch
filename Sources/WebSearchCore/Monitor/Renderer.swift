@@ -273,7 +273,8 @@ public struct Renderer: Sendable {
                 "  " + Self.leadingColumn("  node", width: 16) + Terminal.pad("state", to: 10)
                     + Terminal.pad("latency", to: 9, alignment: .right)
                     + Terminal.pad("results", to: 9, alignment: .right)
-                    + Terminal.pad("ok", to: 5, alignment: .right) + "  engines",
+                    + Terminal.pad("ok", to: 5, alignment: .right)
+                    + (showEngines ? "  engines" : ""),
                 .grey,
                 enabled: useColour
             )
