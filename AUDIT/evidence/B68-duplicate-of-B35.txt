@@ -1,0 +1,35 @@
+# B68 — duplicate of B35 (already fixed)
+
+Host: this Mac (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## Resolution
+
+B68 reports the same site as B35: `SearchOrchestratorTests`' breaker test carried
+`// The state update happens in a detached task inside recordFailure.` followed by
+`try await Task.sleep(for: .milliseconds(60))`. B35 (L6-13) reported and fixed it; B68 is the L3-18
+report of the same two lines, kept separate when the findings were folded because the two passes
+worded it differently.
+
+The required change is present and verified by B35's evidence:
+
+```
+$ grep -rn "milliseconds(60)" Tests/
+(no matches)
+
+$ sed -n '500,504p' Tests/WebSearchCoreTests/SearchOrchestratorTests.swift
+        // No sleep here: `recordFailure` awaits the breaker before it returns
+        // (`ProviderHealth.recordFailure`), which `FusionAndReliabilityTests` asserts directly.
+        // A 60 ms sleep used to stand in for a detached task that no longer exists (ledger B35);
+        // a reader who trusted that comment would reintroduce the race it described.
+```
+
+The ordering the old comment denied is pinned by
+`FusionAndReliabilityTests.testOutcomesReachTheBreakerBeforeRecordReturns` (B35's evidence,
+`AUDIT/evidence/B35-timing-couplings.txt`).
+
+## Why this is a closure and not a narrowing
+
+Nothing further is required to satisfy the finding: the dead wall-clock cost and the stale comment
+are gone, and the property the comment misdescribed is asserted by a dedicated test. Recording the
+duplicate here is the honest bookkeeping — the alternative, leaving it open, would claim work is
+outstanding that is not.
