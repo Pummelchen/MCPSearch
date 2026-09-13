@@ -27,6 +27,9 @@ import os
 ///   no-auth case, which is the documented behaviour for anonymous endpoints.
 /// - **No server-initiated streaming.** Responses are complete JSON bodies; if the SDK
 ///   produces a `text/event-stream` payload it is relayed verbatim rather than re-framed.
+/// - **Bounded connections.** The listener holds at most `maximumConnections` child channels and
+///   closes one that does not complete a request within the configured request budget. The bound
+///   is on receiving the request, so a streaming response is never treated as idle (ledger B90).
 /// - **One session per client, and as many clients as connect.** The SDK's stateful
 ///   transport is single-session and one-shot: it refuses a second `initialize` and, once
 ///   terminated, answers 404 forever. This host therefore keeps a registry of sessions,
@@ -51,7 +54,27 @@ final class HTTPMCPHost: @unchecked Sendable {
     private let log: Log
     private let group: EventLoopGroup
     private let validationPipeline: any HTTPRequestValidationPipeline
+    /// How long a connection may stay open without completing a request.
+    ///
+    /// The bound is on *receiving a request*, not on the exchange: it is disarmed the moment the
+    /// request ends, so a response that legitimately streams (an SSE session stream) is never
+    /// mistaken for an idle connection (ledger B90).
+    private let requestCompletionTimeout: Duration
     private var channel: Channel?
+
+    /// Most child connections this listener holds at once.
+    ///
+    /// swift-nio 2.102 has no `ChannelOptions.maxConnections`, and the package deliberately
+    /// depends only on NIOCore/NIOPosix/NIOHTTP1, so `IdleStateHandler` is not available either.
+    /// Both bounds are therefore enforced by this type: the counter below refuses a connection
+    /// once the limit is reached, and `HTTPMCPHandler` closes one that does not complete its
+    /// request in time. Sockets cannot be refused before `accept`, but a refused connection
+    /// costs one descriptor for one event-loop turn instead of living until the peer gives up
+    /// (ledger B90).
+    static let maximumConnections = 64
+
+    /// Live child channels, so the accept path can refuse a connection beyond the bound.
+    private let liveConnections = OSAllocatedUnfairLock<Int>(initialState: 0)
 
     /// Live sessions, keyed by the id the SDK issued. Lock-guarded rather than actor-isolated
     /// because the request path is entered from NIO handlers.
@@ -77,10 +100,12 @@ final class HTTPMCPHost: @unchecked Sendable {
     init(
         configuration: HTTPTransportConfiguration,
         makeServer: @escaping SessionFactory,
+        requestCompletionTimeout: Duration,
         log: Log
     ) {
         self.configuration = configuration
         self.makeServer = makeServer
+        self.requestCompletionTimeout = requestCompletionTimeout
         self.log = log
         // The same validation for every session: origin, Accept, content type, protocol
         // version and session header. Origin validation costs nothing for server-to-server
@@ -195,6 +220,22 @@ final class HTTPMCPHost: @unchecked Sendable {
     /// Number of live sessions, for tests.
     var sessionCount: Int { sessions.withLock { $0.count } }
 
+    /// Count a new child channel and report how many are live now.
+    ///
+    /// Called from `HTTPMCPHandler.channelActive`; the matching release is in `channelInactive`,
+    /// which NIO fires for every channel that became active (ledger B90).
+    func registerConnection() -> Int {
+        liveConnections.withLock { live in
+            live += 1
+            return live
+        }
+    }
+
+    /// Release a child channel that has closed.
+    func releaseConnection() {
+        liveConnections.withLock { $0 -= 1 }
+    }
+
     /// Park until `stop()` is called, so the process lives while sessions come and go.
     func waitUntilStopped() async {
         await withCheckedContinuation { continuation in
@@ -207,6 +248,7 @@ final class HTTPMCPHost: @unchecked Sendable {
         let configuration = self.configuration
         let log = self.log
         let host = self
+        let requestCompletionTimeout = self.requestCompletionTimeout
 
         let bootstrap = ServerBootstrap(group: group)
             .serverChannelOption(ChannelOptions.backlog, value: 256)
@@ -217,6 +259,7 @@ final class HTTPMCPHost: @unchecked Sendable {
                         HTTPMCPHandler(
                             configuration: configuration,
                             host: host,
+                            requestCompletionTimeout: requestCompletionTimeout,
                             log: log
                         )
                     )
@@ -298,10 +341,17 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
 
     private let configuration: HTTPTransportConfiguration
     private let host: HTTPMCPHost
+    private let requestCompletionTimeout: Duration
     private let log: Log
 
     private var requestHead: HTTPRequestHead?
     private var bodyBuffer: ByteBuffer = ByteBuffer()
+    /// Closes a connection that has not finished its request in time.
+    ///
+    /// Armed when the channel becomes active — before any header has been parsed, so a peer that
+    /// trickles a request line is covered — and disarmed by `end`, which is what keeps a
+    /// long-lived SSE response from being treated as an idle connection (ledger B90).
+    private var requestDeadline: Scheduled<Void>?
     /// Set once a response has been written for the request in flight.
     ///
     /// An oversized body keeps streaming after it is rejected, and each further part used
@@ -312,11 +362,50 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
     init(
         configuration: HTTPTransportConfiguration,
         host: HTTPMCPHost,
+        requestCompletionTimeout: Duration,
         log: Log
     ) {
         self.configuration = configuration
         self.host = host
+        self.requestCompletionTimeout = requestCompletionTimeout
         self.log = log
+    }
+
+    func channelActive(context: ChannelHandlerContext) {
+        let live = host.registerConnection()
+        context.fireChannelActive()
+        guard live <= HTTPMCPHost.maximumConnections else {
+            log.warning(
+                "Refused an HTTP connection: the listener is at its concurrent-connection limit",
+                metadata: ["limit": "\(HTTPMCPHost.maximumConnections)"]
+            )
+            // `channelInactive` follows and releases the count, so it is not released here.
+            context.close(promise: nil)
+            return
+        }
+        let channel = context.channel
+        // `Duration` carries seconds plus attoseconds; NIO schedules in nanoseconds. The
+        // arithmetic is exact and avoids the trap a Double conversion would bring.
+        let components = requestCompletionTimeout.components
+        let timeout = TimeAmount.nanoseconds(
+            components.seconds * 1_000_000_000 + components.attoseconds / 1_000_000_000
+        )
+        let log = self.log
+        let timeoutDescription = "\(requestCompletionTimeout)"
+        requestDeadline = context.eventLoop.scheduleTask(in: timeout) {
+            log.warning(
+                "Closing an HTTP connection that did not complete a request in time",
+                metadata: ["timeout": timeoutDescription]
+            )
+            channel.close(promise: nil)
+        }
+    }
+
+    func channelInactive(context: ChannelHandlerContext) {
+        requestDeadline?.cancel()
+        requestDeadline = nil
+        host.releaseConnection()
+        context.fireChannelInactive()
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -348,6 +437,10 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
             }
 
         case .end:
+            // The request is complete. Whatever happens next is a response, and an SSE response
+            // is legitimately long-lived, so the idle bound stops applying here (ledger B90).
+            requestDeadline?.cancel()
+            requestDeadline = nil
             guard let head = requestHead else { return }
             requestHead = nil
             let body =

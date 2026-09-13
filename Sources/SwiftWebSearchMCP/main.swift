@@ -166,6 +166,11 @@ case .http(let httpConfiguration):
         let host = HTTPMCPHost(
             configuration: httpConfiguration,
             makeServer: makeSessionServer,
+            // The same budget the fetch itself gets. It also bounds how long an inbound
+            // connection may stay open without completing its request, so a peer that opens
+            // connections and never finishes a request cannot hold them indefinitely
+            // (ledger B90).
+            requestCompletionTimeout: configuration.requestTimeout,
             log: log
         )
         try await host.start()

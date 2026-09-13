@@ -65,7 +65,7 @@ private struct RawHTTP {
         address.sin_addr.s_addr = inet_addr("127.0.0.1")
         let connected = withUnsafePointer(to: &address) { pointer in
             pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
         guard connected == 0 else { throw Failure.connect(String(cString: strerror(errno))) }
@@ -103,7 +103,7 @@ private struct RawHTTP {
         while offset < payload.count {
             let sent = payload.withUnsafeBytes { pointer -> Int in
                 guard let base = pointer.baseAddress else { return 0 }
-                return send(fd, base.advanced(by: offset), payload.count - offset, 0)
+                return Darwin.send(fd, base.advanced(by: offset), payload.count - offset, 0)
             }
             if sent <= 0 {
                 // The server closed after refusing the body; whatever it wrote first is
@@ -113,6 +113,93 @@ private struct RawHTTP {
             }
             offset += sent
         }
+    }
+
+    // MARK: Descriptor-level helpers, for the connection-bound tests
+    //
+    // `request` writes a whole exchange, which is exactly what a test of a *partial* or
+    // *absent* request must not do. These hand the caller the descriptor instead (ledger B90).
+
+    /// Open a loopback connection and hand the descriptor to the caller.
+    static func connect(port: UInt16) throws -> Int32 {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { throw Failure.socket(String(cString: strerror(errno))) }
+        var noSigPipe: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+
+        var address = sockaddr_in()
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = port.bigEndian
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        let connected = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        guard connected == 0 else {
+            let detail = String(cString: strerror(errno))
+            close(fd)
+            throw Failure.connect(detail)
+        }
+        return fd
+    }
+
+    /// Send raw bytes on a descriptor `connect` returned.
+    static func send(fd: Int32, text: String) throws {
+        try sendAll(fd: fd, payload: Data(text.utf8))
+    }
+
+    /// Read until the response head is complete, or fail after the deadline.
+    static func readHead(fd: Int32, milliseconds: Int32) throws -> String {
+        var raw = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while raw.range(of: Data("\r\n\r\n".utf8)) == nil {
+            var descriptor = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+            guard poll(&descriptor, 1, milliseconds) > 0 else {
+                throw Failure.malformed("no response head within \(milliseconds) ms")
+            }
+            let count = recv(fd, &buffer, buffer.count, 0)
+            guard count > 0 else {
+                throw Failure.malformed("connection closed before a response head arrived")
+            }
+            raw.append(contentsOf: buffer[0..<count])
+        }
+        return String(bytes: raw, encoding: .utf8) ?? "<not valid UTF-8>"
+    }
+
+    /// True when the peer closed the connection within the window.
+    ///
+    /// Data that arrives first is consumed and the wait continues, so this answers "did the
+    /// server hang up", not "is there anything to read".
+    static func waitForEndOfStream(fd: Int32, milliseconds: Int32) -> Bool {
+        let deadline = Date().addingTimeInterval(Double(milliseconds) / 1_000)
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let remaining = Int32((deadline.timeIntervalSinceNow * 1_000).rounded(.up))
+            if remaining <= 0 { return false }
+            var descriptor = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+            let ready = poll(&descriptor, 1, remaining)
+            if ready <= 0 { return false }
+            let count = recv(fd, &buffer, buffer.count, 0)
+            if count == 0 { return true }
+            if count < 0 { return errno != EAGAIN && errno != EINTR }
+        }
+    }
+
+    /// Which of `fds` the peer has closed by the end of one shared wait.
+    ///
+    /// One sleep for all of them: waiting per descriptor would multiply the window by the
+    /// number of connections.
+    static func closedDescriptors(_ fds: [Int32], afterMilliseconds: Int32) -> [Int32] {
+        usleep(useconds_t(afterMilliseconds) * 1_000)
+        var closed: [Int32] = []
+        for fd in fds {
+            var descriptor = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+            guard poll(&descriptor, 1, 0) > 0 else { continue }
+            var byte: UInt8 = 0
+            if recv(fd, &byte, 1, 0) <= 0 { closed.append(fd) }
+        }
+        return closed
     }
 
     private static func parse(_ raw: Data) throws -> Response {
@@ -218,7 +305,10 @@ final class HTTPTransportTests: XCTestCase {
         return UInt16(bigEndian: actual.sin_port)
     }
 
-    private func startServer(extraArguments: [String] = []) throws {
+    private func startServer(
+        extraArguments: [String] = [],
+        extraEnvironment: [String: String] = [:]
+    ) throws {
         let binary = try ServerTestSupport.binaryURL()
         var lastFailure = ""
 
@@ -245,6 +335,9 @@ final class HTTPTransportTests: XCTestCase {
                 environment.removeValue(forKey: key)
             }
             environment["SEARCH_LOG_LEVEL"] = "warning"
+            for (key, value) in extraEnvironment {
+                environment[key] = value
+            }
             process.environment = ServerTestSupport.childEnvironment(base: environment)
 
             try process.run()
@@ -646,5 +739,97 @@ final class HTTPTransportTests: XCTestCase {
             body: try toolsListBody()
         )
         XCTAssertEqual(served.status, 200)
+    }
+
+    // MARK: - Connection bounds (ledger B90)
+
+    /// A connection that never sends a request is closed after the request budget, and the
+    /// listener is unharmed. `SEARCH_REQUEST_TIMEOUT_MS` is the inbound budget as well as the
+    /// outbound one, which is what makes this test fast.
+    func testAnIdleConnectionIsClosedAndTheListenerKeepsServing() throws {
+        try startServer(extraEnvironment: ["SEARCH_REQUEST_TIMEOUT_MS": "400"])
+
+        let idle = try RawHTTP.connect(port: port)
+        defer { close(idle) }
+
+        XCTAssertTrue(
+            RawHTTP.waitForEndOfStream(fd: idle, milliseconds: 5_000),
+            "a connection that never completes a request must be closed after the request budget"
+        )
+
+        let health = try RawHTTP.request(port: port, method: "GET", path: "/health")
+        XCTAssertEqual(health.status, 200, "the listener must keep serving after closing an idle peer")
+    }
+
+    /// The slowloris shape: a request whose headers never end. The deadline is armed when the
+    /// channel becomes active, before a header is parsed, so this case is covered too.
+    func testAPartialRequestIsClosedBeforeItCompletes() throws {
+        try startServer(extraEnvironment: ["SEARCH_REQUEST_TIMEOUT_MS": "400"])
+
+        let slow = try RawHTTP.connect(port: port)
+        defer { close(slow) }
+        try RawHTTP.send(fd: slow, text: "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\n")
+
+        XCTAssertTrue(
+            RawHTTP.waitForEndOfStream(fd: slow, milliseconds: 5_000),
+            "a request that never ends must be closed after the request budget"
+        )
+    }
+
+    /// A standalone SSE stream is a *completed* request with a long-lived response, not an idle
+    /// connection: the deadline is disarmed when the request ends, so the stream outlives the
+    /// request budget several times over (ledger B90).
+    func testAStandaloneSSEStreamOutlivesTheRequestBudget() throws {
+        try startServer(extraEnvironment: ["SEARCH_REQUEST_TIMEOUT_MS": "400"])
+        let (session, _) = try initializeSession()
+
+        let stream = try RawHTTP.connect(port: port)
+        defer { close(stream) }
+        try RawHTTP.send(
+            fd: stream,
+            text: "GET /mcp HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\n"
+                + "Accept: text/event-stream\r\nMcp-Session-Id: \(session)\r\n\r\n"
+        )
+
+        let head = try RawHTTP.readHead(fd: stream, milliseconds: 5_000)
+        XCTAssertTrue(head.hasPrefix("HTTP/1.1 200"), head)
+        XCTAssertTrue(head.lowercased().contains("text/event-stream"), head)
+
+        XCTAssertFalse(
+            RawHTTP.waitForEndOfStream(fd: stream, milliseconds: 2_000),
+            "a completed request's streaming response must not be closed as an idle connection"
+        )
+    }
+
+    /// Connections beyond the listener's bound are refused rather than held. Eighty is
+    /// deliberately more than the bound, and fewer than the request budget allows, so the only
+    /// reason any of them closes inside the window is the bound itself.
+    func testConnectionsBeyondTheListenerBoundAreRefused() throws {
+        try startServer()
+
+        var descriptors: [Int32] = []
+        for _ in 0..<80 {
+            descriptors.append(try RawHTTP.connect(port: port))
+        }
+        defer { for fd in descriptors { close(fd) } }
+
+        let closed = RawHTTP.closedDescriptors(descriptors, afterMilliseconds: 2_000)
+        XCTAssertFalse(closed.isEmpty, "the listener must refuse connections past its bound")
+
+        // Release the held connections — they count against the bound, so a health request now
+        // would be refused too — and wait for the listener to notice.
+        for fd in descriptors { close(fd) }
+        descriptors = []
+        var health: RawHTTP.Response?
+        for _ in 0..<40 {
+            health = try? RawHTTP.request(port: port, method: "GET", path: "/health")
+            if health?.status == 200 { break }
+            usleep(50_000)
+        }
+        XCTAssertEqual(
+            health?.status,
+            200,
+            "the listener must serve again once the refused peers are gone"
+        )
     }
 }

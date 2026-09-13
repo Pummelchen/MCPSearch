@@ -18,13 +18,13 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 132 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 112 |
-| START (reproduced, expected behaviour written) | 20 |
+| DONE | 113 |
+| START (reproduced, expected behaviour written) | 19 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
 Severity of the whole set: **S0 3, S1 8, S2 34, S3 87** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 67 are DONE and 20 open.
+are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 87 S3 tasks 68 are DONE and 19 open.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -143,7 +143,7 @@ waived in writing.
 | B87 | S3 | `WebSearchCore` / `Fetch` (`JinaReaderFetcher`) + `WebSearchCore` / `Search` (`SearchPipelineFactory`) | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:65` | The Jina Reader fallback discloses the target URL to a third party by default, with no warning that it did | docs | DONE | this Mac (arm64) | Phase B L4-13 |
 | B88 | S3 | `WebSearchCore` / `Fetch` (`URLPolicy` + `DirectHTTPFetcher`) | `Sources/WebSearchCore/Fetch/URLPolicy.swift:57` | The declared per-host DNS cache does not exist, and every redirect hop resolves twice | perf | DONE | this Mac (arm64) | Phase B L5-3 |
 | B89 | S3 | `WebSearchCore` / `Search` (`SearchCache`) | `Sources/WebSearchCore/Search/SearchCache.swift:103` | `SearchCache.pruneExpired` rebuilds the whole dictionary on every read, write and stats call | perf | DONE | this Mac (arm64) | Phase B L5-4 |
-| B90 | S3 | `SwiftWebSearchMCP` (`HTTPMCPHost`) | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:61` | The HTTP listener bounds the request body but nothing else, so idle or slow connections are unbounded | perf | START | this Mac (arm64) | Phase B L5-5 |
+| B90 | S3 | `SwiftWebSearchMCP` (`HTTPMCPHost`) | `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:61` | The HTTP listener bounds the request body but nothing else, so idle or slow connections are unbounded | perf | DONE | this Mac (arm64) | Phase B L5-5 |
 | B91 | S3 | `WebSearchCore` / `Support` (`Log`) | `Sources/WebSearchCore/Support/Logging.swift:42` | Log emission performs a synchronous blocking write to fd 2 from whatever task is logging | perf | START | this Mac (arm64) | Phase B L5-6 |
 | B92 | S3 | `WebSearchCore` / `Fetch` (`JinaReaderFetcher`) | `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:125` | `web_open` reports the requested URL as `final_url` on the Jina path, and the reader's own `url` field is decoded but never used | logic | DONE | this Mac (arm64) | Phase B L5-7 |
 | B93 | S3 | `Sources/WebSearchCore/Fetch/MarkupDepth.swift`, `Search/SearchError.swift`, `SwiftWebSearchMCP/ToolHandlers.s | `Sources/WebSearchCore/Fetch/MarkupDepth.swift:190` | The new `MarkupDepth` regression suite still leaves four branches/contracts unpinned | test | START | this Mac (arm64) | Phase B L6-4 |
@@ -218,6 +218,50 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B90 — the HTTP listener bounded the request body and nothing else
+
+**Severity S3** · **category** perf · **status** DONE · **host** node1 (arm64)
+
+**What was wrong.** The server was built with a backlog, `so_reuseaddr` and an HTTP pipeline, and
+nothing else: no bound on accepted connections and no read/idle timeout, so a peer that opened
+connections and never finished a request held a channel and a descriptor indefinitely. The 1 MiB
+body cap only applies once a request has been framed. The intended shape is a reverse proxy in
+front, but `--host 0.0.0.0` is a supported opt-in and the class calls itself a minimal, correct
+HTTP/1.1 server, so slowloris-style exhaustion was available to anyone who could reach the port.
+
+**One premise is wrong.** The expected fix names `ChannelOptions.maxConnections` and
+`IdleStateHandler`. A grep over the pinned swift-nio 2.102.0 checkout finds no `maxConnections`
+API at all, and `IdleStateHandler` lives in NIOExtras, which this package does not depend on. Both
+bounds are therefore implemented in `HTTPMCPHost` itself — a deviation from the literal spec, not
+from its intent.
+
+**The fix.** `maximumConnections = 64` plus a lock-guarded live count: `channelActive` counts the
+child channel and closes it when over the limit, `channelInactive` releases it. The same
+`channelActive` schedules a request deadline, deliberately armed before any header is parsed so a
+trickled request line is covered; `.end` cancels it. `Duration` is converted to NIO's `TimeAmount`
+through its components, so the conversion is exact. The value is `AppConfiguration.requestTimeout`
+(`SEARCH_REQUEST_TIMEOUT_MS`, default 10 s) passed from `main.swift`, so no new configuration
+surface was added and the tests can make the bound short; `example.env` records the second meaning.
+
+**Idle versus streaming.** The bound is on receiving a request, not on the connection's lifetime.
+An idle connection and a slowloris never reach `.end`, so the deadline fires; a streaming response
+is a request that already ended, so the deadline was cancelled before the first response byte and
+the SDK's standalone GET stream can stay open indefinitely.
+
+**Verification.** Four tests in `HTTPTransportTests`, which drives the built executable over real
+loopback sockets, with new descriptor-level `RawHTTP` helpers and an `extraEnvironment` parameter
+on the harness: an idle connection is closed and `/health` still answers; a partial request is
+closed; a standalone SSE stream is still open 2 s after a 400 ms budget; and 80 idle connections
+against the 64 bound leave at least one refused, with the listener serving again once they are
+released. **Falsification.** Three mutations redden disjoint tests: no deadline reddens the two
+timeout tests, a deadline not cancelled at `.end` reddens only the streaming test, and no
+connection guard reddens only the cap test. `HTTPMCPHost.swift` was restored byte-identical
+(`diff` empty, SHA-256 `0cfddf08…36d44b0d`).
+
+**Not changed.** The bound does not police a slow *reader* of the response (write backpressure is
+NIO's story), and a pipelined second request never gets a fresh deadline because every response
+sets `Connection: close` and closes the channel.
 
 ## B89 — `SearchCache.pruneExpired` rebuilt the whole dictionary on every access
 
