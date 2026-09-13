@@ -1,0 +1,71 @@
+# B30 — four `DirectHTTPFetcher` branches had no test
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+`FetchBehaviorTests` covered a 403, a 404 and a successful `text/html` page. Four branches of the
+same function were unreachable from the suite:
+
+```swift
+// :119-124 — the content-type gate
+guard let mimeType, DirectHTTPFetcher.isTextual(mimeType, allowedPrefixes: ...) else {
+    throw SearchError.extractionFailed(currentURL)
+}
+// :133-141 — a textual, non-HTML body becomes raw text with no title
+} else {
+    extraction = HTMLDocument.Extraction(title: nil, text: text)
+}
+// :188-193 — the byte cap is enforced during the transfer
+(data, response) = try await BoundedResponseBody.read(session, urlRequest, limit: maxBytes)
+// :195-197 — a timeout is the URL's failure, not a provider's
+case .timedOut: throw SearchError.fetchFailed(request.url, reason: "request timed out")
+```
+
+## Fails-before evidence
+
+Four mutations, one per branch; each is caught by exactly the new test:
+
+```
+$ swift test --filter "testAPlainTextBody|testANonTextualContentType|testAPageLarger|testATimeoutIsScoped"
+- isTextual always true            → testANonTextualContentTypeIsRefused          failed
+- raw-text branch routed through HTMLExtractor
+                                   → testAPlainTextBodyIsReturnedAsRawText        failed
+- the read cap multiplied by 1000  → testAPageLargerThanTheConfiguredCapIsRefused failed
+- .timedOut reported as providerUnavailable(.tavily)
+                                   → testATimeoutIsScopedToTheURL                 failed
+Executed 4 tests, with 3 failures    # before the raw-text test was strengthened
+```
+
+The raw-text mutation initially **passed**: the first version of that test used a body
+("just plain words") that both paths render identically — `method` is chosen by the caller from
+the MIME type, so the assertion could not see which extraction ran. The body now contains
+markup-looking text (`plain text with <tags> and   double  spaces`), and the mutation then fails:
+the HTML path returns `"plain text with and double spaces"`. That correction is the point of the
+exercise rather than a footnote.
+
+## The fix
+
+Four loopback tests, one per branch:
+
+* `text/plain` → `method == .rawText`, `title == nil`, and the body byte-for-byte;
+* `image/png` → `.extractionFailed` (the same gate that removed `application/pdf` in B16);
+* a body larger than a 1 024-byte `maxFetchedPageBytes` → `.extractionFailed`, proving the cap is
+  enforced during the transfer rather than after buffering;
+* a 300 ms timeout against a 3 s response → `.fetchFailed` scoped to the URL, with the
+  provider-name check the 403 test already uses.
+
+## Verification
+
+```
+$ swift test --filter FetchBehaviorTests
+Executed 8 tests, with 0 failures (0 unexpected) in 0.364 seconds
+
+$ swift test
+Executed 452 tests, with 6 skipped and 0 failures (0 unexpected) in 18.767 seconds
+
+$ swift build --scratch-path $SCRATCH -Xswiftc -warnings-as-errors                  0 warnings, 0 errors
+$ swift build -c release --scratch-path $SCRATCH -Xswiftc -warnings-as-errors      0 warnings, 0 errors
+$ swift-format lint --recursive --strict Sources Tests                             0 diagnostics
+$ swiftlint lint --strict                                                          0 violations in 80 files
+```
