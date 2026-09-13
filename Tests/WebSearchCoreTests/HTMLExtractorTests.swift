@@ -321,6 +321,20 @@ final class ScraperTests: XCTestCase {
         XCTAssertEqual(page.results[0].url, "https://example.com/a-genuine-result")
     }
 
+    /// The DuckDuckGo region hint is `region-language`, not the region twice.
+    ///
+    /// `kl=us-us` is not a value DDG defines; the language was available and discarded, so the hint
+    /// was wrong for every query that carried a region (ledger B60).
+    func testDuckDuckGoLocaleHintIsRegionLanguage() {
+        XCTAssertEqual(DuckDuckGoProvider.localeHint(for: LocaleHint("en-US")), "us-en")
+        XCTAssertEqual(DuckDuckGoProvider.localeHint(for: LocaleHint("de-DE")), "de-de")
+        XCTAssertNil(
+            DuckDuckGoProvider.localeHint(for: LocaleHint("en")),
+            "a locale without a region has no hint to send"
+        )
+        XCTAssertNil(DuckDuckGoProvider.localeHint(for: nil))
+    }
+
     func testExcludeHostsFiltersEngineOwnHosts() throws {
         let html = """
             <html><body>

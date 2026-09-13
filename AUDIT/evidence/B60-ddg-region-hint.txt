@@ -1,0 +1,53 @@
+# B60 — the DuckDuckGo region hint sent the region twice
+
+Host: this Mac (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+```swift
+// `kl` is DDG's region hint; it is best-effort and undocumented.
+if let region = request.locale?.region {
+    items.append(URLQueryItem(name: "kl", value: "\(region.lowercased())-\(region.lowercased())"))
+}
+```
+
+DDG's `kl` is `region-language` (`us-en`, `de-de`); the copy of `region` into the language position
+produced `us-us`, which is not a value DDG defines. The language was available — `LocaleHint` carries
+it — and was discarded, so the hint was wrong for every query with a region rather than merely
+missing.
+
+## Fails-before evidence
+
+```
+$ swift test --filter testDuckDuckGoLocaleHintIsRegionLanguage     # with region-region restored
+error: ... XCTAssertEqual failed: ("Optional("us-us")") is not equal to ("Optional("us-en")")
+```
+
+## The fix
+
+The construction moves into `DuckDuckGoProvider.localeHint(for:)`, which is testable without a
+fetch, and builds the documented form from both parts:
+
+```swift
+static func localeHint(for locale: LocaleHint?) -> String? {
+    guard let locale, let region = locale.region, !region.isEmpty, !locale.language.isEmpty
+    else { return nil }
+    return "\(region.lowercased())-\(locale.language.lowercased())"
+}
+```
+
+A locale without a region has no hint to send, so none is sent — the hint stays best-effort and
+cannot be half-formed.
+
+## Verification
+
+```
+$ swift test --filter testDuckDuckGoLocaleHintIsRegionLanguage
+Executed 1 test, with 0 failures (0 unexpected)
+
+$ swift test
+Executed 483 tests, with 6 skipped and 0 failures (0 unexpected) in 18.633 seconds
+
+$ swift-format lint --recursive --strict Sources Tests    0 diagnostics
+$ swiftlint lint --strict                                 0 violations in 83 files
+```

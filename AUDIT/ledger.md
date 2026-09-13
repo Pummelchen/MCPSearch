@@ -18,8 +18,8 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 | --- | --- |
 | Tasks enumerated | 120 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged |
-| DONE | 70 |
-| START (reproduced, expected behaviour written) | 50 |
+| DONE | 71 |
+| START (reproduced, expected behaviour written) | 49 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
@@ -108,7 +108,7 @@ waived in writing.
 | B57 | S3 | SwiftWebSearchMCP (with WebSearchCore) | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:407` | The per-provider "which variable enables me" contract is triplicated across units and already wrong for `parallel` | logic | START | this Mac (arm64) | Phase B L1-1 |
 | B58 | S3 | SwiftWebSearchMCP | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:186` | `web_search` and `web_answer` duplicate their argument parsing, and the two schemas have already drifted | style | START | this Mac (arm64) | Phase B L1-2 |
 | B59 | S3 | `WebSearchCore/Support/AppConfiguration.swift` | `Sources/WebSearchCore/Support/AppConfiguration.swift:330` | `PARALLEL_MCP_URL=` cannot clear the default endpoint: the branch is unreachable in production | dead | DONE | this Mac (arm64) | Phase B L3-7 |
-| B60 | S3 | `WebSearchCore/Providers/DuckDuckGoProvider.swift` | `Sources/WebSearchCore/Providers/DuckDuckGoProvider.swift:70` | DuckDuckGo region hint sends the region twice instead of region-language | bug | START | this Mac (arm64) | Phase B L3-8 |
+| B60 | S3 | `WebSearchCore/Providers/DuckDuckGoProvider.swift` | `Sources/WebSearchCore/Providers/DuckDuckGoProvider.swift:70` | DuckDuckGo region hint sends the region twice instead of region-language | bug | DONE | this Mac (arm64) | Phase B L3-8 |
 | B61 | S3 | `WebSearchCore/Fetch/HTMLExtractor.swift` | `Sources/WebSearchCore/Fetch/HTMLExtractor.swift:63` (markers at `:36`, `:40`) | Hyphenated boilerplate markers are inert, and the prefix clause is unreachable | logic | DONE | this Mac (arm64) | Phase B L3-9 |
 | B62 | S3 | `WebSearchCore/Fetch/URLPolicy.swift` | `Sources/WebSearchCore/Fetch/URLPolicy.swift:435` | `isReserved` blocks all of `192.0.0.0/16` while documenting `192.0.0.0/24` | logic | DONE | this Mac (arm64) | Phase B L3-10 |
 | B63 | S3 | `WebSearchCore` / `Search` (`ResultNormalizer`) | `Sources/WebSearchCore/Search/ResultNormalizer.swift:155` | Entity decoding loops over its own output, so `&amp;lt;` becomes a live `<` in text returned to the model | bug | DONE | this Mac (arm64) | Phase B L4-14 |
