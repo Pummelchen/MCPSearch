@@ -207,10 +207,12 @@ class Session:
             "SEARXNG_BASE_URL": base_url,
             "SEARCH_LOG_LEVEL": "warning",
         }
-        # Prove the scrub rather than assume it.
-        for name in SCRUBBED_VARIABLES:
-            if name in os.environ:
-                environment.pop(name, None)
+        # Prove the scrub rather than assume it: the dictionary above is built from scratch, so no
+        # provider variable can be present. Popping keys that were never there asserted nothing
+        # (ledger B45).
+        leaked = set(environment) & set(SCRUBBED_VARIABLES)
+        if leaked:
+            raise Failure(f"the child environment still carries {sorted(leaked)}")
 
         self.transcript = ""
         self.process = subprocess.Popen(

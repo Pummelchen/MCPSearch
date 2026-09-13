@@ -102,8 +102,11 @@ class Server:
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "SEARCH_LOG_LEVEL": "debug",
         }
-        for name in SCRUBBED_VARIABLES:
-            environment.pop(name, None)
+        # Prove the scrub rather than assume it: the dictionary above is built from scratch, so no
+        # provider variable can be present. Popping keys that were never there asserted nothing
+        # (ledger B45).
+        leaked = set(environment) & set(SCRUBBED_VARIABLES)
+        assert not leaked, f"the child environment still carries {sorted(leaked)}"
 
         self.process = subprocess.Popen(
             [binary],
