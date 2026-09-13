@@ -122,6 +122,67 @@ final class FetchFallbackTests: XCTestCase {
         XCTAssertTrue(request.url.absoluteString.contains("reader.invalid"))
     }
 
+    /// A PDF is not text. It used to be on the allow-list, so the body was decoded as UTF-8 or
+    /// Latin-1 and handed to the model as tens of thousands of characters of `%PDF-1.7 … stream`
+    /// gibberish labelled `raw_text`. There is no PDF extraction here, so the direct fetch must
+    /// refuse it — and the reader fallback, which renders PDFs remotely, still serves it
+    /// (ledger B16).
+    func testAPDFIsRefusedByTheDirectFetchButStillReadableByTheReader() async throws {
+        // The first bytes of a real PDF, plus a NUL and a high byte: not decodable as text.
+        var pdfBytes = Data("%PDF-1.7\n1 0 obj<</Type/Catalog>>stream\n".utf8)
+        pdfBytes.append(contentsOf: [0x00, 0x80, 0xFF, 0x0A])
+        pdfBytes.append(contentsOf: Data("endstream endobj\n%%EOF\n".utf8))
+        // Latin-1 maps every byte, so the body survives the String-typed test server intact
+        // enough to be a binary body under a PDF content type.
+        let body = try XCTUnwrap(String(bytes: pdfBytes, encoding: .isoLatin1))
+        XCTAssertTrue(body.hasPrefix("%PDF-"), "the fixture must look like a PDF")
+        let server = try LoopbackServer(responses: [
+            LoopbackServer.Response(
+                status: 200,
+                headers: ["Content-Type": "application/pdf"],
+                body: body
+            )
+        ])
+
+        // Direct: refused, rather than returned as mojibake.
+        do {
+            let result = try await directFetcher(allowPrivateNetwork: true).fetch(
+                FetchRequest(url: server.baseURL),
+                maxRedirects: 2,
+                allowedContentTypePrefixes: WebFetcher.Policy().allowedContentTypePrefixes,
+                maxCharacters: 12_000
+            )
+            XCTFail(
+                "a PDF must not be returned as text: \(result.method.rawValue), "
+                    + "\(result.text.count) characters"
+            )
+        } catch let error as SearchError {
+            guard case .extractionFailed = error else {
+                return XCTFail("expected extractionFailed for a PDF, got \(error)")
+            }
+        }
+
+        // The reader renders PDFs remotely, so a configured reader still gets the document.
+        let jinaHTTP = MockHTTPClient()
+        let rendered = renderedText()
+        jinaHTTP.on("jina.reader") { request in
+            HTTPResponse(
+                statusCode: 200,
+                headers: ["content-type": "text/plain; charset=utf-8"],
+                body: Data("Title: Rendered PDF\n\n\(rendered)".utf8),
+                url: request.url
+            )
+        }
+        let fetcher = WebFetcher(
+            direct: directFetcher(allowPrivateNetwork: true),
+            jina: jinaFetcher(jinaHTTP),
+            log: .disabled
+        )
+        let viaReader = try await fetcher.open(FetchRequest(url: server.baseURL))
+        XCTAssertEqual(viaReader.method, .jinaReader)
+        XCTAssertTrue(viaReader.text.contains("Rendered by the reader"))
+    }
+
     /// The reader is asked for the *target* URL appended verbatim. `appendingPathComponent`
     /// percent-encoded `?` and `#` into the path, so a URL with a query reached the reader as
     /// `/page%3Fq=…` — a different resource, usually a 404 (ledger B15).

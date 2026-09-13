@@ -51,10 +51,16 @@ public actor WebFetcher {
         public init(maxRedirects: Int = 5, totalTimeout: Duration = .seconds(30)) {
             self.maxRedirects = max(0, maxRedirects)
             self.totalTimeout = totalTimeout
+            // Everything here can be handed to a model as text. `application/pdf` used to be on
+            // the list, and the only non-HTML branch decodes a body as UTF-8 or Latin-1: a PDF
+            // therefore arrived as tens of thousands of characters of `%PDF-1.7 … stream …`
+            // gibberish labelled `raw_text`. There is no PDF extraction in this package, so the
+            // honest answer is to refuse it — `extractionFailed` — and let the reader fallback
+            // (which renders PDFs remotely) serve it when one is configured (ledger B16).
             self.allowedContentTypePrefixes = [
                 "text/", "application/json", "application/xml", "application/xhtml",
                 "application/rss+xml", "application/atom+xml", "application/x-yaml",
-                "application/javascript", "application/pdf",
+                "application/javascript",
             ]
         }
     }
