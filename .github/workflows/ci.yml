@@ -140,8 +140,8 @@ jobs:
       - name: Coverage floor (Sources/)
         run: |
           set -euo pipefail
+          shopt -s nullglob
           BIN="$(swift build --show-bin-path)"
-          XCTEST="$BIN/SwiftWebSearchMCPPackageTests.xctest/Contents/MacOS/SwiftWebSearchMCPPackageTests"
 
           # The MCP server and the monitor only run as subprocesses, and each of them writes
           # its own profile (see `ServerTestSupport.childEnvironment`). Merging every profile
@@ -150,7 +150,27 @@ jobs:
           xcrun llvm-profdata merge -sparse "$BIN"/codecov/*.profraw \
             -o "$BIN/codecov/merged.profdata"
           rm -f coverage-*.json
-          for binary in "$XCTEST" "$BIN/SwiftWebSearchMCP" "$BIN/mcps-mon"; do
+
+          # The test-bundle name belongs to SwiftPM, not to this repository, and it has already
+          # changed once: Swift 6.3 emitted a single `<Package>PackageTests.xctest`, while
+          # Swift 6.4 emits one bundle per test target under a different product layout. A
+          # hard-coded name therefore stops measuring the tests' own code the moment the
+          # toolchain moves — and does it silently, because exporting only the executables still
+          # produces a report. Discovering the bundles and refusing to run when there are none
+          # is what keeps the floor meaningful (ledger B124).
+          bundles=("$BIN"/*.xctest)
+          if [ ${#bundles[@]} -eq 0 ]; then
+            echo "::error::no *.xctest bundle under $BIN: the coverage gate would not measure the tests"
+            exit 1
+          fi
+          for bundle in "${bundles[@]}"; do
+            name="$(basename "$bundle" .xctest)"
+            echo "exporting coverage for $name"
+            xcrun llvm-cov export "$bundle/Contents/MacOS/$name" \
+              -instr-profile "$BIN/codecov/merged.profdata" \
+              > "coverage-$name.json"
+          done
+          for binary in "$BIN/SwiftWebSearchMCP" "$BIN/mcps-mon"; do
             xcrun llvm-cov export "$binary" \
               -instr-profile "$BIN/codecov/merged.profdata" \
               > "coverage-$(basename "$binary").json"
@@ -158,9 +178,9 @@ jobs:
 
           # The floor covers this repository's own Sources/ — the library *and* the two
           # executables, which only became measurable once the subprocesses started emitting
-          # profiles. Measured 87.1 % (WebSearchCore 91.3 %, the MCP server 86.1 %, the monitor
-          # 30.1 %); the floor sits below that with room for a toolchain difference while still
-          # failing if a tested path is lost.
+          # profiles. Measured 91.8 % on Swift 6.4 (the baseline was 87.1 %); the floor sits
+          # below that with room for a toolchain difference while still failing if a tested path
+          # is lost.
           python3 scripts/coverage_floor.py "$PWD/Sources/" 80 coverage-*.json
 
       - name: Build (release, warnings are errors)

@@ -3007,6 +3007,28 @@
       "raw_id": "H14 (this session)",
       "raw_ids": [],
       "raw_file": "handover re-read (this session)"
+    },
+    {
+      "id": "B124",
+      "severity": "S1",
+      "severity_note": "Verification gap: the coverage gate silently stops measuring the tested library the moment SwiftPM's test-bundle name or product layout changes, and it has already changed under the mandated toolchain.",
+      "project": "CI",
+      "module": "`.github/workflows/ci.yml` (coverage-floor step), `scripts/coverage_floor.py`",
+      "file_line": "`.github/workflows/ci.yml:145` (`XCTEST=\"$BIN/SwiftWebSearchMCPPackageTests.xctest/...\"`)",
+      "title": "The coverage-floor gate hard-codes SwiftPM's test-bundle path, which Swift 6.4 no longer produces, so the gate fails (or measures less) on the mandated toolchain",
+      "category": "test",
+      "status": "DONE",
+      "host_used": "node1 (arm64, macOS 27.0, Swift 6.4)",
+      "discovered_by": "go-live session: running the gate set under the mandated Swift 6.4 toolchain (found while enumerating B123)",
+      "evidence_before": "With the sanctioned build recipe (`swift build --build-tests --scratch-path ...`), the Swift 6.3.3-era scratch trees contain `arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.xctest` while the Swift 6.4 tree contains `out/Products/Debug/WebSearchCoreTests.xctest` and `out/Products/Debug/MCPSMonitorTests.xctest`. The CI step names the former literally, so `xcrun llvm-cov export` fails with \"failed to load coverage: ... No such file or directory\" (reproduced on node1).",
+      "fix_summary": "The coverage-floor step discovers test bundles with a nullglob glob instead of naming `SwiftWebSearchMCPPackageTests.xctest`, exports one report per bundle plus one per executable, and fails with ::error:: when no bundle is found so a future SwiftPM rename is loud rather than a quieter report. Floor, argument and scripts/coverage_floor.py are unchanged.",
+      "evidence_after": "Rewritten step executed as written: exported coverage for MCPSMonitorTests, WebSearchCoreTests, SwiftWebSearchMCP and mcps-mon (4 reports) -> Sources/ line coverage 10454/11394 = 91.8% (floor 80%). Pre-fix logic reproduced the llvm-cov failure on this host. Artifact: AUDIT/evidence/B122-cancellation.txt (session gate run).",
+      "commit_sha": "",
+      "notes": "Same variable, different toolchain, different layout and bundle naming - the comparison is controlled.",
+      "blocked_reason": "",
+      "raw_id": "",
+      "raw_ids": [],
+      "raw_file": ""
     }
   ]
 }

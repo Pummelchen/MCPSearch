@@ -16,14 +16,14 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 
 | Metric | Count |
 | --- | --- |
-| Tasks enumerated | 134 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover, B116-B121 found while fixing and recording, B122-B124 found in the go-live session) |
+| Tasks enumerated | 135 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover, B116-B121 found while fixing and recording, B122-B124 found in the go-live session) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 134 |
+| DONE | 135 |
 | START (reproduced, expected behaviour written) | 0 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
-Severity of the whole set: **S0 3, S1 8, S2 34, S3 89** — 3/3 S0 are DONE; 8/8 S1 are DONE; 34/34 S2 are DONE; 89/89 S3 are DONE. Tasks not DONE: 0.
+Severity of the whole set: **S0 3, S1 9, S2 34, S3 89** — 3/3 S0 are DONE; 9/9 S1 are DONE; 34/34 S2 are DONE; 89/89 S3 are DONE. Tasks not DONE: 0.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -168,6 +168,7 @@ waived in writing.
 | B120 | S3 | `WebSearchCore` / `Fetch` (`DirectHTTPFetcher`) | `DirectHTTPFetcher.swift` (cross-scheme refusal) | Only the file-system transport codes are mapped, so a redirect to any other cross-scheme target still surfaces as an opaque transport reason | incomplete | DONE | node1 (arm64) | Phase C (residual B102 left) |
 | B121 | S3 | `WebSearchCore` / `Providers` (`HTTPStatusMapper`) | `HTTPStatusMapper.swift` (`unsupportedRequest`) | `HTTPError.invalidURL`'s detail is interpolated verbatim into the caller-facing message, so a URL-shaped detail would be echoed with any key in it | unsafe | DONE | node1 (arm64) | Phase C (surfaced by B96) |
 | B122 | S3 | `WebSearchCore` / `Search` (`AnswerSynthesizer`) | `AnswerSynthesizer.swift` (`complete`/`synthesize`) | Cancellation during answer synthesis is swallowed as a synthesis failure, so the tool layer's cancelled arm is unreachable | bug | DONE | node1 (arm64) | Phase C (found while closing B103) |
+| B124 | **S1** | CI | `.github/workflows/ci.yml:145` (`XCTEST="$BIN/SwiftWebSearchMCPPackageTests.xctest/..."`) | The coverage-floor gate hard-codes SwiftPM's test-bundle path, which Swift 6.4 no longer produces, so the gate fails (or measures less) on the mandated toolchain | test | DONE | node1 (arm64, macOS 27.0, Swift 6.4) | go-live session: running the gate set under the mandated Swift 6.4 toolchain (found while enumerating B123) |
 
 ---
 
@@ -219,6 +220,41 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B124 — the coverage gate no longer hard-codes a test-bundle name SwiftPM owns
+
+**Severity S1** · **category** test · **status** DONE · **host** node1 (arm64, macOS 27.0, Swift 6.4)
+
+**Found by running the gate set, not by reading it.** The coverage-floor step built its export list
+from a literal path, `$BIN/SwiftWebSearchMCPPackageTests.xctest/Contents/MacOS/SwiftWebSearchMCPPackageTests`.
+Swift 6.4's SwiftPM does not produce that bundle: with the same `--scratch-path` recipe, the 6.3.3-era
+scratch trees hold `arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.xctest`, while the 6.4 tree
+holds `out/Products/Debug/WebSearchCoreTests.xctest` and `out/Products/Debug/MCPSMonitorTests.xctest`
+— one bundle per test target, under a new product layout. `llvm-cov export` then fails with
+`failed to load coverage: ... No such file or directory`.
+
+**Why it is S1 and not cosmetic.** The failure is loud, but the shape it hides is not: the step's loop
+would still export the two executables if the missing binary were tolerated, producing a coverage
+number that no longer includes what the tests exercise — a gate that reports success while measuring
+less. The repository's whole reason for `--enable-code-coverage` here is the executables *and* the
+library (A04), so losing the test bundles is losing the library's measurement.
+
+**The fix.** Discover the bundles (`shopt -s nullglob` plus a `"$BIN"/*.xctest` glob), export one
+report per bundle and one per executable, and fail with an `::error::` when no bundle is found, so a
+future rename is a loud failure rather than a quieter report. The floor and its argument are
+unchanged, and the comment now names the measured figure for this toolchain (91.8 %).
+
+**Falsification.** The step was first run against the pre-fix logic: `swift build --show-bin-path`
+returned `out/Products/Debug`, the hard-coded path did not exist, and `llvm-cov export` failed —
+reproduced verbatim on this host. The rewritten step was then executed as written and exported
+coverage for `MCPSMonitorTests`, `WebSearchCoreTests`, `SwiftWebSearchMCP` and `mcps-mon`
+(4 reports), yielding `Sources/ line coverage: 10454/11394 = 91.8 % (floor 80 %)`.
+
+Gate: the full gate set for this session passed on Swift 6.4 — 590 tests / 6 skipped / 0 failures;
+debug and release 0 warnings; swift-format 0; swiftlint 0; ruff clean; pyright strict 0; shellcheck 0;
+notices clean; harness tests pass; both smoke transports and the PTY monitor smoke pass; semgrep 0;
+gitleaks full history 0; osv-scanner 0.
+Evidence: `AUDIT/evidence/B122-cancellation.txt` (same session gate run) and the local step log.
 
 ## B122 — a cancelled synthesis is now a cancellation, not a synthesis failure
 
