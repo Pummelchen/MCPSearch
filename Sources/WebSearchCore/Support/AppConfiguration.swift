@@ -136,7 +136,10 @@ public struct AppConfiguration: Sendable, Hashable {
         requestTimeout: Duration = .seconds(10),
         maxSearchResponseBytes: Int = 4 * 1024 * 1024,
         maxFetchedPageBytes: Int = 10 * 1024 * 1024,
-        userAgent: String = "SwiftWebSearchMCP/1.0 (+https://example.invalid/project)",
+        // Derived from the single source rather than a second literal: this used to read
+        // `SwiftWebSearchMCP/1.0` and would have quietly disagreed with the version the server
+        // reports over MCP (RELEASE.md §1.3).
+        userAgent: String = "SwiftWebSearchMCP/\(BuildVersion.value) (+https://example.invalid/project)",
         maxRetryAttempts: Int = 2,
         allowPrivateNetworkFetch: Bool = false,
         logLevel: LogLevel = .info,

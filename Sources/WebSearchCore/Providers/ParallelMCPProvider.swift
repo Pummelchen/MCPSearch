@@ -200,7 +200,7 @@ public actor ParallelMCPProvider: SearchProvider {
             params: [
                 "protocolVersion": "2025-06-18",
                 "capabilities": [String: Any](),
-                "clientInfo": ["name": "SwiftWebSearchMCP", "version": "1.0.0"],
+                "clientInfo": ["name": "SwiftWebSearchMCP", "version": BuildVersion.value],
             ]
         )
 

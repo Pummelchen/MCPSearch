@@ -244,6 +244,20 @@ final class ConfigurationTests: XCTestCase {
         XCTAssertTrue(configuration.logQueries)
     }
 
+    /// The default user agent carries the same version the server reports over MCP, because both are
+    /// read from `BuildVersion`, which is generated from the repository's `VERSION` file
+    /// (RELEASE.md §1.3 — one authoritative value, every other appearance a mirror).
+    ///
+    /// The default used to be a second, unconnected literal (`SwiftWebSearchMCP/1.0`), so it would
+    /// have drifted silently on the next bump. Comparing the whole string means a re-hardcoded value
+    /// on either side fails here rather than shipping.
+    func testDefaultUserAgentTracksTheBuildVersion() {
+        XCTAssertEqual(
+            AppConfiguration().userAgent,
+            "SwiftWebSearchMCP/\(BuildVersion.value) (+https://example.invalid/project)"
+        )
+    }
+
     /// There is deliberately no connect-timeout setting.
     ///
     /// The transport exposes no connect-only deadline, so the knob that used to exist was

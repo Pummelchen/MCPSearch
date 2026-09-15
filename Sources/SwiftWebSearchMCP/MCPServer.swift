@@ -5,7 +5,9 @@ import WebSearchCore
 /// Builds the MCP server and wires the tool surface.
 enum MCPServerFactory {
     static let serverName = "SwiftWebSearchMCP"
-    static let serverVersion = "1.0.0"
+    /// The version is not written here. `VERSION` at the repository root is authoritative and
+    /// `BuildVersion` is generated from it, so a bump cannot half-happen (RELEASE.md §1.3).
+    static let serverVersion = BuildVersion.value
 
     /// Create a configured `Server` with all tools registered.
     ///
