@@ -1,7 +1,12 @@
 # Phase E — verification on an independent host (go-live session)
 
 Host: **node2** (Mac14,3 Mac mini M2, 8 GB, macOS 27.0, Swift 6.4 / Xcode 27.0, Python 3.14.7)
-Branch: `audit/2026-09-13` at `6e0f70a` · date 2026-09-15
+Ref: `main` at `e20526f7` · date 2026-09-15
+
+This is the **third** Phase E run, and the one that covers the merged result: the branch was merged
+(so the fresh clone is of `main`), and `B128` then raised the manifest to `swift-tools-version: 6.4`,
+which the earlier runs did not cover. The two earlier runs are preserved: node1 at `891b94f`
+(`PHASE-E-2026-09-14-node1.txt`) and node2 at `6e0f70a`.
 
 The previous Phase E (2026-09-14, node1, `891b94f`) is preserved verbatim as
 [`PHASE-E-2026-09-14-node1.txt`](PHASE-E-2026-09-14-node1.txt). This is a second, independent
@@ -17,10 +22,10 @@ from the one that ran the first Phase E.
 
 | # | Requirement | Result |
 | --- | --- | --- |
-| 1 | Fresh clone on an independent host | `rm -rf ~/mcps-phaseE` then `git clone --branch audit/2026-09-13 --single-branch`; clone HEAD `6e0f70a68dbf29a374bfc823340b78e74e2e6d7d` equals the pushed tip; `git status --porcelain` **empty**; 283 tracked files; **not** a shallow clone. `AUDIT/ledger.json` SHA-256 `cafce0c60e5d39c65ec197fb92fef09dc9876fea0fbd74547ec4c573cca7f50e` is **byte-identical** to the development tree's |
+| 1 | Fresh clone on an independent host | `rm -rf ~/mcps-phaseE` then `git clone --branch main --single-branch`; clone HEAD `e20526f7255fc3e33ae9f39525822123b0601e55` equals `origin/main`; `git status --porcelain` **empty**; 284 tracked files; **not** a shallow clone. `AUDIT/ledger.json` SHA-256 `cede00a3af0a760e85c02127d5116ba451c69f2552ba943cdd375db0e526fbee` is **byte-identical** to the development tree's |
 | 2 | Clean build, zero warnings | `swift build --build-tests -Xswiftc -warnings-as-errors` → exit 0; `swift build -c release -Xswiftc -warnings-as-errors` → exit 0; `grep -c "warning:"` over the whole run → **0** |
 | 3 | Full suite green | **590 tests, 6 skipped, 0 failures** (`Executed 550 tests, with 6 tests skipped and 0 failures` + `Executed 40 tests, with 0 failures`) |
-| 4 | Coverage at or above the floor | **91.7 %** of `Sources/` lines — `10443/11394`, 57 files, 4 reports merged — against the 80 % floor; `coverage_floor.py` exit 0 |
+| 4 | Coverage at or above the floor | **91.6 %** of `Sources/` lines — `10442/11394`, 57 files, 4 reports merged — against the 80 % floor; `coverage_floor.py` exit 0 |
 | 5 | Every scanner clean or waived in writing | `semgrep` 0 · `gitleaks` full history 0 (written waiver, `.gitleaks.toml`, for the synthetic literals from `41d56935`) · `osv-scanner` 0 (osv-scanner 2.6.0 here, 2.5.1 on node1 — see the note below) · `swift-format --strict` 0 · `swiftlint --strict` 0 · `ruff` clean · `pyright --strict` 0 · `shellcheck` 0 |
 | 6 | Zero placeholders | §5 sweep re-run in this session: no literal `TODO`/`FIXME`/`HACK`/`WIP`/`STUB`/`NotImplemented`/`fatalError`/`try!`/`as!`/`#warning` in `Sources/`; the only "placeholder" strings are the deployment placeholders that provisioning **refuses** to start with and the test-side guards that reject placeholder credentials. No always-true validator, no stub body, no canned production data |
 | 7 | Ledger has no non-BLOCKED open task | **139 DONE, 0 PROGRESS, 0 START, 0 BLOCKED** of 139 enumerated (`AUDIT/ledger.json`) |
@@ -56,16 +61,16 @@ Sources/ line coverage: 10451/11394 = 91.7 % (floor 80 %, 57 files from 4 report
 
 ## The verified commit, and what came after it
 
-Phase E ran against `6e0f70a`. The commits that follow it on the branch are the record of this run
-itself (`AUDIT/evidence/`, `AUDIT/ledger.json`), and nothing else — `git diff --name-only 6e0f70a..HEAD`
-lists only files under `AUDIT/`, and `git diff 6e0f70a..HEAD -- Sources Tests Package.swift .github`
+Phase E ran against `e20526f7` (`main`, manifest `swift-tools-version: 6.4`). The commits that follow it on the branch are the record of this run
+itself (`AUDIT/evidence/`, `AUDIT/ledger.json`), and nothing else — `git diff --name-only e20526f7..HEAD`
+lists only files under `AUDIT/`, and `git diff e20526f7..HEAD -- Sources Tests Package.swift .github`
 is empty. The executed code, tests, manifest and workflow are therefore byte-identical to what was
 verified; the loop in which writing down a verification invalidates it is broken by proving the
 scope rather than by asserting it.
 
 ## Against the recorded baseline
 
-| Metric | Baseline @ `f3dd8d9` | Phase E @ `6e0f70a` |
+| Metric | Baseline @ `f3dd8d9` | Phase E @ `e20526f7` |
 | --- | --- | --- |
 | Tests (hermetic) | 371 | **590** |
 | Coverage — `Sources/` lines | 84.3 % | **91.7 %** |
