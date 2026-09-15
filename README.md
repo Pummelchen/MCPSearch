@@ -176,7 +176,7 @@ lives there.
 
 ```bash
 swift build                    # debug
-swift test                     # 371 tests, no network required
+swift test                     # 590 tests, no network required
 SEARCH_LIVE_TESTS=1 swift test --filter LiveProviderTests   # opt-in; calls real providers, also needs a key
 python3 scripts/mcp_smoke.py   # end-to-end stdio handshake
 python3 scripts/mcp_smoke.py --http   # end-to-end Streamable HTTP session
@@ -205,9 +205,12 @@ environment or a git-ignored `config.env`). A key alone does not activate them, 
 `docs/` holds the API research the adapters are built on, with every claim labelled
 verified or unverified — see [docs/README.md](docs/README.md).
 
-CI runs on the `xcode-27` image (Swift 6.4): build, test, release build, smoke tests over both
-transports, the pseudo-terminal monitor test, and a second test run with credentials
-present to prove the suite is hermetic.
+CI runs on the `xcode-27` image (Swift 6.4). One job builds with warnings as errors, runs the
+suite with coverage against an 80 % floor on `Sources/`, builds release, drives both transports
+and the dashboard's pseudo-terminal path, and re-runs the suite with placeholder credentials to
+prove it is hermetic. A second job holds the static gates: `swift-format`, SwiftLint, `ruff`,
+`pyright` (strict), `shellcheck`, `semgrep`, a full-history `gitleaks` scan, and `osv-scanner`
+over the locked dependency graph.
 
 ## License
 

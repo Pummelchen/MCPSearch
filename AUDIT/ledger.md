@@ -16,14 +16,14 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 
 | Metric | Count |
 | --- | --- |
-| Tasks enumerated | 137 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover, B116-B121 found while fixing and recording, B122-B124 found in the go-live session) |
+| Tasks enumerated | 138 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover, B116-B121 found while fixing and recording, B122-B126 found in the go-live session) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 136 |
-| START (reproduced, expected behaviour written) | 1 |
+| DONE | 138 |
+| START (reproduced, expected behaviour written) | 0 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
-Severity of the whole set: **S0 3, S1 10, S2 35, S3 89** — 3/3 S0 are DONE; 9/10 S1 are DONE; 35/35 S2 are DONE; 89/89 S3 are DONE. Tasks not DONE: 1.
+Severity of the whole set: **S0 3, S1 10, S2 35, S3 90** — 3/3 S0 are DONE; 10/10 S1 are DONE; 35/35 S2 are DONE; 90/90 S3 are DONE. Tasks not DONE: 0.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -170,7 +170,8 @@ waived in writing.
 | B122 | S3 | `WebSearchCore` / `Search` (`AnswerSynthesizer`) | `AnswerSynthesizer.swift` (`complete`/`synthesize`) | Cancellation during answer synthesis is swallowed as a synthesis failure, so the tool layer's cancelled arm is unreachable | bug | DONE | node1 (arm64) | Phase C (found while closing B103) |
 | B124 | **S1** | CI | `.github/workflows/ci.yml:145` (`XCTEST="$BIN/SwiftWebSearchMCPPackageTests.xctest/..."`) | The coverage-floor gate hard-codes SwiftPM's test-bundle path, which Swift 6.4 no longer produces, so the gate fails (or measures less) on the mandated toolchain | test | DONE | node1 (arm64, macOS 27.0, Swift 6.4) | go-live session: running the gate set under the mandated Swift 6.4 toolchain (found while enumerating B123) |
 | B123 | S2 | repository / CI | `Package.swift:1`, `.github/workflows/ci.yml:36`, `:65`, `:208` | The package declares and CI verifies Swift 6.3 while the mandated toolchain is Swift 6.4 (Xcode 27), and the fleet has moved to 6.4 | deps | DONE | node1 (arm64, macOS 27.0, Swift 6.4) | go-live session brief §1 (mandated toolchain) measured against the fleet |
-| B125 | **S1** | repository / delivery | `README.md` (Licence/Contact section), https://github.com/Pummelchen/MCPSearch/pull/1 | PR #1 cannot fast-forward: main advanced 8 commits and README.md conflicts, while the PR and the wiki still claim a clean one-click merge | incomplete | START | node1 (arm64, macOS 27.0, Swift 6.4) | go-live session: comparing main against the audit branch before Phase E |
+| B125 | **S1** | repository / delivery | `README.md` (Licence/Contact section), https://github.com/Pummelchen/MCPSearch/pull/1 | PR #1 cannot fast-forward: main advanced 8 commits and README.md conflicts, while the PR and the wiki still claim a clean one-click merge | incomplete | DONE | node1 (arm64, macOS 27.0, Swift 6.4) | go-live session: comparing main against the audit branch before Phase E |
+| B126 | S3 | repository / docs | `README.md:179` (test count), `README.md:208` (CI description) | The README states 371 tests and a CI description that omits every gate the audit added | docs | DONE | node1 (arm64, macOS 27.0, Swift 6.4) | go-live session: verifying the README's claims after merging main (B125) |
 
 ---
 
@@ -222,6 +223,74 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B126 — the README's suite count and CI description are corrected
+
+**Severity S3** · **category** docs · **status** DONE · **host** node1 (arm64, macOS 27.0, Swift 6.4)
+
+**Premise confirmed.** `README.md:179` said `swift test  # 371 tests`. 371 is `main`'s count at
+`f3dd8d9`; the branch about to land carries 590. The line was stale on the audit branch too, which is
+why the merge in `B125` produced no conflict at that line — both sides said 371. Separately,
+`README.md:208` described CI as "build, test, release build, smoke tests over both transports, the
+pseudo-terminal monitor test, and a second test run with credentials present", omitting the coverage
+floor and the entire `static-analysis` job that `A10` added.
+
+**The fix.** The count is corrected to 590, and the CI paragraph now names the coverage floor and
+the static gates: `swift-format`, SwiftLint, `ruff`, `pyright` (strict), `shellcheck`, `semgrep`, a
+full-history `gitleaks` scan and `osv-scanner` over the locked graph. Documentation only; no code or
+gate changed.
+
+**Why the count is 590 and not 588.** 588 was the audit's closing figure. `B122` replaced one test
+with two and added one more, so the suite grew by two. The figure is measured, not derived:
+`Executed 550 tests` + `Executed 40 tests` in the same run.
+
+**Not fixed here, and deliberately.** The wiki `Home` and `Testing` pages state 371 as well. That
+figure is true of `main` and false of the branch; the wiki is mirrored separately at the end of the
+session, so it is not duplicated into this task.
+
+## B125 — the audit branch is reconciled with main; PR #1 is a fast-forward again
+
+**Severity S1** · **category** incomplete · **status** DONE · **host** node1 (arm64, macOS 27.0, Swift 6.4)
+
+**Premise confirmed.** PR #1 was opened 2026-09-13 with `main` at `f3dd8d9`, and both its body and
+the wiki `Project-Tracker` described it as a fast-forward. `main` then advanced eight commits
+(`a8bc62a`, `6e92f44`, `2c152d7`, `6962896`, `bcbdccf`, `bf94514`, `ba20137`, `25c4dc5`) adding
+`.github/traffic.json`, renaming the LICENSE copyright holder and adding README badges and a Contact
+section. GitHub reported the PR **CONFLICTING/DIRTY**, and `git merge-tree` showed exactly one
+conflicting file: `README.md`.
+
+**Why this is S1 rather than housekeeping.** Until the reconciliation lands, the three S0 and eight
+S1 fixes — the nested page that killed the process, the bodies buffered before the byte cap, the
+compose secret-key override naming a variable SearXNG never reads — are not in the default branch.
+The delivery gap is the severity, not the conflict.
+
+**The operation, recorded before it ran** (see the preceding commit, `a9c0d0b`):
+
+```
+command : git merge origin/main --no-ff -m 'audit(B125): merge main into the audit branch'
+rollback: git reset --hard a9c0d0b        # while the merge is local
+          git revert -m 1 4b59dfa         # if it had already been pushed
+```
+
+Rebasing the branch and force-pushing are forbidden, so merging `main` in is the only
+non-rewriting way to make the PR mergeable. `main` was never written to directly, no branch or tag
+was deleted, and no history was rewritten.
+
+**Conflict resolution: both sides kept.** In the Licence/Contact hunk the branch's
+`THIRD-PARTY-NOTICES.md` paragraph and `main`'s legal-name copyright line and Contact section are
+independent additions, so all three are retained. In the badge hunk `main`'s four new badges are
+kept and the branch's `Swift 6.4` badge supersedes `Swift 6.3.3` (`B123`). Verified afterwards:
+`git merge-base --is-ancestor origin/main HEAD` succeeds — `main` is an ancestor again, so the PR is
+a fast-forward, and no conflict markers remain in any file.
+
+**Verification on the merged tree.** The full 18-gate set was run as one scripted pass on node1 at
+the merge commit `4b59dfa`: **all 18 gates passed** — 590 tests / 6 skipped / 0 failures, coverage
+`Sources/` 91.7 % against the 80 % floor, 0 compiler warnings in debug and release, the whole static
+set clean, both smoke transports and the pseudo-terminal monitor smoke green, semgrep/gitleaks/osv
+clean. Log: the session gate log referenced in `B122`'s evidence.
+
+**Note.** The merge brings `main`'s eight commits' content into the branch but does not, by itself,
+put the audit's work on `main`: that is the PR merge, which happens only after Phase E passes.
 
 ## B123 — the declared and verified toolchain is now Swift 6.4 (Xcode 27)
 
