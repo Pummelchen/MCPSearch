@@ -1,0 +1,80 @@
+# B03 — one MCP session per process, and it could never be released
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+`main.swift` built a single `StatefulHTTPServerTransport` at startup and handed it to the host.
+That SDK type is one-shot: it refuses a second `initialize` (`400 Session already initialized`) and,
+once terminated, answers 404 forever. The host also refused every non-POST before the transport, so
+the SDK's `DELETE` path was unreachable: the one session a process could ever have was also
+unreleasable.
+
+## Fails-before evidence — the new tests against the pre-fix sources
+
+The pre-fix sources were restored from HEAD into the working tree (tests left in place) and the
+HTTP transport suite was run:
+
+```
+testTwoClientsEachGetTheirOwnSession
+  FAILED  initialize over HTTP: ("400") is not equal to ("200")
+  FAILED  each initialize must issue its own session id: ("A9BAC82E-…") is equal to ("A9BAC82E-…")
+
+testDeletingASessionReleasesItAndAllowsReconnecting
+  FAILED  the SDK acknowledges termination with 200: ("405") is not equal to ("200")
+  FAILED  a released session must not be served: ("200") is not equal to ("404")
+  FAILED  initialize over HTTP: ("400") is not equal to ("200")
+  FAILED  ("DD610753-…") is equal to ("DD610753-…")
+```
+
+That is the finding, reproduced: a second client is refused, `DELETE` is not forwarded, and the
+process keeps handing out the same dead session. The pre-fix sources were then replaced with the
+fix and the suite re-run.
+
+## The fix
+
+* `HTTPMCPHost` keeps a registry of sessions, each a `Server` + `StatefulHTTPServerTransport` pair
+  built by a `SessionFactory` that `main.swift` supplies (the same `MCPServerFactory.make` used by
+  stdio). An `initialize` POST creates one; every other request is routed by the session id.
+* `POST`, `GET` and `DELETE` are all forwarded to the owning transport. A `DELETE` answered with 200
+  releases the session — transport disconnected and its `Server` stopped — so the process can
+  serve the next client. A refused `initialize` releases the half-built session too.
+* A request with no usable session is a client error that says which of the two is wrong:
+  `400` when there is no session id and the body is not `initialize`, `404` when the id is unknown
+  or released. The old `405 Allow: POST` described the single-transport design, not the protocol.
+* Session-id lookup goes through the SDK's case-insensitive `request.header(_:)`. The first build
+  used a case-sensitive dictionary subscript and every client with a valid session was answered
+  400 — caught by these tests, not by review.
+* `main.swift` no longer awaits one shared server: the host parks in `waitUntilStopped()` and
+  `stop()` releases every live session before the event-loop group shuts down.
+
+## Verification
+
+```
+$ swift test --filter HTTPTransportTests
+Executed 9 tests, with 0 failures (0 unexpected) in 1.517 seconds      (3 new)
+
+$ swift test
+Executed 413 tests, with 6 skipped and 0 failures (0 unexpected)
+
+$ swift build --build-tests -Xswiftc -warnings-as-errors + release  0 warnings, 0 errors
+$ swift-format --strict / swiftlint --strict                       0 diagnostics / exit 0
+$ scripts/coverage_floor.py Sources/ 80                             85.1 % >= 80 %
+```
+
+Coverage is unchanged at 85.1 % because the session code runs in the server *process*, which
+the test process's profile does not instrument — exactly the gap ledger A04 records.
+
+## CI, on this branch
+
+```
+$ gh workflow run CI --ref audit/2026-09-13
+$ gh run watch 34736818618 --exit-status
+✓ build-and-test    in 5m1s   (includes the stdio and Streamable HTTP smoke tests)
+✓ static-analysis   in 41s    (formatter, linter, ruff, pyright, semgrep, shellcheck,
+                               gitleaks, osv-scanner)
+exit 0   https://github.com/Pummelchen/MCPSearch/actions/runs/34736818618
+```
+
+The HTTP smoke test performs a real Streamable HTTP handshake against this build, so the
+per-session path is exercised in CI as well as by the unit tests.

@@ -102,14 +102,32 @@ final class NodeProbeTests: XCTestCase {
         XCTAssertNotNil(result.error)
     }
 
-    func testMalformedBodyIsDown() async {
+    /// A 200 whose body is not a SearXNG payload is a parse failure, not a network one.
+    ///
+    /// The decode threw a `DecodingError`, which is neither a `SearchError` nor a transport
+    /// error, so it fell into the generic catch and was reported as `unreachable` — the same
+    /// misdiagnosis the 403 branch above exists to avoid (ledger B64).
+    func testMalformedBodyIsDegradedNotUnreachable() async {
         let http = MockHTTPClient()
         http.respondJSON("this is not json")
 
         let result = await probe(http)
 
-        XCTAssertEqual(result.state, .down)
-        XCTAssertNotNil(result.error)
+        XCTAssertEqual(result.state, .degraded)
+        XCTAssertNotNil(result.latencyMilliseconds, "the instance answered, so its latency is known")
+        XCTAssertEqual(result.error, "JSON response was not a SearXNG payload")
+    }
+
+    /// Valid JSON of the wrong shape fails the same way as malformed JSON, so an API error
+    /// body served with a 200 is never shown as a network fault (ledger B64).
+    func testNonSearXNGJSONIsDegradedNotUnreachable() async {
+        let http = MockHTTPClient()
+        http.respondJSON(#"{"error":"too many requests"}"#)
+
+        let result = await probe(http)
+
+        XCTAssertEqual(result.state, .degraded)
+        XCTAssertEqual(result.error, "JSON response was not a SearXNG payload")
     }
 }
 
@@ -118,11 +136,17 @@ final class ProviderProbeTests: XCTestCase {
 
     private func makeProbe(
         _ providers: [any SearchProvider],
-        order: [ProviderID]? = nil
+        order: [ProviderID]? = nil,
+        enableParallel: Bool = false,
+        parallelURL: URL? = AppConfiguration().parallelMCPURL,
+        disabled: Set<ProviderID> = []
     ) -> ProviderProbe {
-        let configuration = Fixtures.configuration(
-            providerOrder: order ?? AppConfiguration.defaultProviderOrder
+        var configuration = Fixtures.configuration(
+            providerOrder: order ?? AppConfiguration.defaultProviderOrder,
+            enableParallel: enableParallel
         )
+        configuration.parallelMCPURL = parallelURL
+        for id in disabled { configuration.providerEnabled[id] = false }
         return ProviderProbe(
             registry: ProviderRegistry(providers: providers, configuration: configuration),
             configuration: configuration
@@ -130,10 +154,12 @@ final class ProviderProbeTests: XCTestCase {
     }
 
     func testProbeReturnsSuccessAndResultCount() async {
-        let provider = MockSearchProvider.returning(.tavily, results: [
-            ("A", "https://example.com/a", nil),
-            ("B", "https://example.com/b", nil),
-        ])
+        let provider = MockSearchProvider.returning(
+            .tavily,
+            results: [
+                ("A", "https://example.com/a", nil),
+                ("B", "https://example.com/b", nil),
+            ])
         let probe = makeProbe([provider])
 
         let outcome = await probe.probe(.tavily, query: "swift concurrency")
@@ -201,6 +227,62 @@ final class ProviderProbeTests: XCTestCase {
         XCTAssertEqual(probe.probeTargets(), [.exa, .tavily])
     }
 
+    /// The probe set is the configured order minus everything the operator disabled and
+    /// everything without inputs.
+    ///
+    /// `SEARCH_DISABLED_PROVIDERS` is the server's own eligibility rule, so a monitor that
+    /// ignored it both labelled a disabled provider ready and sent it a real search — a
+    /// credit spent on a provider the server would never use (ledger B76).
+    func testProbeableTargetsExcludeDisabledAndUnconfiguredProviders() {
+        let configured = MockSearchProvider.returning(.tavily, results: [])
+        let keyless = MockSearchProvider(id: .brave, configured: false) { _ in
+            ProviderSearchResponse(provider: .brave, results: [])
+        }
+        // An adapter that is present and usable but switched off, so the disabled dimension
+        // is exercised independently of a missing adapter.
+        let switchedOff = MockSearchProvider.returning(.exa, results: [])
+        let probe = makeProbe(
+            [configured, keyless, switchedOff],
+            order: [.tavily, .brave, .exa],
+            disabled: [.exa]
+        )
+
+        XCTAssertEqual(
+            probe.probeTargets(), [.tavily, .brave, .exa],
+            "the display order itself is unchanged: a disabled provider is still listed"
+        )
+        XCTAssertTrue(probe.isConfigured(.exa), "the disabled provider has its inputs")
+        XCTAssertEqual(probe.probeableTargets(), [.tavily])
+    }
+
+    /// Probing a disabled provider directly must be refused, not merely avoided by the caller:
+    /// `probe` is public and a call would spend a provider credit.
+    func testDisabledProviderIsNeverProbedAndReportsWhy() async {
+        let provider = MockSearchProvider.returning(
+            .tavily,
+            results: [("A", "https://example.com/a", nil)]
+        )
+        let probe = makeProbe([provider], disabled: [.tavily])
+
+        XCTAssertFalse(probe.isEnabled(.tavily))
+        XCTAssertFalse(probe.mayProbe(.tavily))
+        XCTAssertTrue(probe.isConfigured(.tavily), "the credential is still present")
+        XCTAssertTrue(probe.probeableTargets().isEmpty)
+
+        let outcome = await probe.probe(.tavily, query: "swift")
+
+        XCTAssertFalse(outcome.succeeded)
+        XCTAssertEqual(outcome.category, .notConfigured)
+        XCTAssertEqual(outcome.error, "disabled via SEARCH_DISABLED_PROVIDERS")
+        XCTAssertEqual(provider.callCount, 0, "a disabled provider must not be probed")
+    }
+
+    /// The monitor's hint names the variables the *server* would tell the operator to set,
+    /// because both read `ProviderEnablement` (ledger B57).
+    ///
+    /// `parallel` needs both a flag and an endpoint, so the hint is configuration-dependent:
+    /// the version this replaces always said `SEARCH_ENABLE_PARALLEL=true`, including in the
+    /// state where that flag was already on and the endpoint was the missing input.
     func testSetupHintNamesTheRightVariableForEveryProvider() {
         let probe = makeProbe([])
         XCTAssertEqual(probe.setupHint(for: .tavily), "TAVILY_API_KEY")
@@ -211,7 +293,22 @@ final class ProviderProbeTests: XCTestCase {
         XCTAssertEqual(probe.setupHint(for: .openWebSearch), "OPEN_WEB_SEARCH_URL")
         XCTAssertEqual(probe.setupHint(for: .duckDuckGo), "SEARCH_ENABLE_SCRAPERS=true")
         XCTAssertEqual(probe.setupHint(for: .startpage), "SEARCH_ENABLE_SCRAPERS=true")
-        XCTAssertEqual(probe.setupHint(for: .parallel), "SEARCH_ENABLE_PARALLEL=true")
+        XCTAssertEqual(
+            probe.setupHint(for: .parallel), "SEARCH_ENABLE_PARALLEL=true",
+            "with the endpoint present, the flag is the only missing input"
+        )
+
+        // The flag is on and the endpoint was emptied: the hint must name the endpoint, not
+        // repeat advice the operator has already taken.
+        XCTAssertEqual(
+            makeProbe([], enableParallel: true, parallelURL: nil).setupHint(for: .parallel),
+            "PARALLEL_MCP_URL"
+        )
+        // Neither is present: both are named, flag first.
+        XCTAssertEqual(
+            makeProbe([], enableParallel: false, parallelURL: nil).setupHint(for: .parallel),
+            "SEARCH_ENABLE_PARALLEL=true and PARALLEL_MCP_URL"
+        )
     }
 
     func testIsConfiguredReflectsTheRegistry() {

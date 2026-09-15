@@ -1,0 +1,331 @@
+unformatted: File would be reformatted
+   --> scripts/mcp_smoke.py:140:17
+    |
+139 |
+    -     def request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+140 +     def request(
+141 +         self, method: str, params: dict[str, Any] | None = None
+142 +     ) -> dict[str, Any]:
+143 |         self._next_id += 1
+--------------------------------------------------------------------------------
+205 |     if missing:
+    -         raise Failure(f"tools/list is missing {sorted(missing)}; advertised {sorted(names)}")
+206 +         raise Failure(
+207 +             f"tools/list is missing {sorted(missing)}; advertised {sorted(names)}"
+208 +         )
+209 |     undocumented = names - set(REQUIRED_TOOLS)
+210 |     if undocumented:
+211 |         # Not a failure: the Swift suite owns the exact inventory. Printed so a new tool
+212 |         # is visible in the smoke log instead of silently accepted.
+    -         print(f"  note: {sorted(undocumented)} advertised but not listed in this script")
+213 +         print(
+214 +             f"  note: {sorted(undocumented)} advertised but not listed in this script"
+215 +         )
+216 |
+--------------------------------------------------------------------------------
+254 |     text = " ".join(
+    -         block.get("text", "") for block in result.get("content", []) if isinstance(block, dict)
+255 +         block.get("text", "")
+256 +         for block in result.get("content", [])
+257 +         if isinstance(block, dict)
+258 |     )
+--------------------------------------------------------------------------------
+269 |
+    - def http_exchange(port: int, body: dict[str, Any], session: str | None = None,
+    -                   accept: str = "application/json, text/event-stream",
+    -                   path: str = "/mcp", origin: str | None = None):
+270 + def http_exchange(
+271 +     port: int,
+272 +     body: dict[str, Any],
+273 +     session: str | None = None,
+274 +     accept: str = "application/json, text/event-stream",
+275 +     path: str = "/mcp",
+276 +     origin: str | None = None,
+277 + ):
+278 |     """POST one JSON-RPC message and return (status, headers, messages).
+--------------------------------------------------------------------------------
+332 |                 break
+    -             pieces.append(remaining[index + 2:index + 2 + size])
+    -             remaining = remaining[index + 2 + size + 2:]
+333 +             pieces.append(remaining[index + 2 : index + 2 + size])
+334 +             remaining = remaining[index + 2 + size + 2 :]
+335 |         rest = "".join(pieces)
+--------------------------------------------------------------------------------
+401 |         if status != 200 or not messages:
+    -             raise Failure(f"HTTP initialize failed: status={status} messages={messages}")
+402 +             raise Failure(
+403 +                 f"HTTP initialize failed: status={status} messages={messages}"
+404 +             )
+405 |         session = headers.get("mcp-session-id")
+406 |         if not session:
+407 |             raise Failure("HTTP initialize did not return an Mcp-Session-Id header")
+    -         print(f"  initialize ok over HTTP (session issued, protocol "
+    -               f"{messages[0]['result']['protocolVersion']})")
+408 +         print(
+409 +             f"  initialize ok over HTTP (session issued, protocol "
+410 +             f"{messages[0]['result']['protocolVersion']})"
+411 +         )
+412 |
+--------------------------------------------------------------------------------
+443 |         if status != 200 or not messages or messages[0]["result"].get("isError"):
+    -             raise Failure(f"HTTP tools/call failed: status={status} messages={messages}")
+444 +             raise Failure(
+445 +                 f"HTTP tools/call failed: status={status} messages={messages}"
+446 +             )
+447 |         print("  tools/call ok over SSE")
+--------------------------------------------------------------------------------
+453 |         if status < 400:
+    -             raise Failure(f"a request without a session id should be refused, got {status}")
+454 +             raise Failure(
+455 +                 f"a request without a session id should be refused, got {status}"
+456 +             )
+457 |
+--------------------------------------------------------------------------------
+464 |         if status < 400:
+    -             raise Failure(f"a request that cannot accept SSE should be refused, got {status}")
+465 +             raise Failure(
+466 +                 f"a request that cannot accept SSE should be refused, got {status}"
+467 +             )
+468 |
+--------------------------------------------------------------------------------
+511 |         if "SwiftWebSearchMCP" not in stderr:
+    -             raise Failure(f"expected startup diagnostics on stderr, got: {stderr[:400]!r}")
+512 +             raise Failure(
+513 +                 f"expected startup diagnostics on stderr, got: {stderr[:400]!r}"
+514 +             )
+515 |         print("  stdout carried only valid JSON-RPC; diagnostics appeared on stderr")
+    |
+
+unformatted: File would be reformatted
+   --> scripts/monitor_tty_smoke.py:313:79
+    |
+312 |             for line in text.splitlines():
+    -                 if line.strip().startswith("node") and line.rstrip().endswith("engines"):
+313 +                 if line.strip().startswith("node") and line.rstrip().endswith(
+314 +                     "engines"
+315 +                 ):
+316 |                     return True
+317 |             return False
+318 |
+319 |         session.wait_for(
+    -             lambda s: "unavailable:" in s.frame_text() and engine_column(s.frame_text()),
+320 +             lambda s: (
+321 +                 "unavailable:" in s.frame_text() and engine_column(s.frame_text())
+322 +             ),
+323 |             "the engine breakdown in the node rows and header",
+--------------------------------------------------------------------------------
+327 |         session.wait_for(
+    -             lambda s: not engine_column(s.frame_text())
+    -             and "unavailable:" not in s.frame_text(),
+328 +             lambda s: (
+329 +                 not engine_column(s.frame_text())
+330 +                 and "unavailable:" not in s.frame_text()
+331 +             ),
+332 |             "the engine breakdown to be hidden, header included",
+333 |         )
+334 |         session.send("e")
+335 |         session.wait_for(
+    -             lambda s: engine_column(s.frame_text()) and "unavailable:" in s.frame_text(),
+336 +             lambda s: (
+337 +                 engine_column(s.frame_text()) and "unavailable:" in s.frame_text()
+338 +             ),
+339 |             "the engine breakdown to come back",
+--------------------------------------------------------------------------------
+380 |         print(f"  frames home the cursor and clear to the end of the line and screen")
+    -         print(f"  colour on by default; `c` switched it off ({len(session.frames())} frames painted)")
+381 +         print(
+382 +             f"  colour on by default; `c` switched it off ({len(session.frames())} frames painted)"
+383 +         )
+384 |         print(f"  `e` hid and restored the engine breakdown")
+    |
+
+unformatted: File would be reformatted
+   --> scripts/searxng_health.py:52:25
+    |
+51  |     parser.add_argument("--query", default="swift concurrency")
+    -     parser.add_argument("--json", action="store_true", help="emit machine-readable output")
+52  +     parser.add_argument(
+53  +         "--json", action="store_true", help="emit machine-readable output"
+54  +     )
+55  |     args = parser.parse_args()
+--------------------------------------------------------------------------------
+60  |         if args.json:
+    -             print(json.dumps({"healthy": False, "reason": "unreachable", "detail": payload}))
+61  +             print(
+62  +                 json.dumps(
+63  +                     {"healthy": False, "reason": "unreachable", "detail": payload}
+64  +                 )
+65  +             )
+66  |         else:
+67  |             print(f"UNREACHABLE  {args.base_url}\n  {payload}")
+    -             print("  Is the instance running?  docker compose -f deploy/docker-compose.yml up -d")
+68  +             print(
+69  +                 "  Is the instance running?  docker compose -f deploy/docker-compose.yml up -d"
+70  +             )
+71  |         return 2
+72  |
+73  |     if status == 403:
+74  |         if args.json:
+    -             print(json.dumps({"healthy": False, "reason": "json_disabled", "status": status}))
+75  +             print(
+76  +                 json.dumps(
+77  +                     {"healthy": False, "reason": "json_disabled", "status": status}
+78  +                 )
+79  +             )
+80  |         else:
+--------------------------------------------------------------------------------
+91  |         if args.json:
+    -             print(json.dumps({"healthy": False, "reason": "unexpected_response",
+    -                               "status": status, "detail": str(payload)[:200]}))
+92  +             print(
+93  +                 json.dumps(
+94  +                     {
+95  +                         "healthy": False,
+96  +                         "reason": "unexpected_response",
+97  +                         "status": status,
+98  +                         "detail": str(payload)[:200],
+99  +                     }
+100 +                 )
+101 +             )
+102 |         else:
+--------------------------------------------------------------------------------
+117 |     if args.json:
+    -         print(json.dumps({
+    -             "healthy": healthy,
+    -             "base_url": args.base_url,
+    -             "result_count": len(results),
+    -             "engines": dict(engines.most_common()),
+    -             "unresponsive_engines": unresponsive,
+    -         }, indent=2))
+118 +         print(
+119 +             json.dumps(
+120 +                 {
+121 +                     "healthy": healthy,
+122 +                     "base_url": args.base_url,
+123 +                     "result_count": len(results),
+124 +                     "engines": dict(engines.most_common()),
+125 +                     "unresponsive_engines": unresponsive,
+126 +                 },
+127 +                 indent=2,
+128 +             )
+129 +         )
+130 |         return 0 if healthy else 1
+--------------------------------------------------------------------------------
+135 |     if engines:
+    -         print("engines    " + ", ".join(f"{name} ({count})" for name, count in engines.most_common()))
+136 +         print(
+137 +             "engines    "
+138 +             + ", ".join(f"{name} ({count})" for name, count in engines.most_common())
+139 +         )
+140 |     else:
+    |
+
+unformatted: File would be reformatted
+   --> scripts/soak.py:173:17
+    |
+172 |
+    -     def request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
+173 +     def request(
+174 +         self, method: str, params: dict[str, Any] | None = None
+175 +     ) -> dict[str, Any]:
+176 |         self._next_id += 1
+--------------------------------------------------------------------------------
+218 |     if disabled:
+    -         already = [p.strip() for p in environment.get("SEARCH_DISABLED_PROVIDERS", "").split(",") if p.strip()]
+219 +         already = [
+220 +             p.strip()
+221 +             for p in environment.get("SEARCH_DISABLED_PROVIDERS", "").split(",")
+222 +             if p.strip()
+223 +         ]
+224 |         for provider in disabled:
+--------------------------------------------------------------------------------
+232 |     )
+    -     environment["SEARCH_ENABLE_PARALLEL"] = "true" if "parallel" in providers else "false"
+233 +     environment["SEARCH_ENABLE_PARALLEL"] = (
+234 +         "true" if "parallel" in providers else "false"
+235 +     )
+236 |
+--------------------------------------------------------------------------------
+249 |         if line.startswith("export "):
+    -             line = line[len("export "):]
+250 +             line = line[len("export ") :]
+251 |         if "=" not in line:
+--------------------------------------------------------------------------------
+309 |     parser.add_argument("--queries", type=int, default=len(QUERIES))
+    -     parser.add_argument("--mode", default="balanced", choices=["fast", "balanced", "thorough"])
+    -     parser.add_argument("--pause", type=float, default=1.0,
+    -                         help="seconds between queries, to imitate real usage")
+    -     parser.add_argument("--providers", default="tavily,duckduckgo,parallel",
+    -                         help="comma-separated providers to run; every other provider "
+    -                              "is explicitly disabled so the run matches this set")
+310 +     parser.add_argument(
+311 +         "--mode", default="balanced", choices=["fast", "balanced", "thorough"]
+312 +     )
+313 +     parser.add_argument(
+314 +         "--pause",
+315 +         type=float,
+316 +         default=1.0,
+317 +         help="seconds between queries, to imitate real usage",
+318 +     )
+319 +     parser.add_argument(
+320 +         "--providers",
+321 +         default="tavily,duckduckgo,parallel",
+322 +         help="comma-separated providers to run; every other provider "
+323 +         "is explicitly disabled so the run matches this set",
+324 +     )
+325 |     parser.add_argument("--max-results", type=int, default=5)
+--------------------------------------------------------------------------------
+331 |         try:
+    -             out = subprocess.run(["swift", "build", "-c", "release", "--show-bin-path"],
+    -                                  capture_output=True, text=True, check=True).stdout.strip()
+332 +             out = subprocess.run(
+333 +                 ["swift", "build", "-c", "release", "--show-bin-path"],
+334 +                 capture_output=True,
+335 +                 text=True,
+336 +                 check=True,
+337 +             ).stdout.strip()
+338 |         except subprocess.CalledProcessError as error:
+--------------------------------------------------------------------------------
+429 |                     failures_by_category[failure["category"]] += 1
+    -                 mark = "" if not failed else " ".join(
+    -                     f"{f['provider']}:{f['category']}" for f in failed
+430 +                 mark = (
+431 +                     ""
+432 +                     if not failed
+433 +                     else " ".join(f"{f['provider']}:{f['category']}" for f in failed)
+434 |                 )
+--------------------------------------------------------------------------------
+454 |         print(f"  results returned   {results_total}")
+    -         print(f"  wall time          {wall:.1f}s  ({wall / max(1, len(queries)):.2f}s/query)")
+455 +         print(
+456 +             f"  wall time          {wall:.1f}s  ({wall / max(1, len(queries)):.2f}s/query)"
+457 +         )
+458 |         if latencies:
+459 |             ordered = sorted(latencies)
+    -             print(f"  latency min/med/max {ordered[0]}ms / "
+    -                   f"{ordered[len(ordered) // 2]}ms / {ordered[-1]}ms")
+460 +             print(
+461 +                 f"  latency min/med/max {ordered[0]}ms / "
+462 +                 f"{ordered[len(ordered) // 2]}ms / {ordered[-1]}ms"
+463 +             )
+464 |
+--------------------------------------------------------------------------------
+472 |         for name, count in failures_by_provider.most_common():
+    -             print(f"    {name:16} {count:>3}  (categories: "
+    -                   f"{', '.join(sorted({c for c, _ in failures_by_category.items()}))})")
+473 +             print(
+474 +                 f"    {name:16} {count:>3}  (categories: "
+475 +                 f"{', '.join(sorted({c for c, _ in failures_by_category.items()}))})"
+476 +             )
+477 |         if failures_by_category:
+    -             print("    by category: " + ", ".join(
+    -                 f"{c}={n}" for c, n in failures_by_category.most_common()
+    -             ))
+478 +             print(
+479 +                 "    by category: "
+480 +                 + ", ".join(f"{c}={n}" for c, n in failures_by_category.most_common())
+481 +             )
+482 |
+    |
+
+4 files would be reformatted

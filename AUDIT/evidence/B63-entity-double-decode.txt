@@ -1,0 +1,63 @@
+# B63 — entity decoding ran over its own output
+
+Host: this Mac (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+```swift
+static func decodeCommonEntities(_ input: String) -> String {
+    var output = input
+    let replacements: [(String, String)] = [("&amp;", "&"), ("&lt;", "<"), ...]
+    for (entity, value) in replacements where output.contains(entity) {
+        output = output.replacingOccurrences(of: entity, with: value)   // over the *output*
+    }
+    return output
+}
+```
+
+Each replacement ran over the result of the previous one, so an escaped entity decoded **twice**:
+`&amp;lt;` became `&lt;` and then a live `<`. Provider snippets are text, but whatever consumes them
+— an answer prompt, a terminal, a client that renders — sees markup where the source had escaped
+markup. `cleanText` feeds exactly those consumers.
+
+## Fails-before evidence
+
+With the sequential decoder restored and the new test in place:
+
+```
+$ swift test --filter testDecodeCommonEntitiesDoesNotDecodeTwice
+error: ... XCTAssertEqual failed: ("<b>") is not equal to ("&lt;b&gt;")
+```
+
+## The fix
+
+One pass over the input; the replacement is appended and never re-scanned, and an unknown entity is
+copied through complete:
+
+```swift
+while index < input.endIndex {
+    guard input[index] == "&" else { output.append(input[index]); index = ...; continue }
+    guard let semicolon = input[index...].firstIndex(of: ";"),
+          input.distance(from: index, to: semicolon) <= 9      // `&hellip;` is the longest
+    else { output.append("&"); index = ...; continue }
+    let entity = String(input[index..<semicolon]) + ";"
+    output += replacements[entity] ?? entity
+    index = input.index(after: semicolon)
+}
+```
+
+A `&` with no `;` within the longest entity's length is literal, so "fish & chips" and
+"100% &more; text" are untouched.
+
+## Verification
+
+```
+$ swift test --filter ResultNormalizerTests
+Executed 13 tests, with 0 failures (0 unexpected)
+
+$ swift test
+Executed 478 tests, with 6 skipped and 0 failures (0 unexpected) in 18.690 seconds
+
+$ swift-format lint --recursive --strict Sources Tests    0 diagnostics
+$ swiftlint lint --strict                                 0 violations in 83 files
+```

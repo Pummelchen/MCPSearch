@@ -21,6 +21,11 @@ public struct HTTPTransportConfiguration: Sendable, Equatable {
     public var port: Int
     /// MCP endpoint path.
     public var path: String
+    /// Extra host names this deployment answers to, from `--http-allowed-host`.
+    ///
+    /// A TLS-terminating proxy forwards the public name it was reached on, which need not be
+    /// the address the server binds, so the operator declares it here (ledger B21).
+    public var additionalAllowedHosts: [String] = []
 
     public static let defaultHost = "127.0.0.1"
     public static let defaultPort = 8080
@@ -48,33 +53,203 @@ public struct ServerOptions: Sendable {
     /// Set when the user asked for `--help`.
     public var wantsHelp: Bool = false
 
-    public static let usage = """
-        SwiftWebSearchMCP — MCP server for public-web search.
+    // MARK: Flags
 
-        USAGE
-          SwiftWebSearchMCP [options]
+    /// A command-line flag `parse` accepts.
+    ///
+    /// The parser dispatches on this table and `usage` is rendered from it, so a flag cannot be
+    /// accepted without being documented, or documented without being accepted. The usage string
+    /// used to be maintained by hand and had already fallen behind the parser — it did not mention
+    /// `--help`, the `--transport` value aliases or the `--flag=value` spelling — while the test
+    /// that claimed to check it asserted a hand-written list of four names (ledger B114).
+    enum Flag: CaseIterable {
+        case help
+        case transport
+        case port
+        case host
+        case httpAllowedHost
+        case httpPath
 
-        TRANSPORT
-          --transport <stdio|http>   Transport to serve on. Default: stdio.
-          --port <n>                 HTTP port. Default: \(HTTPTransportConfiguration.defaultPort)
-          --host <addr>              HTTP bind address. Default: \(HTTPTransportConfiguration.defaultHost)
-          --http-path <path>         MCP endpoint path. Default: \(HTTPTransportConfiguration.defaultPath)
+        /// Every spelling the parser accepts for this flag, canonical first.
+        var names: [String] {
+            switch self {
+            case .help: ["--help", "-h"]
+            case .transport: ["--transport"]
+            case .port: ["--port"]
+            case .host: ["--host"]
+            case .httpAllowedHost: ["--http-allowed-host"]
+            case .httpPath: ["--http-path"]
+            }
+        }
 
-        Setting any of --port, --host or --http-path selects the HTTP transport, so
-        --transport http is optional. Combining one with an explicit --transport stdio is
-        rejected rather than silently resolved.
+        /// The spelling used to render `usage`.
+        var canonicalName: String { names[0] }
 
-        EXAMPLES
-          # Local clients (Claude Desktop, Claude Code, Cursor, VS Code)
-          SwiftWebSearchMCP
+        /// Whether the flag consumes the following argument.
+        var takesValue: Bool {
+            switch self {
+            case .help: false
+            case .transport, .port, .host, .httpAllowedHost, .httpPath: true
+            }
+        }
 
-          # Remote connectors, reachable only from this machine
-          SwiftWebSearchMCP --transport http --port 8080
+        /// The `<placeholder>` drawn after the canonical name, or nil for a valueless flag.
+        var valuePlaceholder: String? {
+            switch self {
+            case .help: nil
+            case .transport: "stdio|http"
+            case .port: "n"
+            case .host: "addr"
+            case .httpAllowedHost: "host"
+            case .httpPath: "path"
+            }
+        }
 
-        CONFIGURATION
-          All settings come from the environment. See README and example.env.
-          Diagnostics are written to stderr; stdout carries MCP protocol traffic only.
-        """
+        /// Whether naming this flag on its own selects the HTTP transport.
+        var selectsHTTP: Bool {
+            switch self {
+            case .port, .host, .httpAllowedHost, .httpPath: true
+            case .help, .transport: false
+            }
+        }
+
+        /// The flag as `usage` writes it: `--port <n>`, or `--help, -h`.
+        var documentedForm: String {
+            let spellings = names.joined(separator: ", ")
+            guard let valuePlaceholder else { return spellings }
+            return "\(canonicalName) <\(valuePlaceholder)>"
+        }
+
+        /// The description lines, with the name column supplied by the renderer.
+        var documentation: [String] {
+            switch self {
+            case .help:
+                ["Print this usage and exit."]
+            case .transport:
+                [
+                    "Transport to serve on: " + TransportName.acceptedValues + ".",
+                    "Default: stdio.",
+                ]
+            case .port:
+                ["HTTP port. Default: \(HTTPTransportConfiguration.defaultPort)"]
+            case .host:
+                ["HTTP bind address. Default: \(HTTPTransportConfiguration.defaultHost)"]
+            case .httpAllowedHost:
+                [
+                    "Extra Host this server answers to, repeatable. Setting it",
+                    "selects the HTTP transport, like the flags above.",
+                ]
+            case .httpPath:
+                ["MCP endpoint path. Default: \(HTTPTransportConfiguration.defaultPath)"]
+            }
+        }
+
+        /// The flag an argument names, for both `--flag` and `--flag=value`.
+        static func matching(_ argument: String) -> Flag? {
+            for flag in Flag.allCases where flag.names.contains(argument) {
+                return flag
+            }
+            for flag in Flag.allCases where flag.takesValue {
+                for name in flag.names where argument.hasPrefix(name + "=") {
+                    return flag
+                }
+            }
+            return nil
+        }
+
+        /// The value written inline as `--flag=value`, when the argument uses that spelling.
+        func inlineValue(in argument: String) -> String? {
+            guard takesValue else { return nil }
+            for name in names where argument.hasPrefix(name + "=") {
+                return String(argument.dropFirst(name.count + 1))
+            }
+            return nil
+        }
+    }
+
+    /// The spellings `--transport` accepts.
+    ///
+    /// `parse` resolves the value through this table and `usage` lists it from the table, so a new
+    /// alias cannot be accepted without being documented (ledger B114).
+    enum TransportName: String, CaseIterable {
+        case stdio
+        case http
+        case streamableHyphen = "streamable-http"
+        case streamableUnderscore = "streamable_http"
+
+        /// The accepted spellings as one phrase.
+        ///
+        /// Both `usage` and the `--transport` rejection message render from this, so the
+        /// documented set and the set the error names cannot drift apart. The error used to
+        /// hardcode "stdio or http" while `usage` listed all four, which made the more natural
+        /// `--transport streamable-http` look unsupported (ledger B118).
+        static var acceptedValues: String {
+            allCases.map(\.rawValue).joined(separator: ", ")
+        }
+    }
+
+    // MARK: Usage
+
+    /// The help text.
+    ///
+    /// Rendered from `Flag` and `TransportName` — the same tables `parse` dispatches on — so the
+    /// documented CLI and the accepted CLI cannot drift (ledger B114).
+    public static let usage: String = renderUsage()
+
+    private static func renderUsage() -> String {
+        let forms = Flag.allCases.map(\.documentedForm)
+        let column = (forms.map(\.count).max() ?? 0) + 2
+        var lines = [
+            "SwiftWebSearchMCP — MCP server for public-web search.",
+            "",
+            "USAGE",
+            "  SwiftWebSearchMCP [options]",
+            "",
+            "OPTIONS",
+        ]
+        for (flag, form) in zip(Flag.allCases, forms) {
+            var descriptions = flag.documentation
+            let first = descriptions.removeFirst()
+            let padding = String(repeating: " ", count: column - form.count)
+            lines.append("  " + form + padding + first)
+            for description in descriptions {
+                lines.append("  " + String(repeating: " ", count: column) + description)
+            }
+        }
+        let implicit = joinedList(Flag.allCases.filter(\.selectsHTTP).map(\.canonicalName))
+        lines += [
+            "",
+            "Every flag that takes a value also accepts the --flag=value spelling, for example",
+            "--port=\(HTTPTransportConfiguration.defaultPort).",
+            "",
+            "Setting any of \(implicit) selects the HTTP transport,",
+            "so --transport http is optional. Combining one with an explicit",
+            "--transport stdio is rejected rather than silently resolved.",
+            "",
+            "EXAMPLES",
+            "  # Local clients (Claude Desktop, Claude Code, Cursor, VS Code)",
+            "  SwiftWebSearchMCP",
+            "",
+            "  # Remote connectors, reachable only from this machine",
+            "  SwiftWebSearchMCP --transport http --port \(HTTPTransportConfiguration.defaultPort)",
+            "",
+            "CONFIGURATION",
+            "  All settings come from the environment. See README and example.env.",
+            "  Diagnostics are written to stderr; stdout carries MCP protocol traffic only.",
+        ]
+        return lines.joined(separator: "\n")
+    }
+
+    /// `a`, `a and b` or `a, b and c`.
+    private static func joinedList(_ items: [String]) -> String {
+        switch items.count {
+        case 0: return ""
+        case 1: return items[0]
+        default: return items.dropLast().joined(separator: ", ") + " or " + items[items.count - 1]
+        }
+    }
+
+    // MARK: Parsing
 
     /// Parse command-line arguments.
     ///
@@ -84,23 +259,26 @@ public struct ServerOptions: Sendable {
         var options = ServerOptions(transport: .stdio)
         var index = 0
 
-        /// Which transport the user named, if any.
-        enum Named { case stdio, http }
-
         /// HTTP-only settings are collected separately from the transport choice, so the
         /// order of arguments cannot decide which transport is served.
         var httpConfiguration = HTTPTransportConfiguration()
         var httpSettingsGiven = false
-        var named: Named?
+        var named: TransportName?
 
         /// Read the value for a flag, supporting both `--flag value` and `--flag=value`.
-        func value(for flag: String) throws -> String {
+        func value(for flag: Flag) throws -> String {
             let current = arguments[index]
-            if let equals = current.firstIndex(of: "=") {
-                return String(current[current.index(after: equals)...])
+            if let inline = flag.inlineValue(in: current) {
+                return inline
             }
             guard index + 1 < arguments.count else {
-                throw OptionError.missingValue(flag)
+                throw OptionError.missingValue(flag.canonicalName)
+            }
+            // A flag is not a value: `--host --http-path` used to take "--http-path" as the host
+            // and fail later at bind time. The `--flag=value` form above is unaffected (ledger
+            // B75).
+            guard !arguments[index + 1].hasPrefix("--") else {
+                throw OptionError.missingValue(flag.canonicalName)
             }
             index += 1
             return arguments[index]
@@ -108,28 +286,29 @@ public struct ServerOptions: Sendable {
 
         while index < arguments.count {
             let argument = arguments[index]
+            guard let flag = Flag.matching(argument) else {
+                throw OptionError.unknownArgument(argument)
+            }
 
-            switch true {
-            case argument == "--help" || argument == "-h":
+            switch flag {
+            case .help:
                 options.wantsHelp = true
 
-            case argument == "--transport" || argument.hasPrefix("--transport="):
-                let raw = try value(for: "--transport").lowercased()
-                switch raw {
-                case "stdio":
-                    named = .stdio
-                case "http", "streamable-http", "streamable_http":
-                    named = .http
-                default:
+            case .transport:
+                let raw = try value(for: .transport).lowercased()
+                guard let name = TransportName(rawValue: raw) else {
                     throw OptionError.invalidValue(
                         flag: "--transport",
                         value: raw,
-                        expected: "stdio or http"
+                        // Rendered from the same table `usage` lists, so the error never
+                        // advertises a smaller set than `--help` documents (ledger B118).
+                        expected: TransportName.acceptedValues
                     )
                 }
+                named = name
 
-            case argument == "--port" || argument.hasPrefix("--port="):
-                let raw = try value(for: "--port")
+            case .port:
+                let raw = try value(for: .port)
                 guard let port = Int(raw), (1...65535).contains(port) else {
                     throw OptionError.invalidValue(
                         flag: "--port",
@@ -140,8 +319,8 @@ public struct ServerOptions: Sendable {
                 httpConfiguration.port = port
                 httpSettingsGiven = true
 
-            case argument == "--host" || argument.hasPrefix("--host="):
-                let raw = try value(for: "--host")
+            case .host:
+                let raw = try value(for: .host)
                 guard !raw.trimmingCharacters(in: .whitespaces).isEmpty else {
                     throw OptionError.invalidValue(
                         flag: "--host",
@@ -152,30 +331,39 @@ public struct ServerOptions: Sendable {
                 httpConfiguration.host = raw
                 httpSettingsGiven = true
 
-            case argument == "--http-path" || argument.hasPrefix("--http-path="):
-                var raw = try value(for: "--http-path")
+            case .httpAllowedHost:
+                let raw = try value(for: .httpAllowedHost)
+                guard !raw.trimmingCharacters(in: .whitespaces).isEmpty else {
+                    throw OptionError.invalidValue(
+                        flag: "--http-allowed-host",
+                        value: raw,
+                        expected: "a host name such as search.example.com"
+                    )
+                }
+                httpConfiguration.additionalAllowedHosts.append(raw)
+                httpSettingsGiven = true
+
+            case .httpPath:
+                var raw = try value(for: .httpPath)
                 if !raw.hasPrefix("/") { raw = "/" + raw }
                 httpConfiguration.path = raw
                 httpSettingsGiven = true
-
-            default:
-                throw OptionError.unknownArgument(argument)
             }
 
             index += 1
         }
 
         switch named {
-        case .stdio where httpSettingsGiven:
+        case .some(.stdio) where httpSettingsGiven:
             // Contradictory rather than merely redundant: stdio has no host, port or path,
             // so one of the two requests is a mistake the user needs to see.
             throw OptionError.conflictingArguments(
-                "HTTP options (--port/--host/--http-path) were given together with "
+                "HTTP options (--port/--host/--http-path/--http-allowed-host) were given together with "
                     + "--transport stdio; drop one or ask for --transport http"
             )
-        case .stdio:
+        case .some(.stdio):
             options.transport = .stdio
-        case .http:
+        case .some:
             options.transport = .http(httpConfiguration)
         case nil:
             // Documented convenience: HTTP-only flags select the HTTP transport, so

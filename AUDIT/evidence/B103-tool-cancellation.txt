@@ -1,0 +1,134 @@
+# B103 — the tool layer's cancellation arms are now exercised, except the synthesis arm
+
+Host: `node1 (arm64, macOS 26.6.2)` · branch `audit/2026-09-13` · Swift 6.3.3
+
+## Premise check: three of the four arms were still unexercised, and one is unreachable
+
+Grepped before writing. The four caller-facing strings in
+`Sources/SwiftWebSearchMCP/ToolHandlers.swift` — `"Search cancelled."` (web_search and
+web_answer's search phase), `"Fetch cancelled."` (web_open) and `"Answer synthesis cancelled."`
+(web_answer's synthesis phase) — appeared in **no** test. B04's `CancellationTests.swift` pins the
+orchestrator and the fetcher (`SearchOrchestrator.search`, `DirectHTTPFetcher`, `WebFetcher`); it
+calls those layers directly and never crosses the MCP transport, so it cannot reach a
+`ToolHandlers` arm. No later commit added tool-layer cancellation coverage, so the gap was open.
+
+The `evidence_before`'s claim that **four** arms are reachable does not survive contact with the
+code. `AnswerSynthesizer.complete` wraps every transport error in
+`SearchError.synthesisFailed(Self.describe(error))` and `synthesize` has no other throwing `await`,
+so a cancelled synthesis can never arrive at `ToolHandlers` as a `CancellationError`. B97 pins that
+mapping deliberately (`AnswerSynthesizerTests.testCancellationDuringSynthesisIsReportedAsCancelled`
+asserts a `SearchError` whose description contains "cancelled"). The synthesis arm is **dead code**,
+not an untested live arm.
+
+Measured, not just read. A throwaway probe through the same stdio harness (search answered from a
+stub, synthesis pointed at a stalled origin, `notifications/cancelled` sent while the synthesis
+request was in flight) produced a **success** result, not the cancelled error:
+
+```
+PROBE isError=0 text=<<<Note: Answer synthesis failed: The synthesis request failed.
+Sources: searxng>>>
+XCTAssertEqual failed: ("Note: Answer synthesis failed: The synthesis request failed.
+Sources: searxng") is not equal to ("Answer synthesis cancelled.")
+```
+
+The probe was deleted; the measurement is recorded here and in the test file's doc comment. So
+**three** arms were genuinely unexercised: `webSearch`'s cancellation, `webOpen`'s, and
+`webAnswer`'s search phase. Those are the three added tests.
+
+## What was added
+
+`Tests/WebSearchCoreTests/ToolCancellationTests.swift` (new file — `StdioServerTests.swift` is 1327
+lines against SwiftLint's 1458-line `file_length` ceiling, so growing it was not an option). Three
+tests, each through a real stdio session against the built executable:
+
+| Test | Pins |
+| --- | --- |
+| `testACancelledWebSearchSaysCancelledRatherThanBlamingEveryProvider` | the tool result is exactly `"Search cancelled."`, and does not contain `"failed"` (the provider-failure/generic arm's text) |
+| `testACancelledWebOpenSaysCancelledRatherThanReportingAFetchFailure` | the result is exactly `"Fetch cancelled."`, with neither `"Could not fetch"` nor `"failed"` |
+| `testACancelledWebAnswerSearchPhaseSaysCancelled` | the search half of `web_answer` returns exactly `"Search cancelled."`, not a failure |
+
+Each test asserts the result `isError == true`, so a cancellation cannot quietly become a success.
+The tests do not merely cancel and accept an error: the exact string is compared, and the failure
+text the arm exists to replace is asserted absent.
+
+Synchronisation is deterministic rather than a sleep. The in-flight request is a loopback origin
+that declares an 8 MiB body, dribbles a few bytes and holds the connection open, so the call cannot
+finish early. The cancellation is sent only after the stub has seen the request; at that point the
+SDK has already stored the handler task (`pendingRequestTasks[request.id]` is assigned in the same
+actor turn that spawns it, before any `await`), so the notification cannot be read as "unknown
+request". `web_open` is pointed at loopback through `SEARCH_ALLOW_PRIVATE_NETWORK=true` — that flag
+is the only reason a test can hand the tool a scripted origin, and the test comments say so.
+
+## Proof the assertions can fail (mutation of production code)
+
+The B04 defect was reintroduced: the three `catch is CancellationError` arms were deleted from
+`Sources/SwiftWebSearchMCP/ToolHandlers.swift` (the synthesis arm was left alone, since it is dead).
+Both the test bundle **and the executable product were rebuilt and relinked** — the
+`--build-tests`-only false green is exactly the trap this batch warns about — and the product hash
+changed from `8984ac03…` to `6c139993…` before the tests ran. Verbatim:
+
+```
+ToolCancellationTests.swift:190: error: testACancelledWebAnswerSearchPhaseSaysCancelled :
+    XCTAssertEqual failed: ("Search failed: The operation couldn't be completed.
+    (Swift.CancellationError error 1.)") is not equal to ("Search cancelled.")
+ToolCancellationTests.swift:191: error: testACancelledWebAnswerSearchPhaseSaysCancelled :
+    XCTAssertFalse failed - a cancelled search must not be reported as a failure:
+    Search failed: The operation couldn't be completed. (Swift.CancellationError error 1.)
+ToolCancellationTests.swift:157: error: testACancelledWebOpenSaysCancelledRatherThanReportingAFetchFailure :
+    XCTAssertEqual failed: ("Fetch failed: The operation couldn't be completed.
+    (Swift.CancellationError error 1.)") is not equal to ("Fetch cancelled.")
+ToolCancellationTests.swift:162: error: testACancelledWebOpenSaysCancelledRatherThanReportingAFetchFailure :
+    XCTAssertFalse failed - Fetch failed: The operation couldn't be completed.
+    (Swift.CancellationError error 1.)
+ToolCancellationTests.swift:123: error: testACancelledWebSearchSaysCancelledRatherThanBlamingEveryProvider :
+    XCTAssertEqual failed: ("Search failed: The operation couldn't be completed.
+    (Swift.CancellationError error 1.)") is not equal to ("Search cancelled.")
+ToolCancellationTests.swift:126: error: testACancelledWebSearchSaysCancelledRatherThanBlamingEveryProvider :
+    XCTAssertFalse failed - a cancelled search must not be reported as a failure:
+    Search failed: The operation couldn't be completed. (Swift.CancellationError error 1.)
+Executed 3 tests, with 6 failures (0 unexpected) in 1.012 (1.012) seconds
+```
+
+That is the pre-B04 behaviour exactly: a cancellation reported as a failure. `ToolHandlers.swift`
+was then restored from its pre-mutation copy: `diff` empty and SHA-256
+`c846dd21ee647fe412e33fce4e1012c59782036f40d301927d49649cf456e269` for both the restored file and
+the backup. `git status` shows only the new test file; no production source changed under B103.
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (6.56s)                                          0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+Executed 588 tests, with 6 tests skipped and 0 failures (0 unexpected) in 33.414 (33.488) seconds
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (4.79s)                                          0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+exit 0                                                           0 diagnostics
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 92 files.         exit 0
+
+$ python3 scripts/third_party_notices.py
+THIRD-PARTY-NOTICES.md covers all 8 resolved packages at the pinned versions
+
+$ python3 scripts/harness_tests.py
+harness tests passed                                             Ran 16 tests … OK
+```
+
+588 is the 585 baseline plus these three tests. The 6 skips are the pre-existing
+environment-gated ones.
+
+## Deviation / residual
+
+The synthesis arm at `ToolHandlers.swift` (`catch is CancellationError` →
+`"Answer synthesis cancelled."`) is unreachable and is therefore not tested. It is left in place
+rather than deleted or made live: making it live would mean changing `AnswerSynthesizer` so a
+cancellation is rethrown as `CancellationError`, which contradicts B97's deliberate mapping and
+belongs to a task that owns the synthesizer, not to a test-only item. The caller-visible effect is
+small (a cancelled caller is gone; the only difference is that the server sends a success result
+carrying the search results instead of the "cancelled" error), so this is recorded as a residual
+for a follow-up rather than fixed here. No public API signature changed.

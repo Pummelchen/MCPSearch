@@ -1,0 +1,59 @@
+# B13 — the session resource timeout silently capped every per-request override
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+`URLSessionConfiguration.timeoutIntervalForResource` is a **total** cap on one response, not an
+inactivity one. It was set to `max(requestTimeout × 2, 30)` — 30 s with the shipped 10 s request
+timeout — while three callers ask for longer:
+
+* the synthesis budget is 45 s by default (`SEARCH_SYNTHESIS_TIMEOUT_MS`), so a long synthesis died
+  at 30 s with a transport error;
+* `SEARCH_SYNTHESIS_TIMEOUT_MS` above 30 000 had no effect at all;
+* any `HTTPRequest.timeout` override above the cap was silently clipped.
+
+Because the cap is a *total* one, even a response that was actively streaming was cut off.
+
+## Fails-before evidence
+
+```
+$ swift test --filter HTTPClientTests/testTheResourceTimeoutClearsEveryPerRequestBudget
+  # with the pre-fix formula restored:
+  XCTAssertGreaterThan failed: ("30.0") is not greater than ("45.0")
+    - the default resource timeout must not cap the synthesis budget
+  XCTAssertGreaterThan failed: ("30.0") is not greater than ("120.0")
+```
+
+## The fix
+
+```swift
+public static func resourceTimeout(for configuration: AppConfiguration) -> TimeInterval {
+    let longestBudget = max(
+        configuration.requestTimeout.seconds,
+        configuration.synthesisTimeout.seconds
+    )
+    return longestBudget * 2 + 30
+}
+```
+
+The inactivity timeout (`timeoutIntervalForRequest`) still bounds a stalled transfer; the total cap
+now only has to clear the largest budget the caller can ask for, so it is derived from it. It is a
+pure function, which is what makes the relationship testable without waiting 30 seconds — and it is
+why this test is fast and discriminating rather than a slow race.
+
+The test also asserts the cap stays *bounded* (< 600 s for the shipped configuration), so the fix
+does not turn the safety net off.
+
+## Verification
+
+```
+$ swift test --filter HTTPClientTests/testTheResourceTimeoutClearsEveryPerRequestBudget
+Executed 1 test, with 0 failures
+
+$ swift test
+Executed 416 tests, with 6 skipped and 0 failures (0 unexpected)
+
+$ swift build --build-tests -Xswiftc -warnings-as-errors   0 warnings, 0 errors
+$ swift-format --strict / swiftlint --strict              0 diagnostics / exit 0
+```

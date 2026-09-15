@@ -20,11 +20,21 @@ struct Options: Sendable {
     var probeQueries: ProbeQueries
     /// Permits probing more often than the safe floor.
     var allowExpensiveProbing = false
+    /// Force exit status 0 whatever the probes found, for a purely graphical run.
+    var exitZero = false
     /// Things the user should know about how their options were interpreted.
     var notes: [String] = []
 
     /// Shortest probe interval allowed without an explicit override.
     static let minimumProbeInterval = Duration.seconds(60)
+
+    /// Longest refresh interval `--interval` accepts.
+    ///
+    /// A bound on arithmetic rather than a product decision: the value is converted to
+    /// milliseconds with `Int(seconds * 1000)`, and `--interval inf` (or `1e30`) used to trap
+    /// there before a single frame was drawn. A day is far longer than any real refresh, and it
+    /// keeps that conversion inside `Int` for every accepted value.
+    static let maximumInterval = Duration.seconds(24 * 60 * 60)
 
     /// Whether a refresh should probe providers.
     ///
@@ -42,6 +52,39 @@ struct Options: Sendable {
         forced || probeRequested || !hasProbedBefore
     }
 
+    /// The status a finished run reports to its caller.
+    ///
+    /// `--iterations` is documented as "useful for scripting", but the refresh loop fell off
+    /// the end of `main.swift` and the process always exited 0, so a scripted run against a
+    /// completely dead fleet was indistinguishable from a healthy one (ledger B46). The
+    /// contract is deliberately a liveness check, not a per-node report:
+    ///
+    /// * `0` — the fleet answered: at least one probed node returned results and, if any
+    ///   provider was configured, at least one of them was healthy. A run that checked
+    ///   nothing (no nodes, no configured providers) is not a failed run.
+    /// * `1` — every probed node failed to return results, or every configured provider
+    ///   failed. A node that answered but returned nothing usable (`degraded`) counts as
+    ///   failed: it cannot serve a search either.
+    /// * `2` — the arguments were invalid, thrown during parsing before any probe.
+    ///
+    /// `--exit-zero` forces `0`: an operator watching the dashboard and an unattended script
+    /// want different answers from the same run, and only the script asked for a status.
+    func exitCode(for model: MonitorModel?) -> Int32 {
+        // Checked before the model: a run that never completed a refresh has nothing to
+        // report, and the flag is about the run rather than about its result.
+        guard !exitZero, let model else { return 0 }
+
+        let noNodeAnswered = !model.nodes.isEmpty && model.healthyNodes == 0
+
+        // An unconfigured provider is an expected state (`NO KEY`), not a failure, and a
+        // monitor with no keyed provider at all is not a failed health check. A provider the
+        // operator switched off is expected too, so it does not count either (ledger B76).
+        let configured = model.providers.filter(\.isInService)
+        let noProviderWorked = !configured.isEmpty && model.healthyProviders == 0
+
+        return noNodeAnswered || noProviderWorked ? 1 : 0
+    }
+
     static let usage = """
         mcps-mon — live dashboard for MCPSearch providers and nodes.
 
@@ -52,7 +95,7 @@ struct Options: Sendable {
           --node <name=url>      Add a SearXNG node (repeatable). Defaults to this
                                  machine plus the cluster nodes if reachable.
           --no-nodes             Skip node probing entirely.
-          --interval <seconds>   Refresh interval. Default 10.
+          --interval <seconds>   Refresh interval, 1 to 86400. Default 10.
           --probe                Also probe providers with a real search. This spends
                                  provider credits, so it is opt-in. The interval is
                                  raised to 60s while probing, because a keyed provider
@@ -62,9 +105,19 @@ struct Options: Sendable {
                                  Permit probe intervals below 60s. A 10s interval costs
                                  roughly 360 credits an hour per keyed provider.
           --iterations <n>       Stop after n refreshes (useful for scripting).
+          --exit-zero            Always exit 0, even when every node or every
+                                 configured provider failed. For a purely graphical
+                                 run; without it the status is a health check.
           --no-colour            Disable ANSI colour (--no-color is accepted too).
           --no-engines           Hide the per-node engine breakdown.
           --help                 Show this message.
+
+        EXIT STATUS
+          0  the fleet answered: a node returned results and, when any provider
+             was configured, one of them was healthy (a run that probed nothing,
+             or one that was told --exit-zero, also reports 0)
+          1  every probed node failed, or every configured provider failed
+          2  invalid arguments
 
         KEYS (interactive)
           p  probe providers now          r  refresh now
@@ -122,6 +175,10 @@ struct Options: Sendable {
             probeQueries: ProbeQueries()
         )
         var customNodes: [NodeProbe.Target] = []
+        /// `--no-nodes` says "do not probe", so it must win over a `--node` list rather than
+        /// depending on which came last. The two flags are order-independent in the usage text;
+        /// before this, `--node n1=… --no-nodes` still probed n1 (ledger B74).
+        var nodesDisabled = false
         var index = 0
 
         func value(for flag: String) throws -> String {
@@ -130,6 +187,11 @@ struct Options: Sendable {
                 return String(current[current.index(after: equals)...])
             }
             guard index + 1 < arguments.count else { throw OptionError.missingValue(flag) }
+            // A flag is not a value: `--node --interval=5` used to create a node literally named
+            // `--interval` and swallow the interval flag (ledger B75).
+            guard !arguments[index + 1].hasPrefix("--") else {
+                throw OptionError.missingValue(flag)
+            }
             index += 1
             return arguments[index]
         }
@@ -142,6 +204,7 @@ struct Options: Sendable {
 
             case argument == "--no-nodes":
                 options.nodes = []
+                nodesDisabled = true
 
             case argument == "--node" || argument.hasPrefix("--node="):
                 let raw = try value(for: "--node")
@@ -152,9 +215,12 @@ struct Options: Sendable {
                 }
                 let name = String(raw[raw.startIndex..<separator])
                 let urlText = String(raw[raw.index(after: separator)...])
-                guard let url = URL(string: urlText) else {
+                // `URL(string:)` accepts a relative reference, so `n1=foo` used to start and then
+                // show `n1 DOWN … unreachable` instead of failing here; a node needs an absolute
+                // URL, which means a scheme and a host (ledger B75).
+                guard let url = URL(string: urlText), url.scheme != nil, url.host() != nil else {
                     throw OptionError.invalidValue(
-                        flag: "--node", value: raw, expected: "name=url"
+                        flag: "--node", value: raw, expected: "name=absolute-url"
                     )
                 }
                 customNodes.append(
@@ -163,9 +229,14 @@ struct Options: Sendable {
 
             case argument == "--interval" || argument.hasPrefix("--interval="):
                 let raw = try value(for: "--interval")
-                guard let seconds = Double(raw), seconds >= 1 else {
+                // `isFinite` is the part that matters: `Double("inf")` parses, satisfies
+                // `>= 1`, and would trap in the conversion below.
+                guard let seconds = Double(raw), seconds.isFinite,
+                    seconds >= 1, seconds <= Options.maximumInterval.seconds
+                else {
                     throw OptionError.invalidValue(
-                        flag: "--interval", value: raw, expected: "seconds (>= 1)"
+                        flag: "--interval", value: raw,
+                        expected: "seconds between 1 and \(Int(Options.maximumInterval.seconds))"
                     )
                 }
                 options.interval = Duration.milliseconds(Int(seconds * 1000))
@@ -185,6 +256,9 @@ struct Options: Sendable {
             case argument == "--allow-expensive-probing":
                 options.allowExpensiveProbing = true
 
+            case argument == "--exit-zero":
+                options.exitZero = true
+
             case argument == "--no-colour" || argument == "--no-color":
                 options.useColour = false
 
@@ -197,7 +271,14 @@ struct Options: Sendable {
             index += 1
         }
 
-        if !customNodes.isEmpty { options.nodes = customNodes }
+        if nodesDisabled {
+            if !customNodes.isEmpty {
+                options.notes.append("--no-nodes overrides the --node list; no node is probed")
+            }
+            options.nodes = []
+        } else if !customNodes.isEmpty {
+            options.nodes = customNodes
+        }
 
         // Continuous provider probing spends real credits. A basic Tavily search costs
         // one credit, so at the default 10s interval a single keyed provider would burn
@@ -243,8 +324,8 @@ struct Options: Sendable {
 /// to run concurrently.
 actor Monitor {
     private var options: Options
-    private let log = Log(level: .none)
-    private let http: URLSessionHTTPClient
+    private let log: Log
+    private let http: any HTTPClient
     private let nodeProbe: NodeProbe
     private let providerProbe: ProviderProbe
     private var renderer: Renderer
@@ -256,14 +337,38 @@ actor Monitor {
     private var probedProviders: Set<ProviderID> = []
 
     init(options: Options) {
-        self.options = options
-
         let configuration = ProviderProbe.buildConfiguration()
         // A dedicated client: probing must not contend with anything else, and a short
         // timeout keeps a dead provider from stalling the whole refresh.
         var probeConfiguration = configuration
         probeConfiguration.requestTimeout = .seconds(8)
+        let log = Log(level: .none)
         let http = URLSessionHTTPClient(configuration: probeConfiguration, log: log)
+        self.init(
+            options: options,
+            configuration: configuration,
+            http: http,
+            log: log
+        )
+    }
+
+    /// The same actor with its transport supplied.
+    ///
+    /// `refresh`'s probe gating, counter folding and warning aggregation cannot be reached
+    /// from a test through `init(options:)`, which builds a live `URLSession` client and
+    /// reads this machine's environment; a worker's shell has no nodes to probe and no keys
+    /// to spend, so every refresh would return an unchanged model. This seam takes the
+    /// transport and the configuration instead, so a test can script both. It is the same
+    /// construction — a real `NodeProbe` and `ProviderProbe` over the supplied client — not
+    /// a shortened test path (ledger B98).
+    init(
+        options: Options,
+        configuration: AppConfiguration,
+        http: any HTTPClient,
+        log: Log
+    ) {
+        self.options = options
+        self.log = log
         self.http = http
         self.nodeProbe = NodeProbe(http: http)
         let providerProbe = ProviderProbe(
@@ -284,12 +389,15 @@ actor Monitor {
         // Start with every provider visible but unprobed, so the first frame already
         // shows what is configured rather than an empty table. Configured state comes
         // from the registry, not from the provider merely being listed: a provider with
-        // no credentials must read as such rather than as ready to probe.
+        // no credentials must read as such rather than as ready to probe, and one the
+        // operator disabled via SEARCH_DISABLED_PROVIDERS must read as switched off
+        // rather than as ready (ledger B76).
         let providers = configuration.providerOrder
             .map { id in
                 ProviderStatus.pending(
                     provider: id,
                     configured: providerProbe.isConfigured(id),
+                    enabled: providerProbe.isEnabled(id),
                     hint: providerProbe.setupHint(for: id)
                 )
             }
@@ -345,10 +453,11 @@ actor Monitor {
 
         let query = options.probeQueries.next()
         let nodeTargets = options.nodes
-        let providerIDs = providerProbe.probeTargets().filter { providerProbe.isConfigured($0) }
+        let providerIDs = providerProbe.probeableTargets()
 
         async let nodes = probeNodes(nodeTargets)
-        async let providers = shouldProbeProviders
+        async let providers =
+            shouldProbeProviders
             ? probeProviders(providerIDs, query: query)
             : []
 
@@ -579,3 +688,8 @@ if let model = lastModel {
     print("")
     print("final: \(model.healthyProviders) provider(s) ok, \(model.healthyNodes)/\(model.nodes.count) node(s) up")
 }
+
+// The loop used to fall off the end of the file, so the process exited 0 no matter what the
+// probes found and `--iterations` could not be used as a health check (ledger B46). The
+// status is derived here, after the summary, so a script always gets the prose first.
+exit(options.exitCode(for: lastModel))

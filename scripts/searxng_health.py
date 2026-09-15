@@ -26,13 +26,20 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from collections import Counter
+from typing import Any, cast
 
 
 def probe(base_url: str, query: str, timeout: float = 25.0):
     """Return (http_status, payload_or_text)."""
     url = f"{base_url.rstrip('/')}/search?{urllib.parse.urlencode({'q': query, 'format': 'json'})}"
+    # `base_url` comes from the command line, and `urlopen` supports `file://`: assert the
+    # scheme and host before opening anything (ledger A08).
+    parsed = urllib.parse.urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise ValueError(f"refusing to probe a non-HTTP URL: {base_url!r}")
     request = urllib.request.Request(url, headers={"Accept": "application/json"})
     try:
+        # nosemgrep: dynamic-urllib-use-detected
         with urllib.request.urlopen(request, timeout=timeout) as response:
             body = response.read().decode("utf-8", "replace")
             try:
@@ -52,7 +59,15 @@ def main() -> int:
     parser.add_argument("--json", action="store_true", help="emit machine-readable output")
     args = parser.parse_args()
 
-    status, payload = probe(args.base_url, args.query)
+    try:
+        status, payload = probe(args.base_url, args.query)
+    except ValueError as error:
+        # A refused URL is a usage error, so report it as one instead of a traceback.
+        if args.json:
+            print(json.dumps({"healthy": False, "reason": "invalid_url", "detail": str(error)}))
+        else:
+            print(f"INVALID URL  {error}")
+        return 2
 
     if status is None:
         if args.json:
@@ -77,45 +92,64 @@ def main() -> int:
 
     if status != 200 or not isinstance(payload, dict):
         if args.json:
-            print(json.dumps({"healthy": False, "reason": "unexpected_response",
-                              "status": status, "detail": str(payload)[:200]}))
+            print(
+                json.dumps(
+                    {
+                        "healthy": False,
+                        "reason": "unexpected_response",
+                        "status": status,
+                        "detail": str(payload)[:200],
+                    }
+                )
+            )
         else:
             print(f"UNEXPECTED RESPONSE  HTTP {status}")
             print(f"  {str(payload)[:300]}")
         return 1
 
-    results = payload.get("results") or []
+    # The guard above proved this is a JSON object; the cast is what tells the type checker.
+    payload_obj = cast("dict[str, Any]", payload)
+    results = cast("list[Any]", payload_obj.get("results") or [])
     engines: Counter[str] = Counter()
     for result in results:
         for engine in result.get("engines") or [result.get("engine")]:
             if engine:
                 engines[engine] += 1
-    unresponsive = payload.get("unresponsive_engines") or []
+    unresponsive = cast("list[Any]", payload_obj.get("unresponsive_engines") or [])
 
     healthy = bool(results)
 
     if args.json:
-        print(json.dumps({
-            "healthy": healthy,
-            "base_url": args.base_url,
-            "result_count": len(results),
-            "engines": dict(engines.most_common()),
-            "unresponsive_engines": unresponsive,
-        }, indent=2))
+        print(
+            json.dumps(
+                {
+                    "healthy": healthy,
+                    "base_url": args.base_url,
+                    "result_count": len(results),
+                    "engines": dict(engines.most_common()),
+                    "unresponsive_engines": unresponsive,
+                },
+                indent=2,
+            )
+        )
         return 0 if healthy else 1
 
     print(f"instance   {args.base_url}   HTTP {status}, JSON enabled")
     print(f"query      {args.query!r}")
     print(f"results    {len(results)}")
     if engines:
-        print("engines    " + ", ".join(f"{name} ({count})" for name, count in engines.most_common()))
+        print(
+            "engines    " + ", ".join(f"{name} ({count})" for name, count in engines.most_common())
+        )
     else:
         print("engines    none contributed")
     if unresponsive:
         print("unavailable:")
         for entry in unresponsive:
-            if isinstance(entry, list) and len(entry) >= 2:
-                print(f"  - {entry[0]}: {entry[1]}")
+            if isinstance(entry, list):
+                pair = cast("list[Any]", entry)
+                if len(pair) >= 2:
+                    print(f"  - {pair[0]}: {pair[1]}")
     else:
         print("unavailable: none reported")
 

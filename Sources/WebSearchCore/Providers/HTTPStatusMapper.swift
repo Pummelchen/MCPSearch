@@ -51,12 +51,16 @@ public enum HTTPStatusMapper {
             case .timedOut: return .timeout(provider)
             case .cancelled: return .networkFailure(provider, "cancelled")
             case .connectionFailed(_, let reason),
-                 .transportFailure(_, let reason):
+                .transportFailure(_, let reason):
                 return .networkFailure(provider, reason)
             case .responseTooLarge:
                 return .malformedResponse(provider)
-            case .invalidURL(let detail):
-                return .unsupportedRequest(provider, detail)
+            case .invalidURL:
+                // The detail is free-form and may be URL-shaped, so it must never reach the
+                // caller: a key that travels in a query string would be echoed in full. Like
+                // the `URLError` arm below, the message is curated from the case rather than
+                // interpolated from whatever the transport happened to write (ledger B121).
+                return .unsupportedRequest(provider, "the request URL could not be built")
             }
         }
         if let urlError = error as? URLError {

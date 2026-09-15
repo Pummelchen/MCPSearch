@@ -1,0 +1,22 @@
+# A01 — evidence after the fix
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## AddressSanitizer, the run that used to end in 'AddressSanitizer: BUS'
+
+```
+$ swift test --sanitize=address --filter 'MarkupDepthTests|ProviderContractTests|HTMLExtractorTests'
+	 Executed 11 tests, with 0 failures (0 unexpected) in 0.174 (0.176) seconds
+	 Executed 19 tests, with 0 failures (0 unexpected) in 0.452 (0.454) seconds
+	 Executed 51 tests, with 0 failures (0 unexpected) in 0.042 (0.047) seconds
+	 Executed 81 tests, with 0 failures (0 unexpected) in 0.668 (0.678) seconds
+	 Executed 81 tests, with 0 failures (0 unexpected) in 0.668 (0.688) seconds
+exit=0
+```
+
+## Test selections (no sanitizer)
+
+```
+$ swift test --filter 'MarkupDepthTests|HTMLExtractorTests|FetchFallbackTests|FetchBehaviorTests'
+Executed 45 tests, with 0 failures (0 unexpected)
+```

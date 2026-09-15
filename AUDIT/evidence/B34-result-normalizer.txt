@@ -1,0 +1,68 @@
+# B34 — `ResultNormalizer`'s repairs were untested, and one of them was wrong
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+Providers hand back schemeless and protocol-relative links, snippets with `<b>` highlight tags and
+HTML entities, and sometimes control characters that survived JSON decoding. `ResultNormalizer.make`
+was covered indirectly by the fusion tests; `normalizedURL`, `cleanText`, `stripHTMLTags`,
+`decodeCommonEntities` and `displayDomain` had no test at all (ledger B34).
+
+## What the tests found
+
+`normalizedURL(from: "mailto:someone@example.com")` returned
+`https://mailto:someone@example.com` — the branch that repairs a missing scheme prefixed `https://`
+to anything without `://`, so the provider's scheme became *userinfo* and the link pointed at
+`example.com`:
+
+```
+$ swift test --filter ResultNormalizerTests
+error: ... XCTAssertNil failed: "https://mailto:someone@example.com" -
+  "mailto:someone@example.com" must be rejected
+```
+
+`URLPolicy` refuses credential-carrying URLs before any fetch, so nothing dangerous was reachable —
+but a function documented as producing "an absolute, web-only URL" handed callers a URL that could
+only be refused later.
+
+## The fix
+
+The credential check is part of the repair's own contract now, alongside the scheme and host checks:
+
+```swift
+guard let url = URL(string: candidate),
+    ...
+    url.user == nil, url.password == nil
+else { return nil }
+```
+
+`displayDomain` had **no caller anywhere** in `Sources/` or `Tests/`, so it is deleted rather than
+tested — the repository's convention for dead public surface (the earlier dead-code sweep,
+`a375ddd`). Its removal is checked by the build.
+
+## Fails-before and mutation evidence
+
+* The `mailto:` case failed against the pre-fix repair and passes with the guard.
+* Removing the control-character strip fails `testEmbeddedControlCharactersAreStripped`
+  (`nil` instead of the repaired URL).
+* Removing the entity decoding fails `testCleanTextDecodesCommonEntities` on both fixtures.
+
+## Verification
+
+```
+$ swift test --filter ResultNormalizerTests
+Executed 12 tests, with 0 failures (0 unexpected) in 0.002 seconds
+
+$ swift test
+Executed 467 tests, with 6 skipped and 0 failures (0 unexpected) in 18.783 seconds
+
+$ swift build --scratch-path $SCRATCH -Xswiftc -warnings-as-errors                  0 warnings, 0 errors
+$ swift build -c release --scratch-path $SCRATCH -Xswiftc -warnings-as-errors      0 warnings, 0 errors
+$ swift-format lint --recursive --strict Sources Tests                             0 diagnostics
+$ swiftlint lint --strict                                                          0 violations in 81 files
+```
+
+The tests also pin the documented trade-offs rather than only the happy path: an unterminated tag
+swallows the rest of the snippet (the stripper is not a parser), and unknown entities are left
+alone.

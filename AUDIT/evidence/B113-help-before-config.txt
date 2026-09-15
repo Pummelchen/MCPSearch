@@ -1,0 +1,147 @@
+# B113 — configuration was loaded before the command line was parsed
+
+Host: this Mac (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## What was wrong
+
+`main.swift` built the whole configuration — and, below it, the HTTP client and the provider
+pipeline — before it looked at `argv`:
+
+```swift
+// main.swift, before
+let configuration = AppConfiguration.load()
+…
+let http = URLSessionHTTPClient(configuration: configuration, log: log)
+let pipeline = SearchPipelineFactory.make(configuration: configuration, http: http, log: log)
+let handlers = ToolHandlers(pipeline: pipeline, log: log)
+
+// Parse command-line options before building the server: a bad flag should fail fast
+// and loudly rather than starting the wrong transport.
+let options: ServerOptions
+do {
+    options = try ServerOptions.parse(Array(CommandLine.arguments.dropFirst()))
+} catch { … }
+if options.wantsHelp { print(ServerOptions.usage); exit(0) }
+```
+
+Two consequences, both process-visible:
+
+* The B09 validation arm for `SEARCH_CONFIG_FILE` is fatal *before* `--help` is handled: a
+  mistyped config path made `SwiftWebSearchMCP --help` write "Refusing to start" and `exit(2)`
+  without printing usage at all. Help depended on the environment.
+* Every invocation — including `--help` and one about to be rejected for an unknown flag — logged
+  `Starting SwiftWebSearchMCP`, resolved the provider inventory, and constructed the HTTP client
+  and the provider pipeline before the flag could be reported. The comment at the old parse site
+  ("a bad flag should fail fast and loudly") described an intent the ordering defeated.
+
+## The fix
+
+The parse block moved to the top of the file, above `AppConfiguration.load()`. `--help` is
+answered and a bad flag is reported before any configuration is read:
+
+```swift
+// main.swift, after
+// The command line is parsed before any configuration is loaded. The reverse order meant that a
+// mistyped `SEARCH_CONFIG_FILE` refused to start even for `--help`, and a flag that was about to
+// be rejected still emitted the startup log and built the HTTP client and the whole provider
+// pipeline first (ledger B113).
+let options: ServerOptions
+do {
+    options = try ServerOptions.parse(Array(CommandLine.arguments.dropFirst()))
+} catch {
+    // The logger takes its level from the configuration, which is deliberately not loaded yet, so
+    // this diagnostic goes to stderr directly.
+    FileHandle.standardError.write(
+        Data(("Invalid arguments: \(error)\n" + ServerOptions.usage + "\n").utf8)
+    )
+    exit(2)
+}
+
+if options.wantsHelp {
+    print(ServerOptions.usage)
+    exit(0)
+}
+
+let configuration = AppConfiguration.load()
+```
+
+The parse error no longer goes through `log.error` — the logger's level comes from the
+configuration, which by design is not loaded yet — so it is written to stderr directly, followed by
+the usage text exactly as before. Nothing else depended on the early `AppConfiguration.load()`: the
+issue report, the `unreadableConfigFile` fatal arm, the `Starting` log, the provider inventory and
+the empty-configuration warning all sit below the new parse block and still run for a real
+invocation. `ServerOptions.usage`, `ServerOptions.parse` and `AppConfiguration.load` are
+unchanged; no public signature moved.
+
+## Tests
+
+Three process-level tests were added to `Tests/WebSearchCoreTests/StdioServerTests.swift`, which
+already owns the end-to-end harness. A new `runToCompletion(arguments:environment:)` helper starts
+the built executable with the same hermetic (credential-scrubbed) environment as the MCP harness,
+waits for exit, and returns `(status, stdout, stderr)`.
+
+* `testHelpSucceedsEvenWhenTheConfigurationFileIsUnreadable` — `--help` with
+  `SEARCH_CONFIG_FILE=/nonexistent/audit-missing-config.env` exits 0, prints usage on stdout, and
+  never writes "Refusing to start".
+* `testInvalidFlagIsReportedBeforeConfigurationIsValidated` — `--not-a-flag` under the same fatal
+  configuration exits 2 and reports `Unknown argument: --not-a-flag` rather than the config error.
+* `testHelpDoesNotLoadConfiguration` — a plain `--help` writes no `Starting` diagnostic, so
+  configuration was not loaded at all.
+
+## Proof the tests can fail (mutation, not assertion)
+
+M — restore `main.swift` to its HEAD content (the original ordering), rebuild, run the three tests:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter "StdioServerTests/testHelp…|…"
+Tests/WebSearchCoreTests/StdioServerTests.swift:273: error: -[WebSearchCoreTests.StdioServerTests testHelpDoesNotLoadConfiguration] : XCTAssertFalse failed - help loaded configuration and logged startup: 2026-09-13T14:41:22.055Z level=info msg="Starting SwiftWebSearchMCP" log_level="info" version="1.0.0"
+Test Case '-[WebSearchCoreTests.StdioServerTests testHelpDoesNotLoadConfiguration]' failed (0.834 seconds).
+Tests/WebSearchCoreTests/StdioServerTests.swift:241: error: -[WebSearchCoreTests.StdioServerTests testHelpSucceedsEvenWhenTheConfigurationFileIsUnreadable] : XCTAssertEqual failed: ("2") is not equal to ("0") - stderr: 2026-09-13T14:41:22.287Z level=error msg="Configuration file problem" detail="/nonexistent/audit-missing-config.env does not exist" key="SEARCH_CONFIG_FILE"
+Tests/WebSearchCoreTests/StdioServerTests.swift:242: error: -[WebSearchCoreTests.StdioServerTests testHelpSucceedsEvenWhenTheConfigurationFileIsUnreadable] : XCTAssertTrue failed - usage did not reach stdout:
+Tests/WebSearchCoreTests/StdioServerTests.swift:246: error: -[WebSearchCoreTests.StdioServerTests testHelpSucceedsEvenWhenTheConfigurationFileIsUnreadable] : XCTAssertFalse failed - a help request must not depend on the environment: 2026-09-13T14:41:22.287Z level=error msg="Configuration file problem" detail="/nonexistent/audit-missing-config.env does not exist" key="SEARCH_CONFIG_FILE"
+Test Case '-[WebSearchCoreTests.StdioServerTests testHelpSucceedsEvenWhenTheConfigurationFileIsUnreadable]' failed (0.072 seconds).
+Tests/WebSearchCoreTests/StdioServerTests.swift:262: error: -[WebSearchCoreTests.StdioServerTests testInvalidFlagIsReportedBeforeConfigurationIsValidated] : XCTAssertTrue failed - the argument error must win over the configuration error: 2026-09-13T14:41:22.360Z level=error msg="Configuration file problem" detail="/nonexistent/audit-missing-config.env does not exist" key="SEARCH_CONFIG_FILE"
+Tests/WebSearchCoreTests/StdioServerTests.swift:266: error: -[WebSearchCoreTests.StdioServerTests testInvalidFlagIsReportedBeforeConfigurationIsValidated] : XCTAssertFalse failed - 2026-09-13T14:41:22.360Z level=error msg="Configuration file problem" detail="/nonexistent/audit-missing-config.env does not exist" key="SEARCH_CONFIG_FILE"
+Test Case '-[WebSearchCoreTests.StdioServerTests testInvalidFlagIsReportedBeforeConfigurationIsValidated]' failed (0.066 seconds).
+Test Suite 'StdioServerTests' failed at 2026-09-13 21:41:22.416.
+	 Executed 3 tests, with 6 failures (0 unexpected) in 0.972 (0.972) seconds
+```
+
+The failure output is the finding itself: with configuration first, the config error pre-empts the
+flag error and `--help` exits 2 with no usage. `main.swift` was then restored from a saved copy and
+verified byte-identical (`diff` empty; SHA-256 `38f356f3…e386415` on both the restored file and the
+backup), rebuilt, and the tests pass again.
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (11.65s)                                                     0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+	 Executed 498 tests, with 6 tests skipped and 0 failures (0 unexpected) in 19.987 (20.036) seconds
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (5.31s)                                                      0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+0 diagnostics                                                                exit=0
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 84 files.                     exit=0
+
+$ python3 scripts/third_party_notices.py
+THIRD-PARTY-NOTICES.md covers all 8 resolved packages at the pinned versions exit=0
+```
+
+498 = the 495 at HEAD plus the three tests this task added. The 6 skips are the pre-existing
+environment-gated ones.
+
+## Noted, not changed
+
+* The `usage` text is still the hand-maintained string B114 owns; this task deliberately reorders
+  startup rather than touching it. A `--help` with a *valid* environment still prints the same text
+  as before, byte for byte.
+* `AppConfiguration.parse`'s empty-value handling (B113's `evidence_before` also mentions the
+  unreachable `PARALLEL_MCP_URL=` arm) was left alone: it is B59's recorded behaviour and not part
+  of this task's expected-correct, which is only about parse order.

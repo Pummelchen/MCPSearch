@@ -1,0 +1,36 @@
+# B55 — `ProviderHealth.setNote` was dead public API
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+```swift
+// Sources/WebSearchCore/Search/ProviderHealth.swift
+/// Attach a human-readable note, e.g. why an optional provider is inert.
+public func setNote(_ note: String?, for provider: ProviderID) {
+    notes[provider] = note
+}
+```
+
+`grep -rn "setNote" Sources/ Tests/` found the definition and **no caller**: the store was read by
+`state(for:)`, surfaced as `note` in the status payload, and could never be written. Public dead
+surface in a library, where it also implies a feature that does not exist.
+
+## The fix
+
+The setter is deleted. The `notes` store and the `note` payload key stay, deliberately:
+
+* `note` is part of the published `web_search_status` output schema, whose keys are an
+  additive-only client contract (`AUDIT/inventory.md`), and the schema marks it required with type
+  `string | null`. Removing the key would be a breaking change to fix a dead setter.
+* The store is what `state(for:)` reads, so the field keeps its documented shape (always null today)
+  and a future writer has somewhere to write.
+
+## Verification
+
+```
+$ grep -rn "setNote" Sources/ Tests/          # no matches
+$ swift build --scratch-path $SCRATCH -Xswiftc -warnings-as-errors      0 warnings, 0 errors
+$ swift test
+Executed 471 tests, with 6 skipped and 0 failures (0 unexpected)
+```

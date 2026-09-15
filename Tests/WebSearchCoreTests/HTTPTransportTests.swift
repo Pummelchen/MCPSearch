@@ -10,7 +10,10 @@ import XCTest
 /// oversized body that the server refuses mid-stream, and to inspect the exact status
 /// line, headers and framing without a client library "helpfully" retrying or
 /// normalising them away.
-private struct RawHTTP {
+///
+/// Internal rather than file-private so `HTTPMCPHostLifecycleTests` drives the same client
+/// instead of growing a second copy of it (ledger B101).
+struct RawHTTP {
     struct Response {
         let status: Int
         let headers: [String: String]
@@ -36,6 +39,7 @@ private struct RawHTTP {
         method: String,
         path: String,
         headers: [String: String] = [:],
+        host: String? = nil,
         body: Data? = nil,
         connectTimeout: TimeInterval = 5,
         readTimeoutMilliseconds: Int32 = 10_000
@@ -64,12 +68,15 @@ private struct RawHTTP {
         address.sin_addr.s_addr = inet_addr("127.0.0.1")
         let connected = withUnsafePointer(to: &address) { pointer in
             pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
         guard connected == 0 else { throw Failure.connect(String(cString: strerror(errno))) }
 
-        var request = "\(method) \(path) HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\nConnection: close\r\n"
+        // The Host header is a parameter because it is exactly what the DNS-rebinding validator
+        // decides on; a test cannot exercise that decision without choosing it (ledger B21).
+        let hostHeader = host ?? "127.0.0.1:\(port)"
+        var request = "\(method) \(path) HTTP/1.1\r\nHost: \(hostHeader)\r\nConnection: close\r\n"
         var effective = headers
         if let body { effective["Content-Length"] = String(body.count) }
         for (name, value) in effective.sorted(by: { $0.key < $1.key }) {
@@ -99,7 +106,7 @@ private struct RawHTTP {
         while offset < payload.count {
             let sent = payload.withUnsafeBytes { pointer -> Int in
                 guard let base = pointer.baseAddress else { return 0 }
-                return send(fd, base.advanced(by: offset), payload.count - offset, 0)
+                return Darwin.send(fd, base.advanced(by: offset), payload.count - offset, 0)
             }
             if sent <= 0 {
                 // The server closed after refusing the body; whatever it wrote first is
@@ -111,8 +118,95 @@ private struct RawHTTP {
         }
     }
 
+    // MARK: Descriptor-level helpers, for the connection-bound tests
+    //
+    // `request` writes a whole exchange, which is exactly what a test of a *partial* or
+    // *absent* request must not do. These hand the caller the descriptor instead (ledger B90).
+
+    /// Open a loopback connection and hand the descriptor to the caller.
+    static func connect(port: UInt16) throws -> Int32 {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        guard fd >= 0 else { throw Failure.socket(String(cString: strerror(errno))) }
+        var noSigPipe: Int32 = 1
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, &noSigPipe, socklen_t(MemoryLayout<Int32>.size))
+
+        var address = sockaddr_in()
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = port.bigEndian
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        let connected = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        guard connected == 0 else {
+            let detail = String(cString: strerror(errno))
+            close(fd)
+            throw Failure.connect(detail)
+        }
+        return fd
+    }
+
+    /// Send raw bytes on a descriptor `connect` returned.
+    static func send(fd: Int32, text: String) throws {
+        try sendAll(fd: fd, payload: Data(text.utf8))
+    }
+
+    /// Read until the response head is complete, or fail after the deadline.
+    static func readHead(fd: Int32, milliseconds: Int32) throws -> String {
+        var raw = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while raw.range(of: Data("\r\n\r\n".utf8)) == nil {
+            var descriptor = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+            guard poll(&descriptor, 1, milliseconds) > 0 else {
+                throw Failure.malformed("no response head within \(milliseconds) ms")
+            }
+            let count = recv(fd, &buffer, buffer.count, 0)
+            guard count > 0 else {
+                throw Failure.malformed("connection closed before a response head arrived")
+            }
+            raw.append(contentsOf: buffer[0..<count])
+        }
+        return String(bytes: raw, encoding: .utf8) ?? "<not valid UTF-8>"
+    }
+
+    /// True when the peer closed the connection within the window.
+    ///
+    /// Data that arrives first is consumed and the wait continues, so this answers "did the
+    /// server hang up", not "is there anything to read".
+    static func waitForEndOfStream(fd: Int32, milliseconds: Int32) -> Bool {
+        let deadline = Date().addingTimeInterval(Double(milliseconds) / 1_000)
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while true {
+            let remaining = Int32((deadline.timeIntervalSinceNow * 1_000).rounded(.up))
+            if remaining <= 0 { return false }
+            var descriptor = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+            let ready = poll(&descriptor, 1, remaining)
+            if ready <= 0 { return false }
+            let count = recv(fd, &buffer, buffer.count, 0)
+            if count == 0 { return true }
+            if count < 0 { return errno != EAGAIN && errno != EINTR }
+        }
+    }
+
+    /// Which of `fds` the peer has closed by the end of one shared wait.
+    ///
+    /// One sleep for all of them: waiting per descriptor would multiply the window by the
+    /// number of connections.
+    static func closedDescriptors(_ fds: [Int32], afterMilliseconds: Int32) -> [Int32] {
+        usleep(useconds_t(afterMilliseconds) * 1_000)
+        var closed: [Int32] = []
+        for fd in fds {
+            var descriptor = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
+            guard poll(&descriptor, 1, 0) > 0 else { continue }
+            var byte: UInt8 = 0
+            if recv(fd, &byte, 1, 0) <= 0 { closed.append(fd) }
+        }
+        return closed
+    }
+
     private static func parse(_ raw: Data) throws -> Response {
-        let text = String(decoding: raw, as: UTF8.self)
+        let text = (String(bytes: raw, encoding: .utf8) ?? "<not valid UTF-8>")
         guard let separator = text.range(of: "\r\n\r\n") else {
             throw Failure.malformed("no header terminator in \(text.prefix(120))")
         }
@@ -169,8 +263,9 @@ private struct RawHTTP {
 /// HTTP to it. Nothing here reaches the network beyond loopback.
 final class HTTPTransportTests: XCTestCase {
     private var process: Process?
-    private let stdoutPipe = Pipe()
-    private let stderrPipe = Pipe()
+    /// Replaced for every attempt: a pipe belongs to the child it was attached to.
+    private var stdoutPipe = Pipe()
+    private var stderrPipe = Pipe()
     private var port: UInt16 = 0
 
     override func tearDown() {
@@ -180,9 +275,15 @@ final class HTTPTransportTests: XCTestCase {
 
     // MARK: - Harness
 
-    /// Ask the kernel for an unused loopback port, so two concurrent runs cannot collide
-    /// and no fixed port is ever bound.
-    private static func freeLoopbackPort() throws -> UInt16 {
+    /// Ask the kernel for a free loopback port, so no fixed port is ever bound.
+    ///
+    /// The port is free *when it is chosen*, not reserved: the probe socket closes before the child
+    /// binds, so anything on the machine can take it in that window. That is why `startServer`
+    /// retries with a fresh port rather than assuming the kernel held this one (ledger B20).
+    ///
+    /// Internal for `HTTPMCPHostLifecycleTests`, which needs the same "a free port, briefly" helper
+    /// (ledger B101).
+    static func freeLoopbackPort() throws -> UInt16 {
         let fd = socket(AF_INET, SOCK_STREAM, 0)
         guard fd >= 0 else { throw RawHTTP.Failure.socket("could not create a probe socket") }
         defer { close(fd) }
@@ -210,45 +311,73 @@ final class HTTPTransportTests: XCTestCase {
         return UInt16(bigEndian: actual.sin_port)
     }
 
-    private func startServer() throws {
+    private func startServer(
+        extraArguments: [String] = [],
+        extraEnvironment: [String: String] = [:]
+    ) throws {
         let binary = try ServerTestSupport.binaryURL()
-        port = try Self.freeLoopbackPort()
+        var lastFailure = ""
 
-        let process = Process()
-        process.executableURL = binary
-        process.arguments = ["--transport", "http", "--port", String(port)]
-        process.standardInput = FileHandle.nullDevice
-        process.standardOutput = stdoutPipe
-        process.standardError = stderrPipe
+        // Three attempts: one lost race is plausible, three in a row means something else is wrong
+        // and the error below reports it.
+        for _ in 1...3 {
+            port = try Self.freeLoopbackPort()
+            stdoutPipe = Pipe()
+            stderrPipe = Pipe()
 
-        // Hermetic, exactly like the stdio harness: no ambient provider credentials.
-        var environment = ["PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"]
-        for key in ServerTestSupport.providerEnvironmentVariables {
-            environment.removeValue(forKey: key)
+            let process = Process()
+            process.executableURL = binary
+            process.arguments =
+                ["--transport", "http", "--port", String(port)] + extraArguments
+            process.standardInput = FileHandle.nullDevice
+            process.standardOutput = stdoutPipe
+            process.standardError = stderrPipe
+
+            // Hermetic, exactly like the stdio harness: no ambient provider credentials.
+            var environment = [
+                "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+            ]
+            for key in ServerTestSupport.providerEnvironmentVariables {
+                environment.removeValue(forKey: key)
+            }
+            environment["SEARCH_LOG_LEVEL"] = "warning"
+            for (key, value) in extraEnvironment {
+                environment[key] = value
+            }
+            process.environment = ServerTestSupport.childEnvironment(base: environment)
+
+            try process.run()
+            self.process = process
+
+            if let failure = waitForHealth(process) {
+                lastFailure = failure
+                stopServer()
+                continue
+            }
+            return
         }
-        environment["SEARCH_LOG_LEVEL"] = "warning"
-        process.environment = environment
 
-        try process.run()
-        self.process = process
+        throw RawHTTP.Failure.connect(
+            "server did not become healthy on three free ports (last: \(lastFailure))"
+        )
+    }
 
-        // Poll readiness. 50 ms is the longest sleep this suite permits.
+    /// Poll `/health` until the child answers. Returns a description of the failure, or nil.
+    ///
+    /// 50 ms is the longest sleep this suite permits.
+    private func waitForHealth(_ process: Process) -> String? {
         for _ in 0..<200 {
             guard process.isRunning else {
-                throw RawHTTP.Failure.connect(
-                    "server exited before becoming healthy; stderr: \(stderrText())"
-                )
+                return "server exited before becoming healthy; stderr: \(stderrText())"
             }
             if let response = try? RawHTTP.request(port: port, method: "GET", path: "/health"),
-               response.status == 200
+                response.status == 200
             {
-                return
+                return nil
             }
             usleep(50_000)
         }
-        throw RawHTTP.Failure.connect(
-            "server did not become healthy on port \(port); stderr: \(stderrText())"
-        )
+        return "server did not become healthy on port \(port); stderr: \(stderrText())"
     }
 
     private func stopServer() {
@@ -260,7 +389,7 @@ final class HTTPTransportTests: XCTestCase {
     }
 
     private func stderrText() -> String {
-        String(decoding: stderrPipe.fileHandleForReading.availableData, as: UTF8.self)
+        (String(bytes: stderrPipe.fileHandleForReading.availableData, encoding: .utf8) ?? "<not valid UTF-8>")
     }
 
     /// Perform the initialize handshake and return the session id it issued.
@@ -268,17 +397,7 @@ final class HTTPTransportTests: XCTestCase {
         file: StaticString = #filePath,
         line: UInt = #line
     ) throws -> (session: String, response: RawHTTP.Response) {
-        let payload: [String: Any] = [
-            "jsonrpc": "2.0",
-            "id": 1,
-            "method": "initialize",
-            "params": [
-                "protocolVersion": "2025-06-18",
-                "capabilities": [String: Any](),
-                "clientInfo": ["name": "HTTPTransportTests", "version": "1.0.0"],
-            ],
-        ]
-        let body = try JSONSerialization.data(withJSONObject: payload)
+        let body = try initializeBody()
         let response = try RawHTTP.request(
             port: port,
             method: "POST",
@@ -297,6 +416,22 @@ final class HTTPTransportTests: XCTestCase {
             line: line
         )
         return (session, response)
+    }
+
+    /// A JSON-RPC `initialize` request, the only request that may create a session.
+    private func initializeBody() throws -> Data {
+        try JSONSerialization.data(
+            withJSONObject: [
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "initialize",
+                "params": [
+                    "protocolVersion": "2025-06-18",
+                    "capabilities": [String: Any](),
+                    "clientInfo": ["name": "HTTPTransportTests", "version": "1.0.0"],
+                ],
+            ]
+        )
     }
 
     private func toolsListBody() throws -> Data {
@@ -349,9 +484,10 @@ final class HTTPTransportTests: XCTestCase {
         let (session, response) = try initializeSession()
 
         XCTAssertFalse(session.isEmpty)
-        let object = try JSONSerialization.jsonObject(
-            with: Data(Self.jsonMessage(from: response.body).utf8)
-        ) as? [String: Any]
+        let object =
+            try JSONSerialization.jsonObject(
+                with: Data(Self.jsonMessage(from: response.body).utf8)
+            ) as? [String: Any]
         let result = try XCTUnwrap(object?["result"] as? [String: Any])
         XCTAssertEqual(result["protocolVersion"] as? String, "2025-06-18")
         let serverInfo = try XCTUnwrap(result["serverInfo"] as? [String: Any])
@@ -375,9 +511,10 @@ final class HTTPTransportTests: XCTestCase {
 
         XCTAssertEqual(response.status, 200)
         XCTAssertEqual(response.headers["content-type"], "text/event-stream")
-        let object = try JSONSerialization.jsonObject(
-            with: Data(Self.jsonMessage(from: response.body).utf8)
-        ) as? [String: Any]
+        let object =
+            try JSONSerialization.jsonObject(
+                with: Data(Self.jsonMessage(from: response.body).utf8)
+            ) as? [String: Any]
         let result = try XCTUnwrap(object?["result"] as? [String: Any])
         let tools = try XCTUnwrap(result["tools"] as? [[String: Any]])
         XCTAssertEqual(
@@ -425,6 +562,23 @@ final class HTTPTransportTests: XCTestCase {
             "a browser page on another origin must not be able to drive this server"
         )
 
+        // A name that merely starts with `127.` is not this machine, even though the hand-rolled
+        // check used to accept it (ledger B42).
+        let prefixed = try RawHTTP.request(
+            port: port,
+            method: "POST",
+            path: "/mcp",
+            headers: Self.mcpHeaders
+                .merging(["Origin": "http://127.0.0.1.attacker.example"]) { _, new in new }
+                .merging(["Mcp-Session-Id": session]) { _, new in new },
+            body: try toolsListBody()
+        )
+        XCTAssertEqual(
+            prefixed.status,
+            403,
+            "a host name that starts with 127. is not a loopback origin"
+        )
+
         // A loopback Origin is not cross-origin and must still be served.
         let local = try RawHTTP.request(
             port: port,
@@ -438,10 +592,50 @@ final class HTTPTransportTests: XCTestCase {
         XCTAssertEqual(local.status, 200)
     }
 
+    /// A deployment's own host name is served; an attacker's name is still refused.
+    ///
+    /// The validator was hard-coded to `127.0.0.1`/`localhost`/`[::1]`, so the documented
+    /// `--host` plus TLS-proxy deployment answered every request with `421 Misdirected Request`
+    /// before MCP handling ran. The allow-list is derived from the configuration now, and stays
+    /// exact-match, so a browser page that resolves an attacker name to this machine still fails
+    /// (ledger B21).
+    func testConfiguredPublicHostIsServedWhileAForeignHostIsRefused() throws {
+        try startServer(extraArguments: ["--http-allowed-host", "search.example.com"])
+
+        let allowed = try RawHTTP.request(
+            port: port,
+            method: "POST",
+            path: "/mcp",
+            headers: Self.mcpHeaders,
+            host: "search.example.com:\(port)",
+            body: try initializeBody()
+        )
+        XCTAssertEqual(
+            allowed.status,
+            200,
+            "the host the deployment declared must reach MCP: \(allowed.body)"
+        )
+        XCTAssertNotNil(allowed.headers["mcp-session-id"])
+
+        let rebound = try RawHTTP.request(
+            port: port,
+            method: "POST",
+            path: "/mcp",
+            headers: Self.mcpHeaders,
+            host: "attacker.example.com:\(port)",
+            body: try initializeBody()
+        )
+        XCTAssertEqual(
+            rebound.status,
+            421,
+            "a name an attacker resolved to this machine must still be refused"
+        )
+    }
+
     func testOversizedBodyIsRefusedWithPayloadTooLarge() throws {
         try startServer()
 
-        // Larger than HTTPMCPHandler.maximumBodyBytes (1 MiB). The body is sent without
+        // Larger than HTTPRequestBodyPolicy.maximumBodyBytes (1 MiB). The body is sent without
         // a session on purpose: the cap is enforced in the network layer before the SDK
         // ever sees the request.
         let oversized = Data(repeating: UInt8(ascii: "x"), count: (1 << 20) + 4096)
@@ -456,20 +650,192 @@ final class HTTPTransportTests: XCTestCase {
         XCTAssertTrue(response.body.contains("too large"), response.body)
     }
 
-    func testUnknownPathIsNotFoundAndNonPostIsRejected() throws {
+    func testUnknownPathIsNotFoundAndASessionlessNonInitializeIsBadRequest() throws {
         try startServer()
 
         let missing = try RawHTTP.request(port: port, method: "GET", path: "/nope")
         XCTAssertEqual(missing.status, 404)
         XCTAssertTrue(missing.body.contains("/mcp"), missing.body)
 
-        let wrongMethod = try RawHTTP.request(
+        // No session and not an `initialize`: the server must say which of the two is wrong.
+        // It used to answer 405 with `Allow: POST`, which described the single-transport
+        // design rather than the protocol (ledger B03).
+        let sessionless = try RawHTTP.request(
             port: port,
-            method: "GET",
+            method: "POST",
             path: "/mcp",
-            headers: ["Accept": "application/json, text/event-stream"]
+            headers: Self.mcpHeaders,
+            body: try toolsListBody()
         )
-        XCTAssertEqual(wrongMethod.status, 405)
-        XCTAssertEqual(wrongMethod.headers["allow"], "POST")
+        XCTAssertEqual(sessionless.status, 400)
+        XCTAssertTrue(sessionless.body.contains("initialize"), sessionless.body)
+
+        let unknownSession = try RawHTTP.request(
+            port: port,
+            method: "POST",
+            path: "/mcp",
+            headers: Self.mcpHeaders.merging(["Mcp-Session-Id": "not-a-session"]) { _, new in new },
+            body: try toolsListBody()
+        )
+        XCTAssertEqual(unknownSession.status, 404)
+        XCTAssertTrue(unknownSession.body.contains("unknown"), unknownSession.body)
+    }
+
+    // MARK: - Sessions
+
+    /// The transport used to be one per process, so a second client could never initialize
+    /// (the SDK answers `400 Session already initialized`) for the life of the process. Two
+    /// independent clients must now both work, with different session ids (ledger B03).
+    func testTwoClientsEachGetTheirOwnSession() throws {
+        try startServer()
+        let (first, _) = try initializeSession()
+        let (second, _) = try initializeSession()
+
+        XCTAssertNotEqual(first, second, "each initialize must issue its own session id")
+
+        for (label, session) in [("first", first), ("second", second)] {
+            let response = try RawHTTP.request(
+                port: port,
+                method: "POST",
+                path: "/mcp",
+                headers: Self.mcpHeaders.merging(["Mcp-Session-Id": session]) { _, new in new },
+                body: try toolsListBody()
+            )
+            XCTAssertEqual(response.status, 200, "\(label) client must be served")
+            let object =
+                try JSONSerialization.jsonObject(
+                    with: Data(Self.jsonMessage(from: response.body).utf8)
+                ) as? [String: Any]
+            let result = try XCTUnwrap(object?["result"] as? [String: Any], label)
+            XCTAssertNotNil(result["tools"] as? [[String: Any]], label)
+        }
+    }
+
+    /// `DELETE` must reach the transport and release the session, so the same process can
+    /// serve a client that reconnects with a new one (ledger B03).
+    func testDeletingASessionReleasesItAndAllowsReconnecting() throws {
+        try startServer()
+        let (session, _) = try initializeSession()
+
+        let released = try RawHTTP.request(
+            port: port,
+            method: "DELETE",
+            path: "/mcp",
+            headers: Self.mcpHeaders.merging(["Mcp-Session-Id": session]) { _, new in new }
+        )
+        XCTAssertEqual(released.status, 200, "the SDK acknowledges termination with 200")
+
+        let afterRelease = try RawHTTP.request(
+            port: port,
+            method: "POST",
+            path: "/mcp",
+            headers: Self.mcpHeaders.merging(["Mcp-Session-Id": session]) { _, new in new },
+            body: try toolsListBody()
+        )
+        XCTAssertEqual(afterRelease.status, 404, "a released session must not be served")
+
+        // The point of releasing: the process can serve the next client.
+        let (reconnected, _) = try initializeSession()
+        XCTAssertNotEqual(reconnected, session)
+        let served = try RawHTTP.request(
+            port: port,
+            method: "POST",
+            path: "/mcp",
+            headers: Self.mcpHeaders.merging(["Mcp-Session-Id": reconnected]) { _, new in new },
+            body: try toolsListBody()
+        )
+        XCTAssertEqual(served.status, 200)
+    }
+
+    // MARK: - Connection bounds (ledger B90)
+
+    /// A connection that never sends a request is closed after the request budget, and the
+    /// listener is unharmed. `SEARCH_REQUEST_TIMEOUT_MS` is the inbound budget as well as the
+    /// outbound one, which is what makes this test fast.
+    func testAnIdleConnectionIsClosedAndTheListenerKeepsServing() throws {
+        try startServer(extraEnvironment: ["SEARCH_REQUEST_TIMEOUT_MS": "400"])
+
+        let idle = try RawHTTP.connect(port: port)
+        defer { close(idle) }
+
+        XCTAssertTrue(
+            RawHTTP.waitForEndOfStream(fd: idle, milliseconds: 5_000),
+            "a connection that never completes a request must be closed after the request budget"
+        )
+
+        let health = try RawHTTP.request(port: port, method: "GET", path: "/health")
+        XCTAssertEqual(health.status, 200, "the listener must keep serving after closing an idle peer")
+    }
+
+    /// The slowloris shape: a request whose headers never end. The deadline is armed when the
+    /// channel becomes active, before a header is parsed, so this case is covered too.
+    func testAPartialRequestIsClosedBeforeItCompletes() throws {
+        try startServer(extraEnvironment: ["SEARCH_REQUEST_TIMEOUT_MS": "400"])
+
+        let slow = try RawHTTP.connect(port: port)
+        defer { close(slow) }
+        try RawHTTP.send(fd: slow, text: "POST /mcp HTTP/1.1\r\nHost: 127.0.0.1\r\n")
+
+        XCTAssertTrue(
+            RawHTTP.waitForEndOfStream(fd: slow, milliseconds: 5_000),
+            "a request that never ends must be closed after the request budget"
+        )
+    }
+
+    /// A standalone SSE stream is a *completed* request with a long-lived response, not an idle
+    /// connection: the deadline is disarmed when the request ends, so the stream outlives the
+    /// request budget several times over (ledger B90).
+    func testAStandaloneSSEStreamOutlivesTheRequestBudget() throws {
+        try startServer(extraEnvironment: ["SEARCH_REQUEST_TIMEOUT_MS": "400"])
+        let (session, _) = try initializeSession()
+
+        let stream = try RawHTTP.connect(port: port)
+        defer { close(stream) }
+        try RawHTTP.send(
+            fd: stream,
+            text: "GET /mcp HTTP/1.1\r\nHost: 127.0.0.1:\(port)\r\n"
+                + "Accept: text/event-stream\r\nMcp-Session-Id: \(session)\r\n\r\n"
+        )
+
+        let head = try RawHTTP.readHead(fd: stream, milliseconds: 5_000)
+        XCTAssertTrue(head.hasPrefix("HTTP/1.1 200"), head)
+        XCTAssertTrue(head.lowercased().contains("text/event-stream"), head)
+
+        XCTAssertFalse(
+            RawHTTP.waitForEndOfStream(fd: stream, milliseconds: 2_000),
+            "a completed request's streaming response must not be closed as an idle connection"
+        )
+    }
+
+    /// Connections beyond the listener's bound are refused rather than held. Eighty is
+    /// deliberately more than the bound, and fewer than the request budget allows, so the only
+    /// reason any of them closes inside the window is the bound itself.
+    func testConnectionsBeyondTheListenerBoundAreRefused() throws {
+        try startServer()
+
+        var descriptors: [Int32] = []
+        for _ in 0..<80 {
+            descriptors.append(try RawHTTP.connect(port: port))
+        }
+        defer { for fd in descriptors { close(fd) } }
+
+        let closed = RawHTTP.closedDescriptors(descriptors, afterMilliseconds: 2_000)
+        XCTAssertFalse(closed.isEmpty, "the listener must refuse connections past its bound")
+
+        // Release the held connections — they count against the bound, so a health request now
+        // would be refused too — and wait for the listener to notice.
+        for fd in descriptors { close(fd) }
+        descriptors = []
+        var health: RawHTTP.Response?
+        for _ in 0..<40 {
+            health = try? RawHTTP.request(port: port, method: "GET", path: "/health")
+            if health?.status == 200 { break }
+            usleep(50_000)
+        }
+        XCTAssertEqual(
+            health?.status,
+            200,
+            "the listener must serve again once the refused peers are gone"
+        )
     }
 }

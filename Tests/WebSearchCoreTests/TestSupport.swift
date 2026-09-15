@@ -31,6 +31,29 @@ enum ServerTestSupport {
         ProcessInfo.processInfo.environment["CI"] != nil
     }
 
+    /// Environment for a spawned server or monitor process.
+    ///
+    /// `swift test --enable-code-coverage` instruments every target and hands the *test*
+    /// process a profile path through `LLVM_PROFILE_FILE`. A child that inherits that setting
+    /// writes its counters into the same file and corrupts both, so for as long as the
+    /// subprocesses ran with the inherited value the MCP surface measured **0 %** while being
+    /// thoroughly exercised (ledger A04). Each child now gets its own file, and the coverage
+    /// step merges every profile in the directory.
+    ///
+    /// `%c` puts the profiling runtime in continuous mode, which is what makes this work for a
+    /// *terminated* child: the runtime normally flushes at exit, and these harnesses stop their
+    /// server with a signal, so an at-exit-only profile is written empty. `%p` keeps two
+    /// children started in the same second from colliding.
+    static func childEnvironment(base: [String: String] = [:]) -> [String: String] {
+        var environment = base
+        if let parent = ProcessInfo.processInfo.environment["LLVM_PROFILE_FILE"], !parent.isEmpty {
+            let directory = URL(fileURLWithPath: parent).deletingLastPathComponent()
+            let name = "child-\(UUID().uuidString.prefix(8))-%c-%p.profraw"
+            environment["LLVM_PROFILE_FILE"] = directory.appendingPathComponent(name).path
+        }
+        return environment
+    }
+
     /// Locate the executable `swift build` produced next to the test bundle.
     ///
     /// A missing binary means the end-to-end coverage did not run at all. Locally that
@@ -66,6 +89,237 @@ enum ServerTestSupport {
 
 /// Anchor so `Bundle(for:)` resolves to the test bundle from a static helper.
 private final class ServerTestSupportAnchor {}
+
+// MARK: - Newline-JSON subprocess harness
+
+/// Why a harness read ended without a response.
+enum ServerTestError: Error, CustomStringConvertible {
+    case timeout
+    case malformedResponse(String)
+    case unexpectedEOF(stderr: String)
+
+    var description: String {
+        switch self {
+        case .timeout: "timed out waiting for a response"
+        case .malformedResponse(let text): "malformed JSON-RPC line: \(text)"
+        case .unexpectedEOF(let stderr): "server exited early; stderr: \(stderr)"
+        }
+    }
+}
+
+/// The stderr a child produced, accumulated as it is produced.
+///
+/// A separate box rather than fields on the harness because the readability handler that fills
+/// it is `@Sendable` and must not reach back into the non-`Sendable` harness. The lock is the
+/// only point of contact between the reader queue and the test thread (ledger B71).
+private final class StderrCapture: @unchecked Sendable {
+    private let lock = NSLock()
+    private var buffer = Data()
+
+    /// Reached EOF, so no further bytes can arrive.
+    let drained = DispatchGroup()
+
+    init(pipe: Pipe) {
+        drained.enter()
+        pipe.fileHandleForReading.readabilityHandler = { [self] handle in
+            let chunk = handle.availableData
+            if chunk.isEmpty {
+                handle.readabilityHandler = nil
+                drained.leave()
+                return
+            }
+            lock.withLock { buffer.append(chunk) }
+        }
+    }
+
+    /// Everything the child wrote to stderr before it exited.
+    ///
+    /// A bounded wait: the background reader delivers what the child flushed, and a child that is
+    /// still alive keeps the pipe open, so an unbounded wait would hang the way the read loop
+    /// once did. Two seconds is far longer than a pipe read needs; it costs a test nothing
+    /// because the reader signals the group as soon as the data lands.
+    func text() -> String {
+        _ = drained.wait(timeout: .now() + 2)
+        let data = lock.withLock { buffer }
+        return String(bytes: data, encoding: .utf8) ?? "<not valid UTF-8>"
+    }
+}
+
+/// One running subprocess spoken to with newline-delimited JSON, stdout to stdin.
+///
+/// The single harness for every stdio test. Three hand-copied versions of this used to live in
+/// `StdioServerTests`, `ErrorReportingTests` and `SchemaCompatibilityTests`, and had already
+/// drifted: the `SchemaCompatibilityTests` copy declared a `failure` that dropped the stderr
+/// payload, and its `process.standardError = Pipe()` was never read, so an early exit reported
+/// the bare words `unexpectedExit` with no diagnostic (ledger B71). The shared environment
+/// scrub list had been factored out; the framing, the deadline and the stderr capture had not.
+///
+/// The deadline is enforced at the read, not merely checked between reads. The loop this
+/// replaces was `while Date() < deadline { … availableData }`, and `availableData` blocks
+/// until data arrives or the pipe reaches EOF, so a wedged server that still held the write
+/// end hung the suite indefinitely while the 15 s/20 s "timeout" it advertised never fired
+/// (ledger B70). Each read now `poll`s the descriptor first, so the bound is real.
+final class ServerProcess {
+    let process = Process()
+    /// The write end is held as a stored property because `Process.standardInput` owns the
+    /// pipe, not the handle, and the harness closes this handle to signal end of input.
+    let stdinPipe = Pipe()
+    private let stdoutPipe = Pipe()
+    private let stderrPipe = Pipe()
+    private var stdoutBuffer = Data()
+    /// The stderr stream, accumulated by a background reader for the life of the harness.
+    private let stderrCapture: StderrCapture
+
+    /// Start a child with a scrubbed environment.
+    ///
+    /// Hermetic on purpose: starting from PATH alone and removing every documented provider
+    /// variable means an ambient `TAVILY_API_KEY`/`BRAVE_SEARCH_API_KEY` — exactly what the
+    /// README tells a user to export — cannot make a stub-provider test contact the live vendor
+    /// and report a false failure.
+    init(
+        binary: URL,
+        environment: [String: String] = [:],
+        arguments: [String] = []
+    ) {
+        process.executableURL = binary
+        process.arguments = arguments
+        process.standardInput = stdinPipe
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        var merged: [String: String] = [
+            "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+        ]
+        for key in ServerTestSupport.providerEnvironmentVariables {
+            merged.removeValue(forKey: key)
+        }
+        for (key, value) in environment { merged[key] = value }
+        process.environment = ServerTestSupport.childEnvironment(base: merged)
+
+        // Every call site used to leave stderr unread until something had already gone wrong,
+        // which is exactly when its diagnostics are needed. Draining it as it is produced also
+        // means a child that writes more to stderr than the pipe can hold cannot wedge on the
+        // write (ledger B71).
+        stderrCapture = StderrCapture(pipe: stderrPipe)
+    }
+
+    /// Stop the stderr reader and release the pipe.
+    deinit {
+        stderrPipe.fileHandleForReading.readabilityHandler = nil
+    }
+
+    func start() throws {
+        try process.run()
+    }
+
+    func send(_ object: [String: Any]) throws {
+        var line = try JSONSerialization.data(withJSONObject: object)
+        line.append(UInt8(ascii: "\n"))
+        stdinPipe.fileHandleForWriting.write(line)
+    }
+
+    /// Send one JSON-RPC request and read the response that carries `id`.
+    ///
+    /// The convenience the `ErrorReportingTests` copy had and the other two did not; folding it
+    /// in is what lets that file drop its whole private harness.
+    func call(id: Int, tool: String, arguments: [String: Any]) throws -> [String: Any] {
+        try send([
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "tools/call",
+            "params": ["name": tool, "arguments": arguments],
+        ])
+        return try readResponse(id: id)
+    }
+
+    /// Read one JSON object from stdout, blocking until a full line arrives.
+    ///
+    /// The wait blocks in `poll` with the remaining budget rather than in `availableData`, so
+    /// expiry throws even while the child is alive and silent. `poll` is restarted on `EINTR`
+    /// for the time that is left, so a signal does not silently reset the bound.
+    func readMessage(timeout: TimeInterval) throws -> [String: Any] {
+        let deadline = Date().addingTimeInterval(timeout)
+        while true {
+            // Serve any complete line already buffered: a poll after the deadline would
+            // discard an answer that had already arrived.
+            if let newlineIndex = stdoutBuffer.firstIndex(of: UInt8(ascii: "\n")) {
+                let lineData = stdoutBuffer[stdoutBuffer.startIndex..<newlineIndex]
+                stdoutBuffer = Data(stdoutBuffer[stdoutBuffer.index(after: newlineIndex)...])
+                if lineData.isEmpty { continue }
+                guard
+                    let object = try JSONSerialization.jsonObject(with: Data(lineData))
+                        as? [String: Any]
+                else {
+                    throw ServerTestError.malformedResponse(
+                        String(bytes: lineData, encoding: .utf8) ?? "<not valid UTF-8>"
+                    )
+                }
+                return object
+            }
+
+            // Rounded up so a sub-millisecond remainder still polls once rather than
+            // expiring early; a negative remainder is discarded by `guard`.
+            let remaining = Int32((deadline.timeIntervalSinceNow * 1_000).rounded(.up))
+            guard remaining > 0 else { throw ServerTestError.timeout }
+
+            var descriptor = pollfd(
+                fd: stdoutPipe.fileHandleForReading.fileDescriptor,
+                events: Int16(POLLIN),
+                revents: 0
+            )
+            let ready = poll(&descriptor, 1, remaining)
+            if ready == 0 { throw ServerTestError.timeout }
+            if ready < 0 {
+                if errno == EINTR { continue }
+                throw ServerTestError.timeout
+            }
+
+            let chunk = stdoutPipe.fileHandleForReading.availableData
+            if chunk.isEmpty {
+                // EOF: the process exited without answering.
+                throw ServerTestError.unexpectedEOF(stderr: stderrText())
+            }
+            stdoutBuffer.append(chunk)
+        }
+    }
+
+    /// Read messages until one has the requested JSON-RPC id.
+    ///
+    /// One deadline covers the whole call, so a stream of notifications cannot extend it.
+    func readResponse(id: Int, timeout: TimeInterval = 15) throws -> [String: Any] {
+        let deadline = Date().addingTimeInterval(timeout)
+        while true {
+            let remaining = deadline.timeIntervalSinceNow
+            guard remaining > 0 else { throw ServerTestError.timeout }
+            let message = try readMessage(timeout: remaining)
+            if let messageID = message["id"] as? Int, messageID == id { return message }
+            // Notifications are skipped; this server sends none, but tolerate them.
+        }
+    }
+
+    /// Everything the child wrote to stderr before it exited.
+    ///
+    /// Waiting for the background reader to reach EOF is what makes this the *complete* stream
+    /// rather than whatever happened to have arrived: the reader is the only consumer, and it
+    /// signals the group at EOF. The wait is bounded because the child is often still alive when
+    /// a test inspects its diagnostics — a live MCP session keeps stdout and stderr open until
+    /// `stop()` — so an unbounded wait here would hang exactly the way the read loop did.
+    func stderrText() -> String {
+        stderrCapture.text()
+    }
+
+    func stop() {
+        try? stdinPipe.fileHandleForWriting.close()
+        if process.isRunning {
+            process.terminate()
+        }
+        process.waitUntilExit()
+        // The reader signals its group at EOF; if the process was already gone the handler can
+        // be the only thing still holding the read end, so tear it down rather than leave a
+        // handler alive on a pipe that no longer has a writer.
+        stderrPipe.fileHandleForReading.readabilityHandler = nil
+    }
+}
 
 // MARK: - Mock transport
 
@@ -167,6 +421,13 @@ final class MockHTTPClient: HTTPClient, @unchecked Sendable {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
+        XCTAssertFalse(
+            requests.isEmpty,
+            "assertNoCredentialLeak needs at least one recorded request: with none it passed "
+                + "without checking anything (ledger B72)",
+            file: file,
+            line: line
+        )
         for request in requests {
             let headerValues = request.headers.map { "\($0.key): \($0.value)" }.joined(separator: " ")
             XCTAssertFalse(
@@ -175,9 +436,11 @@ final class MockHTTPClient: HTTPClient, @unchecked Sendable {
                 file: file,
                 line: line
             )
-            // A key may legitimately travel in a query string (Mojeek does this),
-            // which is exactly why it must never be logged; assert the request was
-            // recorded but that our *own* diagnostics never echo it.
+            // A key may legitimately travel in a query string (Mojeek does this), which is why it
+            // must never be echoed. This helper checks what the mock can see — the headers and body
+            // it recorded; log lines and error descriptions are asserted by the tests that exercise
+            // those paths. The comment here used to claim this helper covered them too (ledger
+            // B72).
             if let body = request.body, let text = String(data: body, encoding: .utf8) {
                 XCTAssertFalse(
                     text.contains(secret),
@@ -200,6 +463,9 @@ final class MockSearchProvider: SearchProvider, @unchecked Sendable {
 
     private let lock = NSLock()
     private var _callCount = 0
+    /// Every request the provider was called with, in order, so a test can assert the
+    /// contract the orchestrator is supposed to hand it (ledger B19).
+    private var _requests: [SearchRequest] = []
     private var outcome: @Sendable (SearchRequest) async throws -> ProviderSearchResponse
 
     init(
@@ -261,20 +527,77 @@ final class MockSearchProvider: SearchProvider, @unchecked Sendable {
         return _callCount
     }
 
+    /// The requests this provider received, oldest first.
+    var requests: [SearchRequest] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _requests
+    }
+
     func search(_ request: SearchRequest) async throws -> ProviderSearchResponse {
         // `NSLock.lock()` is unavailable in an async context under Swift 6, so the
         // counter update is scoped with `withLock`.
         let outcome = lock.withLock { () -> @Sendable (SearchRequest) async throws -> ProviderSearchResponse in
             _callCount += 1
+            _requests.append(request)
             return self.outcome
         }
         return try await outcome(request)
     }
 }
 
+// MARK: - Creeping clock
+
+/// A clock that advances by a fixed step on every `now()` read.
+///
+/// `TestClock` only moves when a test moves it, so it cannot reproduce a race whose whole shape
+/// is "the clock advanced between two reads of it". The orchestrator reads the clock once to
+/// decide a provider is throttled and again to estimate the remaining wait, so a clock that
+/// creeps on every read deterministically puts those two reads on opposite sides of a
+/// `minimumInterval` boundary — the boundary that was intermittent on a real clock (ledger
+/// B116).
+final class CreepingClock: Clock, @unchecked Sendable {
+    private let lock = NSLock()
+    private var current: Date
+    private var uptime: UInt64
+    private let step: Duration
+
+    init(step: Duration, start: Date = Date(timeIntervalSince1970: 1_700_000_000)) {
+        self.step = step
+        self.current = start
+        self.uptime = 0
+    }
+
+    func now() -> Date {
+        lock.lock()
+        defer { lock.unlock() }
+        let value = current
+        current = current.addingTimeInterval(step.seconds)
+        uptime &+= UInt64(max(0, step.seconds) * 1_000_000_000)
+        return value
+    }
+
+    func uptimeNanoseconds() -> UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        return uptime
+    }
+}
+
 // MARK: - Fixtures
 
 enum Fixtures {
+
+    /// A key-shaped value that is deliberately not a credential.
+    ///
+    /// The shape is what matters: `AppConfiguration` accepts a key only when it is at least 20
+    /// characters long and contains none of its marker words (`placeholder`, `fake`, `example`,
+    /// …), so a test that needs "a usable key is configured" must supply something key-shaped.
+    /// The body is a run of zeroes, which keeps the full-history secret scan clean: the literal
+    /// this replaced (`sk-test-key-…`) was flagged five times by `gitleaks` (ledger A06), and a
+    /// synthetic value that trips a scanner only teaches people to ignore the scanner.
+    static let syntheticDeepSeekKey = "sk-000000000000000000000000"
+
     static func configuration(
         // Defaults to the shipped order minus the fetch-only provider, which is what a
         // real deployment resolves to.

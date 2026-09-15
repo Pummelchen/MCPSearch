@@ -1,0 +1,175 @@
+# B106 — the PTY harness reports a crashing monitor as a crash, not a first-frame timeout
+
+Host: this Mac (arm64, macOS 26.6.2) · branch `audit/2026-09-13` · Python 3.14.7
+
+## Status: the fix was already in the tree; this artifact is the missing evidence
+
+The startup check this task asks for is **already present at HEAD** (commit `761966b1`,
+"audit(B106): report a crashing monitor as a crash…"). No code change was made or is needed:
+`git diff` for `scripts/monitor_tty_smoke.py` is empty, and the file's sha256 is unchanged
+(`58ecc7fc…`) before and after this verification. What was missing is the evidence artifact this
+task names (`AUDIT/evidence/B106-pty-crash-vs-hang.txt` did not exist), and that is what this
+record supplies. The proof below is against the real harness functions, driven with stubs.
+
+## What was wrong (the ledger's `evidence_before`)
+
+When a stale build crashed the monitor at startup, the harness failed with "timed out waiting for
+the first frame" — true but misleading: the process had already died and printed "Program crashed:
+Signal 11". A crash and a hang were therefore indistinguishable from the failure text.
+
+## Where the fix is (already committed; no diff to review)
+
+`scripts/monitor_tty_smoke.py`, in `run()`, immediately after the startup drain and before any
+frame wait (`:396-406`):
+
+```
+        # 1. A full-screen display hides the cursor and clears the screen on start.
+        #
+        # A monitor that dies during startup must be reported as a crash with its exit status, not
+        # as a frame that never arrived: that is how B104's stale build was first misread as a
+        # timeout (ledger B106).
+        session.drain(3.0)
+        require(
+            session.process.poll() is None,
+            "the monitor exited during startup with "
+            f"{session.process.poll()}: {ANSI.sub('', session.transcript)[-300:]!r}",
+        )
+```
+
+## How a crash is distinguished from a hang
+
+`Session` attaches the child's stdin, stdout **and** stderr to the same PTY, so the crash banner
+lands in `session.transcript`. After a fixed `drain(3.0)` the check polls the child:
+
+* `poll()` is not `None` → the child is dead, so the failure names **the crash**: the exit status
+  and the ANSI-stripped tail of the transcript (the child's stderr). It cannot be an unrelated
+  frame condition, because no frame is asserted yet.
+* `poll()` is `None` → the startup check passes, and the existing `wait_for(… "the first frame")`
+  still times out for a live process that never paints one. That is the hang path, unchanged.
+
+So a dead process fails on the exit code and a live one fails on the frame wait; the two are no
+longer the same message.
+
+## Verification
+
+Two stubs under `$HOME/Library/Caches/MCPSearch/B106/` are handed to the harness exactly as its
+binary argument, so the real `run()` path — `Session`, the startup drain, the crash check and
+`wait_for` — is exercised; no `swift build` is involved and nothing here touches the Swift build
+directory (a concurrent worker owns it, so no Swift command was run at all).
+
+* `crash_monitor.py` writes the startup sequences a real monitor emits (`\x1b[?25l\x1b[2J`), then
+  the banner a Swift process prints on a fatal signal, then exits 3.
+* `hang_monitor.py` writes the same startup sequences and blocks forever, never painting a frame.
+
+`check_b106.py` runs the harness against both: the crash must be named as an exit carrying its
+status and stderr and must not be a frame timeout, and the hang must still be a frame timeout and
+must not be renamed a crash.
+
+The repository file was then **temporarily reverted** by deleting the six added lines above (the
+comment block and the `require`, leaving `session.drain(3.0)`), RED was captured, and the file was
+restored from a byte-identical backup (sha256 re-checked, `git diff` empty). The command was
+identical for RED and GREEN:
+
+```
+$ python3 "$HOME/Library/Caches/MCPSearch/B106/check_b106.py" scripts/monitor_tty_smoke.py
+```
+
+RED, the check removed (the pre-`761966b1` behaviour):
+
+```
+  crash failure: timed out waiting for the first frame
+  hang failure:  timed out waiting for the first frame
+FAIL: the crash is named as an exit, not a timeout
+FAIL: the failure carries the exit status
+FAIL: the failure carries the process's stderr
+FAIL: the crash is not a first-frame timeout
+PASS: a hang is still a first-frame timeout
+PASS: a hang is not renamed a crash
+
+real	0m27.745s
+user	0m7.800s
+sys	0m4.110s
+exit:1
+```
+
+GREEN, the committed fix (`scripts/monitor_tty_smoke.py` at HEAD):
+
+```
+  crash failure: the monitor exited during startup with 3: 'Program crashed: Signal 11: Backtracing from 0x0\r\nBad pointer dereference at 0x0000000000000008\r\n'
+  hang failure:  timed out waiting for the first frame
+PASS: the crash is named as an exit, not a timeout
+PASS: the failure carries the exit status
+PASS: the failure carries the process's stderr
+PASS: the crash is not a first-frame timeout
+PASS: a hang is still a first-frame timeout
+PASS: a hang is not renamed a crash
+
+real	0m16.474s
+user	0m0.120s
+sys	0m0.080s
+exit:0
+```
+
+The real entry point (`main()`) shows the same thing end to end. Run from the stub directory so the
+binary path it echoes stays value-free; the child dies at once, so the PTY master read ends with
+`EIO`, `drain` returns without waiting out its 3 s budget, and the failure arrives in 0.585 s:
+
+```
+$ cd "$HOME/Library/Caches/MCPSearch/B106" && python3 "$REPO/scripts/monitor_tty_smoke.py" ./crash_monitor.py
+stdout:
+smoke-testing the interactive display of ./crash_monitor.py
+stderr:
+MONITOR TTY SMOKE FAILED: the monitor exited during startup with 3: 'Program crashed: Signal 11: Backtracing from 0x0\r\nBad pointer dereference at 0x0000000000000008\r\n'
+exit:1
+```
+
+The two fixture-integrity checks (`a hang is still a first-frame timeout`, `a hang is not renamed
+a crash`) pass in both runs, so GREEN is not the check simply renaming every failure a crash: it
+only fires when `poll()` reports the child gone. The crash case fails in 0.585 s (the drain's read
+ends with `EIO` as the child dies), while the hang case in the same run still waits out the 12 s
+frame timeout — which is where GREEN's 16.5 s is spent.
+
+## Residual, reported but not fixed here
+
+The startup check runs **once**, after the fixed `drain(3.0)`. A monitor that crashes *after* that
+window but before its first frame is still reported as a frame timeout. Probe (`late_crash_monitor.py`,
+which starts, sleeps 5 s, then writes a crash banner and exits 3):
+
+```
+$ python3 - "$HOME/Library/Caches/MCPSearch/B106/late_crash_monitor.py" <<'PY'
+… importlib-load scripts/monitor_tty_smoke.py …; m.run(sys.argv[1]) …
+PY
+failure: timed out waiting for the first frame
+exit:0
+```
+
+That is a narrower instance of the same shape as B106, but it is outside the fix the ledger's
+`expected-correct` states ("a startup check … before any frame wait times out", which is what the
+committed code implements), and closing it would mean polling the child inside `wait_for` — a
+larger change than this evidence-only completion. It is left for the ledger owner to fold as a new
+finding if wanted, and it is called out here rather than silently ignored.
+
+## Gates (unchanged file)
+
+```
+$ ruff check scripts
+All checks passed!
+
+$ ruff format --check scripts
+6 files already formatted
+
+$ pyright scripts/monitor_tty_smoke.py
+0 errors, 0 warnings, 0 informations
+```
+
+## What is not verified
+
+The real `mcps-mon` binary was not exercised: a concurrent worker owns the Swift build directory,
+so `swift build`/`swift test` were forbidden (and no binary is built in this checkout). This does
+not weaken the proof, because the defect and the fix live entirely in the Python harness, not in
+the binary: the check under test is harness control flow (`Popen.poll()` versus the frame wait),
+and the stub reproduces exactly the two states that flow branches on — a child that has exited with
+a diagnostic on its stdio, and a child that is alive and silent. The stub's exit status and banner
+are read back out of the failure message, so the assertion is on the harness's own output, not on
+the stub. What is *not* shown is the real Swift runtime's exit status on a fatal signal; the
+harness reports whatever `poll()` returns, so that detail is independent of this fix.

@@ -40,6 +40,15 @@ public actor ParallelMCPProvider: SearchProvider {
     private let log: Log
 
     private var sessionID: String?
+    /// The in-flight handshake, shared by every caller that arrives before it completes.
+    ///
+    /// `sessionID` alone cannot stand in for "already initialised": an actor is re-entrant
+    /// across `await`, so a second `search` arriving while the first handshake is suspended
+    /// still sees `sessionID == nil` and runs a second `initialize` +
+    /// `notifications/initialized` + `tools/list`. The free tier meters by `session_id`, and
+    /// the two in-flight calls can end up using whichever `MCP-Session-Id` the server
+    /// assigned last (ledger B54). Caching the task makes the handshake happen once.
+    private var handshake: Task<Void, Error>?
     private var resolvedToolName: String?
     private var resolvedToolSupportsMaxResults = false
     private var requestCounter = 0
@@ -74,17 +83,19 @@ public actor ParallelMCPProvider: SearchProvider {
         var seen: Set<String> = []
         var results: [SearchResult] = []
         for (index, item) in result.items.enumerated() {
-            guard let normalized = ResultNormalizer.make(
-                provider: .parallel,
-                rank: index + 1,
-                title: item.title,
-                urlString: item.url,
-                snippet: item.snippet,
-                publishedAt: item.publishedAt.flatMap(JSONCoding.date(from:)),
-                content: item.content,
-                request: request,
-                seenKeys: &seen
-            ) else { continue }
+            guard
+                let normalized = ResultNormalizer.make(
+                    provider: .parallel,
+                    rank: index + 1,
+                    title: item.title,
+                    urlString: item.url,
+                    snippet: item.snippet,
+                    publishedAt: item.publishedAt.flatMap(JSONCoding.date(from:)),
+                    content: item.content,
+                    request: request,
+                    seenKeys: &seen
+                )
+            else { continue }
             results.append(normalized)
         }
 
@@ -159,9 +170,30 @@ public actor ParallelMCPProvider: SearchProvider {
     }
 
     /// Perform the MCP initialize handshake once, and discover the search tool name.
+    ///
+    /// The handshake runs inside a task cached on the actor, so concurrent first use joins
+    /// the one handshake instead of starting another (ledger B54). A failed handshake is not
+    /// cached, so the next caller retries it exactly as the un-cached implementation did.
     private func ensureInitialized() async throws {
         if sessionID != nil { return }
 
+        if let handshake {
+            try await handshake.value
+            return
+        }
+
+        let handshake = Task { try await performHandshake() }
+        self.handshake = handshake
+        do {
+            try await handshake.value
+        } catch {
+            self.handshake = nil
+            throw error
+        }
+    }
+
+    /// The one handshake body: `initialize`, `notifications/initialized`, then tool discovery.
+    private func performHandshake() async throws {
         let initialize = JSONRPCRequest(
             id: nextRequestID(),
             method: "initialize",
@@ -223,7 +255,7 @@ public actor ParallelMCPProvider: SearchProvider {
             JSONRPCRequest(id: nextRequestID(), method: "tools/list", params: [:])
         )
         guard let result = response?.result,
-              let tools = result["tools"] as? [[String: Any]]
+            let tools = result["tools"] as? [[String: Any]]
         else { return }
 
         let names = tools.compactMap { $0["name"] as? String }
@@ -234,14 +266,16 @@ public actor ParallelMCPProvider: SearchProvider {
         }
         // Fall back to any tool whose name mentions search.
         if resolvedToolName == nil,
-           let searchTool = names.first(where: { $0.lowercased().contains("search") }) {
+            let searchTool = names.first(where: { $0.lowercased().contains("search") })
+        {
             resolvedToolName = searchTool
         }
 
         // Only send `max_results` if the announced input schema actually declares it.
         if let tool = tools.first(where: { ($0["name"] as? String) == resolvedToolName }),
-           let schema = tool["inputSchema"] as? [String: Any],
-           let properties = schema["properties"] as? [String: Any] {
+            let schema = tool["inputSchema"] as? [String: Any],
+            let properties = schema["properties"] as? [String: Any]
+        {
             resolvedToolSupportsMaxResults = properties["max_results"] != nil
         }
     }
@@ -282,7 +316,7 @@ public actor ParallelMCPProvider: SearchProvider {
         let jsonText = ParallelMCPProvider.extractJSON(from: text)
 
         guard let data = jsonText.data(using: .utf8),
-              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
+            let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any]
         else {
             throw SearchError.malformedResponse(.parallel)
         }
@@ -367,7 +401,7 @@ public actor ParallelMCPProvider: SearchProvider {
         static func parse(_ result: [String: Any]) throws -> ToolOutput {
             // Structured content is preferred when the server provides it.
             if let structured = result["structuredContent"] as? [String: Any],
-               let items = itemsFromJSON(structured)
+                let items = itemsFromJSON(structured)
             {
                 return ToolOutput(items: items)
             }
@@ -379,11 +413,11 @@ public actor ParallelMCPProvider: SearchProvider {
             for block in content {
                 guard let text = block["text"] as? String else { continue }
                 guard let data = text.data(using: .utf8),
-                      let object = try? JSONSerialization.jsonObject(with: data)
+                    let object = try? JSONSerialization.jsonObject(with: data)
                 else { continue }
 
                 if let dictionary = object as? [String: Any],
-                   let items = itemsFromJSON(dictionary)
+                    let items = itemsFromJSON(dictionary)
                 {
                     return ToolOutput(items: items)
                 }

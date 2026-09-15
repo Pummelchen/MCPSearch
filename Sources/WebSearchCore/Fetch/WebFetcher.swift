@@ -41,13 +41,26 @@ public actor WebFetcher {
         public var maxRedirects: Int
         /// Content types we will attempt to read as text.
         public var allowedContentTypePrefixes: [String]
+        /// Total time one `web_open` may take, across the direct fetch and any reader fallback.
+        ///
+        /// The per-request inactivity timeouts bound a *stalled* socket, but a server that
+        /// dribbles one byte at a time is never inactive: without a total deadline it held the
+        /// tool call — and the client waiting on it — open indefinitely (ledger B14).
+        public var totalTimeout: Duration
 
-        public init(maxRedirects: Int = 5) {
+        public init(maxRedirects: Int = 5, totalTimeout: Duration = .seconds(30)) {
             self.maxRedirects = max(0, maxRedirects)
+            self.totalTimeout = totalTimeout
+            // Everything here can be handed to a model as text. `application/pdf` used to be on
+            // the list, and the only non-HTML branch decodes a body as UTF-8 or Latin-1: a PDF
+            // therefore arrived as tens of thousands of characters of `%PDF-1.7 … stream …`
+            // gibberish labelled `raw_text`. There is no PDF extraction in this package, so the
+            // honest answer is to refuse it — `extractionFailed` — and let the reader fallback
+            // (which renders PDFs remotely) serve it when one is configured (ledger B16).
             self.allowedContentTypePrefixes = [
                 "text/", "application/json", "application/xml", "application/xhtml",
                 "application/rss+xml", "application/atom+xml", "application/x-yaml",
-                "application/javascript", "application/pdf",
+                "application/javascript",
             ]
         }
     }
@@ -70,6 +83,29 @@ public actor WebFetcher {
     }
 
     public func open(_ request: FetchRequest) async throws -> FetchResult {
+        // One deadline over the whole operation: the direct fetch, the extraction, and any
+        // reader fallback. Whichever finishes first wins, and the loser is cancelled — so a
+        // page that never finishes can no longer hold the call open (ledger B14).
+        try await withThrowingTaskGroup(of: FetchResult.self) { group in
+            group.addTask { try await self.performOpen(request) }
+            group.addTask {
+                try await Task.sleep(for: self.policy.totalTimeout)
+                throw SearchError.fetchFailed(
+                    request.url,
+                    reason: "the page did not finish within "
+                        + "\(Int(self.policy.totalTimeout.seconds))s"
+                )
+            }
+            defer { group.cancelAll() }
+            guard let result = try await group.next() else {
+                throw SearchError.fetchFailed(request.url, reason: "the fetch produced no result")
+            }
+            return result
+        }
+    }
+
+    /// The fetch itself, under whatever deadline `open` imposed.
+    private func performOpen(_ request: FetchRequest) async throws -> FetchResult {
         let started = DispatchTime.now().uptimeNanoseconds
 
         let directResult: FetchResult?
@@ -93,7 +129,7 @@ public actor WebFetcher {
         }
 
         if let result = directResult,
-           result.text.count >= request.minimumUsefulCharacters
+            result.text.count >= request.minimumUsefulCharacters
         {
             var finalized = result
             finalized.elapsedMilliseconds =
@@ -104,6 +140,10 @@ public actor WebFetcher {
         // Direct extraction was empty, too thin, or failed. Jina Reader renders the
         // page remotely, which is the sanctioned way to handle JS-heavy pages
         // without embedding a headless browser here.
+        //
+        // A cancelled caller never reaches the fallback: the second outbound request would be
+        // work for nobody, and the cancellation is what the caller should see (ledger B04).
+        try Task.checkCancellation()
         guard let jina else {
             guard let result = directResult else {
                 throw directError ?? SearchError.extractionFailed(request.url)

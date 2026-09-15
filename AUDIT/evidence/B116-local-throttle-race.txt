@@ -1,0 +1,215 @@
+# B116 — a local throttle that cleared between two reads was reported as a hard skip
+
+Host: this Mac (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## What was wrong
+
+`swift test` failed roughly one run in twenty with
+
+```
+Tests/WebSearchCoreTests/StdioServerTests.swift:1087: error: -[WebSearchCoreTests.StdioServerTests testToolArgumentClampsAreEnforced] : XCTUnwrap failed: expected non-nil value of type "Array<Dictionary<String, Any>>"
+```
+
+`SearchOrchestrator.authorizationAfterBoundedWait` reads the local rate limiter twice: once to
+authorise the request, and — only when that is refused as `rateLimited` — once more to decide
+whether the wait is worth the search budget:
+
+```swift
+guard let denial = await health.authorize(id) else { return nil }
+guard allowWaiting, denial.category == .rateLimited,
+    let wait = await health.localWait(for: id),
+    wait <= SearchOrchestrator.maximumLocalWait,
+    wait.milliseconds
+        <= Int(Double(budget.milliseconds) * SearchOrchestrator.localWaitBudgetShare)
+else {
+    return denial
+}
+```
+
+`ProviderHealth.localWait(for:)` delegates to `RateLimiter.timeUntilAvailable()`, which reports
+*"available now"* as `nil`:
+
+```swift
+public func timeUntilAvailable() -> Duration? {
+    refill()
+    if tokens >= 1 {
+        if let minimumInterval = policy.minimumInterval, let lastAcquire {
+            let elapsed = clock.now().timeIntervalSince(lastAcquire)
+            let remaining = minimumInterval.seconds - elapsed
+            if remaining > 0 { return .milliseconds(Int(remaining * 1000)) }
+        }
+        return nil          // <-- "available now"
+    }
+    ...
+}
+```
+
+`authorize` denies while `elapsed < minimumInterval.seconds`. The clock can cross the interval
+between that read and the `localWait` read, at which point `timeUntilAvailable()` correctly
+reports "available now" as `nil` — and `guard let wait` read `nil` as "cannot wait", returned the
+stale denial, and recorded the provider in `skippedLocally`. Nothing is attempted, so a
+single-provider search throws `temporarilyUnavailable` and the tool call has no structured
+content: exactly the observed `XCTUnwrap` failure.
+
+The boundary is real but narrow, which is why it fired only when the two reads straddled the
+interval. One detail the original report did not spell out: `ProviderHealth.authorize` itself
+calls `timeUntilAvailable()` to put a "Retry in about N ms" suffix on the denial message, so each
+refused `authorize` is four clock reads (refill + interval check, then refill + interval check),
+not one — the window is wider than a single read, but it is still a boundary that a real clock
+crosses intermittently.
+
+## The two defects
+
+| # | Where | Defect | Effect |
+|---|-------|--------|--------|
+| 1 | `SearchOrchestrator.authorizationAfterBoundedWait` | A `nil` wait estimate — "the token/interval is available now" — was treated as "cannot wait" and returned the stale denial. | The provider was skipped and a search that had a usable provider failed empty (the `XCTUnwrap` flake). |
+| 2 | `RateLimiter.timeUntilAvailable`, min-interval branch | `Int(remaining * 1000)` truncates, so the estimate could be up to 1 ms short and a sub-millisecond remainder became `.milliseconds(0)`; the token branch a few lines below already rounds up. | A caller that slept exactly the reported wait could wake a hair before the threshold and be denied again on the single retry. |
+
+## The fix
+
+Defect 1: split the combined guard. A `nil` estimate is not a reason to give up — it means the
+throttle has already cleared — so `authorize` is retried once. Only a non-nil estimate that
+exceeds either cap returns the denial. The bounded-wait branch below is untouched.
+
+```
+$ git diff -- Sources/WebSearchCore/Search/SearchOrchestrator.swift
+@@ -454,9 +454,15 @@ public actor SearchOrchestrator {
+         allowWaiting: Bool
+     ) async -> ProviderFailure? {
+         guard let denial = await health.authorize(id) else { return nil }
+-        guard allowWaiting, denial.category == .rateLimited,
+-            let wait = await health.localWait(for: id),
+-            wait <= SearchOrchestrator.maximumLocalWait,
++        guard allowWaiting, denial.category == .rateLimited else { return denial }
++        // `localWait` reports an already-cleared throttle as nil, and the throttle can clear in
++        // the microseconds between `authorize` and this second read: the denial is then stale and
++        // the request it refused is allowed. Retrying `authorize` here is what keeps that boundary
++        // race from turning a search that had a usable provider into an empty one (ledger B116).
++        guard let wait = await health.localWait(for: id) else {
++            return await health.authorize(id)
++        }
++        guard wait <= SearchOrchestrator.maximumLocalWait,
+             wait.milliseconds
+                 <= Int(Double(budget.milliseconds) * SearchOrchestrator.localWaitBudgetShare)
+         else {
+```
+
+Defect 2: round the min-interval remainder up, matching the token branch, and let a non-positive
+remainder fall through to the existing `return nil`.
+
+```
+$ git diff -- Sources/WebSearchCore/Search/RateLimiter.swift
+@@ -97,7 +97,12 @@ public actor RateLimiter {
+             if let minimumInterval = policy.minimumInterval, let lastAcquire {
+                 let elapsed = clock.now().timeIntervalSince(lastAcquire)
+                 let remaining = minimumInterval.seconds - elapsed
+-                if remaining > 0 { return .milliseconds(Int(remaining * 1000)) }
++                // Rounded up, like the token branch below: a truncated estimate can be up to a
++                // millisecond short, so a caller that sleeps exactly what it was told can wake a
++                // hair before the threshold and be denied again. A remainder that rounds to zero
++                // is "available now", not a zero-length wait (ledger B116).
++                let milliseconds = Int((remaining * 1000).rounded(.up))
++                if milliseconds > 0 { return .milliseconds(milliseconds) }
+             }
+             return nil
+         }
+```
+
+No public signature changes; `tryAcquire` is untouched.
+
+## The deterministic tests
+
+`TestClock` does not move on its own, so it cannot reproduce a race whose shape is "the clock
+advanced between two reads of it". `Tests/WebSearchCoreTests/TestSupport.swift` gains a
+`CreepingClock` that advances by a fixed step on **every** `now()` read. It is used by
+`Tests/WebSearchCoreTests/LocalThrottleRaceTests.swift`:
+
+* `testALocalThrottleThatClearsBetweenReadsStillReturnsResults` — one provider, a two-token
+  bucket with a 1 ms-per-read clock and an 8 ms `minimumInterval`. After the priming acquire, the
+  reads the search performs put the last-resort authorising read 7 ms behind the interval (deny)
+  and the wait-estimating read 11 ms behind it (`localWait` returns `nil`). The search must return
+  the provider's result; before the fix it throws `temporarilyUnavailable`.
+* `testTimeUntilAvailableRoundsTheMinimumIntervalUp` — a 1 499.5 ms advance leaves a 0.5 ms
+  remainder, so the returned wait must be `>=` the true remainder (never short) and greater than
+  zero milliseconds.
+* `testTimeUntilAvailableReturnsNilWhenTheMinimumIntervalHasElapsed` — a remainder of zero is
+  "available now", so the wait is `nil`, never `.milliseconds(0)`.
+
+## Proof the tests can fail (mutation, not assertion)
+
+Each mutation temporarily restored the old production code, the exact command was run, and the
+fix was then restored from a copy (verified identical with `diff`).
+
+M1 — restore the combined `guard`, so a nil estimate returns the denial:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter "LocalThrottleRaceTests/testALocalThrottleThatClearsBetweenReadsStillReturnsResults"
+Test Case '-[WebSearchCoreTests.LocalThrottleRaceTests testALocalThrottleThatClearsBetweenReadsStillReturnsResults]' started.
+Sources/WebSearchCore/Search/SearchOrchestrator.swift:219: error: -[WebSearchCoreTests.LocalThrottleRaceTests testALocalThrottleThatClearsBetweenReadsStillReturnsResults] : failed: caught error: "temporarilyUnavailable([WebSearchCore.ProviderFailure(provider: WebSearchCore.ProviderID.tavily, category: WebSearchCore.ProviderFailure.FailureCategory.rateLimited, message: "Tavily is locally rate limited.")])"
+Test Case '-[WebSearchCoreTests.LocalThrottleRaceTests testALocalThrottleThatClearsBetweenReadsStillReturnsResults]' failed (0.089 seconds).
+	 Executed 1 test, with 1 failure (1 unexpected) in 0.089 (0.090) seconds
+```
+
+The denial message carries no "Retry in about N ms" suffix, which is `ProviderHealth.authorize`
+itself observing `timeUntilAvailable() == nil`: the throttle had cleared by the second read and
+the old guard still returned the denial.
+
+M2 — restore `Int(remaining * 1000)`, the truncating estimate:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter "LocalThrottleRaceTests/testTimeUntilAvailableRoundsTheMinimumIntervalUp"
+Test Case '-[WebSearchCoreTests.LocalThrottleRaceTests testTimeUntilAvailableRoundsTheMinimumIntervalUp]' started.
+Tests/WebSearchCoreTests/LocalThrottleRaceTests.swift:80: error: -[WebSearchCoreTests.LocalThrottleRaceTests testTimeUntilAvailableRoundsTheMinimumIntervalUp] : XCTAssertGreaterThanOrEqual failed: ("0.0") is less than ("0.0005") - a truncated estimate wakes before the interval, so the wait must round up
+Tests/WebSearchCoreTests/LocalThrottleRaceTests.swift:85: error: -[WebSearchCoreTests.LocalThrottleRaceTests testTimeUntilAvailableRoundsTheMinimumIntervalUp] : XCTAssertGreaterThan failed: ("0") is not greater than ("0")
+Test Case '-[WebSearchCoreTests.LocalThrottleRaceTests testTimeUntilAvailableRoundsTheMinimumIntervalUp]' failed (0.082 seconds).
+	 Executed 1 test, with 2 failures (0 unexpected) in 0.082 (0.083) seconds
+```
+
+After restoring both files, the whole class is green:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter LocalThrottleRaceTests
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+```
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (5.61s)                                                     0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+	 Executed 489 tests, with 6 tests skipped and 0 failures (0 unexpected)
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (104.03s)                                                   0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+0 diagnostics                                                               exit=0
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 84 files.                    exit=0
+```
+
+The suite count is 489, not 486: 486 was the pre-change baseline and this change adds the three
+tests above (486 + 3 = 489). Every run reports the same 6 skips, which are the pre-existing
+environment-gated ones.
+
+## Repeat runs — the flake is gone
+
+The original failure was intermittent, so the full suite was run 32 further times after the
+gates, back to back, in addition to the gate run (33 full green runs in total). Every one
+reported the same result with exit code 0:
+
+```
+$ for i in $(seq 1 32); do swift test --scratch-path "$SCRATCH"; done
+run 1  rc=0 |	 Executed 489 tests, with 6 tests skipped and 0 failures (0 unexpected)
+run 2  rc=0 |	 Executed 489 tests, with 6 tests skipped and 0 failures (0 unexpected)
+...
+run 31 rc=0 |	 Executed 489 tests, with 6 tests skipped and 0 failures (0 unexpected)
+run 32 rc=0 |	 Executed 489 tests, with 6 tests skipped and 0 failures (0 unexpected)
+```
+
+32 consecutive clean runs of a suite that used to fail about 1 run in 20 is consistent with the
+race being removed, and the M1 mutation above shows the exact deterministic failure coming back
+when only the race fix is reverted — so the fix, not luck, is what the repeats measure.

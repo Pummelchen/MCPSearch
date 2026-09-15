@@ -1,0 +1,93 @@
+# B49 — the generated SearXNG `settings.yml` inherited the umask, so the node secret was world-readable
+
+Host: node1 (arm64, macOS 26.6.2, bash 3.2) · branch audit/2026-09-13
+
+## What was wrong
+
+The script generates a per-node key and protects the file it stores it in:
+
+```bash
+chmod 600 "$SECRET_KEY_FILE"
+...
+SECRET_KEY="$(cat "$SECRET_KEY_FILE")"
+```
+
+It then substitutes that same value into a file created by a plain redirect:
+
+```bash
+cat > "${INSTALL_DIR}/searxng/settings.yml" <<'SETTINGS'
+...
+  secret_key: "__SECRET_KEY__"
+...
+SETTINGS
+install_secret_key "${INSTALL_DIR}/searxng/settings.yml" "${SECRET_KEY}"
+```
+
+No `chmod` was applied to `settings.yml`. Under the default `umask 022` the redirect creates it
+`0644`, so the key that the key file goes out of its way to protect was copied into a
+world-readable file. Impact is limited — the nodes are single-operator Mac minis, the instance has
+no accounts, `limiter: false` and `public_instance: false`, so the key grants nothing — but two
+files holding the same secret disagreeing about who may read it is a defect regardless.
+
+## Fails-before, using the script's own function
+
+The harness extracts `install_secret_key()` and the quoted settings template **from the script
+itself** (no copy of the logic), stubs `fail`, and starts from a `0644` file, which is what the
+redirect produces:
+
+```
+$ awk '/^install_secret_key\(\) \{/,/^\}/' <(git show HEAD:deploy/provision-node.sh) > fn.sh
+$ ( umask 022; ... install_secret_key settings.yml <key> )
+resulting mode: 644  placeholder_left=0  key_present=1
+RED: the node secret is world-readable at mode 644          exit=1
+```
+
+## A hypothesis this test disproved
+
+The first version of the fix wrapped the `sed` in a `umask 077` subshell, on the assumption that
+`sed -i` replaces the file and therefore takes its mode from the umask. Measuring it shows that is
+false on this platform — BSD `sed -i` **preserves the original file's mode**:
+
+```
+before sed:                600
+after the pre-fix function: 600      <- a 0644-permission bug is not caused by the umask here
+```
+
+That redirects the fix: the mode has to be *set*, not merely protected by a umask. The wrong
+assumption and the measurement that killed it are both recorded here, because the `umask` version
+would have looked correct and passed a weaker check (one that only ever started from `0644`).
+
+## The fix
+
+Two changes, both needed for different reasons:
+
+1. `chmod 600 "${INSTALL_DIR}/searxng/settings.yml"` **before** `install_secret_key` runs, so the
+   secret is never written into a `0644` file even momentarily. Because `sed -i` preserves the
+   mode, this survives the substitution.
+2. `chmod 600` **inside** `install_secret_key`, after the substitution and before its existing
+   assertions — this is what the finding's expected-correct asks for, and it makes the mode a
+   property the function guarantees rather than one its caller happens to have set.
+
+Both are `|| fail`-guarded, like every other mutation in this script.
+
+## Verification
+
+```
+$ bash -n deploy/provision-node.sh
+bash -n OK
+
+$ shellcheck deploy/provision-node.sh      # finding set identical to HEAD's
+identical finding set (SC2015 x1, SC2016 x1) - no new shellcheck findings
+
+$ ( umask 022; ... fixed install_secret_key settings.yml <key> )
+resulting mode: 600  placeholder_left=0  key_present=1
+GREEN: mode 600, placeholder gone, key present              exit=0
+```
+
+The existing B17 assertions still hold in the green case (the placeholder is gone and the key is
+present), so this change does not weaken them, and `install_secret_key` still fails as before on a
+no-op `sed` and on a wrong key — that behaviour is pinned by `AUDIT/evidence/B17-secret-key-guard.txt`
+and was not touched.
+
+Provisioning a real node was deliberately not executed: it would restart a live SearXNG instance
+on the cluster, which the handover forbids.

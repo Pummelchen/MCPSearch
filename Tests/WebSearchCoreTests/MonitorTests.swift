@@ -55,6 +55,53 @@ final class TerminalLayoutTests: XCTestCase {
         XCTAssertEqual(Terminal.colour("x", .green, enabled: false), "x")
         XCTAssertTrue(Terminal.colour("x", .green, enabled: true).contains("\u{1B}[32m"))
     }
+
+    /// Truncating styled text counts only visible characters and never slices an escape.
+    ///
+    /// The per-character walk treated the escape bytes as width-1 text, so styled lines were cut
+    /// short and could end in a bare `ESC` — the start of a sequence the terminal never receives
+    /// the end of (ledger B53).
+    func testTruncateKeepsEscapeSequencesWhole() {
+        let styled = "\u{1B}[31mabcdef\u{1B}[0m"
+        let truncated = Terminal.truncate(styled, to: 5)
+        XCTAssertEqual(truncated, "\u{1B}[31mabcd…")
+        XCTAssertEqual(Terminal.displayWidth(truncated), 5)
+
+        // The reset must survive: a coloured line truncated without it would bleed into the next.
+        let mixed = "\u{1B}[31mred\u{1B}[0m and more"
+        let truncatedMixed = Terminal.truncate(mixed, to: 7)
+        XCTAssertEqual(truncatedMixed, "\u{1B}[31mred\u{1B}[0m an…")
+        XCTAssertEqual(Terminal.displayWidth(truncatedMixed), 7)
+    }
+
+    /// A one-column budget cannot hold a character *and* an ellipsis, and must still not emit half
+    /// an escape sequence.
+    func testTruncateToOneColumnDropsLeadingEscapesRatherThanSlicingThem() {
+        XCTAssertEqual(Terminal.truncate("\u{1B}[31mabc", to: 1), "a")
+    }
+
+    /// Control characters are replaced, never passed to the terminal.
+    ///
+    /// A terminal executes these bytes: `ESC[2J` clears the screen, `ESC]52;c;…` writes the
+    /// clipboard on terminals that allow it. The probe data that reaches the renderer comes
+    /// from a SearXNG instance, so it is not text this program authored (ledger B25).
+    func testSanitizeReplacesControlCharactersWithAVisiblePlaceholder() {
+        let hostile = "brave\u{1B}]52;c;cGF3bmVk\u{07}google\u{9B}31m\n"
+        let safe = Terminal.sanitize(hostile)
+        XCTAssertFalse(safe.unicodeScalars.contains { $0.value == 0x1B || $0.value == 0x07 })
+        XCTAssertFalse(safe.unicodeScalars.contains { (0x80...0x9F).contains($0.value) })
+        XCTAssertEqual(safe, "brave\u{FFFD}]52;c;cGF3bmVk\u{FFFD}google\u{FFFD}31m\u{FFFD}")
+    }
+
+    /// Format characters are replaced too: they reorder or hide text without taking a column.
+    func testSanitizeStripsFormatCharactersAndLeavesOrdinaryTextAlone() {
+        XCTAssertEqual(Terminal.sanitize("google cse"), "google cse")
+        XCTAssertEqual(Terminal.sanitize("日本語 ✓ — dash"), "日本語 ✓ — dash")
+        XCTAssertEqual(
+            Terminal.sanitize("a\u{200B}b\u{202E}c\u{FEFF}d"),
+            "a\u{FFFD}b\u{FFFD}c\u{FFFD}d"
+        )
+    }
 }
 
 /// Dashboard rendering.
@@ -90,6 +137,20 @@ final class RendererTests: XCTestCase {
         )
     }
 
+    /// The setup hint the real authority would give this provider.
+    ///
+    /// The fixture used to hard-code `"TAVILY_API_KEY"` for every provider, so a test could
+    /// "check" a Brave row against Tavily's variable (ledger B95). Reading the same
+    /// `ProviderProbe.setupHint` the monitor reads is what makes a hint assertion about the real
+    /// mapping instead of about a string the test wrote itself.
+    private func setupHint(for id: ProviderID) -> String {
+        let configuration = Fixtures.configuration()
+        return ProviderProbe(
+            registry: ProviderRegistry(providers: [], configuration: configuration),
+            configuration: configuration
+        ).setupHint(for: id)
+    }
+
     private func provider(
         _ id: ProviderID,
         state: ProviderStatus.State,
@@ -98,7 +159,11 @@ final class RendererTests: XCTestCase {
         failures: Int = 0,
         error: String? = nil
     ) -> ProviderStatus {
-        var status = ProviderStatus.pending(provider: id, configured: state != .notConfigured, hint: "TAVILY_API_KEY")
+        var status = ProviderStatus.pending(
+            provider: id,
+            configured: state != .notConfigured,
+            hint: setupHint(for: id)
+        )
         status.state = state
         status.probes = probes
         status.successes = successes
@@ -121,8 +186,9 @@ final class RendererTests: XCTestCase {
                     providers: [
                         provider(.tavily, state: .healthy),
                         provider(.brave, state: .notConfigured, probes: 0, successes: 0),
-                        provider(.startpage, state: .failing, probes: 3, successes: 0, failures: 3,
-                                 error: "Startpage is temporarily unavailable."),
+                        provider(
+                            .startpage, state: .failing, probes: 3, successes: 0, failures: 3,
+                            error: "Startpage is temporarily unavailable."),
                     ]
                 ),
                 columns: width,
@@ -312,8 +378,9 @@ final class RendererTests: XCTestCase {
     func testFailureMessageIsShown() {
         let lines = Renderer(useColour: false).render(
             model(providers: [
-                provider(.startpage, state: .failing, probes: 2, successes: 0, failures: 2,
-                         error: "Startpage is temporarily unavailable."),
+                provider(
+                    .startpage, state: .failing, probes: 2, successes: 0, failures: 2,
+                    error: "Startpage is temporarily unavailable.")
             ]),
             columns: 140,
             rows: 40
@@ -321,15 +388,70 @@ final class RendererTests: XCTestCase {
         XCTAssertTrue(lines.contains("temporarily unavailable"), lines)
     }
 
+    /// An unconfigured row must show the hint the enablement authority gives that provider.
+    ///
+    /// The fixture used to hand Tavily's variable to every provider, so this asserted that a
+    /// string the test had constructed appeared in its own output: a Brave row was checked
+    /// against `TAVILY_API_KEY`, and a renderer that ignored `ProviderStatus.setupHint` and
+    /// printed a constant would have passed. The expectation now comes from the same
+    /// `ProviderProbe.setupHint` the monitor calls, and the assertion that Brave's own hint
+    /// differs from Tavily's is what stops the constant from satisfying it (ledger B95).
     func testUnconfiguredProviderShowsItsSetupHint() {
+        let braveHint = setupHint(for: .brave)
+        XCTAssertEqual(braveHint, "BRAVE_SEARCH_API_KEY", "the authority must name Brave's variable")
+        XCTAssertNotEqual(
+            braveHint,
+            setupHint(for: .tavily),
+            "the two providers must not share a hint, or this test could pass on a constant"
+        )
+
         let lines = Renderer(useColour: false).render(
             model(providers: [
-                provider(.brave, state: .notConfigured, probes: 0, successes: 0),
+                provider(.brave, state: .notConfigured, probes: 0, successes: 0)
             ]),
             columns: 140,
             rows: 40
         ).joined(separator: "\n")
-        XCTAssertTrue(lines.contains("TAVILY_API_KEY"), "the hint should name the variable")
+
+        XCTAssertTrue(
+            lines.contains("set \(braveHint)"),
+            "the row must show the hint the fixture carried: \(lines)"
+        )
+        XCTAssertFalse(
+            lines.contains(setupHint(for: .tavily)),
+            "the renderer must not substitute a different provider's variable: \(lines)"
+        )
+    }
+
+    /// A disabled provider must read as switched off, and must not be invited to be probed.
+    ///
+    /// It used to render as an idle provider with "ready — press p to probe", so the operator
+    /// was told to press a key that would spend a credit on a provider the server refuses to
+    /// use (ledger B76).
+    func testDisabledProviderIsShownAsOffRatherThanReady() {
+        let disabled = ProviderStatus.pending(
+            provider: .tavily,
+            configured: true,
+            enabled: false,
+            hint: "TAVILY_API_KEY"
+        )
+        let rendered = Renderer(useColour: false).render(
+            model(providers: [disabled]),
+            columns: 140,
+            rows: 40
+        ).joined(separator: "\n")
+
+        XCTAssertTrue(rendered.contains("OFF"), rendered)
+        XCTAssertTrue(
+            rendered.contains("disabled via SEARCH_DISABLED_PROVIDERS"),
+            "the reason must name the switch that caused it: \(rendered)"
+        )
+        XCTAssertFalse(
+            rendered.contains("ready — press p to probe"),
+            "a provider that will not be probed must not be advertised as ready: \(rendered)"
+        )
+        XCTAssertFalse(rendered.contains("set TAVILY_API_KEY"), rendered)
+        XCTAssertTrue(rendered.contains("1 disabled"), "the summary must carry the count: \(rendered)")
     }
 
     func testDegradedNodeShowsUnavailableEngines() {
@@ -366,9 +488,105 @@ final class RendererTests: XCTestCase {
         XCTAssertEqual(Renderer.duration(3725), "1h02m")
     }
 
+    /// The node table's header and data columns line up.
+    ///
+    /// The header padded the state column to 10 while every data row padded it to 8, so the
+    /// header's latency/results/ok labels sat two characters right of the values they described on
+    /// every frame (ledger B67).
+    func testNodeTableHeaderAlignsWithItsData() {
+        let lines = Renderer(useColour: false).render(
+            model(
+                nodes: [node("node1", state: .up)],
+                providers: [provider(.tavily, state: .healthy)]
+            ),
+            columns: 140,
+            rows: 40
+        )
+
+        let header = lines.first { $0.contains("latency") } ?? ""
+        let row = lines.first { $0.contains("900ms") } ?? ""
+        let headerEnd = header.range(of: "latency").map {
+            Terminal.displayWidth(String(header[header.startIndex..<$0.upperBound]))
+        }
+        let rowEnd = row.range(of: "900ms").map {
+            Terminal.displayWidth(String(row[row.startIndex..<$0.upperBound]))
+        }
+
+        XCTAssertNotNil(headerEnd, "the node table must have a header")
+        XCTAssertNotNil(rowEnd, "the node table must show the stub latency")
+        XCTAssertEqual(headerEnd, rowEnd, "the latency column ends at the same column in both rows")
+    }
+
     func testMillisecondFormatting() {
         XCTAssertEqual(Renderer.milliseconds(.milliseconds(750)), "750ms")
         XCTAssertEqual(Renderer.milliseconds(.milliseconds(1500)), "1.5s")
+    }
+
+    /// Text a probed instance controls must not be able to drive the operator's terminal.
+    ///
+    /// Engine names, `unresponsive_engines` reasons and error bodies arrive from SearXNG and are
+    /// rendered straight into the frame. A terminal executes what it is handed, so an instance
+    /// could clear the screen, move the cursor, or write the clipboard through OSC 52 using
+    /// nothing but an engine name. The frame may therefore contain no escape sequence other than
+    /// the colouring the renderer itself generates (ledger B25).
+    func testHostileInstanceTextCannotDriveTheTerminal() {
+        var injecting = node("node1", state: .up)
+        injecting.engines = ["brave\u{1B}]52;c;cGF3bmVk\u{07}", "google cse"]
+        injecting.unavailableEngines = ["duckduckgo\u{1B}[2JSPOOF: CAPTCHA"]
+        var failing = node("node2", state: .degraded)
+        failing.error = "connection refused\u{1B}[31m\u{9B}1;2H"
+        failing.name = "node2\u{1B}]0;spoofed title\u{07}"
+
+        var model = self.model(
+            nodes: [injecting, failing],
+            providers: [provider(.tavily, state: .healthy, error: "boom\u{1B}[2J")]
+        )
+        model.warnings = ["engine 'duckduckgo\u{1B}[2J' unavailable on 4 node(s)"]
+
+        let rendered = Renderer(useColour: true)
+            .render(model, columns: 200, rows: 40)
+            .joined(separator: "\n")
+
+        for sequence in escapeSequences(in: rendered) {
+            XCTAssertTrue(
+                Self.isOwnColouring(sequence),
+                "the dashboard may only emit its own colouring, found \(sequence.debugDescription)"
+            )
+        }
+        XCTAssertFalse(
+            rendered.unicodeScalars.contains { (0x80...0x9F).contains($0.value) },
+            "a bare C1 control character reached the frame"
+        )
+        XCTAssertTrue(
+            rendered.contains("\u{FFFD}"),
+            "the payload must be replaced with a visible placeholder, not dropped silently"
+        )
+        XCTAssertTrue(rendered.contains("google cse"), "legitimate engine names still render")
+    }
+
+    /// The escape sequences in `text`, terminated the same way `Terminal.displayWidth` does.
+    private func escapeSequences(in text: String) -> [String] {
+        var found: [String] = []
+        var index = text.startIndex
+        while let start = text[index...].firstIndex(of: "\u{1B}") {
+            var cursor = text.index(after: start)
+            while cursor < text.endIndex, !text[cursor].isLetter {
+                cursor = text.index(after: cursor)
+            }
+            guard cursor < text.endIndex else {
+                found.append(String(text[start...]))
+                break
+            }
+            found.append(String(text[start...cursor]))
+            index = text.index(after: cursor)
+        }
+        return found
+    }
+
+    /// Whether a sequence is one the renderer generates itself: `ESC [ <digits and ;> m`.
+    private static func isOwnColouring(_ sequence: String) -> Bool {
+        guard sequence.hasPrefix("\u{1B}["), sequence.hasSuffix("m") else { return false }
+        return sequence.dropFirst(2).dropLast().allSatisfy { $0.isNumber || $0 == ";" }
     }
 }
 
@@ -382,16 +600,19 @@ final class MonitorModelTests: XCTestCase {
 
         // Two successes and one failure.
         status = status.applying(
-            NodeProbe.Result(state: .up, latencyMilliseconds: 100, resultCount: 25,
-                             engines: ["brave"], unavailableEngines: [], error: nil)
+            NodeProbe.Result(
+                state: .up, latencyMilliseconds: 100, resultCount: 25,
+                engines: ["brave"], unavailableEngines: [], error: nil)
         )
         status = status.applying(
-            NodeProbe.Result(state: .up, latencyMilliseconds: 200, resultCount: 25,
-                             engines: ["brave"], unavailableEngines: [], error: nil)
+            NodeProbe.Result(
+                state: .up, latencyMilliseconds: 200, resultCount: 25,
+                engines: ["brave"], unavailableEngines: [], error: nil)
         )
         status = status.applying(
-            NodeProbe.Result(state: .down, latencyMilliseconds: nil, resultCount: 0,
-                             engines: [], unavailableEngines: [], error: "unreachable")
+            NodeProbe.Result(
+                state: .down, latencyMilliseconds: nil, resultCount: 0,
+                engines: [], unavailableEngines: [], error: "unreachable")
         )
 
         XCTAssertEqual(status.checks, 3)
@@ -438,6 +659,50 @@ final class MonitorModelTests: XCTestCase {
         XCTAssertEqual(ProviderStatus.kind(of: .searxng), "aggregator")
         XCTAssertEqual(ProviderStatus.kind(of: .parallel), "aggregator")
     }
+
+    /// A provider the operator disabled is unavailable, not ready and not "no key": the two
+    /// reasons a provider is inert are distinct, and only one of them is a credential
+    /// problem (ledger B76, reintroducing the state B78 removed).
+    func testPendingProviderDistinguishesDisabledFromUnconfigured() {
+        let ready = ProviderStatus.pending(
+            provider: .tavily,
+            configured: true,
+            hint: "TAVILY_API_KEY"
+        )
+        XCTAssertEqual(ready.state, .configuredButIdle)
+        XCTAssertEqual(ready.state.label, "IDLE")
+        XCTAssertTrue(ready.isInService)
+
+        let keyless = ProviderStatus.pending(
+            provider: .tavily,
+            configured: false,
+            hint: "TAVILY_API_KEY"
+        )
+        XCTAssertEqual(keyless.state, .notConfigured)
+        XCTAssertEqual(keyless.state.label, "NO KEY")
+        XCTAssertFalse(keyless.isInService)
+
+        let disabled = ProviderStatus.pending(
+            provider: .tavily,
+            configured: true,
+            enabled: false,
+            hint: "TAVILY_API_KEY"
+        )
+        XCTAssertEqual(disabled.state, .unavailable)
+        XCTAssertEqual(disabled.state.label, "OFF")
+        XCTAssertFalse(disabled.isInService, "a switched-off provider is not a failure to count")
+
+        let disabledKeyless = ProviderStatus.pending(
+            provider: .tavily,
+            configured: false,
+            enabled: false,
+            hint: "TAVILY_API_KEY"
+        )
+        XCTAssertEqual(
+            disabledKeyless.state, .unavailable,
+            "being switched off is reported ahead of a missing credential"
+        )
+    }
 }
 
 /// Probe query rotation.
@@ -451,4 +716,5 @@ final class ProbeQueriesTests: XCTestCase {
         // And the rotation is stable and finite.
         XCTAssertEqual(queries.next(), first)
     }
+
 }

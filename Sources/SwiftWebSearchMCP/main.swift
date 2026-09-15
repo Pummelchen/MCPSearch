@@ -3,18 +3,61 @@ import Logging
 import MCP
 import WebSearchCore
 
-/// Entry point for the SwiftWebSearchMCP stdio server.
-///
-/// Boot sequence:
-/// 1. Parse configuration from the optional config file plus environment variables.
-/// 2. Build the provider registry and the search/fetch pipeline.
-/// 3. Register `web_search`, `web_open`, `web_answer` and `web_search_status`.
-/// 4. Serve MCP over stdio until the transport completes.
-///
-/// All diagnostics go to stderr. stdout carries JSON-RPC framing only.
+// Entry point for the SwiftWebSearchMCP server.
+//
+// Boot sequence:
+// 1. Parse the command line and answer `--help`, before anything depends on the environment.
+// 2. Parse configuration from the optional config file plus environment variables.
+// 3. Build the provider registry and the search/fetch pipeline.
+// 4. Register `web_search`, `web_open`, `web_answer` and `web_search_status`.
+// 5. Serve MCP over the selected transport until it completes.
+//
+// All diagnostics go to stderr. stdout carries JSON-RPC framing only.
+
+// The command line is parsed before any configuration is loaded. The reverse order meant that a
+// mistyped `SEARCH_CONFIG_FILE` refused to start even for `--help`, and a flag that was about to
+// be rejected still emitted the startup log and built the HTTP client and the whole provider
+// pipeline first (ledger B113).
+let options: ServerOptions
+do {
+    options = try ServerOptions.parse(Array(CommandLine.arguments.dropFirst()))
+} catch {
+    // The logger takes its level from the configuration, which is deliberately not loaded yet, so
+    // this diagnostic goes to stderr directly.
+    FileHandle.standardError.write(
+        Data(("Invalid arguments: \(error)\n" + ServerOptions.usage + "\n").utf8)
+    )
+    exit(2)
+}
+
+if options.wantsHelp {
+    print(ServerOptions.usage)
+    exit(0)
+}
 
 let configuration = AppConfiguration.load()
 let log = Log(level: configuration.logLevel, logQueries: configuration.logQueries)
+
+// Report every configured value that could not be used. Silently falling back to a default is
+// how a typo turns into "no providers are configured" with no explanation (ledger B09).
+for issue in configuration.issues {
+    // The tool's own logger takes string metadata; the detail never contains a credential.
+    let metadata = ["key": issue.key, "detail": issue.detail]
+    switch issue.kind {
+    case .unreadableConfigFile:
+        log.error("Configuration file problem", metadata: metadata)
+    case .unparseableValue, .invalidURL:
+        log.warning("Ignoring an unusable configured value", metadata: metadata)
+    }
+}
+if configuration.issues.contains(where: { $0.kind == .unreadableConfigFile }) {
+    // A config file that was asked for and is not there is fatal: starting with defaults would
+    // quietly serve a different configuration than the one the operator provided.
+    FileHandle.standardError.write(
+        Data("Refusing to start: SEARCH_CONFIG_FILE could not be read.\n".utf8)
+    )
+    exit(2)
+}
 
 log.info(
     "Starting \(MCPServerFactory.serverName)",
@@ -26,20 +69,22 @@ log.info(
 
 // Report which providers came up, without ever echoing a credential.
 //
+// The requirements and their satisfaction both come from `ProviderEnablement`, the one
+// authority the status tool, the tool error text and the monitor also read, so a provider
+// cannot be named here and forgotten there (ledger B57). The inventory and the
+// empty-configuration warning read the same authority, so the warning cannot name only the
+// variables that existed when it was written (ledger B114).
+//
 // Jina is absent on purpose: its key only raises the page-extraction rate limit, and it is
 // not a search provider. Parallel needs the flag *and* an endpoint, because an emptied
-// PARALLEL_MCP_URL registers no adapter while the flag still reads as on.
-let configuredProviders = [
-    configuration.tavilyAPIKey != nil ? "tavily" : nil,
-    configuration.braveAPIKey != nil ? "brave" : nil,
-    configuration.mojeekAPIKey != nil ? "mojeek" : nil,
-    configuration.exaAPIKey != nil ? "exa" : nil,
-    configuration.searxngBaseURL != nil ? "searxng" : nil,
-    configuration.openWebSearchURL != nil ? "open_web_search" : nil,
-    configuration.enableScrapers ? "duckduckgo" : nil,
-    configuration.enableScrapers ? "startpage" : nil,
-    configuration.enableParallel && configuration.parallelMCPURL != nil ? "parallel" : nil,
-].compactMap { $0 }
+// PARALLEL_MCP_URL registers no adapter while the flag still reads as on — which is exactly
+// the pair of inputs `ProviderEnablement` records for it.
+let configuredProviders = ProviderID.allCases
+    .filter { ProviderEnablement.isSatisfied($0, in: configuration) }
+    .map(\.rawValue)
+
+// Every variable that can register a provider, named once each.
+let providerVariables = ProviderEnablement.allInputs.map(\.variableName)
 
 log.info(
     "Provider configuration resolved",
@@ -54,9 +99,9 @@ log.info(
 if configuredProviders.isEmpty {
     // Not fatal: the server must start and explain itself with zero keys.
     log.warning(
-        "No search provider is configured. Set TAVILY_API_KEY, BRAVE_SEARCH_API_KEY, "
-            + "MOJEEK_API_KEY, EXA_API_KEY or SEARXNG_BASE_URL. "
-            + "web_search_status will show the details."
+        "No search provider is configured. Set "
+            + providerVariables.joined(separator: ", ")
+            + ". web_search_status will show the details."
     )
 }
 
@@ -69,22 +114,6 @@ let pipeline = SearchPipelineFactory.make(
 )
 
 let handlers = ToolHandlers(pipeline: pipeline, log: log)
-
-// Parse command-line options before building the server: a bad flag should fail fast
-// and loudly rather than starting the wrong transport.
-let options: ServerOptions
-do {
-    options = try ServerOptions.parse(Array(CommandLine.arguments.dropFirst()))
-} catch {
-    log.error("Invalid arguments", metadata: ["error": "\(error)"])
-    FileHandle.standardError.write(Data((ServerOptions.usage + "\n").utf8))
-    exit(2)
-}
-
-if options.wantsHelp {
-    print(ServerOptions.usage)
-    exit(0)
-}
 
 let server = await MCPServerFactory.make(handlers: handlers, log: log)
 
@@ -109,36 +138,33 @@ case .stdio:
     }
 
 case .http(let httpConfiguration):
-    // The stateful transport owns MCP sessions and streams responses as Server-Sent
-    // Events, so the `Accept` validator requires the client to accept both JSON and
-    // `text/event-stream`. That is what the Streamable HTTP transport specifies, and
-    // what OpenAI's and Anthropic's MCP clients send. Origin validation is kept: it
-    // costs nothing for server-to-server callers and stops a browser page from driving
-    // the server.
-    let transport = StatefulHTTPServerTransport(
-        validationPipeline: StandardValidationPipeline(validators: [
-            OriginValidator.localhost(port: httpConfiguration.port),
-            AcceptHeaderValidator(mode: .sseRequired),
-            ContentTypeValidator(),
-            ProtocolVersionValidator(),
-            SessionValidator(),
-        ]),
-        logger: Logger(label: "mcp.transport.http")
-    )
+    // One Server and one transport per session. The SDK's stateful transport is single-session
+    // and one-shot — it refuses a second `initialize` and answers 404 forever after a
+    // termination — so a shared instance meant exactly one HTTP client per process, for the
+    // life of the process (ledger B03). The streamable transport owns the session header,
+    // Accept negotiation and SSE framing; the host routes by session id.
+    let makeSessionServer: HTTPMCPHost.SessionFactory = { transport in
+        let sessionServer = await MCPServerFactory.make(handlers: handlers, log: log)
+        try await sessionServer.start(transport: transport)
+        return sessionServer
+    }
 
     do {
-        try await server.start(transport: transport)
-
         let host = HTTPMCPHost(
             configuration: httpConfiguration,
-            transport: transport,
+            makeServer: makeSessionServer,
+            // The same budget the fetch itself gets. It also bounds how long an inbound
+            // connection may stay open without completing its request, so a peer that opens
+            // connections and never finishes a request cannot hold them indefinitely
+            // (ledger B90).
+            requestCompletionTimeout: configuration.requestTimeout,
             log: log
         )
         try await host.start()
 
         // Serve until the process is asked to stop.
-        await server.waitUntilCompleted()
-        await shutdown(server: server, host: host)
+        await host.waitUntilStopped()
+        await host.stop()
         log.info("MCP server stopped")
     } catch {
         log.error("MCP server failed to start", metadata: ["error": "\(error)"])

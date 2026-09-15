@@ -1,0 +1,200 @@
+# B110 — `web_answer.provider` lost the enum that `web_search.provider` declares
+
+Host: this Mac (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## What was wrong
+
+`web_search.provider` advertised the closed set of provider ids, and `web_answer.provider` — the
+same discovery argument, resolved by a copy of the same parsing block in `ToolHandlers` — advertised
+a bare nullable string:
+
+```swift
+// ToolSchemas.swift, before (web_answer)
+"provider": [
+    "type": ["string", "null"],
+    "description": Value.string(
+        "Force one search provider by id, or \"auto\" (default) to "
+            + "select automatically"
+    ),
+],
+```
+
+Both handlers reject an unknown id at runtime with the same message, so the missing `enum` cost a
+strict `tools/list` consumer the only place it could learn the legal values, and gained the server
+nothing. The file's own doc comment claims the answer schema "deliberately mirrors `web_search`'s
+discovery arguments"; the mirror was a hand-maintained copy that had already drifted, exactly the
+class B58 describes.
+
+## The fix: one definition, not two copies
+
+The obvious repair is to paste the ten-value enum into `web_answer`. That would repeat the mistake
+that produced the defect — a second copy that can drift again the next time the set changes. The
+choice made here is structural: both tools now reference a single definition, and that definition is
+derived from `ProviderID.allCases` rather than from a literal.
+
+```swift
+// ToolSchemas.swift, after
+/// The `provider` discovery argument, spelled once for both search tools.
+///
+/// `web_answer` runs the same discovery pass as `web_search`, and the two tools
+/// must not teach a client two different sets of legal ids. An earlier hand-written
+/// copy on `web_answer` silently lost its `enum`, so a strict `tools/list` consumer
+/// could not discover the accepted ids for that tool at all (ledger B110). Deriving
+/// the list from `ProviderID.allCases` also removes the second failure mode a shared
+/// literal would keep: a provider added to the core enum but forgotten here would be
+/// rejected by this file's own advertised contract.
+///
+/// `auto` is not a `ProviderID`; it is the sentinel both argument parsers translate
+/// into "let the orchestrator choose". `null` belongs to the list because the
+/// property is a nullable union and the schema's own lint requires an `enum` to
+/// admit every value its `type` admits (ledger B111).
+private static var providerDiscoverySchema: Value {
+    .object([
+        "description": .string(
+            "Force a single search provider by id, or \"auto\" (default) to select "
+                + "automatically"
+        ),
+        "enum": .array(
+            [.string("auto")]
+                + ProviderID.allCases.map { Value.string($0.rawValue) }
+                + [.null]
+        ),
+        "type": .array([.string("string"), .string("null")]),
+    ])
+}
+```
+
+Both `webSearchInput` and `webAnswerInput` now declare `"provider": Self.providerDiscoverySchema`.
+The `null` member is in place because the fix belongs with the derivation; the lint that requires it
+for every nullable enum is B111's, added immediately after this commit, and the comment cross-refers
+to it. No public API signature changed: `providerDiscoverySchema` is `private`.
+
+The `description` intentionally changed from the old `web_answer` wording to the `web_search`
+wording. The two tools have one `provider` contract, and the new text is the one that names the
+default explicitly, which is what `testDefaultsAreDocumentedInDescriptions` asserts for
+`web_search`.
+
+The wire form was read back from a freshly started server rather than from the source, and the two
+properties are byte-identical:
+
+```
+web_search {
+  "description": "Force a single search provider by id, or \"auto\" (default) to select automatically",
+  "enum": ["auto","tavily","brave","mojeek","exa","searxng","open_web_search","duckduckgo","startpage","parallel", null],
+  "type": ["string", "null"]
+}
+web_answer { … identical … }
+```
+
+## The lint: mirrored schemas are compared, not trusted
+
+`SchemaCompatibilityTests.violations` already walked every advertised input and output schema. It now
+accepts the schema of the tool being mirrored and, for `web_answer.inputSchema`, compares every
+declared discovery argument with `web_search`'s:
+
+```swift
+// SchemaCompatibilityTests.swift, after (abridged)
+let mirroredKeys = Set(mirrored.keys).subtracting(["query"])
+let declaredKeys = Set(properties.keys).subtracting(["query"])
+if mirroredKeys != declaredKeys { found.append(… key-set drift …) }
+for key in declaredKeys.intersection(mirroredKeys) {
+    …
+    if key == "provider" {
+        if canonical(declared) != canonical(expected) { found.append(… ids not discoverable …) }
+        continue
+    }
+    // every keyword except `description` must match, key by key
+}
+```
+
+The comparison is deliberately scoped. The keywords that constrain a value (`type`, `enum`,
+`minimum`, `maximum`, `maxItems`, `items`) must be identical, and the *set of declared arguments*
+must be identical. Each tool's own `description` prose is exempt, because `web_answer` legitimately
+describes grounding an answer rather than returning results; an earlier version that compared whole
+properties reported four false positives (`mode`, `max_results`, `include_domains`,
+`exclude_domains` all differ only in prose) and was narrowed before commit. `provider` is held to the
+whole property *including* its description, because the description is where the default is
+documented and the two must teach the same default.
+
+`testProviderEnumListsTheAcceptedProviderIDs` was added as the focused test. It reads the enum from
+the wire for both tools and asserts set equality with the ten ids the runtime parser accepts, pinning
+the public contract independently of the production derivation, and that the two descriptions agree.
+This is the half a parity lint cannot see: if both tools lost the enum together, the comparison would
+pass, and only a test that knows the expected ids catches it.
+
+`StdioServerTests.testProviderEnumMatchesSelectableProviders` read the enum as `[String]`. It now
+reads `[Any]` and filters the string members, and asserts that no entry is anything other than a
+string or null; its subject — which *providers* are advertised — is unchanged. It was left otherwise
+untouched so that B111 can add the null-count assertion the nullability fix owns.
+
+## Proof the lint can fail (mutation, not assertion)
+
+M1 — the exact original defect, restored in production (`web_answer.provider` back to a bare
+nullable string; `web_search` untouched), with the strengthened lint in place:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter "SchemaCompatibilityTests"
+Test Case '-[… testAllAdvertisedSchemasSatisfyCrossClientRules]' started.
+…/SchemaCompatibilityTests.swift:270: error: -[WebSearchCoreTests.SchemaCompatibilityTests testAllAdvertisedSchemasSatisfyCrossClientRules] : XCTAssertTrue failed - schemas violate cross-client rules:
+  web_answer.inputSchema: discovery argument `provider` differs from the schema this tool mirrors, so a client cannot discover the ids the server accepts
+Test Case '-[… testAllAdvertisedSchemasSatisfyCrossClientRules]' failed (0.734 seconds).
+```
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter "SchemaCompatibilityTests/testProviderEnumListsTheAcceptedProviderIDs"
+…/SchemaCompatibilityTests.swift:425: error: -[WebSearchCoreTests.SchemaCompatibilityTests testProviderEnumListsTheAcceptedProviderIDs] : XCTAssertEqual failed: ("[]") is not equal to ("["tavily", "mojeek", "exa", "auto", "searxng", "parallel", "brave", "duckduckgo", "open_web_search", "startpage"]") - web_answer.provider must advertise exactly the parser's accepted ids (missing: ["auto", "brave", "duckduckgo", "exa", "mojeek", "open_web_search", "parallel", "searxng", "startpage", "tavily"], unexpected: [])
+…/SchemaCompatibilityTests.swift:431: error: -[WebSearchCoreTests.SchemaCompatibilityTests testProviderEnumListsTheAcceptedProviderIDs] : XCTAssertEqual failed: ("Optional("Force one search provider by id, or \"auto\" (default) to select automatically")") is not equal to ("Optional("Force a single search provider by id, or \"auto\" (default) to select automatically")") - web_answer.provider must document the same default as `web_search`
+	 Executed 1 test, with 2 failures (0 unexpected) in 0.112 (0.112) seconds
+```
+
+The violation names the exact schema and the exact argument, and the focused test names the whole
+missing id set.
+
+That the parity rule is load-bearing is shown by running the *pre-fix* test against the *defective*
+tree — the state of the repository before this task. For that run, both test files were taken from
+`HEAD` (the lint as it was) with the defect restored in production:
+
+```
+$ git diff --stat -- Tests/WebSearchCoreTests/SchemaCompatibilityTests.swift
+(no output: the pre-fix test file is restored)
+$ swift test --scratch-path "$SCRATCH" --filter "SchemaCompatibilityTests"
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.651 (0.652) seconds
+```
+
+The old lint passed the defective schema. That is the omission B110 describes, and it shows M1's
+failure comes from the new comparison rather than from something incidental.
+
+Both files were then restored and verified byte-identical against copies taken before the mutation
+(`diff` empty; SHA-256 of each restored file equals its backup's).
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (5.64s)                                                     0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+	 Executed 494 tests, with 6 tests skipped and 0 failures (0 unexpected)
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (6.16s)                                                     0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+0 diagnostics                                                               exit=0
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 84 files.                    exit=0
+
+$ python3 scripts/third_party_notices.py
+THIRD-PARTY-NOTICES.md covers all 8 resolved packages at the pinned versions  exit=0
+```
+
+494 is 493 at HEAD plus the one new test method. The 6 skips are the pre-existing
+environment-gated ones.
+
+## Noted, not changed
+
+`web_answer.mode` and `web_search.mode` remain two literals with the same three values; the parity
+lint now fails the build if either changes alone, which is the protection the finding asked for. The
+duplicated *parsing* block in `ToolHandlers` is B58's subject and is untouched. `recency` has no
+equivalent parity rule of its own beyond the same keyword comparison, which covers it.

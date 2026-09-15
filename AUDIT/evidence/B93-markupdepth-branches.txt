@@ -1,0 +1,119 @@
+# B93 — four `MarkupDepth` branches/contracts pinned
+
+Host: `node1 (arm64, macOS 26.6.2)` · branch `audit/2026-09-13` · Swift 6.3.3
+
+## Premise check: still open
+
+Grepped before writing: `markupDepthExceeded` appears in tests only at the three pre-existing
+assertions in `MarkupDepthTests.swift`, and no other test file mentions `MarkupDepth` or
+`exceedsLimit` (only a comment in `HTMLExtractorTests`). The four gaps the finding names were all
+still open:
+
+1. `skipRawText`'s unterminated branch — every raw-text fixture closed its element.
+2. the `Array(html.utf8)[...]` path — no test called `scan` on a slice.
+3. `markupDepthExceeded`'s `category`/`safeDescription` — only the case value was asserted.
+4. the `web_open` end-to-end contract — nothing reached it at all.
+
+## What was added (five test methods, no production change)
+
+| Test | Pins |
+| --- | --- |
+| `testUnterminatedRawTextSwallowsTheRestOfTheDocument` | an unclosed `<script>` holds no elements, so 20 000 `<div>`s inside it are not nesting |
+| `testUnterminatedRawTextIsSkippedRatherThanScanned` | exactly the limit in real elements, then an unclosed `<style>` full of markup, is still accepted |
+| `testScanOverANonContiguousByteViewAgreesWithTheContiguousPath` | `scan` honours a slice's own `startIndex` and `endIndex` |
+| `testMarkupDepthExceededProjectsOntoTheSharedTaxonomy` | `category == .malformedResponse`, `provider == nil`, exact `safeDescription`, and that the limit is carried through |
+| `testWebOpenOnADeeplyNestedPageIsAToolError` | a real stdio session gets `isError == true` and the model-visible sentence for a 20 000-deep page |
+
+The raw-text fixtures use 20 000 levels deliberately: they would trip the 512 limit immediately if
+the content were scanned, so there is no small-input way for the skip to pass by accident.
+
+## Proof each assertion can fail (mutations of production code)
+
+`Sources/` was restored between mutations and verified byte-identical at the end.
+
+**M1 — `skipRawText`'s unterminated return changed from `end` to `start`**
+(`MarkupDepth.swift`, one line). Library recompiled:
+
+```
+$ xcrun xctest -XCTest WebSearchCoreTests.MarkupDepthTests <bundle>
+MarkupDepthTests.swift:111: error: … testUnterminatedRawTextIsSkippedRatherThanScanned :
+    XCTAssertFalse failed - the markup inside the unclosed style element is raw text, not nesting
+MarkupDepthTests.swift:95: error: … testUnterminatedRawTextSwallowsTheRestOfTheDocument :
+    XCTAssertFalse failed - raw text that never closes holds no elements, so it cannot nest
+Executed 24 tests, with 2 failures (0 unexpected)
+```
+
+**M2 — the category projection changed from `.malformedResponse` to `.unknown`**
+(`SearchError.swift`, one line):
+
+```
+MarkupDepthTests.swift:161: error: … testMarkupDepthExceededProjectsOntoTheSharedTaxonomy :
+    XCTAssertEqual failed: ("unknown") is not equal to ("malformedResponse")
+Executed 24 tests, with 1 failure (0 unexpected)
+```
+
+One failure only: the projection test isolates this mapping.
+
+**M3 — the limit raised to 10 000, then the product relinked so the spawned server carries it.**
+This is the mutation that proves the end-to-end test is not passing on a stale binary:
+
+```
+MarkupDepthTests.swift:212: error: … testWebOpenOnADeeplyNestedPageIsAToolError :
+    XCTAssertTrue failed - the model must be told why the page was refused:
+    The markup nests more than 10000 elements deep, which cannot be parsed safely.
+Executed 1 test, with 1 failure (0 unexpected)
+```
+
+Getting this far needed two mechanical corrections, recorded because they nearly produced a false
+"proof": `swift build --build-tests` does not reliably recompile the library for a source-only
+edit within the same second (a `touch` is required), and the spawned product must be relinked
+separately or the test keeps talking to the old server. An earlier run of the same mutation
+appeared green for exactly that reason. M3's first value (100 000) knocked the whole runner over
+with `Bus error: 10` — the A01 failure mode the guard exists to prevent — so the observed value is
+10 000, which the runner survives.
+
+**Restoration.** All three files were restored from their pre-mutation copies:
+`MarkupDepth.swift` `diff` empty / SHA-256 `aed19c05…c547`, `HTMLExtractor.swift` `diff` empty /
+SHA-256 `3f7f6841…2e42`, `SearchError.swift` `diff` empty / SHA-256 `395cb2d6…09e3e6`. The class is
+green again (24 tests, 0 failures).
+
+## One honest limit on the second assertion
+
+The `withContiguousStorageIfAvailable` fallback in `exceedsLimit` cannot be reached from a test on
+this platform: a native `String` built any way I tried hands out contiguous UTF-8, so the `else`
+branch does not execute under test. The test therefore pins the *slice semantics that branch
+depends on* (`scan` over an `ArraySlice` with a non-zero `startIndex`) rather than claiming to
+execute the fallback. This is stated rather than papered over; the fallback lines remain uncovered
+by measurement, and a coverage report naming them is the honest record.
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (6.34s)                                          0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+Executed 554 tests, with 6 tests skipped and 0 failures (0 unexpected) in 31.268 (31.332) seconds
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (14.56s)                                         0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+exit 0                                                           0 diagnostics
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 87 files.         exit 0
+
+$ python3 scripts/third_party_notices.py
+THIRD-PARTY-NOTICES.md covers all 8 resolved packages at the pinned versions
+```
+
+554 is the 549 baseline plus these five tests; `MarkupDepthTests` goes from 19 to 24 cases. The 6
+skips are the pre-existing environment-gated ones.
+
+## Deviation
+
+The expected-correct asked for "a direct `scan(ArraySlice(...))` test built from a non-contiguous
+UTF-8 view". A non-contiguous view is not constructible here, so the test calls `scan` with the
+slice type the fallback builds instead, and the limitation is documented above. No production code
+changed.

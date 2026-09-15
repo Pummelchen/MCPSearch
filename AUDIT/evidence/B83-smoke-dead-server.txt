@@ -1,0 +1,189 @@
+# B83 — `mcp_smoke.py`'s HTTP wait loop never noticed a dead server
+
+Host: this Mac (arm64, macOS 26.6.2) · branch audit/2026-09-13 · Python 3.14.7
+
+## What was wrong
+
+`free_loopback_port()` binds port 0, reads the number and closes the probe socket before
+the child is even started, so the child can lose the race and fail to bind. When it then
+exited, `wait_for_health` never called `process.poll()` and never read the captured
+stderr: it polled `/health` for the full 20 s and raised a bare
+
+```
+HTTP transport did not become healthy on port N
+```
+
+The child's stderr was only consumed on the success path, so a startup failure produced a
+timeout with no diagnostic. (Pre-fix `wait_for_health` was `scripts/mcp_smoke.py:359-377`;
+the only call site was `:407`.)
+
+## The decision
+
+Poll the child on every pass of the wait loop and, once it has exited, fail at once with
+the exit code and whatever it wrote to stderr:
+
+```
+    exit_code = process.poll()
+    if exit_code is not None:
+        raise Failure(
+            f"HTTP server is not listening on port {port}: it exited with code "
+            f"{exit_code} before the transport came up; stderr:\n{child_stderr(process)}"
+        )
+```
+
+The new `child_stderr(process)` helper does the best-effort read in the same style as
+`Server.stderr_text`, including the `OSError, ValueError` guard, and returns a `<...>`
+placeholder rather than raising inside a failure path. The original full-timeout message
+is kept for the genuinely different case: the child is alive but never becomes healthy.
+
+The expected-correct also offers "keep the probe socket until the child has bound, or
+retry a fresh port on bind failure" against the port race. That half was **not**
+implemented, deliberately:
+
+- "keep the probe socket until the child has bound" cannot work as written: the child
+  binds the port itself, and a socket still bound by the parent makes that bind fail with
+  `EADDRINUSE`; `SO_REUSEADDR` does not permit two live binders on macOS. Handing the
+  child a pre-bound fd would need a server-side protocol change, out of scope here.
+- a retry needs to classify a failure as a bind failure (stderr text matching) and wrap
+  `run_http_smoke` in a retry loop — a behavioural change beyond the reported defect.
+
+What the race costs now is bounded and actionable: the run stops in well under a second
+and prints the server's own diagnostic instead of a 20 s silence.
+
+## Verification
+
+The check drives the real HTTP path (`run_http_smoke`) with a child that exits 1 without
+ever binding — this repository's own smoke script invoked with the HTTP argv (it rejects
+`http` as the positional binary path, so that is exactly a startup failure with a
+diagnostic on stderr). Nothing ever listens on the chosen port, so the three assertions
+are the reported defect: the failure must name the dead server, must carry the child's
+stderr, and must arrive well inside the 20 s timeout. RED was captured on the pristine
+working tree before the fix and GREEN on the fixed file; the command was identical.
+
+```
+$ time python3 - <<'PY'
+"""B83 check: the HTTP smoke path must fail promptly, and say so, when nothing listens.
+
+The child is this repository's own smoke script invoked with the HTTP argv; it exits 1
+without ever binding, so the chosen port stays dead for the whole run. On the unfixed
+code ``wait_for_health`` never polls the child, loops for the full 20 s timeout, and
+blames the port.
+"""
+import importlib.util
+import time
+
+spec = importlib.util.spec_from_file_location("mcp_smoke", "scripts/mcp_smoke.py")
+assert spec is not None and spec.loader is not None
+smoke = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(smoke)
+
+started = time.monotonic()
+try:
+    smoke.run_http_smoke("scripts/mcp_smoke.py")
+except smoke.Failure as error:
+    elapsed = time.monotonic() - started
+    message = str(error)
+    checks = {
+        "names the dead server (not just the port)": "not listening" in message,
+        "includes the child's stderr": "server binary not found" in message,
+        "does not wait out the 20 s timeout (< 5 s)": elapsed < 5.0,
+    }
+    for name, passed in checks.items():
+        print(f"{'PASS' if passed else 'FAIL'}: {name}")
+    print(f"elapsed: {elapsed:.2f}s")
+    print(f"Failure: {message}")
+    raise SystemExit(0 if all(checks.values()) else 1)
+else:
+    print("FAIL: run_http_smoke returned without raising")
+    raise SystemExit(1)
+PY
+```
+
+RED, pristine working tree (no fix):
+
+```
+FAIL: names the dead server (not just the port)
+FAIL: includes the child's stderr
+FAIL: does not wait out the 20 s timeout (< 5 s)
+elapsed: 20.05s
+Failure: HTTP transport did not become healthy on port 60593
+exit:1
+
+real	0m20.139s
+user	0m0.127s
+sys	0m0.040s
+```
+
+GREEN, fixed file:
+
+```
+PASS: names the dead server (not just the port)
+PASS: includes the child's stderr
+PASS: does not wait out the 20 s timeout (< 5 s)
+elapsed: 0.79s
+Failure: HTTP server is not listening on port 60672: it exited with code 1 before the transport came up; stderr:
+SMOKE TEST FAILED: server binary not found at http; run `swift build` first
+exit:0
+
+real	0m0.887s
+user	0m0.147s
+sys	0m0.046s
+```
+
+The ~25× drop (20.05 s → 0.79 s) is measured, not asserted: the 20.05 s is the full
+`wait_for_health` deadline expiring, and the 0.79 s is the loop noticing the exit.
+
+The new `poll()` guard must not reject a live child, so a healthy `/health` in front of a
+live process was checked separately. It returns instead of raising:
+
+```
+$ python3 - <<'PY'
+import http.server, importlib.util, socketserver, subprocess, threading
+
+spec = importlib.util.spec_from_file_location("mcp_smoke", "scripts/mcp_smoke.py")
+assert spec is not None and spec.loader is not None
+smoke = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(smoke)
+
+
+class Health(http.server.BaseHTTPRequestHandler):
+    def do_GET(self) -> None:
+        self.send_response(200)
+        self.end_headers()
+
+    def log_message(self, *args: object) -> None:
+        pass
+
+
+with socketserver.TCPServer(("127.0.0.1", 0), Health) as server:
+    port = int(server.server_address[1])
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    process = subprocess.Popen(["sleep", "30"], stderr=subprocess.PIPE, text=True)
+    try:
+        smoke.wait_for_health(port, process)
+        print(f"PASS: healthy server accepted on port {port}; child still alive")
+    finally:
+        process.kill()
+        process.wait()
+PY
+PASS: healthy server accepted on port 60752; child still alive
+exit:0
+```
+
+Gates (fixed file):
+
+```
+$ ruff check scripts
+All checks passed!
+
+$ ruff format --check scripts
+6 files already formatted
+
+$ pyright scripts/mcp_smoke.py
+0 errors, 0 warnings, 0 informations
+```
+
+The full smoke test itself (`python3 scripts/mcp_smoke.py --http`) was not run: it needs
+the Swift binary, none is built in this checkout, and this session is not permitted to
+run `swift build`. The checks above drive the changed function and the real HTTP path
+directly.

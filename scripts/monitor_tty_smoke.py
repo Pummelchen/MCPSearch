@@ -16,7 +16,11 @@ What it checks:
   5. ``r`` refreshes immediately instead of waiting out the interval;
   6. ``p`` probes providers now, and a reachable instance turns from ready to OK;
   7. ``q`` exits cleanly, restores the cursor, clears to the end of the screen and
-     prints the final summary.
+     prints the final summary; an external ``SIGINT``/``SIGTERM`` does the same, because a
+     supervisor's ``kill`` must not leave the operator's shell in raw mode;
+  8. a SearXNG instance cannot make the terminal execute anything: escape sequences in the
+     engine names and ``unresponsive_engines`` reasons it returns are replaced with a visible
+     placeholder, so the only escapes in the transcript are the display's own.
 
 A SearXNG-shaped stub is served on loopback, so the run is hermetic: no vendor key, no
 external network, no credits. Provider variables are scrubbed from the child's
@@ -30,6 +34,7 @@ With no argument the binary is located via ``swift build -c release --show-bin-p
 
 from __future__ import annotations
 
+import contextlib
 import errno
 import fcntl
 import http.server
@@ -38,12 +43,14 @@ import os
 import pty
 import re
 import select
+import signal
 import struct
 import subprocess
 import sys
 import termios
 import threading
 import time
+from collections.abc import Callable
 from typing import Any
 
 # Escape sequences the display is expected to emit. Kept in step with
@@ -65,6 +72,14 @@ READ_CHUNK = int(os.environ.get("MONITOR_SMOKE_READ_CHUNK", "65536"))
 # An SGR sequence: the colour attributes the renderer wraps text in.
 SGR = re.compile(r"\x1b\[[0-9;]*m")
 ANSI = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+# Terminal.move(row:column:), which the frame uses to home the cursor.
+CURSOR_MOVE = re.compile(r"\x1b\[[0-9]+;[0-9]+H")
+
+# What a hostile instance returns instead of an ordinary engine name and reason. The OSC 52
+# payload writes the clipboard on terminals that allow it; ESC[2J clears the screen; the bare
+# C1 control is a CSI without the ESC that many terminals still act on.
+HOSTILE_ENGINE = "brave\x1b]52;c;cGF3bmVk\x07"
+HOSTILE_REASON = "HTTP connection error\x1b[2JSPOOF\x9b1;2H"
 
 # Provider credentials and toggles must not leak in: an ambient key would make the probe
 # spend real credits, which is exactly what this test must never do.
@@ -109,7 +124,15 @@ def locate_binary() -> str:
 class StubSearXNG:
     """A SearXNG-shaped JSON endpoint, on loopback only."""
 
-    def __init__(self) -> None:
+    def __init__(self, *, hostile: bool = False) -> None:
+        """Serve a SearXNG-shaped answer; `hostile` puts escape sequences in the fields an
+        instance controls, which is the payload ledger B25 is about."""
+        engine = HOSTILE_ENGINE if hostile else "brave"
+        unresponsive = (
+            [["duckduckgo", HOSTILE_REASON]]
+            if hostile
+            else [["duckduckgo", "HTTP connection error"]]
+        )
         payload = json.dumps(
             {
                 "query": "swift concurrency",
@@ -118,11 +141,11 @@ class StubSearXNG:
                         "title": "Stub result",
                         "url": "https://example.com/stub",
                         "content": "A stub result for the monitor smoke test.",
-                        "engine": "brave",
-                        "engines": ["brave"],
+                        "engine": engine,
+                        "engines": [engine],
                     }
                 ],
-                "unresponsive_engines": [["duckduckgo", "HTTP connection error"]],
+                "unresponsive_engines": unresponsive,
             }
         ).encode()
         handler = self._handler(payload)
@@ -134,14 +157,14 @@ class StubSearXNG:
     @staticmethod
     def _handler(payload: bytes) -> type[http.server.BaseHTTPRequestHandler]:
         class Handler(http.server.BaseHTTPRequestHandler):
-            def do_GET(self) -> None:  # noqa: N802 (stdlib naming)
+            def do_GET(self) -> None:
                 self.send_response(200)
                 self.send_header("Content-Type", "application/json")
                 self.send_header("Content-Length", str(len(payload)))
                 self.end_headers()
                 self.wfile.write(payload)
 
-            def log_message(self, *args: Any) -> None:
+            def log_message(self, format: str, *args: Any) -> None:
                 """Keep the stub quiet: its chatter would corrupt our transcript."""
 
         return Handler
@@ -163,11 +186,7 @@ def complete_frames(transcript: str) -> list[str]:
     how an assertion can pass locally and fail in CI: it was inspecting a frame whose node
     section had not been written yet.
     """
-    return [
-        piece
-        for piece in transcript.split(CURSOR_HOME)[1:]
-        if CLEAR_TO_END_OF_SCREEN in piece
-    ]
+    return [piece for piece in transcript.split(CURSOR_HOME)[1:] if CLEAR_TO_END_OF_SCREEN in piece]
 
 
 class Session:
@@ -188,10 +207,12 @@ class Session:
             "SEARXNG_BASE_URL": base_url,
             "SEARCH_LOG_LEVEL": "warning",
         }
-        # Prove the scrub rather than assume it.
-        for name in SCRUBBED_VARIABLES:
-            if name in os.environ:
-                environment.pop(name, None)
+        # Prove the scrub rather than assume it: the dictionary above is built from scratch, so no
+        # provider variable can be present. Popping keys that were never there asserted nothing
+        # (ledger B45).
+        leaked = set(environment) & set(SCRUBBED_VARIABLES)
+        if leaked:
+            raise Failure(f"the child environment still carries {sorted(leaked)}")
 
         self.transcript = ""
         self.process = subprocess.Popen(
@@ -224,6 +245,20 @@ class Session:
             self.transcript += chunk.decode("utf-8", "replace")
         return self.transcript
 
+    def terminal_is_restored(self) -> bool:
+        """Whether the pty's line discipline is back to canonical, echoing mode.
+
+        The cursor sequence proves the display tidied up; this proves the *shell* is usable again.
+        A process that dies while the terminal is raw leaves ICANON and ECHO clear, and the next
+        command the operator types is neither echoed nor line-buffered.
+        """
+        flags = termios.tcgetattr(self.master)[3]
+        return (
+            bool(flags & termios.ICANON)
+            and bool(flags & termios.ECHO)
+            and bool(flags & termios.ISIG)
+        )
+
     def send(self, key: str) -> None:
         os.write(self.master, key.encode())
 
@@ -238,20 +273,33 @@ class Session:
             raise Failure("no frame was painted")
         return ANSI.sub("", frames[-1])
 
-    def wait_for(self, predicate, description: str, timeout: float = 12.0) -> None:
-        """Read frames until the predicate holds, or fail with the description."""
+    def wait_for(
+        self, predicate: Callable[[Session], bool], description: str, timeout: float = 12.0
+    ) -> None:
+        """Read frames until the predicate holds, or fail with the description.
+
+        A child that dies while we wait is reported as a crash with its exit status, not as a
+        frame that never arrived. Polling only once, immediately after the fixed startup drain,
+        left the conflation B106 removed in place for a monitor that starts and then dies before
+        it ever paints a frame (ledger B119).
+        """
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             self.drain(0.4)
+            exit_code = self.process.poll()
+            if exit_code is not None:
+                raise Failure(
+                    f"the monitor exited with {exit_code} while waiting for {description}: "
+                    f"{ANSI.sub('', self.transcript)[-300:]!r}"
+                )
             if predicate(self):
                 return
         raise Failure(f"timed out waiting for {description}")
 
     def close(self) -> None:
-        try:
+        # The process may already be gone; terminating it then raises ProcessLookupError.
+        with contextlib.suppress(ProcessLookupError):
             self.process.terminate()
-        except ProcessLookupError:
-            pass
         try:
             self.process.wait(timeout=5)
         except subprocess.TimeoutExpired:
@@ -264,12 +312,110 @@ def require(condition: bool, message: str) -> None:
         raise Failure(message)
 
 
+def escape_sequences(text: str) -> list[str]:
+    """Every ESC-introduced sequence in `text`, OSC included.
+
+    ``ANSI`` only knows CSI, which is why the check needs its own scanner: an OSC 52 clipboard
+    write starts with ``ESC ]`` and ends with BEL or ST, and it is the sequence that matters most
+    here.
+    """
+    found: list[str] = []
+    index = 0
+    while True:
+        start = text.find("\x1b", index)
+        if start == -1:
+            return found
+        if start + 1 >= len(text):
+            found.append("\x1b")
+            return found
+        following = text[start + 1]
+        if following == "[":
+            end = start + 2
+            while end < len(text) and not text[end].isalpha():
+                end += 1
+            end = min(end + 1, len(text))
+        elif following == "]":
+            end = start + 2
+            while end < len(text):
+                if text[end] == "\x07":
+                    end += 1
+                    break
+                if text[end] == "\x1b" and end + 1 < len(text) and text[end + 1] == "\\":
+                    end += 2
+                    break
+                end += 1
+        else:
+            end = start + 2
+        found.append(text[start:end])
+        index = end
+
+
+def is_renderer_escape(sequence: str) -> bool:
+    """Whether `sequence` is one the display emits itself (kept in step with Terminal.swift)."""
+    if SGR.fullmatch(sequence) or CURSOR_MOVE.fullmatch(sequence):
+        return True
+    return sequence in (
+        HIDE_CURSOR,
+        SHOW_CURSOR,
+        CLEAR_SCREEN,
+        CLEAR_TO_END_OF_LINE,
+        CLEAR_TO_END_OF_SCREEN,
+        CURSOR_HOME,
+    )
+
+
+def check_escape_injection(binary: str) -> None:
+    """A probed instance must not be able to make the terminal execute anything.
+
+    Engine names and ``unresponsive_engines`` reasons are whatever the instance sent, and a
+    terminal executes the bytes it is handed rather than displaying them. The frame may
+    therefore contain no escape sequence other than the ones the renderer generates itself
+    (ledger B25).
+    """
+    stub = StubSearXNG(hostile=True)
+    session = Session(binary, stub.url)
+    try:
+        session.wait_for(
+            lambda s: "unavailable:" in s.frame_text(),
+            "the hostile engine data to be rendered",
+        )
+        session.drain(0.5)
+        unexpected = [
+            sequence
+            for sequence in escape_sequences(session.transcript)
+            if not is_renderer_escape(sequence)
+        ]
+        require(
+            not unexpected,
+            "an instance's escape sequence reached the terminal: "
+            + ", ".join(repr(sequence) for sequence in unexpected[:3]),
+        )
+        require(
+            "\ufffd" in session.frame_text(),
+            "the payload must be replaced with a visible placeholder, not dropped silently",
+        )
+        require("brave" in session.frame_text(), "the engine name itself must still render")
+        print("  hostile engine text was replaced, not executed")
+    finally:
+        session.close()
+        stub.stop()
+
+
 def run(binary: str) -> None:
     stub = StubSearXNG()
     session = Session(binary, stub.url)
     try:
         # 1. A full-screen display hides the cursor and clears the screen on start.
+        #
+        # A monitor that dies during startup must be reported as a crash with its exit status, not
+        # as a frame that never arrived: that is how B104's stale build was first misread as a
+        # timeout (ledger B106).
         session.drain(3.0)
+        require(
+            session.process.poll() is None,
+            "the monitor exited during startup with "
+            f"{session.process.poll()}: {ANSI.sub('', session.transcript)[-300:]!r}",
+        )
         start = session.transcript
         require(HIDE_CURSOR in start, "the display must hide the cursor on startup")
         require(CLEAR_SCREEN in start, "the display must clear the screen on startup")
@@ -321,8 +467,7 @@ def run(binary: str) -> None:
         plain = session.frame_text()
         session.send("e")
         session.wait_for(
-            lambda s: not engine_column(s.frame_text())
-            and "unavailable:" not in s.frame_text(),
+            lambda s: not engine_column(s.frame_text()) and "unavailable:" not in s.frame_text(),
             "the engine breakdown to be hidden, header included",
         )
         session.send("e")
@@ -368,16 +513,68 @@ def run(binary: str) -> None:
         )
         require("final:" in ANSI.sub("", tail), "the run should end with its summary")
 
-        print(f"  startup hid the cursor and cleared the screen")
-        print(f"  frames home the cursor and clear to the end of the line and screen")
-        print(f"  colour on by default; `c` switched it off ({len(session.frames())} frames painted)")
-        print(f"  `e` hid and restored the engine breakdown")
-        print(f"  `r` repainted immediately")
-        print(f"  `p` probed providers and the stub answered OK")
-        print(f"  `q` exited 0, restored the cursor and printed the summary")
+        print("  startup hid the cursor and cleared the screen")
+        print("  frames home the cursor and clear to the end of the line and screen")
+        print(
+            f"  colour on by default; `c` switched it off ({len(session.frames())} frames painted)"
+        )
+        print("  `e` hid and restored the engine breakdown")
+        print("  `r` repainted immediately")
+        print("  `p` probed providers and the stub answered OK")
+        print("  `q` exited 0, restored the cursor and printed the summary")
     finally:
         session.close()
         stub.stop()
+
+
+def check_ctrl_c_quits_cleanly(binary: str) -> None:
+    """Ctrl-C must quit the dashboard and leave the terminal usable.
+
+    `KeyReader`'s crash-safety claim was false for exactly the case it described: with `ISIG` left
+    set the terminal raised `SIGINT`, the process died on the spot, and `deinit` / the restore at
+    the end of the run never executed — so the dashboard's own Ctrl-C branch was unreachable and the
+    shell was left in raw mode. `ISIG` is now cleared, so the byte arrives and the branch runs
+    (ledger B10).
+
+    An *externally* delivered `SIGINT`/`SIGTERM` is the case that bites in the field: supervisors,
+    `kill` and terminal teardown all send it, and the process dies before any Swift cleanup runs.
+    `SignalRestore` installs an async-signal-safe `sigaction(2)` handler that puts the terminal
+    back and shows the cursor (ledger B107).
+    """
+    stub = StubSearXNG()
+    cases = (
+        ("Ctrl-C byte", None),
+        ("SIGINT", signal.SIGINT),
+        ("SIGTERM", signal.SIGTERM),
+    )
+    for label, number in cases:
+        session = Session(binary, stub.url)
+        try:
+            session.drain(2.5)
+            require(HIDE_CURSOR in session.transcript, f"{label}: the display must start")
+            if number is None:
+                session.send("\x03")
+            else:
+                session.process.send_signal(number)
+            deadline = time.monotonic() + 10
+            while time.monotonic() < deadline and session.process.poll() is None:
+                session.drain(0.2)
+            exit_code = session.process.poll()
+            require(exit_code is not None, f"{label}: the monitor must exit")
+            require(exit_code == 0, f"{label}: expected exit 0, got {exit_code}")
+            session.drain(1.0)
+            require(
+                SHOW_CURSOR in session.transcript,
+                f"{label}: the terminal's cursor must be restored",
+            )
+            require(
+                session.terminal_is_restored(),
+                f"{label}: the terminal must be left in canonical, echoing mode, not raw",
+            )
+            print(f"  {label} exited 0 and restored the terminal")
+        finally:
+            session.close()
+    stub.stop()
 
 
 def main() -> int:
@@ -389,10 +586,14 @@ def main() -> int:
     print(f"smoke-testing the interactive display of {binary}")
     try:
         run(binary)
+        check_escape_injection(binary)
+        check_ctrl_c_quits_cleanly(binary)
     except Failure as error:
         print(f"MONITOR TTY SMOKE FAILED: {error}", file=sys.stderr)
         return 1
-    except Exception as error:  # pragma: no cover - surfaced rather than swallowed
+    # Any other exception is reported as a failure rather than a traceback: that is the point of a
+    # top-level harness handler, so the broad catch is deliberate rather than an oversight.
+    except Exception as error:  # noqa: BLE001  # pragma: no cover - surfaced, not swallowed
         print(f"MONITOR TTY SMOKE ERRORED: {error!r}", file=sys.stderr)
         return 1
 

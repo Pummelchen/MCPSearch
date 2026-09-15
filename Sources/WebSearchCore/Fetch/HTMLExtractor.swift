@@ -49,19 +49,23 @@ public enum HTMLExtractor {
     /// splitting on anything that is not a letter or digit, and both exact matches
     /// and marker-prefixed tokens (`advert-banner`) count.
     static func matchesBoilerplateMarker(_ identifier: String) -> Bool {
-        let tokens = identifier
-            .split(whereSeparator: { !$0.isLetter && !$0.isNumber })
+        // Split on anything that is not a letter, a digit or a hyphen: the marker list contains
+        // hyphenated names (`side-bar`, `skip-link`, `site-header`), and splitting hyphens away as
+        // well made those markers unmatchable and left the "marker then a hyphen" clause
+        // unreachable, because a token can never contain the hyphen it tested for (ledger B61).
+        let tokens =
+            identifier
+            .split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "-") })
             .map { String($0) }
         guard !tokens.isEmpty else { return false }
         for marker in boilerplateMarkers {
             let needle = marker.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
             guard !needle.isEmpty else { continue }
+            // Exact, or the marker as a hyphen-delimited part: `side-bar-inner` and
+            // `wrapper-side-bar` are both chrome, while `sidebar` and `side` are untouched unless
+            // they are markers themselves.
             for token in tokens
-            where token == needle
-                || (token.count > needle.count
-                    && token.hasPrefix(needle)
-                    && token.dropFirst(needle.count).first == "-")
-            {
+            where token == needle || token.hasPrefix(needle + "-") || token.hasSuffix("-" + needle) {
                 return true
             }
         }
@@ -77,8 +81,22 @@ public enum HTMLExtractor {
 
     /// Extract readable text.
     ///
-    /// - Throws: `SearchError.invalidRequest` when the markup cannot be parsed.
+    /// - Throws: `SearchError.invalidRequest` when the markup cannot be parsed, and
+    ///   `SearchError.markupDepthExceeded` when it nests too deeply to parse safely.
     public static func extract(html: String) throws -> HTMLDocument.Extraction {
+        // Web pages are fetched from arbitrary URLs and parsed on a cooperative task, whose
+        // stack a deeply nested document overflows: measured, about 20 000 levels of nesting
+        // killed the process. Bound the depth before the recursive parser runs, then give the
+        // parser a stack with room for the bound.
+        guard !MarkupDepth.exceedsLimit(html) else {
+            throw SearchError.markupDepthExceeded(MarkupDepth.maximumNesting)
+        }
+        return try LargeStackParse.run { try extractOnCurrentThread(html: html) }
+    }
+
+    /// The parse and traversal themselves; recursive, so they run on `LargeStackParse`'s
+    /// thread in production and directly in tests that assert the threshold.
+    static func extractOnCurrentThread(html: String) throws -> HTMLDocument.Extraction {
         let document: Document
         do {
             document = try SwiftSoup.parse(html)
@@ -137,9 +155,20 @@ public enum HTMLExtractor {
         var best: Element?
         var bestScore = 0
 
+        // Score only the candidates that no other candidate contains. `Element.text()` walks the
+        // whole subtree and a container's text includes everything inside it, so a candidate
+        // nested in another can never outscore it — scoring it would re-walk text that has
+        // already been counted. A page that nests its containers, which crafted markup can force,
+        // therefore cost quadratic work: on 2 000 nested `<div>`s the scoring pass walked four
+        // million nodes and built a string for each (ledger B28). The maximal candidates are
+        // found in one depth-first pass and their subtrees are disjoint, so scoring is linear in
+        // the document. The selector-major order and the strict `>` comparison are unchanged, so
+        // which root wins is unchanged too — except where a nested candidate tied with its
+        // container, and the container (the same text plus its siblings) now wins.
+        let maximal = maximalCandidates(in: document)
         for selector in contentSelectors {
             guard let elements = try? document.select(selector) else { continue }
-            for element in elements {
+            for element in elements where maximal.contains(ObjectIdentifier(element)) {
                 let score = estimateTextLength(element)
                 if score > bestScore {
                     bestScore = score
@@ -152,6 +181,50 @@ public enum HTMLExtractor {
         // whole body; otherwise a short `<section>` would discard the rest.
         guard bestScore >= 200 else { return body }
         return best ?? body
+    }
+
+    /// The candidates with no candidate ancestor, in one depth-first pass over the document.
+    ///
+    /// A candidate is maximal when its subtree is not inside another candidate's: those are the
+    /// only ones whose `text()` has to be computed, and because maximal candidates never nest,
+    /// their subtrees are disjoint — the scoring pass touches each node once.
+    static func maximalCandidates(in document: Document) -> Set<ObjectIdentifier> {
+        let union = contentSelectors.joined(separator: ", ")
+        guard let candidates = try? document.select(union) else { return [] }
+        let collector = MaximalCandidateCollector(
+            candidateIDs: Set(candidates.map(ObjectIdentifier.init))
+        )
+        try? NodeTraversor(collector).traverse(document)
+        return collector.maximal
+    }
+
+    /// Records candidates that are not inside another candidate, using the traversor's depth.
+    ///
+    /// A class because `NodeTraversor` calls back into it; the mutable state is confined to the
+    /// traversal, which is synchronous.
+    private final class MaximalCandidateCollector: NodeVisitor {
+        private let candidateIDs: Set<ObjectIdentifier>
+        /// Depths of the candidates on the current path, innermost last.
+        private var openDepths: [Int] = []
+        private(set) var maximal: Set<ObjectIdentifier> = []
+
+        init(candidateIDs: Set<ObjectIdentifier>) {
+            self.candidateIDs = candidateIDs
+        }
+
+        func head(_ node: Node, _ depth: Int) throws {
+            guard let element = node as? Element, candidateIDs.contains(ObjectIdentifier(element))
+            else { return }
+            // No candidate is open, so nothing above this node contains it.
+            if openDepths.isEmpty { maximal.insert(ObjectIdentifier(element)) }
+            openDepths.append(depth)
+        }
+
+        func tail(_ node: Node, _ depth: Int) throws {
+            guard let element = node as? Element, candidateIDs.contains(ObjectIdentifier(element))
+            else { return }
+            if openDepths.last == depth { openDepths.removeLast() }
+        }
     }
 
     static func estimateTextLength(_ element: Element) -> Int {
@@ -191,7 +264,7 @@ public enum HTMLExtractor {
 
         // Skip hidden elements: `display:none` content is never article prose.
         if let style = try? element.attr("style"),
-           style.replacingOccurrences(of: " ", with: "").lowercased().contains("display:none")
+            style.replacingOccurrences(of: " ", with: "").lowercased().contains("display:none")
         {
             return
         }
@@ -202,8 +275,14 @@ public enum HTMLExtractor {
         let isListItem = tag == "li"
 
         if isBlock { builder.newline() }
-        if isHeading { builder.newline(); builder.newline() }
-        if isListItem { builder.newline(); builder.append("– ") }
+        if isHeading {
+            builder.newline()
+            builder.newline()
+        }
+        if isListItem {
+            builder.newline()
+            builder.append("– ")
+        }
 
         for child in element.getChildNodes() {
             try walk(child, into: &builder)

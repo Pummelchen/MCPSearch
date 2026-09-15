@@ -55,10 +55,12 @@ public struct StartpageProvider: SearchProvider {
 
         let started = DispatchTime.now().uptimeNanoseconds
 
-        guard var components = URLComponents(
-            url: StartpageProvider.endpoint,
-            resolvingAgainstBaseURL: false
-        ) else {
+        guard
+            var components = URLComponents(
+                url: StartpageProvider.endpoint,
+                resolvingAgainstBaseURL: false
+            )
+        else {
             throw SearchError.unsupportedRequest(.startpage, "could not build request URL")
         }
         var items = [URLQueryItem(name: "query", value: request.normalizedQuery)]
@@ -120,15 +122,17 @@ public struct StartpageProvider: SearchProvider {
         var seen: Set<String> = []
         var results: [SearchResult] = []
         for (index, item) in page.results.enumerated() {
-            guard let result = ResultNormalizer.make(
-                provider: .startpage,
-                rank: index + 1,
-                title: item.title,
-                urlString: item.url,
-                snippet: item.snippet,
-                request: request,
-                seenKeys: &seen
-            ) else { continue }
+            guard
+                let result = ResultNormalizer.make(
+                    provider: .startpage,
+                    rank: index + 1,
+                    title: item.title,
+                    urlString: item.url,
+                    snippet: item.snippet,
+                    request: request,
+                    seenKeys: &seen
+                )
+            else { continue }
             results.append(result)
         }
 

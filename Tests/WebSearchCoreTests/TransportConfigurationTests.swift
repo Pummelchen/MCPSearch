@@ -135,14 +135,26 @@ final class TransportConfigurationTests: XCTestCase {
         assertRejects(["--nope"], expecting: .unknownArgument("--nope"))
     }
 
+    /// The rejection must name every spelling `--help` documents.
+    ///
+    /// The error used to say "stdio or http" while `usage` listed all four `TransportName`
+    /// cases, so the more natural `--transport streamable-http` looked unsupported
+    /// (ledger B118).
     func testInvalidTransportIsRejected() {
+        let expected = "stdio, http, streamable-http, streamable_http"
         assertRejects(
             ["--transport", "carrier-pigeon"],
             expecting: .invalidValue(
                 flag: "--transport",
                 value: "carrier-pigeon",
-                expected: "stdio or http"
+                expected: expected
             )
+        )
+        // Both the error and the usage line are rendered from `TransportName.acceptedValues`,
+        // so the same phrase must appear in `--help` (ledger B118).
+        XCTAssertTrue(
+            ServerOptions.usage.contains("Transport to serve on: \(expected)."),
+            ServerOptions.usage
         )
     }
 
@@ -159,6 +171,15 @@ final class TransportConfigurationTests: XCTestCase {
         }
     }
 
+    /// A flag is not a value for the HTTP options either.
+    ///
+    /// `--host --http-path /x` used to take "--http-path" as the host and fail later at bind time
+    /// (ledger B75).
+    func testAnHTTPOptionDoesNotTakeTheNextFlagAsItsValue() {
+        assertRejects(["--host", "--http-path", "/x"], expecting: .missingValue("--host"))
+        assertRejects(["--port", "--host", "127.0.0.1"], expecting: .missingValue("--port"))
+    }
+
     func testBoundaryPortsAreAccepted() throws {
         XCTAssertEqual(try ServerOptions.parse(["--port", "1"]).httpConfiguration?.port, 1)
         XCTAssertEqual(
@@ -168,8 +189,8 @@ final class TransportConfigurationTests: XCTestCase {
     }
 
     func testMissingValuesAreRejected() {
-        for flag in ["--transport", "--port", "--host", "--http-path"] {
-            assertRejects([flag], expecting: .missingValue(flag))
+        for flag in ServerOptions.Flag.allCases where flag.takesValue {
+            assertRejects([flag.canonicalName], expecting: .missingValue(flag.canonicalName))
         }
     }
 
@@ -189,18 +210,171 @@ final class TransportConfigurationTests: XCTestCase {
         XCTAssertTrue(try ServerOptions.parse(["-h"]).wantsHelp)
     }
 
-    /// The usage text must document every supported flag, so `--help` cannot drift from
+    /// The usage text must document every flag the parser accepts, so `--help` cannot drift from
     /// the parser.
-    func testUsageDocumentsEveryFlag() {
-        for flag in ["--transport", "--port", "--host", "--http-path"] {
+    ///
+    /// The check is driven by the parser's own tables rather than a hand-written list, and it
+    /// matches whole tokens rather than substrings. The previous version asserted four hard-coded
+    /// names, so it passed no matter how the parser grew; a substring check would be little
+    /// better, because `-h` is a substring of `--http-allowed-host` and so would pass without the
+    /// alias ever being documented (ledger B114).
+    func testUsageDocumentsEveryFlagTheParserAccepts() {
+        let tokens = usageTokens()
+        for flag in ServerOptions.Flag.allCases {
+            for name in flag.names {
+                XCTAssertTrue(
+                    tokens.contains(name),
+                    "usage text is missing \(name)"
+                )
+            }
+        }
+        for name in ServerOptions.TransportName.allCases.map(\.rawValue) {
             XCTAssertTrue(
-                ServerOptions.usage.contains(flag),
-                "usage text is missing \(flag)"
+                tokens.contains(name),
+                "usage text is missing the --transport value \(name)"
+            )
+        }
+        XCTAssertTrue(
+            ServerOptions.usage.contains("--flag=value"),
+            "usage text must document the --flag=value spelling"
+        )
+    }
+
+    /// Every flag in the documented table is one the parser accepts.
+    func testEveryDocumentedFlagIsAcceptedByTheParser() throws {
+        for flag in ServerOptions.Flag.allCases {
+            let arguments =
+                sampleValue(for: flag).map { [flag.canonicalName, $0] } ?? [flag.canonicalName]
+            XCTAssertNoThrow(try ServerOptions.parse(arguments), "\(arguments) should parse")
+        }
+    }
+
+    /// Every value-taking flag accepts both `--flag value` and `--flag=value`.
+    func testEveryValueFlagAcceptsBothSpellings() throws {
+        for flag in ServerOptions.Flag.allCases {
+            guard let value = sampleValue(for: flag) else { continue }
+            let spaced = try ServerOptions.parse([flag.canonicalName, value])
+            let inline = try ServerOptions.parse(["\(flag.canonicalName)=\(value)"])
+            XCTAssertEqual(
+                spaced.transport,
+                inline.transport,
+                "\(flag.canonicalName) behaves differently in its two spellings"
             )
         }
     }
 
+    /// `--http-allowed-host` is a host name, not an address, so whitespace-only is a typo.
+    func testEmptyAllowedHostIsRejected() {
+        assertRejects(
+            ["--http-allowed-host", "   "],
+            expecting: .invalidValue(
+                flag: "--http-allowed-host",
+                value: "   ",
+                expected: "a host name such as search.example.com"
+            )
+        )
+    }
+
+    // MARK: - Origin policy
+
+    /// The default bind keeps exactly the SDK's loopback allow-list.
+    ///
+    /// A loopback server must not start accepting a LAN address just because one exists.
+    func testLoopbackBindAcceptsOnlyTheLoopbackAuthorities() {
+        let policy = HTTPTransportConfiguration().originPolicy(localAddresses: ["192.168.1.5"])
+        XCTAssertEqual(
+            policy.hosts,
+            ["127.0.0.1:8080", "localhost:8080", "[::1]:8080"]
+        )
+        XCTAssertEqual(
+            policy.origins,
+            ["http://127.0.0.1:8080", "http://localhost:8080", "http://[::1]:8080"]
+        )
+    }
+
+    /// A specific bind address is the deployment's own address and must be accepted.
+    ///
+    /// Hard-coding loopback answered the documented remote setup with `421 Misdirected Request`
+    /// (ledger B21).
+    func testNonLoopbackBindAcceptsItsOwnAddressAndStillRefusesOthers() {
+        let policy = HTTPTransportConfiguration(host: "192.168.1.5", port: 9000)
+            .originPolicy(localAddresses: [])
+        XCTAssertTrue(policy.hosts.contains("192.168.1.5:9000"))
+        XCTAssertTrue(policy.hosts.contains("192.168.1.5"), "a proxy may forward the bare name")
+        XCTAssertTrue(policy.origins.contains("http://192.168.1.5:9000"))
+        XCTAssertTrue(policy.hosts.contains("127.0.0.1:9000"), "local clients keep working")
+        XCTAssertFalse(policy.hosts.contains { $0.contains("attacker") })
+    }
+
+    /// A wildcard bind answers on every interface, so each of the machine's addresses is named.
+    func testWildcardBindAcceptsTheMachinesOwnAddresses() {
+        let policy = HTTPTransportConfiguration(host: "0.0.0.0", port: 8080)
+            .originPolicy(localAddresses: ["192.168.1.5", "100.64.0.9", "fe80::1"])
+        XCTAssertTrue(policy.hosts.contains("192.168.1.5:8080"))
+        XCTAssertTrue(policy.hosts.contains("100.64.0.9:8080"))
+        XCTAssertTrue(
+            policy.hosts.contains("[fe80::1]:8080"),
+            "an IPv6 literal is bracketed in a Host header"
+        )
+        XCTAssertFalse(policy.hosts.contains("0.0.0.0:8080"), "the wildcard itself is not a Host")
+    }
+
+    /// `--http-allowed-host` names the public host a TLS-terminating proxy forwards.
+    func testAllowedHostFlagAddsThePublicNameAndItsSecureOrigin() throws {
+        let options = try ServerOptions.parse([
+            "--host", "127.0.0.1",
+            "--http-allowed-host", "search.example.com",
+            "--http-allowed-host", "https://mcp.example.com:8443",
+        ])
+        let configuration = try XCTUnwrap(options.httpConfiguration)
+        let policy = configuration.originPolicy(localAddresses: [])
+        XCTAssertTrue(policy.hosts.contains("search.example.com:8080"))
+        XCTAssertTrue(policy.hosts.contains("search.example.com"))
+        XCTAssertTrue(policy.origins.contains("http://search.example.com:8080"))
+        XCTAssertTrue(policy.origins.contains("https://search.example.com:8080"))
+        XCTAssertTrue(
+            policy.hosts.contains("mcp.example.com:8443"),
+            "an explicit port is taken verbatim"
+        )
+        XCTAssertTrue(policy.origins.contains("https://mcp.example.com:8443"))
+        XCTAssertFalse(policy.origins.contains("https://mcp.example.com:8080"))
+    }
+
+    /// The flag selects the HTTP transport like the other HTTP settings.
+    func testAllowedHostImpliesHTTP() throws {
+        let options = try ServerOptions.parse(["--http-allowed-host", "search.example.com"])
+        XCTAssertEqual(options.httpConfiguration?.additionalAllowedHosts, ["search.example.com"])
+    }
+
     // MARK: - Helper
+
+    /// The whitespace-separated words of the usage text, with trailing `,`/`.` stripped.
+    ///
+    /// Tokens rather than substrings: `-h` occurs inside `--http-allowed-host`, so a raw
+    /// containment check would bless an undocumented short alias (ledger B114).
+    private func usageTokens() -> Set<String> {
+        Set(
+            ServerOptions.usage
+                .split(whereSeparator: { $0.isWhitespace })
+                .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ",.")) }
+        )
+    }
+
+    /// A value the parser accepts for a value-taking flag, or nil for the valueless `--help`.
+    ///
+    /// The switch is deliberately exhaustive without a `default`: adding a flag to
+    /// `ServerOptions.Flag` fails to compile here until the test supplies a value for it, which is
+    /// what keeps the table-driven checks above honest (ledger B114).
+    private func sampleValue(for flag: ServerOptions.Flag) -> String? {
+        switch flag {
+        case .help: nil
+        case .transport: "http"
+        case .port: "9000"
+        case .host: "127.0.0.1"
+        case .httpAllowedHost: "search.example.com"
+        case .httpPath: "/x"
+        }
+    }
 
     private func assertRejects(
         _ arguments: [String],
@@ -216,5 +390,40 @@ final class TransportConfigurationTests: XCTestCase {
         } catch {
             XCTFail("unexpected error type: \(error)", file: file, line: line)
         }
+    }
+}
+
+/// The server's request-body limits for the Streamable HTTP transport.
+final class HTTPRequestBodyPolicyTests: XCTestCase {
+
+    /// The reservation must not be sized from the request's own `Content-Length`.
+    ///
+    /// `ByteBuffer.reserveCapacity` reallocates immediately, so a client that sent only a
+    /// request head with `Content-Length: 1048576` made the process hold a megabyte per
+    /// connection before a single body byte arrived — with B90's 64-connection bound, 64 MiB
+    /// of allocation from a peer that sent no body at all (ledger B79).
+    func testReservationIgnoresTheDeclaredContentLength() {
+        for declared in [nil, 0, 1, 4096, HTTPRequestBodyPolicy.maximumBodyBytes, Int.max] {
+            XCTAssertEqual(
+                HTTPRequestBodyPolicy.reservationCapacity(declaredContentLength: declared),
+                HTTPRequestBodyPolicy.initialCapacity,
+                "declaring \(String(describing: declared)) bytes must not change the reservation"
+            )
+        }
+    }
+
+    /// The reservation stays a small fraction of the body cap, so the head-only case cannot
+    /// hold a body-sized buffer per connection even at the connection bound.
+    func testReservationIsFarBelowTheBodyCap() {
+        XCTAssertLessThanOrEqual(HTTPRequestBodyPolicy.initialCapacity, 64 * 1024)
+        XCTAssertLessThan(
+            HTTPRequestBodyPolicy.initialCapacity,
+            HTTPRequestBodyPolicy.maximumBodyBytes
+        )
+        XCTAssertLessThanOrEqual(
+            HTTPRequestBodyPolicy.initialCapacity * 64,
+            4 * 1024 * 1024,
+            "64 connections at the reservation must stay in the low megabytes"
+        )
     }
 }

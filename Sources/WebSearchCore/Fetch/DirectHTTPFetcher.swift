@@ -56,12 +56,16 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
         var currentURL = request.url
         var redirectsFollowed = 0
         var redirectNotes: [String] = []
+        // One DNS memo per fetch. The hop pre-check below and the re-check at the top of the
+        // loop are two policy decisions, but they are one lookup, and the next fetch starts
+        // with an empty memo (ledger B88).
+        let resolutions = DNSAnswerCache()
 
         while true {
             try Task.checkCancellation()
 
             // Layer 2 validation: resolves DNS and rejects private destinations.
-            let decision = await policy.validate(currentURL)
+            let decision = await policy.validate(currentURL, cache: resolutions)
             guard decision.allowed else {
                 throw SearchError.blockedURL(currentURL)
             }
@@ -80,7 +84,7 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
 
             // Handle redirects ourselves, validating each destination.
             if (300..<400).contains(response.statusCode),
-               let location = response.header("Location")
+                let location = response.header("Location")
             {
                 guard redirectsFollowed < maxRedirects else {
                     throw SearchError.extractionFailed(request.url)
@@ -89,9 +93,10 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
                 else {
                     throw SearchError.extractionFailed(request.url)
                 }
-                // Re-validate before continuing; the loop re-checks at the top too,
-                // but failing fast gives a clearer decision point.
-                let hopDecision = await policy.validate(nextURL)
+                // Re-validate before continuing; the loop re-checks at the top too, but
+                // failing fast gives a clearer decision point. Both calls are one DNS lookup
+                // for this host, because they share the fetch's memo (ledger B88).
+                let hopDecision = await policy.validate(nextURL, cache: resolutions)
                 guard hopDecision.allowed else {
                     throw SearchError.blockedURL(nextURL)
                 }
@@ -116,22 +121,26 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
             let contentType = response.header("Content-Type")
             let mimeType = DirectHTTPFetcher.mimeType(from: contentType)
 
-            guard let mimeType, DirectHTTPFetcher.isTextual(
-                mimeType,
-                allowedPrefixes: allowedContentTypePrefixes
-            ) else {
+            guard let mimeType,
+                DirectHTTPFetcher.isTextual(
+                    mimeType,
+                    allowedPrefixes: allowedContentTypePrefixes
+                )
+            else {
                 throw SearchError.extractionFailed(currentURL)
             }
 
             let body = response.body
             let extraction: HTMLDocument.Extraction
             if mimeType.contains("html") || mimeType.contains("xhtml") {
-                let html = String(data: body, encoding: .utf8)
+                let html =
+                    String(data: body, encoding: .utf8)
                     ?? String(data: body, encoding: .isoLatin1)
                     ?? ""
                 extraction = try HTMLExtractor.extract(html: html)
             } else {
-                let text = String(data: body, encoding: .utf8)
+                let text =
+                    String(data: body, encoding: .utf8)
                     ?? String(data: body, encoding: .isoLatin1)
                     ?? ""
                 extraction = HTMLDocument.Extraction(
@@ -175,7 +184,14 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
 
         let (data, response): (Data, URLResponse)
         do {
-            (data, response) = try await session.data(for: urlRequest)
+            // Capped during the transfer, not after it: a page the model asked to open can
+            // stream for as long as it likes, and `data(for:)` would buffer all of it first
+            // (ledger B07).
+            (data, response) = try await BoundedResponseBody.read(
+                session,
+                urlRequest,
+                limit: maxBytes
+            )
         } catch let error as URLError {
             // These are fetch failures, not search-provider failures: `web_open`
             // connects straight to the target host, so the error is scoped to the URL
@@ -184,22 +200,37 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
             case .timedOut:
                 throw SearchError.fetchFailed(request.url, reason: "request timed out")
             case .cancelled:
-                throw SearchError.fetchFailed(request.url, reason: "request was cancelled")
+                // The caller cancelled. Reporting this as a fetch failure would let the layer
+                // above read it as "the direct fetch did not work" and start a *second*
+                // outbound request — the Jina fallback — for a caller that has gone away
+                // (ledger B04).
+                throw CancellationError()
+            case .fileDoesNotExist, .fileIsDirectory, .noPermissionsToReadFile:
+                // `file:` is the only scheme `URLSession` handles itself, so it is the only
+                // cross-scheme redirect that does not reach the manual loop: the transport refuses
+                // it internally, never calls `willPerformHTTPRedirection`, and reports one of these
+                // file-system codes with the *original* URL attached rather than the target. Every
+                // other scheme is handed back and denied by the per-hop policy call (ledger B120).
+                // Name the policy position instead of leaking the opaque code, and never report
+                // local content. The limitation is documented on `URLPolicy` (ledger B102).
+                throw SearchError.fetchFailed(
+                    request.url,
+                    reason: "the server redirected to a local file, which is not fetched"
+                )
             default:
                 throw SearchError.fetchFailed(
                     request.url,
                     reason: HTTPError.reason(for: error.code)
                 )
             }
+        } catch is ResponseBodyTooLarge {
+            // Same shape as the old post-hoc cap check: the page is too large to extract.
+            throw SearchError.extractionFailed(request.url)
         } catch is CancellationError {
-            throw SearchError.fetchFailed(request.url, reason: "request was cancelled")
+            throw CancellationError()
         }
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw SearchError.extractionFailed(request.url)
-        }
-
-        if data.count > maxBytes {
             throw SearchError.extractionFailed(request.url)
         }
 
@@ -236,7 +267,7 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
         let prefix = String(text[text.startIndex..<end])
         // Prefer cutting at the last whitespace so we do not split a word in half.
         if let lastSpace = prefix.lastIndex(where: { $0.isWhitespace }),
-           prefix.distance(from: prefix.startIndex, to: lastSpace) > limit / 2
+            prefix.distance(from: prefix.startIndex, to: lastSpace) > limit / 2
         {
             return (String(prefix[prefix.startIndex..<lastSpace]), true)
         }

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftSoup
 import XCTest
 
 @testable import WebSearchCore
@@ -135,6 +136,72 @@ final class HTMLExtractorTests: XCTestCase {
         XCTAssertFalse(short.truncated)
         XCTAssertEqual(short.text, "short text")
     }
+    /// Hyphenated chrome markers must actually match.
+    ///
+    /// The matcher tokenised class names by splitting on every non-alphanumeric character,
+    /// hyphens included, so `class="side-bar"` became `["side", "bar"]` and could never equal the
+    /// `side-bar` marker; the clause that looked for a hyphen after the marker was unreachable for
+    /// the same reason (ledger B61).
+    func testHyphenatedBoilerplateMarkersAreRemoved() throws {
+        let page = """
+            <html><body>
+              <div class="side-bar"><p>Chrome text that must not survive.</p></div>
+              <div class="site-header"><p>More chrome.</p></div>
+              <main><article class="post-content">
+                <p>Real article text, long enough to be worth keeping as the content root.</p>
+                <p>Second paragraph so the container wins the density comparison.</p>
+              </article></main>
+            </body></html>
+            """
+
+        let extraction = try HTMLExtractor.extract(html: page)
+
+        XCTAssertTrue(extraction.text.contains("Real article text"))
+        XCTAssertFalse(extraction.text.contains("Chrome text"), extraction.text)
+        XCTAssertFalse(extraction.text.contains("More chrome"), extraction.text)
+    }
+
+    /// A page that nests its containers must not cost quadratic work.
+    ///
+    /// `preferredContentRoot` scores each candidate with `Element.text()`, which walks the whole
+    /// subtree, and a container's text includes everything inside it — so a candidate nested in
+    /// another can never outscore it, and scoring it re-walked text already counted. Markup can
+    /// force that: 500 nested `.entry-content` containers inside a `.content` div, each level
+    /// carrying its own paragraph, is 1.8 MB of HTML, and the scoring pass used to build the text
+    /// of every one of them — about 450 MB of copying for a page whose real content is 1.8 MB
+    /// (ledger B28). Only maximal candidates are scored now, and their subtrees are disjoint.
+    ///
+    /// The document is parsed outside the timed region: this is about the scoring pass, and a
+    /// timing assertion over the whole pipeline would mostly measure SwiftSoup's parser.
+    func testDeeplyNestedContainersDoNotCostQuadraticTime() throws {
+        // Just under `MarkupDepth.maximumNesting` (512), so the document is one the extractor
+        // accepts: the cost under test is scoring, not the nesting guard.
+        let depth = 500
+        let level =
+            "<p>" + String(repeating: "some article text that repeats here ", count: 200) + "</p>"
+        let html =
+            "<html><body><div class=\"content\">"
+            + String(repeating: "<div class=\"entry-content\">" + level, count: depth)
+            + String(repeating: "</div>", count: depth)
+            + "</div></body></html>"
+        let document = try SwiftSoup.parse(html)
+
+        let started = ContinuousClock.now
+        let root = HTMLExtractor.preferredContentRoot(in: document)
+        let elapsed = ContinuousClock.now - started
+
+        XCTAssertEqual(try root?.className(), "content", "the outermost container wins")
+        // 4 s: the quadratic implementation this guards against takes 7.2 s on this fixture, while
+        // the linear one takes 0.28 s on an idle machine — a 1 s bound was mine, and it flaked once
+        // at 1.16 s on a loaded runner. The bound has to separate 7.2 from 0.3, not measure the
+        // scheduler (ledger B28 follow-up).
+        XCTAssertLessThan(
+            elapsed,
+            .seconds(4),
+            "scoring nested containers re-walks their subtrees: took \(elapsed)"
+        )
+    }
+
 }
 
 /// Scraper parsing, driven by stored markup rather than the network.
@@ -258,6 +325,20 @@ final class ScraperTests: XCTestCase {
         XCTAssertEqual(page.results[0].url, "https://example.com/a-genuine-result")
     }
 
+    /// The DuckDuckGo region hint is `region-language`, not the region twice.
+    ///
+    /// `kl=us-us` is not a value DDG defines; the language was available and discarded, so the hint
+    /// was wrong for every query that carried a region (ledger B60).
+    func testDuckDuckGoLocaleHintIsRegionLanguage() {
+        XCTAssertEqual(DuckDuckGoProvider.localeHint(for: LocaleHint("en-US")), "us-en")
+        XCTAssertEqual(DuckDuckGoProvider.localeHint(for: LocaleHint("de-DE")), "de-de")
+        XCTAssertNil(
+            DuckDuckGoProvider.localeHint(for: LocaleHint("en")),
+            "a locale without a region has no hint to send"
+        )
+        XCTAssertNil(DuckDuckGoProvider.localeHint(for: nil))
+    }
+
     func testExcludeHostsFiltersEngineOwnHosts() throws {
         let html = """
             <html><body>
@@ -314,4 +395,5 @@ final class ScraperTests: XCTestCase {
         // Nothing may reach the network.
         XCTAssertTrue(http.requests.isEmpty)
     }
+
 }

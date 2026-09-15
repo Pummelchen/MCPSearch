@@ -4,6 +4,19 @@
 .DS_Store
 .swiftpm/
 
+# Coverage and sanitizer output. The documented runs (`swift test --enable-code-coverage`, the
+# ASan/TSan runs in AUDIT/environment.md) write `default.profraw` into the repository root and
+# `.profdata`/`.json` export files beside it, so they are ignored here rather than cleaned up by
+# hand every time (ledger B36).
+*.profraw
+*.profdata
+coverage*.json
+coverage.lcov
+
+# Python byte-code caches, from running the scripts in `scripts/`.
+__pycache__/
+*.pyc
+
 # Local configuration and secrets.
 #
 # The server reads credentials from the environment, or from a KEY=VALUE file named by

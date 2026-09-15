@@ -1,0 +1,99 @@
+# B95 — the hint test asserted a string the fixture had just constructed
+
+Host: `node1 (arm64, macOS 26.6.2)` · branch `audit/2026-09-13` · Swift 6.3.3
+
+## Premise check: still open after B57
+
+Read B57 first, as the task asked. B57 (`c5280f9`) replaced the five hand-written enablement
+mappings with `ProviderEnablement` and rewired `ProviderProbe.setupHint` to read it, and added
+`ProbeTests.testSetupHintNamesTheRightVariableForEveryProvider`. It did not touch
+`MonitorTests.swift`, where the defect still stood:
+
+```swift
+// before — RendererTests.provider(_:state:…), line 148
+var status = ProviderStatus.pending(provider: id, configured: state != .notConfigured, hint: "TAVILY_API_KEY")
+
+// before — testUnconfiguredProviderShowsItsSetupHint
+provider(.brave, state: .notConfigured, probes: 0, successes: 0)
+...
+XCTAssertTrue(lines.contains("TAVILY_API_KEY"), "the hint should name the variable")
+```
+
+A Brave row was given Tavily's hint by the fixture and then checked for Tavily's variable, so the
+test verified only that the renderer echoed the string the test had put there. A renderer printing a
+constant `TAVILY_API_KEY` for every unconfigured provider would have passed it.
+
+## The fix — the fixture reads the authority; the test names Brave's own variable
+
+`RendererTests.setupHint(for:)` builds the same `ProviderProbe` the monitor builds
+(`ProviderProbe(registry:configuration:)`) and returns `setupHint(for:)`, so every `provider(...)`
+row now carries the hint the real authority gives it. The test then asserts:
+
+* the authority's Brave hint is `BRAVE_SEARCH_API_KEY` — a pinned value, not a stub;
+* it differs from the authority's Tavily hint, so a constant cannot satisfy the row assertion;
+* the rendered row contains `set <authority hint>`;
+* the rendered row does **not** contain Tavily's variable — the renderer may not substitute a
+  different provider's variable.
+
+The real authority output, not a fixture literal, is the expectation. No production change.
+
+## Proof the assertions can fail
+
+**M1 — the fixture reverted to its old hard-coded `"TAVILY_API_KEY"`, new test kept.** This is the
+finding exactly: a Brave row carrying Tavily's hint must not satisfy the test.
+
+```
+MonitorTests.swift:416: error: … testUnconfiguredProviderShowsItsSetupHint :
+    XCTAssertTrue failed - the row must show the hint the fixture carried
+MonitorTests.swift:420: error: … testUnconfiguredProviderShowsItsSetupHint :
+    XCTAssertFalse failed - the renderer must not substitute a different provider's variable
+Test Case '…testUnconfiguredProviderShowsItsSetupHint' failed (0.085 seconds).
+```
+
+The old body passed this exact state (that is the finding); the new body reds on both halves.
+
+**M2 — the renderer mutated to print a constant** (`Renderer.swift`: `"set \(status.setupHint)"` →
+`"set TAVILY_API_KEY"`), fixture correct:
+
+```
+MonitorTests.swift:416: error: … XCTAssertTrue failed - the row must show the hint the fixture carried
+MonitorTests.swift:420: error: … XCTAssertFalse failed - the renderer must not substitute a different provider's variable
+Test Case '…testUnconfiguredProviderShowsItsSetupHint' failed (0.080 seconds).
+```
+
+`MonitorTests.swift` was restored byte-identical (`diff` empty; SHA-256
+`18cf98cbba7a2188a819ff890c1c4379cfdc0def9bc64daf1d7e0bea07b8190e`) and so was `Renderer.swift`
+(`diff` empty; SHA-256 `7853eb6b36ec565c257872c06e91ee84bcc00a7cb727b2b7a9defe840b46eb88`).
+`git diff --stat Sources/` is empty.
+
+## Not duplicated
+
+`ProbeTests.testSetupHintNamesTheRightVariableForEveryProvider` already pins the authority's
+per-provider mapping, including the configuration-dependent `parallel` cases. This test does not
+repeat that table: it pins the renderer's consumption of `ProviderStatus.setupHint`, using the
+authority only to produce a non-stub expectation for the one provider under test.
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (5.96s)                                          0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+Executed 554 tests, with 6 tests skipped and 0 failures (0 unexpected) in 31.132 (31.179) seconds
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (14.07s)                                         0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+exit 0                                                           0 diagnostics
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 87 files.         exit 0
+
+$ python3 scripts/third_party_notices.py
+THIRD-PARTY-NOTICES.md covers all 8 resolved packages at the pinned versions
+```
+
+554 is unchanged from B94: this task strengthens an existing test rather than adding one. The 6
+skips are the pre-existing environment-gated ones.

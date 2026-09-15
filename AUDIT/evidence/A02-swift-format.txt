@@ -1,0 +1,61 @@
+# A02 — the formatter configuration, evidence after the fix
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13 · swift-format 603.0.0
+
+## Before: no configuration, so the tool's 2-space default was the only style on record
+
+```
+$ swift-format lint -r Sources Tests        # no .swift-format present
+19 155 diagnostics
+```
+
+## .swift-format states the style the project already follows
+
+```json
+{
+  "indentation": { "spaces": 4 },
+  "lineLength": 120,
+  "tabWidth": 4,
+  "maximumBlankLines": 1,
+  "respectsExistingLineBreaks": true,
+  "reflowMultilineStringLiterals": "never",
+  "multiElementCollectionTrailingCommas": true
+}
+```
+
+* 4 spaces, because that is what every file already uses.
+* 120 columns: the longest existing source line is 126, so this is a real limit rather than a
+  formality, and only 8 lines were over it.
+* `respectsExistingLineBreaks` and `reflowMultilineStringLiterals: never` are the conservative
+  settings: the formatter never re-wraps a paragraph or a string literal, so the diff stays
+  reviewable and no diagnostic message changes.
+* No lint rule is disabled. Every diagnostic the default rules produced was a real deviation,
+  and all of them were fixed instead.
+
+## The measurements
+
+```
+$ swift-format lint -r --configuration .swift-format Sources Tests
+  363 diagnostics  (Indentation 256, AddLines 79, LineLength 8, DoNotUseSemicolons 8,
+                   TrailingComma 7, OrderedImports 3, RemoveLine 1, UseSynthesizedInitializer 1)
+
+$ swift-format format --in-place --recursive --configuration .swift-format Sources Tests
+
+$ swift-format lint -r --strict --configuration .swift-format Sources Tests
+  0 diagnostics, exit 0
+```
+
+The one rule the formatter does not fix by itself — `UseSynthesizedInitializer` in
+`ToolHandlers.swift:14` — was an explicit initialiser identical to the synthesised one; it was
+deleted rather than silenced.
+
+## Size and verification
+
+* 45 files touched, about 330 changed lines, all of them continuation indentation, line
+  breaks, trailing commas, import order and one semicolon-separated pair split into two
+  statements. Spot-checked: no expression, literal or control-flow change.
+* `swift build` and `swift build -c release`: 0 warnings, 0 errors.
+* Full suite: 411 tests, 6 skipped, 0 failures.
+
+This is what makes A10's formatter gate possible: `swift-format lint --recursive --strict`
+now exits 0 on the tree.

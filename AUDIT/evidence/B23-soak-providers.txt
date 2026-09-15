@@ -1,0 +1,72 @@
+# B23 — `soak.py --providers` was not authoritative
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+```python
+# scripts/soak.py (before)
+disabled = sorted(set(ALL_PROVIDERS) - providers)
+if disabled:
+    already = [p.strip() for p in environment.get("SEARCH_DISABLED_PROVIDERS", "").split(",") if p.strip()]
+    for provider in disabled:
+        if provider not in already:
+            already.append(provider)
+    environment["SEARCH_DISABLED_PROVIDERS"] = ",".join(already)
+```
+
+The ambient `SEARCH_DISABLED_PROVIDERS` was used to *seed* the value, so:
+
+* a provider that was **requested** stayed disabled when the ambient value named it, and
+* with every provider requested, `disabled` was empty, the `if disabled:` guard skipped the write
+  entirely and the ambient list survived untouched.
+
+Both cases contradict the run header and the function's own docstring ("``--providers`` is
+authoritative"), which is the property the soak results are interpreted against.
+
+## Fails-before evidence
+
+A check that imports the harness and drives `build_environment` with an ambient
+`SEARCH_DISABLED_PROVIDERS=tavily`:
+
+```
+$ python3 b23_check.py            # against HEAD
+AssertionError: ['tavily', 'duckduckgo', 'exa', 'mojeek', 'open_web_search', 'parallel', 'searxng', 'startpage']
+```
+
+`tavily` is in the disabled list although it was requested.
+
+## The fix
+
+Assign the request-derived value; never merge:
+
+```python
+disabled = sorted(set(ALL_PROVIDERS) - providers)
+environment["SEARCH_DISABLED_PROVIDERS"] = ",".join(disabled)
+```
+
+An empty string is the correct value when everything is requested — `AppConfiguration` splits and
+filters, so it disables nothing.
+
+The three cases are now a CI step in the `static-analysis` job ("Soak provider selection is
+authoritative"), which imports `scripts/soak.py` and asserts: a requested provider an ambient
+setting names is not disabled, everything unrequested is, and requesting all of them clears the
+list. The step was replayed locally from the workflow YAML before being pushed.
+
+## Verification
+
+```
+$ python3 b23_check.py                                     # after the fix
+soak provider selection is authoritative
+
+$ bash <the CI step extracted from ci.yml>
+soak provider selection is authoritative                   exit 0
+
+$ ruff check scripts && ruff format --check scripts        0 findings, 5 files formatted
+$ pyright scripts                                          0 errors
+$ swift test
+Executed 452 tests, with 6 skipped and 0 failures          # the Python change does not touch it
+```
+
+This task also surfaced a defect in A12's new test (it read the `__pycache__` byte-code the check
+creates); that hardening is its own commit, `c287d9c`.

@@ -1,5 +1,6 @@
 import Foundation
 import XCTest
+import os
 
 @testable import WebSearchCore
 
@@ -43,6 +44,9 @@ final class URLPolicyTests: XCTestCase {
             "javascript:alert(1)",
             "ftp://example.com/file",
             "gopher://example.com/",
+            // Deliberately insecure, and deliberately never opened: this list is the set of URLs
+            // the policy must *reject*, so the fixture has to contain them (ledger A09).
+            // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
             "ws://example.com/socket",
         ] {
             let decision = subject.validateLexically(URL(string: raw)!)
@@ -117,6 +121,26 @@ final class URLPolicyTests: XCTestCase {
             "http://[fe80::1]/",
             "http://[fc00::1]/",
             "http://[fd00:ec2::254]/",
+        ] {
+            XCTAssertFalse(
+                subject.validateLexically(URL(string: raw)!).allowed,
+                "\(raw) must be rejected as non-public"
+            )
+        }
+    }
+
+    /// The protocol-assignment block is refused across the whole `192.0.0.0/16`.
+    ///
+    /// The comment used to name `/24` while the code tested two octets, which reads as a bug; the
+    /// range is kept deliberately and now says so (ledger B62), because it holds IETF assignments,
+    /// TEST-NET-1 and the 6to4 relay anycast block — none of which a page fetch should reach.
+    func testRejectsTheEntireProtocolAssignmentSixteen() {
+        let subject = policy()
+        for raw in [
+            "http://192.0.0.1/",
+            "http://192.0.1.1/",
+            "http://192.0.2.1/",
+            "http://192.0.255.254/",
         ] {
             XCTAssertFalse(
                 subject.validateLexically(URL(string: raw)!).allowed,
@@ -260,6 +284,95 @@ final class URLPolicyTests: XCTestCase {
         XCTAssertFalse(subject.validateLexically(URL(string: "file:///etc/passwd")!).allowed)
     }
 
+    // MARK: Per-fetch resolution memo (ledger B88)
+
+    /// Resolves from a table and counts every lookup, so a test can assert memoisation as a
+    /// contract rather than measuring wall-clock time.
+    final class CountingDNSResolver: DNSResolver, @unchecked Sendable {
+        private let table: [String: [String]]
+        private let lookups = OSAllocatedUnfairLock<[String]>(initialState: [])
+
+        init(table: [String: [String]]) {
+            self.table = table
+        }
+
+        var resolvedHosts: [String] { lookups.withLock { $0 } }
+
+        func resolve(host: String) async throws -> [IPAddress] {
+            lookups.withLock { $0.append(host) }
+            return (table[host.lowercased()] ?? []).compactMap(IPAddress.init)
+        }
+    }
+
+    func testOneFetchAsksForAHostOnceHoweverManyHopsAreValidated() async {
+        let resolver = CountingDNSResolver(table: ["good.example.com": ["93.184.216.34"]])
+        let subject = URLPolicy(resolver: resolver)
+        // `DirectHTTPFetcher` passes the same cache to the hop pre-check and to the re-check
+        // at the top of its loop, which is two validations of one host.
+        let cache = DNSAnswerCache()
+
+        let first = await subject.validate(URL(string: "https://good.example.com/a")!, cache: cache)
+        let second = await subject.validate(URL(string: "https://good.example.com/b")!, cache: cache)
+
+        XCTAssertTrue(first.allowed, first.reason ?? "")
+        XCTAssertTrue(second.allowed, second.reason ?? "")
+        XCTAssertEqual(
+            resolver.resolvedHosts,
+            ["good.example.com"],
+            "a redirect chain must not re-resolve a host it has already checked"
+        )
+    }
+
+    /// A host the memo has not seen is still resolved before it is judged, so the cache can
+    /// never become a way to skip validating a host that was never checked.
+    func testAnUnseenHostIsStillResolvedThroughTheCache() async {
+        let resolver = CountingDNSResolver(table: [
+            "first.example.com": ["93.184.216.34"],
+            "second.example.com": ["93.184.216.35"],
+        ])
+        let subject = URLPolicy(resolver: resolver)
+        let cache = DNSAnswerCache()
+
+        _ = await subject.validate(URL(string: "https://first.example.com/")!, cache: cache)
+        _ = await subject.validate(URL(string: "https://second.example.com/")!, cache: cache)
+        // A repeat of the first host must not add a third lookup.
+        _ = await subject.validate(URL(string: "https://first.example.com/again")!, cache: cache)
+
+        XCTAssertEqual(
+            resolver.resolvedHosts,
+            ["first.example.com", "second.example.com"],
+            "each unseen host must be resolved exactly once, in the order it is first seen"
+        )
+    }
+
+    /// What the memo stores is the address list, not the decision, so a name that answers with
+    /// private space is denied on every validation that reads the cached answer.
+    func testACachedPrivateAnswerIsDeniedOnEveryValidation() async {
+        let resolver = CountingDNSResolver(table: ["evil.example.com": ["10.0.0.5"]])
+        let subject = URLPolicy(resolver: resolver)
+        let cache = DNSAnswerCache()
+
+        let first = await subject.validate(URL(string: "https://evil.example.com/")!, cache: cache)
+        let second = await subject.validate(URL(string: "https://evil.example.com/other")!, cache: cache)
+
+        XCTAssertFalse(first.allowed)
+        XCTAssertFalse(second.allowed, "a cached answer must still be classified, not trusted")
+        XCTAssertTrue(second.reason?.contains("private") ?? false, second.reason ?? "no reason")
+        XCTAssertEqual(resolver.resolvedHosts.count, 1, "the second validation is a memo hit")
+    }
+
+    /// The memo is per fetch: a caller that validates outside a fetch gets a fresh resolution
+    /// every time, which is the re-lookup that bounds a DNS-rebinding window.
+    func testAValidationWithoutAFetchCacheResolvesEveryTime() async {
+        let resolver = CountingDNSResolver(table: ["good.example.com": ["93.184.216.34"]])
+        let subject = URLPolicy(resolver: resolver)
+
+        _ = await subject.validate(URL(string: "https://good.example.com/")!)
+        _ = await subject.validate(URL(string: "https://good.example.com/")!)
+
+        XCTAssertEqual(resolver.resolvedHosts.count, 2, "two requests must resolve twice")
+    }
+
     // MARK: IP classification
 
     func testIPAddressClassification() {
@@ -279,6 +392,28 @@ final class URLPolicyTests: XCTestCase {
     func testIPAddressRoundTripsItsDescription() {
         XCTAssertEqual(IPAddress("93.184.216.34")?.description, "93.184.216.34")
         XCTAssertEqual(IPAddress("10.0.0.1")?.description, "10.0.0.1")
+    }
+
+    /// `case v6` is public and carries a byte array, so a caller can build one of any length;
+    /// every accessor must classify it instead of indexing past the end (ledger B84).
+    ///
+    /// A trap here kills the whole test process rather than failing one assertion, which is
+    /// exactly the crash this test exists to prevent.
+    func testMalformedIPv6ValuesAreClassifiedInsteadOfTrapping() {
+        for count in [0, 1, 2, 10, 15, 17, 32] {
+            let address = IPAddress.v6(Array(repeating: 0, count: count))
+            XCTAssertFalse(address.isLoopback, "\(count) bytes")
+            XCTAssertFalse(address.isLinkLocal, "\(count) bytes")
+            XCTAssertFalse(address.isPrivate, "\(count) bytes")
+            XCTAssertFalse(address.isReserved, "\(count) bytes")
+            XCTAssertFalse(address.isCloudMetadata, "\(count) bytes")
+            XCTAssertFalse(address.isMulticast, "\(count) bytes")
+            XCTAssertFalse(address.isSharedAddressSpace, "\(count) bytes")
+            XCTAssertFalse(address.isBroadcast, "\(count) bytes")
+            XCTAssertFalse(address.isUnspecified, "\(count) bytes")
+            XCTAssertNil(address.embeddedIPv4, "\(count) bytes")
+            XCTAssertEqual(address.description, "invalid IPv6 (\(count) bytes)")
+        }
     }
 
     func testIPLiteralDetectionIsStrict() {

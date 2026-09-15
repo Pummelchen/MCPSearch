@@ -1,0 +1,69 @@
+# B06 — untrusted seconds to Duration, evidence after the fix
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## Before: the pre-fix conversion kills the process
+
+```
+$ swift test --filter DurationTests/testRetryAfterBoundsHostileValuesInsteadOfTrapping
+error: Process ... exited with unexpected signal code 5
+Swift/arm64e-apple-macos.swiftinterface:39435: Fatal error: Double value cannot be converted to Int
+  because the result would be greater than Int.max
+```
+
+That is `Int(max(0, seconds) * 1000)` on the untrusted value. It is reachable from
+`Retry-After: 1e30` on any provider 429 (via HTTPStatusMapper.validate), from the same header
+on an idempotent retry inside URLSessionHTTPClient (408/425/429/500/502/503/504), and from a
+Jina Reader 429 body of `{"retryAfter": 1e33}`.
+
+## After: bounded conversion, same call sites
+
+RetryAfter.boundedDuration(seconds:) is the single conversion both callers use:
+  - non-finite (inf, -inf, nan) => nil, so the caller falls back to its own backoff;
+  - finite => clamped into 0...maximumSeconds (24 h) *before* the multiply.
+
+```
+$ swift test --filter 'DurationTests|FetchFallbackTests|HTTPClientTests'
+Executed 28 tests, with 0 failures (0 unexpected)
+
+testRetryAfterBoundsHostileValuesInsteadOfTrapping  1e30 and 2x the bound => 86_400_000 ms
+                                                  inf/-inf/nan => nil
+                                                  -5 => 0; 7 => 7000 ms (unchanged)
+testJinaRetryAfterBodyIsBoundedByTheSameRule        {"retryAfter": 1e33} => 86_400_000 ms
+                                                  "soon"/null => nil; 3 => 3000 ms
+```
+
+Callers still clamp to their own policy (HTTPPolicy.maxRetryAfter, 5 s by default), so the
+observable retry behaviour for ordinary responses is unchanged; only the trap is gone.
+
+## The third site in the same class: mcps-mon --interval
+
+`Options.parse` guarded `Double(raw)` with `seconds >= 1` only, so `--interval inf` passed the
+guard and trapped in `Int(seconds * 1000)`; the monitor died before drawing a frame.
+
+Before, with the pre-fix guard restored:
+
+```
+$ swift test --filter MonitorOptionsTests/testHostileIntervalsAreRejectedInsteadOfTrapping
+error: Process ... exited with unexpected signal code 5
+Swift/arm64e-apple-macos.swiftinterface:39429: Fatal error: Double value cannot be converted to Int
+  because it is either infinite or NaN
+```
+
+After: the guard requires `isFinite` and `1 ... Options.maximumInterval.seconds` (86 400 s, the
+value the usage text now names), and the test drives `inf`, `-inf`, `infinity`, `1e30`, `nan`, `0`,
+`-5`, `0.5` and an over-long literal through `Options.parse`, plus the exact boundary (86 400
+accepted, 86 401 rejected) and an ordinary value (45 s) unchanged.
+
+```
+$ swift test --filter MonitorOptionsTests
+Executed 18 tests, with 0 failures (0 unexpected)
+```
+
+## Full verification after the fix
+
+```
+$ swift build && swift build -c release          # 0 warnings, 0 errors in both
+$ swift test
+Executed 401 tests, with 6 tests skipped and 0 failures (0 unexpected)
+```

@@ -11,97 +11,17 @@ import XCTest
 /// exported for normal use must not be able to change the outcome.
 final class ErrorReportingTests: XCTestCase {
 
-    /// The scrub list is shared with `StdioServerTests` and mirrored by
-    /// `scripts/mcp_smoke.py`; see `ServerTestSupport.providerEnvironmentVariables`.
+    // The scrub list is shared with `StdioServerTests` and mirrored by
+    // `scripts/mcp_smoke.py`; see `ServerTestSupport.providerEnvironmentVariables`.
 
     // MARK: - Server harness
 
-    private final class Server {
-        let process = Process()
-        let stdin = Pipe()
-        let stdout = Pipe()
-        let stderr = Pipe()
-        private var buffer = Data()
-
-        init(binary: URL, environment: [String: String]) {
-            process.executableURL = binary
-            process.standardInput = stdin
-            process.standardOutput = stdout
-            process.standardError = stderr
-            // Start from a scrubbed base so ambient credentials cannot affect results.
-            var env: [String: String] = [
-                "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin",
-            ]
-            for key in ServerTestSupport.providerEnvironmentVariables {
-                env.removeValue(forKey: key)
-            }
-            for (key, value) in environment { env[key] = value }
-            process.environment = env
-        }
-
-        func start() throws { try process.run() }
-
-        func call(id: Int, tool: String, arguments: [String: Any]) throws -> [String: Any] {
-            let request: [String: Any] = [
-                "jsonrpc": "2.0",
-                "id": id,
-                "method": "tools/call",
-                "params": ["name": tool, "arguments": arguments],
-            ]
-            try send(request)
-            return try readResponse(id: id)
-        }
-
-        func send(_ object: [String: Any]) throws {
-            var data = try JSONSerialization.data(withJSONObject: object)
-            data.append(UInt8(ascii: "\n"))
-            stdin.fileHandleForWriting.write(data)
-        }
-
-        func readResponse(id: Int, timeout: TimeInterval = 20) throws -> [String: Any] {
-            let deadline = Date().addingTimeInterval(timeout)
-            while Date() < deadline {
-                if let newline = buffer.firstIndex(of: UInt8(ascii: "\n")) {
-                    let line = buffer[buffer.startIndex..<newline]
-                    buffer = Data(buffer[buffer.index(after: newline)...])
-                    guard !line.isEmpty else { continue }
-                    if let object = try JSONSerialization.jsonObject(with: Data(line))
-                        as? [String: Any],
-                        (object["id"] as? Int) == id
-                    {
-                        return object
-                    }
-                    continue
-                }
-                let chunk = stdout.fileHandleForReading.availableData
-                if chunk.isEmpty { throw Failure.unexpectedExit(stderrText()) }
-                buffer.append(chunk)
-            }
-            throw Failure.timeout
-        }
-
-        func stderrText() -> String {
-            String(decoding: stderr.fileHandleForReading.availableData, as: UTF8.self)
-        }
-
-        func stop() {
-            try? stdin.fileHandleForWriting.close()
-            if process.isRunning { process.terminate() }
-            process.waitUntilExit()
-        }
-
-        enum Failure: Error, CustomStringConvertible {
-            case timeout
-            case unexpectedExit(String)
-
-            var description: String {
-                switch self {
-                case .timeout: "timed out waiting for a response"
-                case .unexpectedExit(let stderr): "server exited early; stderr: \(stderr)"
-                }
-            }
-        }
-    }
+    /// The one subprocess harness, shared with every other stdio test file.
+    ///
+    /// This file used to carry its own 85-line copy: same pipes, same newline framing, same
+    /// scrub list, and a read loop with the unenforceable deadline (ledger B70). The copies had
+    /// already drifted before being folded together (ledger B71).
+    private typealias Server = ServerProcess
 
     private func startServer(environment: [String: String] = [:]) throws -> Server {
         let binary = try ServerTestSupport.binaryURL()
@@ -191,7 +111,7 @@ final class ErrorReportingTests: XCTestCase {
         // SearXNG is configured, Tavily is not. Auto-selection would happily use
         // SearXNG, which is exactly the silent degradation this guards against.
         let server = try startServer(environment: [
-            "SEARXNG_BASE_URL": "https://searx.example.invalid",
+            "SEARXNG_BASE_URL": "https://searx.example.invalid"
         ])
         defer { server.stop() }
 
@@ -220,11 +140,11 @@ final class ErrorReportingTests: XCTestCase {
             .init(
                 status: 200,
                 body: """
-                {"query":"swift","results":[
-                  {"url":"https://swift.org/","title":"Swift","content":"Swift.","engine":"brave"}
-                ],"answers":[],"corrections":[],"infoboxes":[],"suggestions":[],
-                "unresponsive_engines":[]}
-                """
+                    {"query":"swift","results":[
+                      {"url":"https://swift.org/","title":"Swift","content":"Swift.","engine":"brave"}
+                    ],"answers":[],"corrections":[],"infoboxes":[],"suggestions":[],
+                    "unresponsive_engines":[]}
+                    """
             )
         ])
         let server = try startServer(environment: ["SEARXNG_BASE_URL": stub.baseURL.absoluteString])
@@ -312,10 +232,12 @@ final class ErrorReportingTests: XCTestCase {
         let mapped = HTTPStatusMapper.map(transportError, provider: .mojeek)
         XCTAssertFalse(mapped.safeDescription.contains("api_key"), mapped.safeDescription)
 
-        guard case .connectionFailed(_, let reason) = HTTPError.from(
-            urlError: transportError,
-            label: "mojeek"
-        ) else {
+        guard
+            case .connectionFailed(_, let reason) = HTTPError.from(
+                urlError: transportError,
+                label: "mojeek"
+            )
+        else {
             return XCTFail("expected a connection failure")
         }
         XCTAssertFalse(reason.contains("api_key"), reason)

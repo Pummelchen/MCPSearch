@@ -23,6 +23,10 @@ import WebSearchCore
 ///   expressed as a **nullable type** (`["string", "null"]`), which OpenAI supports
 ///   under strict mode and documents as the idiom for optional fields. Clients that
 ///   are not strict simply omit the argument.
+/// - **An `enum` on a nullable property must list null too.** `type` and `enum` are
+///   conjunctive in JSON Schema, so a value must satisfy both: an `enum` that names the
+///   choices without null makes the null this required-list convention depends on an
+///   invalid value. The schema lint enforces the pairing (ledger B111).
 /// - **No `format` keyword.** OpenAI rejects anything outside a nine-value allowlist
 ///   (`date-time`, `time`, `date`, `duration`, `email`, `hostname`, `ipv4`, `ipv6`,
 ///   `uuid`); `format: "uri"` is a hard error, so URL shape is described in prose and
@@ -31,14 +35,48 @@ import WebSearchCore
 ///   on some OpenAI-compatible deployments. Defaults live in the description text and
 ///   are applied by the argument parser.
 /// - **No `oneOf` / `allOf` / `not`.** Combinators, if ever needed, must be `anyOf`.
-/// - **Zero-argument tools still declare `properties`** (as an empty object); an object
-///   schema with no `properties` key is rejected.
+/// - **Zero-argument tools still declare `properties` and `required`** (as an empty object and
+///   an empty array); an object schema with no `properties` key is rejected, and an absent
+///   `required` is not the same contract as an empty one.
+/// - **A tool that mirrors another tool's arguments declares the same constraints, not
+///   copies of them.** `web_answer` runs the same discovery pass as `web_search`, so the
+///   shared properties come from one definition and the schema lint compares them; a
+///   hand-maintained copy had already lost `provider`'s `enum` (ledger B110).
 /// - The root is always a closed object, never a union.
 public enum ToolSchemas {
     public static let searchToolName = "web_search"
     public static let openToolName = "web_open"
     public static let statusToolName = "web_search_status"
     public static let answerToolName = "web_answer"
+
+    /// The `provider` discovery argument, spelled once for both search tools.
+    ///
+    /// `web_answer` runs the same discovery pass as `web_search`, and the two tools
+    /// must not teach a client two different sets of legal ids. An earlier hand-written
+    /// copy on `web_answer` silently lost its `enum`, so a strict `tools/list` consumer
+    /// could not discover the accepted ids for that tool at all (ledger B110). Deriving
+    /// the list from `ProviderID.allCases` also removes the second failure mode a shared
+    /// literal would keep: a provider added to the core enum but forgotten here would be
+    /// rejected by this file's own advertised contract.
+    ///
+    /// `auto` is not a `ProviderID`; it is the sentinel both argument parsers translate
+    /// into "let the orchestrator choose". `null` belongs to the list because the
+    /// property is a nullable union and the schema's own lint requires an `enum` to
+    /// admit every value its `type` admits (ledger B111).
+    private static var providerDiscoverySchema: Value {
+        .object([
+            "description": .string(
+                "Force a single search provider by id, or \"auto\" (default) to select "
+                    + "automatically"
+            ),
+            "enum": .array(
+                [.string("auto")]
+                    + ProviderID.allCases.map { Value.string($0.rawValue) }
+                    + [.null]
+            ),
+            "type": .array([.string("string"), .string("null")]),
+        ])
+    }
 
     // MARK: - web_search
 
@@ -61,7 +99,10 @@ public enum ToolSchemas {
                 ],
                 "recency": [
                     "type": ["string", "null"],
-                    "enum": ["any", "day", "week", "month", "year"],
+                    // `enum` and `type` are conjunctive in JSON Schema, so a null the
+                    // union advertises must appear here too: this property is required,
+                    // and null is how a strict client asks for the default (ledger B111).
+                    "enum": ["any", "day", "week", "month", "year", Value.null],
                     "description": "Publication time window; default \"any\"",
                 ],
                 "include_domains": [
@@ -80,20 +121,13 @@ public enum ToolSchemas {
                     "type": ["string", "null"],
                     "description": "Optional locale such as en-US or de-DE",
                 ],
-                "provider": [
-                    "type": ["string", "null"],
-                    "enum": [
-                        "auto", "tavily", "brave", "mojeek", "exa", "searxng",
-                        "open_web_search", "duckduckgo", "startpage", "parallel",
-                    ],
-                    "description": Value.string(
-                        "Force a single provider instead of automatic selection; "
-                            + "default \"auto\""
-                    ),
-                ],
+                "provider": Self.providerDiscoverySchema,
                 "mode": [
                     "type": ["string", "null"],
-                    "enum": ["fast", "balanced", "thorough"],
+                    // `enum` and `type` are conjunctive in JSON Schema, so a null the
+                    // union advertises must appear here too: this property is required,
+                    // and null is how a strict client asks for the default (ledger B111).
+                    "enum": ["fast", "balanced", "thorough", Value.null],
                     "description": Value.string(
                         "fast uses one provider; balanced fuses two; thorough fuses three "
                             + "and may add an aggregator; default \"balanced\""
@@ -248,7 +282,10 @@ public enum ToolSchemas {
                 ],
                 "recency": [
                     "type": ["string", "null"],
-                    "enum": ["any", "day", "week", "month", "year"],
+                    // `enum` and `type` are conjunctive in JSON Schema, so a null the
+                    // union advertises must appear here too: this property is required,
+                    // and null is how a strict client asks for the default (ledger B111).
+                    "enum": ["any", "day", "week", "month", "year", Value.null],
                     "description": "Publication time window; default \"any\"",
                 ],
                 "include_domains": [
@@ -269,16 +306,13 @@ public enum ToolSchemas {
                 ],
                 "mode": [
                     "type": ["string", "null"],
-                    "enum": ["fast", "balanced", "thorough"],
+                    // `enum` and `type` are conjunctive in JSON Schema, so a null the
+                    // union advertises must appear here too: this property is required,
+                    // and null is how a strict client asks for the default (ledger B111).
+                    "enum": ["fast", "balanced", "thorough", Value.null],
                     "description": "Search depth before answering; default \"balanced\"",
                 ],
-                "provider": [
-                    "type": ["string", "null"],
-                    "description": Value.string(
-                        "Force one search provider by id, or \"auto\" (default) to "
-                            + "select automatically"
-                    ),
-                ],
+                "provider": Self.providerDiscoverySchema,
             ],
             "required": [
                 "query", "max_results", "recency", "include_domains", "exclude_domains",
@@ -350,9 +384,12 @@ public enum ToolSchemas {
     public static var statusInput: Value {
         [
             "type": "object",
-            // A zero-argument tool still declares `properties`. An object schema with no
-            // `properties` key at all is rejected by strict validation.
+            // A zero-argument tool still declares `properties` and `required`: an object
+            // schema with no `properties` key at all is rejected by strict validation, and
+            // the schema lint requires every object to carry an explicit `required` list
+            // rather than reading an absent one as empty (ledger B112).
             "properties": Value.object([:]),
+            "required": [],
             "additionalProperties": false,
         ]
     }
@@ -444,9 +481,10 @@ public struct ToolArguments: Sendable {
     }
 
     public func requiredString(_ name: String) throws -> String {
-        guard let value = try string(name)?
-            .trimmingCharacters(in: .whitespacesAndNewlines),
-              !value.isEmpty
+        guard
+            let value = try string(name)?
+                .trimmingCharacters(in: .whitespacesAndNewlines),
+            !value.isEmpty
         else {
             throw ArgumentError("`\(name)` is required and must be a non-empty string")
         }
@@ -459,14 +497,6 @@ public struct ToolArguments: Sendable {
         // Tolerate a numeric string: some clients serialize numbers as strings.
         if let text = value.stringValue, let integer = Int(text) { return integer }
         throw ArgumentError("`\(name)` must be an integer")
-    }
-
-    public func bool(_ name: String) throws -> Bool? {
-        guard let value = raw[name], !value.isNull else { return nil }
-        guard let flag = value.boolValue else {
-            throw ArgumentError("`\(name)` must be a boolean")
-        }
-        return flag
     }
 
     public func stringArray(_ name: String, maxItems: Int) throws -> [String] {
@@ -551,8 +581,8 @@ public enum ToolOutputFormatter {
             lines.append(
                 "Unavailable providers: "
                     + response.providersFailed
-                        .map { "\($0.provider.rawValue) (\($0.category.rawValue))" }
-                        .joined(separator: ", ")
+                    .map { "\($0.provider.rawValue) (\($0.category.rawValue))" }
+                    .joined(separator: ", ")
             )
         }
         for warning in response.warnings where !warning.isEmpty {
@@ -655,8 +685,8 @@ public enum ToolOutputFormatter {
             lines.append(
                 "Unavailable providers: "
                     + response.providersFailed
-                        .map { "\($0.provider.rawValue) (\($0.category.rawValue))" }
-                        .joined(separator: ", ")
+                    .map { "\($0.provider.rawValue) (\($0.category.rawValue))" }
+                    .joined(separator: ", ")
             )
         }
 

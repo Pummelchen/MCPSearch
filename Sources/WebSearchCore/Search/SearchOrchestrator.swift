@@ -45,9 +45,11 @@ public actor SearchOrchestrator {
 
         let selection = try registry.select(for: request, requested: requestedProvider)
         guard case .selected(let selectedIDs) = selection, !selectedIDs.isEmpty else {
+            // Every variable that can register a provider, from the one enablement authority
+            // rather than a hand-written pair that named two of the eight (ledger B57).
+            let variables = ProviderEnablement.allInputs.map(\.assignment).joined(separator: ", ")
             throw SearchError.invalidRequest(
-                "no search provider is configured; set an API key such as TAVILY_API_KEY "
-                    + "or configure SEARXNG_BASE_URL"
+                "no search provider is configured; set any of \(variables)"
             )
         }
 
@@ -64,10 +66,12 @@ public actor SearchOrchestrator {
         }
 
         let started = DispatchTime.now().uptimeNanoseconds
-        // The caller's cancellation is separate from our own budget timer: if the MCP
-        // client cancels the tool call we propagate `CancellationError`, but if our
-        // timer fires we degrade gracefully to partial results.
-        let callerCancelledBefore = Task.isCancelled
+        // Timeouts are budgets, not cancellations: the deadline produces partial results.
+        // `Task.isCancelled` on the calling task therefore means the caller cancelled, whether
+        // that happened before the call or while it was running, and both are propagated as
+        // `CancellationError`. Only the pre-call case was handled before, so a cancellation that
+        // arrived mid-flight was swallowed into partial results (ledger B04).
+        try Task.checkCancellation()
         let budget = configuration.timeout(for: request.mode)
 
         // Each provider gets a larger budget than the caller asked for, so fusion has
@@ -88,7 +92,9 @@ public actor SearchOrchestrator {
             request: scopedRequest,
             deadline: budget
         )
-        if Task.isCancelled, callerCancelledBefore { throw CancellationError() }
+        // A caller that cancelled mid-flight gets the cancellation, not partial results that no
+        // one is waiting for. Checked immediately after the fan-out and again before returning.
+        try Task.checkCancellation()
         accumulated.append(contentsOf: primary.responses)
         failures.append(contentsOf: primary.failures)
         attemptedRequests += primary.attempted
@@ -194,14 +200,7 @@ public actor SearchOrchestrator {
 
         let results = fuse(accumulated, request: request)
 
-        // Provider-supplied answers are only useful if the caller can tell where they
-        // came from, so each is attributed.
-        for response in accumulated {
-            if let answer = response.answer, !answer.isEmpty {
-                warnings.append("\(response.provider.displayName) answer: \(answer)")
-            }
-            warnings.append(contentsOf: response.warnings)
-        }
+        warnings.append(contentsOf: Self.collectWarnings(from: accumulated))
 
         let elapsed = Int((DispatchTime.now().uptimeNanoseconds - started) / 1_000_000)
 
@@ -234,11 +233,14 @@ public actor SearchOrchestrator {
             warnings.append(
                 "\(failures.count) provider(s) failed: "
                     + failures.map { "\($0.provider.rawValue) (\($0.category.rawValue))" }
-                        .joined(separator: ", ")
+                    .joined(separator: ", ")
                     + "."
             )
         }
 
+        // Last checkpoint: everything above ran on behalf of a caller that may have gone away.
+        // Nothing is cached or returned for it.
+        try Task.checkCancellation()
         let response = SearchResponse(
             query: request.normalizedQuery,
             results: results,
@@ -363,7 +365,7 @@ public actor SearchOrchestrator {
                 aggregate.attempted += ids.filter { !reported.contains($0) }.count
                 await self.recordBudgetExceeded(
                     ids: ids,
-                    answered: aggregate,
+                    alreadyReported: reported,
                     into: &aggregate
                 )
             }
@@ -375,14 +377,50 @@ public actor SearchOrchestrator {
     /// mistaken for a real provider failure.
     static let budgetSentinel = "internal:search-budget-expired"
 
+    /// Warnings for a fan-out, with each provider's own answers attributed.
+    ///
+    /// Provider-supplied answers are only useful if the caller can tell where they came from, so
+    /// each is attributed — and labelled as untrusted, because a provider's answer is vendor text
+    /// that this tool never fetched or verified. Warnings travel into the *caller's* context,
+    /// where an injected instruction would read as ours, so the text is clipped as well
+    /// (ledger B27).
+    static func collectWarnings(from responses: [ProviderSearchResponse]) -> [String] {
+        var warnings: [String] = []
+        for response in responses {
+            if let answer = response.answer, !answer.isEmpty {
+                let clipped = answer.count > 300 ? String(answer.prefix(300)) + "…" : answer
+                warnings.append(
+                    "\(response.provider.displayName) supplied answer (untrusted, not fetched): "
+                        + clipped
+                )
+            }
+            warnings.append(contentsOf: response.warnings)
+        }
+        return warnings
+    }
+
+    /// Charge the budget to the providers that had not reported yet.
+    ///
+    /// `alreadyReported` is responses *and* failures, computed by the caller. Deriving it from
+    /// responses alone charged a provider that had already failed a second, synthetic deadline
+    /// failure: the failure list carried the provider twice, "N provider(s) failed" was
+    /// inflated, and `lastError` was overwritten with a deadline that provider did not cause
+    /// (ledger B12).
     private func recordBudgetExceeded(
         ids: [ProviderID],
-        answered: FanOutResult,
+        alreadyReported: Set<ProviderID>,
         into aggregate: inout FanOutResult
     ) async {
-        log.warning("Search time budget exceeded; cancelling slow providers")
-        let answeredIDs = Set(answered.responses.map(\.provider))
-        for id in ids where !answeredIDs.contains(id) {
+        let unanswered = ids.filter { !alreadyReported.contains($0) }
+        guard !unanswered.isEmpty else {
+            log.debug("Search time budget exceeded, but every provider had already reported")
+            return
+        }
+        log.warning(
+            "Search time budget exceeded; cancelling slow providers",
+            metadata: ["unreported": "\(unanswered.count)"]
+        )
+        for id in unanswered {
             let failure = ProviderFailure(
                 provider: id,
                 category: .timeout,
@@ -418,9 +456,15 @@ public actor SearchOrchestrator {
         allowWaiting: Bool
     ) async -> ProviderFailure? {
         guard let denial = await health.authorize(id) else { return nil }
-        guard allowWaiting, denial.category == .rateLimited,
-            let wait = await health.localWait(for: id),
-            wait <= SearchOrchestrator.maximumLocalWait,
+        guard allowWaiting, denial.category == .rateLimited else { return denial }
+        // `localWait` reports an already-cleared throttle as nil, and the throttle can clear in
+        // the microseconds between `authorize` and this second read: the denial is then stale and
+        // the request it refused is allowed. Retrying `authorize` here is what keeps that boundary
+        // race from turning a search that had a usable provider into an empty one (ledger B116).
+        guard let wait = await health.localWait(for: id) else {
+            return await health.authorize(id)
+        }
+        guard wait <= SearchOrchestrator.maximumLocalWait,
             wait.milliseconds
                 <= Int(Double(budget.milliseconds) * SearchOrchestrator.localWaitBudgetShare)
         else {
@@ -499,6 +543,12 @@ public actor SearchOrchestrator {
                 ]
             )
         } catch is CancellationError {
+            // The request was claimed from the breaker before the call and produced no outcome, so
+            // the claim is given back rather than recorded as a provider failure: a caller that
+            // goes away says nothing about the provider. Without this a cancelled request left the
+            // breaker half-open with a claim nobody releases, and the provider was never tried
+            // again (ledger B52).
+            await health.releaseProbe(id)
             result.failures.append(
                 ProviderFailure(
                     provider: id,
@@ -553,8 +603,9 @@ public actor SearchOrchestrator {
                 enabled: registry.isEnabled(id)
             )
             var annotated = state
-            if let reason = registry.ineligibleReasons()[id], state.status == .notConfigured
-                || state.status == .disabled
+            if let reason = registry.ineligibleReasons()[id],
+                state.status == .notConfigured
+                    || state.status == .disabled
             {
                 annotated = ProviderHealth.ProviderState(
                     provider: state.provider,

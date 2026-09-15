@@ -1,0 +1,117 @@
+# B41 — Apache-2.0 NOTICE files were not carried with any distributed binary
+
+Host: node1 (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## What was wrong
+
+The project is MIT (`LICENSE`) but links Apache-2.0 packages. Apache-2.0 §4(d) requires a work
+that is *distributed* to reproduce the attribution notices of the Apache-2.0 components it
+contains. There was no `NOTICE`/`THIRD-PARTY` file anywhere in the tree and no release step that
+produced one, so a shipped binary carried no attribution at all:
+
+```
+$ git ls-tree -r --name-only HEAD | grep -iE 'notice|third.?party' ; echo "exit=$?"
+exit=1                       # no attribution file of any name existed
+$ git grep -n 'THIRD-PARTY-NOTICES' HEAD -- . ':(exclude)AUDIT/' ; echo "exit=$?"
+exit=1                       # and nothing outside the audit record referenced one
+```
+
+The `:(exclude)AUDIT/` matters: B41's own finding text in `AUDIT/findings/L0-L7.md` and
+`AUDIT/ledger.json` proposes this filename, so an unscoped grep matches the audit describing the
+fix rather than the fix existing.
+
+A grep for the *word* "notice" is not the check and would mislead: the tree contains 12 prose
+hits for "notice"/"noticed"/"third-party" in doc comments (e.g.
+`ScraperSupport.swift:7` "changes without notice", `SearchProvider.swift:59` "A third-party
+aggregation/MCP service"), none of which is an attribution. The check is for the file and for a
+reference to it, which is what the two commands above do.
+
+## The licence facts, read from the resolved checkouts
+
+Read from each package's own `LICENSE`/`NOTICE` in the SwiftPM checkouts, not inferred:
+
+```
+package             version   licence        Runtime Library Exception   NOTICE.txt
+eventsource         1.5.1     MIT            n/a                          -
+swift-atomics       1.3.1     Apache-2.0     yes  (§4(a)/(b)/(d) waived)   -
+swift-collections   1.6.0     Apache-2.0     yes  (§4(a)/(b)/(d) waived)   -
+swift-log           1.15.1    Apache-2.0     no                           YES
+swift-nio           2.102.0   Apache-2.0     no                           YES
+swift-sdk           0.12.1    MIT+Apache mix n/a                          -
+swift-system        1.8.1     Apache-2.0     yes  (§4(a)/(b)/(d) waived)   -
+SwiftSoup           2.13.5    MIT            n/a                          -
+```
+
+Two findings sharpen the original report, which named `swift-nio` and `swift-log` only by their
+possession of a `NOTICE.txt`:
+
+* **The Runtime Library Exception changes the obligation for three packages.**
+  `swift-atomics`, `swift-collections` and `swift-system` ship the Apache-2.0 text with an
+  appended exception reading "if you use this Software to compile your source code and portions of
+  this Software are embedded into the binary product as a result, you may redistribute such
+  product without providing attribution as would otherwise be required by Sections 4(a), 4(b) and
+  4(d)". The exception was verified byte-identical across all three. Their notices are therefore
+  **not required** in a distributed binary, and the notices file says so explicitly rather than
+  leaving an unexplained gap.
+* **`swift-sdk` is mid-transition MIT→Apache-2.0 and ships no `NOTICE.txt`.** Its `LICENSE`
+  distinguishes relicensed contributions (Apache-2.0) from unconverted MIT contributions and
+  places documentation outside the specifications under CC-BY-4.0. It is recorded as *mixed* and
+  both texts are carried, rather than asserting either one.
+
+The three packages with the Exception also omit the Apache-2.0 `APPENDIX` boilerplate; that
+section is instructional, not a licence term, and the canonical text including it is the one
+reproduced.
+
+## The fix
+
+`THIRD-PARTY-NOTICES.md` is added at the repository root. It carries a machine-readable
+inventory table (an `<!-- inventory:start -->`/`<!-- inventory:end -->` block), the licence of
+every resolved package, the licence notes above, the **verbatim** `NOTICE.txt` of `swift-nio`
+and `swift-log`, and the full Apache-2.0, Swift Runtime Library Exception and both MIT texts.
+
+`scripts/third_party_notices.py` checks the inventory against `Package.resolved` in both
+directions and fails CI on any difference. It deliberately does **not** generate the file:
+copying a licence in automatically is how an unlicensed or copyleft dependency gets shipped
+unremarked, so each licence is read and recorded by hand and the check only proves the inventory
+stayed complete. It needs no network and no dependency checkout, which is what lets it be a CI
+gate. Wired into the `static-analysis` job as *Third-party notices match the lockfile*, and
+referenced from the README's License section.
+
+## Verification — the check can fail (mutation, not assertion)
+
+Each mutation edits a copy of the notices file and points the checker at it; the unmutated file
+is restored by construction, since the checker never writes.
+
+```
+$ python3 scripts/third_party_notices.py
+THIRD-PARTY-NOTICES.md covers all 8 resolved packages at the pinned versions      exit=0
+
+# M1  drop the swift-nio row
+::error::swift-nio 2.102.0 is in Package.resolved but not in mut1.md: record its licence and
+  reproduce any NOTICE text.                                                      exit=1
+
+# M2  add a package that is not resolved
+::error::left-pad is in mut2.md but is no longer resolved by Package.resolved: remove it.  exit=1
+
+# M3  document eventsource at the wrong version
+::error::eventsource is documented at 9.9.9 but Package.resolved pins 1.5.1: update the row. exit=1
+```
+
+M1 is the silent failure the task is about (a dependency present in the binary but absent from the
+notices); M2 is the reverse (a stale row); M3 pins the version comparison.
+
+## Gates
+
+```
+$ ruff check scripts                    All checks passed!
+$ ruff format --check scripts           1 file already formatted
+$ pyright scripts/third_party_notices.py
+                                        0 errors, 0 warnings, 0 informations
+$ swift build --build-tests -Xswiftc -warnings-as-errors
+                                        Build complete!  0 warnings, 0 errors
+$ swiftlint lint --strict               0 violations
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+                                        0 diagnostics
+```
+
+The Swift suite is unaffected: this change adds no Swift. The full suite is run in the CI record.

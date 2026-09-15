@@ -1,7 +1,6 @@
 import Foundation
-import XCTest
-
 import WebSearchCore
+import XCTest
 
 /// End-to-end tests that drive the **built executable** over a real MCP stdio session.
 ///
@@ -10,9 +9,9 @@ import WebSearchCore
 /// carries protocol traffic only.
 final class StdioServerTests: XCTestCase {
 
-    /// The scrub list is shared with `ErrorReportingTests` and mirrored by
-    /// `scripts/mcp_smoke.py`; see `ServerTestSupport.providerEnvironmentVariables`.
-    /// Referencing it directly is what stops the three copies from drifting.
+    // The scrub list is shared with `ErrorReportingTests` and mirrored by
+    // `scripts/mcp_smoke.py`; see `ServerTestSupport.providerEnvironmentVariables`.
+    // Referencing it directly is what stops the three copies from drifting.
 
     // MARK: - Process plumbing
 
@@ -24,113 +23,87 @@ final class StdioServerTests: XCTestCase {
         try ServerTestSupport.binaryURL()
     }
 
-    /// A running server process with newline-delimited JSON-RPC framing.
-    private final class ServerProcess {
+    /// Run the executable to completion and capture its exit status and streams.
+    ///
+    /// `--help` and a rejected flag both exit before a transport is served, so this is a one-shot
+    /// process rather than an MCP session. The output is at most a few kilobytes — far below the
+    /// pipe buffer — so draining the pipes after `waitUntilExit` cannot deadlock the child.
+    private func runToCompletion(
+        arguments: [String],
+        environment: [String: String] = [:]
+    ) throws -> (status: Int32, stdout: String, stderr: String) {
         let process = Process()
-        let stdinPipe = Pipe()
+        process.executableURL = try binaryURL()
+        process.arguments = arguments
+        process.standardInput = FileHandle.nullDevice
         let stdoutPipe = Pipe()
         let stderrPipe = Pipe()
-        private var stdoutBuffer = Data()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
 
-        init(binary: URL, environment: [String: String]) {
-            process.executableURL = binary
-            process.standardInput = stdinPipe
-            process.standardOutput = stdoutPipe
-            process.standardError = stderrPipe
-
-            // Hermetic environment: start from PATH only, then remove every documented
-            // provider variable, then apply this test's overrides. Without this, an
-            // ambient TAVILY_API_KEY/BRAVE_SEARCH_API_KEY (exactly what the README
-            // tells a user to export) would make a stub-provider test contact the live
-            // vendor and report a false failure.
-            var merged: [String: String] = [
-                "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin",
-            ]
-            for key in ServerTestSupport.providerEnvironmentVariables {
-                merged.removeValue(forKey: key)
-            }
-            for (key, value) in environment { merged[key] = value }
-            process.environment = merged
+        // Hermetic exactly like the MCP harness: no ambient provider credential or config path.
+        var merged: [String: String] = [
+            "PATH": ProcessInfo.processInfo.environment["PATH"] ?? "/usr/bin:/bin"
+        ]
+        for key in ServerTestSupport.providerEnvironmentVariables {
+            merged.removeValue(forKey: key)
         }
+        for (key, value) in environment { merged[key] = value }
+        process.environment = ServerTestSupport.childEnvironment(base: merged)
 
-        func start() throws {
-            try process.run()
-        }
+        try process.run()
+        process.waitUntilExit()
 
-        func send(_ object: [String: Any]) throws {
-            let data = try JSONSerialization.data(withJSONObject: object)
-            var line = data
-            line.append(UInt8(ascii: "\n"))
-            stdinPipe.fileHandleForWriting.write(line)
-        }
-
-        /// Read one JSON object from stdout, blocking until a full line arrives.
-        func readMessage(timeout: TimeInterval = 15) throws -> [String: Any] {
-            let deadline = Date().addingTimeInterval(timeout)
-            while Date() < deadline {
-                // Serve any complete line already buffered.
-                if let newlineIndex = stdoutBuffer.firstIndex(of: UInt8(ascii: "\n")) {
-                    let lineData = stdoutBuffer[stdoutBuffer.startIndex..<newlineIndex]
-                    stdoutBuffer = Data(stdoutBuffer[stdoutBuffer.index(after: newlineIndex)...])
-                    if lineData.isEmpty { continue }
-                    guard
-                        let object = try JSONSerialization.jsonObject(with: Data(lineData))
-                            as? [String: Any]
-                    else {
-                        throw ServerTestError.malformedResponse(String(decoding: lineData, as: UTF8.self))
-                    }
-                    return object
-                }
-
-                let chunk = stdoutPipe.fileHandleForReading.availableData
-                if chunk.isEmpty {
-                    // EOF: the process exited without answering.
-                    throw ServerTestError.unexpectedEOF(
-                        stderr: String(decoding: stderrPipe.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
-                    )
-                }
-                stdoutBuffer.append(chunk)
-            }
-            throw ServerTestError.timeout
-        }
-
-        /// Read messages until one has the requested JSON-RPC id.
-        func readResponse(id: Int, timeout: TimeInterval = 15) throws -> [String: Any] {
-            let deadline = Date().addingTimeInterval(timeout)
-            while Date() < deadline {
-                let message = try readMessage(timeout: max(0.1, deadline.timeIntervalSinceNow))
-                if let messageID = message["id"] as? Int, messageID == id { return message }
-                // Notifications are skipped; this server sends none, but tolerate them.
-            }
-            throw ServerTestError.timeout
-        }
-
-        func stderrText() -> String {
-            let data = stderrPipe.fileHandleForReading.availableData
-            return String(decoding: data, as: UTF8.self)
-        }
-
-        func stop() {
-            try? stdinPipe.fileHandleForWriting.close()
-            if process.isRunning {
-                process.terminate()
-            }
-            process.waitUntilExit()
-        }
+        let stdoutData = stdoutPipe.fileHandleForReading.readDataToEndOfFile()
+        let stderrData = stderrPipe.fileHandleForReading.readDataToEndOfFile()
+        return (
+            process.terminationStatus,
+            String(bytes: stdoutData, encoding: .utf8) ?? "<not valid UTF-8>",
+            String(bytes: stderrData, encoding: .utf8) ?? "<not valid UTF-8>"
+        )
     }
 
-    private enum ServerTestError: Error, CustomStringConvertible {
-        case timeout
-        case malformedResponse(String)
-        case unexpectedEOF(stderr: String)
+    // MARK: - Harness
 
-        var description: String {
-            switch self {
-            case .timeout: "timed out waiting for a response"
-            case .malformedResponse(let text): "malformed JSON-RPC line: \(text)"
-            case .unexpectedEOF(let stderr): "server exited early; stderr: \(stderr)"
-            }
+    /// The subprocess harness is shared with `ErrorReportingTests` and
+    /// `SchemaCompatibilityTests`; see `ServerProcess` in `TestSupport.swift`. One copy means
+    /// the deadline below cannot be enforced in one harness and skipped in another (ledger
+    /// B70/B71).
+
+    /// The harness deadline must be a real bound, even while the child is alive and silent.
+    ///
+    /// The read loop used to block in `FileHandle.availableData`, so the check
+    /// `while Date() < deadline` could only run after a read returned: a server that never
+    /// wrote hung the run instead of failing it, and the 15 s/20 s deadline these harnesses
+    /// advertise was never enforced (ledger B70). The child here is a shell that writes a
+    /// partial line and then holds the pipe open, so this can only pass if the deadline
+    /// preempts a blocked read.
+    func testHarnessDeadlinePreemptsABlockedRead() throws {
+        let binary = URL(fileURLWithPath: "/bin/sh")
+        try XCTSkipUnless(
+            FileManager.default.isExecutableFile(atPath: binary.path),
+            "the deadline probe needs a shell to stand in for a wedged server"
+        )
+        let server = ServerProcess(
+            binary: binary,
+            arguments: ["-c", "printf 'partial line with no newline'; sleep 60"]
+        )
+        try server.start()
+        defer { server.stop() }
+
+        let started = Date()
+        XCTAssertThrowsError(try server.readResponse(id: 1, timeout: 0.3)) { error in
+            XCTAssertEqual(
+                String(describing: error),
+                "timed out waiting for a response",
+                "a silent child must raise the harness timeout, not block"
+            )
         }
+        XCTAssertLessThan(
+            Date().timeIntervalSince(started),
+            10,
+            "the read returned only because the deadline fired, not because the child exited"
+        )
     }
 
     /// The protocol revisions this server build understands.
@@ -181,6 +154,56 @@ final class StdioServerTests: XCTestCase {
             "method": "notifications/initialized",
         ])
         return server
+    }
+
+    // MARK: - Command line before configuration (ledger B113)
+
+    /// `--help` must be answered from the command line alone.
+    ///
+    /// Configuration used to be loaded and validated before `argv` was parsed, so a mistyped
+    /// `SEARCH_CONFIG_FILE` made `--help` exit 2 with "Refusing to start" and print no usage at
+    /// all (ledger B113).
+    func testHelpSucceedsEvenWhenTheConfigurationFileIsUnreadable() throws {
+        let result = try runToCompletion(
+            arguments: ["--help"],
+            environment: ["SEARCH_CONFIG_FILE": "/nonexistent/audit-missing-config.env"]
+        )
+        XCTAssertEqual(result.status, 0, "stderr: \(result.stderr)")
+        XCTAssertTrue(
+            result.stdout.contains("USAGE"),
+            "usage did not reach stdout: \(result.stdout)"
+        )
+        XCTAssertFalse(
+            result.stderr.contains("Refusing to start"),
+            "a help request must not depend on the environment: \(result.stderr)"
+        )
+    }
+
+    /// An invalid flag is reported before the configuration is validated or any client is built.
+    ///
+    /// The same fatal `SEARCH_CONFIG_FILE` is in the environment, so a process that loaded
+    /// configuration first would report only the config problem and never the typo (ledger B113).
+    func testInvalidFlagIsReportedBeforeConfigurationIsValidated() throws {
+        let result = try runToCompletion(
+            arguments: ["--not-a-flag"],
+            environment: ["SEARCH_CONFIG_FILE": "/nonexistent/audit-missing-config.env"]
+        )
+        XCTAssertEqual(result.status, 2, "stdout: \(result.stdout)")
+        XCTAssertTrue(
+            result.stderr.contains("Unknown argument: --not-a-flag"),
+            "the argument error must win over the configuration error: \(result.stderr)"
+        )
+        XCTAssertFalse(result.stderr.contains("Refusing to start"), result.stderr)
+    }
+
+    /// A help request must not load configuration at all, so it emits no startup diagnostics.
+    func testHelpDoesNotLoadConfiguration() throws {
+        let result = try runToCompletion(arguments: ["--help"])
+        XCTAssertEqual(result.status, 0)
+        XCTAssertFalse(
+            result.stderr.contains("Starting"),
+            "help loaded configuration and logged startup: \(result.stderr)"
+        )
     }
 
     // MARK: - Protocol
@@ -319,7 +342,18 @@ final class StdioServerTests: XCTestCase {
         let schema = try XCTUnwrap(search["inputSchema"] as? [String: Any])
         let properties = try XCTUnwrap(schema["properties"] as? [String: Any])
         let provider = try XCTUnwrap(properties["provider"] as? [String: Any])
-        let enumValues = try XCTUnwrap(provider["enum"] as? [String])
+        // The list may also carry JSON null, because the property is a nullable union;
+        // only the string entries name a provider. Reading the list as `[Any]` rather
+        // than `[String]` keeps this test about which *providers* are advertised, which
+        // is its subject, instead of about whether anything else is present.
+        let enumEntries = try XCTUnwrap(provider["enum"] as? [Any])
+        for entry in enumEntries {
+            XCTAssertTrue(
+                entry is String || entry is NSNull,
+                "the provider enum may only contain ids and null, found \(entry)"
+            )
+        }
+        let enumValues = enumEntries.compactMap { $0 as? String }
 
         // Every search-capable provider must be offered, plus `auto`.
         let expected = Set(
@@ -348,6 +382,31 @@ final class StdioServerTests: XCTestCase {
         XCTAssertEqual(provider["type"] as? [String], ["string", "null"])
     }
 
+    /// `web_open` can send the target URL to a third-party rendering service, so the
+    /// model-visible description must say so before the call is made. It used to describe only
+    /// a vague "rendering service" and never said the URL left the machine (ledger B87).
+    func testWebOpenDescriptionDisclosesTheThirdPartyReader() throws {
+        let server = try startInitializedServer(environment: [:])
+        defer { server.stop() }
+
+        try server.send(["jsonrpc": "2.0", "id": 71, "method": "tools/list"])
+        let response = try server.readResponse(id: 71)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        let tools = try XCTUnwrap(result["tools"] as? [[String: Any]])
+        let open = try XCTUnwrap(tools.first { $0["name"] as? String == "web_open" })
+        let description = try XCTUnwrap(open["description"] as? String)
+
+        XCTAssertTrue(description.contains("r.jina.ai"), description)
+        XCTAssertTrue(
+            description.lowercased().contains("third-party"),
+            "the description must disclose the third party: \(description)"
+        )
+        XCTAssertTrue(
+            description.lowercased().contains("remotely"),
+            "the description must say the URL is fetched remotely: \(description)"
+        )
+    }
+
     // MARK: - Tool calls
 
     func testSearchWithoutAnyProviderFailsActionablyRatherThanCrashing() throws {
@@ -371,6 +430,53 @@ final class StdioServerTests: XCTestCase {
             text.contains("TAVILY_API_KEY") || text.contains("not configured"),
             "expected an actionable message, got: \(text)"
         )
+        // The list is built from the one enablement authority, so it names every provider's
+        // variable rather than the two the hand-written message happened to know (ledger B57).
+        for variable in [
+            "BRAVE_SEARCH_API_KEY", "MOJEEK_API_KEY", "EXA_API_KEY", "SEARXNG_BASE_URL",
+            "OPEN_WEB_SEARCH_URL", "SEARCH_ENABLE_SCRAPERS=true", "PARALLEL_MCP_URL",
+        ] {
+            XCTAssertTrue(
+                text.contains(variable),
+                "the no-provider message omits \(variable): \(text)"
+            )
+        }
+    }
+
+    /// `parallel` needs a flag *and* an endpoint, so the tool error must name the input this
+    /// configuration is missing.
+    ///
+    /// With the flag on and `PARALLEL_MCP_URL` emptied, the error used to advise
+    /// `SEARCH_ENABLE_PARALLEL=true` — a setting the operator had already applied — while the
+    /// server's own startup comment recorded that an emptied URL is what registers no adapter
+    /// (ledger B57).
+    func testParallelWithoutAnEndpointIsToldToSetTheEndpointNotTheFlag() throws {
+        let server = try startInitializedServer(environment: [
+            "SEARCH_ENABLE_PARALLEL": "true",
+            // An explicitly empty value is how an operator removes the built-in endpoint.
+            "PARALLEL_MCP_URL": "",
+        ])
+        defer { server.stop() }
+
+        try server.send([
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": [
+                "name": "web_search",
+                "arguments": ["query": "swift concurrency", "provider": "parallel"],
+            ],
+        ])
+        let response = try server.readResponse(id: 4)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        XCTAssertEqual(result["isError"] as? Bool, true)
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        let text = content.compactMap { $0["text"] as? String }.joined()
+        XCTAssertTrue(text.contains("PARALLEL_MCP_URL"), text)
+        XCTAssertFalse(
+            text.contains("SEARCH_ENABLE_PARALLEL"),
+            "the flag is already on, so naming it is not actionable: \(text)"
+        )
     }
 
     func testSearchAgainstAStubProviderReturnsStructuredAndTextContent() throws {
@@ -380,15 +486,15 @@ final class StdioServerTests: XCTestCase {
             .init(
                 status: 200,
                 body: """
-                {"query":"swift concurrency","results":[
-                  {"url":"https://swift.org/documentation/concurrency/",
-                   "title":"Concurrency | Swift Documentation",
-                   "content":"Swift concurrency documentation.","engine":"brave"},
-                  {"url":"https://example.com/second",
-                   "title":"Second result","content":"Another result.","engine":"duckduckgo"}
-                ],"answers":[],"corrections":[],"infoboxes":[],"suggestions":[],
-                "unresponsive_engines":[]}
-                """
+                    {"query":"swift concurrency","results":[
+                      {"url":"https://swift.org/documentation/concurrency/",
+                       "title":"Concurrency | Swift Documentation",
+                       "content":"Swift concurrency documentation.","engine":"brave"},
+                      {"url":"https://example.com/second",
+                       "title":"Second result","content":"Another result.","engine":"duckduckgo"}
+                    ],"answers":[],"corrections":[],"infoboxes":[],"suggestions":[],
+                    "unresponsive_engines":[]}
+                    """
             )
         ])
 
@@ -458,7 +564,7 @@ final class StdioServerTests: XCTestCase {
 
         let server = try startInitializedServer(environment: [
             "SEARXNG_BASE_URL": stub.baseURL.absoluteString,
-            "DEEPSEEK_API_KEY": "sk-test-key-0123456789abcdef",
+            "DEEPSEEK_API_KEY": Fixtures.syntheticDeepSeekKey,
             "DEEPSEEK_BASE_URL": stub.baseURL.absoluteString,
         ])
         defer { server.stop() }
@@ -505,6 +611,171 @@ final class StdioServerTests: XCTestCase {
         )
     }
 
+    // MARK: - web_open, the success path
+
+    /// `web_open` returned a rejection in every other test in this file, so its success path —
+    /// the handler's `Self.success`, `ToolOutputFormatter.openText` and `openStructured` — was
+    /// never executed end to end. Making `webOpen` always fail used to leave the suite green
+    /// (ledger B08).
+    func testWebOpenReturnsStructuredContentAndTextForARealPage() throws {
+        let body = String(
+            repeating: "Opening a page returns the readable text of that page. ",
+            count: 20
+        )
+        let page = try LoopbackServer(responses: [
+            .init(
+                status: 200,
+                headers: ["Content-Type": "text/html; charset=utf-8"],
+                body: """
+                    <html><head><title>Audit Page</title></head>
+                    <body><nav>menu</nav><article><p>\(body)</p></article>
+                    <footer>footer</footer></body></html>
+                    """
+            )
+        ])
+
+        let server = try startInitializedServer(environment: [
+            // The loopback page is on 127.0.0.1, which the SSRF policy refuses by design.
+            "SEARCH_ALLOW_PRIVATE_NETWORK": "1"
+        ])
+        defer { server.stop() }
+
+        try server.send([
+            "jsonrpc": "2.0",
+            "id": 30,
+            "method": "tools/call",
+            "params": [
+                "name": "web_open",
+                "arguments": ["url": page.baseURL.absoluteString],
+            ],
+        ])
+        let response = try server.readResponse(id: 30)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        XCTAssertNotEqual(result["isError"] as? Bool, true, "\(result)")
+
+        let structured = try XCTUnwrap(result["structuredContent"] as? [String: Any])
+        XCTAssertEqual(structured["url"] as? String, page.baseURL.absoluteString)
+        XCTAssertEqual(structured["final_url"] as? String, page.baseURL.absoluteString)
+        XCTAssertEqual(structured["status"] as? Int, 200)
+        XCTAssertEqual(structured["title"] as? String, "Audit Page")
+        XCTAssertEqual(structured["extraction_method"] as? String, "html_extraction")
+        XCTAssertEqual(structured["truncated"] as? Bool, false)
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        let text = content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        XCTAssertEqual(
+            structured["text_characters"] as? Int,
+            text.components(separatedBy: "\n\n").dropFirst().joined(separator: "\n\n").count,
+            "text_characters must be the length of the body that follows the header"
+        )
+        XCTAssertTrue(
+            (structured["warnings"] as? [Any])?.isEmpty ?? false,
+            "a page that extracts cleanly carries no warnings: \(structured["warnings"] ?? "nil")"
+        )
+
+        let parts = text.components(separatedBy: "\n\n")
+        let header = parts.first ?? ""
+        let bodyText = parts.dropFirst().joined(separator: "\n\n")
+        XCTAssertTrue(header.contains("URL: \(page.baseURL.absoluteString)"), header)
+        XCTAssertTrue(header.contains("Status: 200 (html_extraction)"), header)
+        XCTAssertTrue(header.contains("# Audit Page"), "a title the body does not open with is a heading: \(header)")
+        XCTAssertFalse(bodyText.isEmpty)
+        XCTAssertTrue(bodyText.contains("readable text of that page"), String(bodyText.prefix(200)))
+        XCTAssertEqual(page.requestCount, 1, "the page must actually have been fetched")
+    }
+
+    /// The truncation branch: the same page fetched with a 1 000-character budget.
+    func testWebOpenReportsTruncationInBothForms() throws {
+        let body = String(
+            repeating: "Truncation is reported rather than silent. ",
+            count: 80
+        )
+        let page = try LoopbackServer(responses: [
+            .init(
+                status: 200,
+                headers: ["Content-Type": "text/html; charset=utf-8"],
+                body: "<html><head><title>Long Page</title></head><body><article><p>\(body)</p></article></body></html>"
+            )
+        ])
+
+        let server = try startInitializedServer(environment: ["SEARCH_ALLOW_PRIVATE_NETWORK": "1"])
+        defer { server.stop() }
+
+        try server.send([
+            "jsonrpc": "2.0",
+            "id": 31,
+            "method": "tools/call",
+            "params": [
+                "name": "web_open",
+                "arguments": ["url": page.baseURL.absoluteString, "max_characters": 1_000],
+            ],
+        ])
+        let response = try server.readResponse(id: 31)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        XCTAssertNotEqual(result["isError"] as? Bool, true, "\(result)")
+
+        let structured = try XCTUnwrap(result["structuredContent"] as? [String: Any])
+        XCTAssertEqual(structured["truncated"] as? Bool, true)
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        let text = content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        let bodyText = text.components(separatedBy: "\n\n").dropFirst().joined(separator: "\n\n")
+        // `clip` cuts at the last whitespace before the budget rather than mid-word, so the
+        // body is at most the budget and normally close to it.
+        let characters = try XCTUnwrap(structured["text_characters"] as? Int)
+        XCTAssertEqual(characters, bodyText.count, "text_characters must match the body")
+        XCTAssertLessThanOrEqual(characters, 1_000)
+        XCTAssertGreaterThan(characters, 500, "the clip should use most of the budget")
+        XCTAssertTrue(text.contains("Note: content was truncated."), String(text.prefix(200)))
+    }
+
+    /// The title-dedup branch: when the extracted text already opens with the title, the heading
+    /// must not repeat it. That branch was the reason this code exists, and nothing asserted it.
+    func testWebOpenDoesNotRepeatATitleTheBodyAlreadyOpensWith() throws {
+        let page = try LoopbackServer(responses: [
+            .init(
+                status: 200,
+                headers: ["Content-Type": "text/html; charset=utf-8"],
+                body: """
+                    <html><head><title>Alpha Page</title></head>
+                    <body><article><h1>Alpha Page</h1>
+                    <p>Body text that follows the heading and says enough to be extracted.</p>
+                    </article></body></html>
+                    """
+            )
+        ])
+
+        let server = try startInitializedServer(environment: ["SEARCH_ALLOW_PRIVATE_NETWORK": "1"])
+        defer { server.stop() }
+
+        try server.send([
+            "jsonrpc": "2.0",
+            "id": 32,
+            "method": "tools/call",
+            "params": [
+                "name": "web_open",
+                "arguments": ["url": page.baseURL.absoluteString],
+            ],
+        ])
+        let response = try server.readResponse(id: 32)
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        XCTAssertNotEqual(result["isError"] as? Bool, true, "\(result)")
+
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        let text = content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        let parts = text.components(separatedBy: "\n\n")
+        let header = parts.first ?? ""
+        let bodyText = parts.dropFirst().joined(separator: "\n\n")
+
+        XCTAssertTrue(
+            bodyText.contains("Alpha Page"),
+            "the premise of this test is that the body carries the title: \(String(bodyText.prefix(120)))"
+        )
+        XCTAssertFalse(
+            header.contains("Alpha Page"),
+            "the header must not repeat a title the body already opens with: \(header)"
+        )
+        XCTAssertTrue(header.contains("URL: "), header)
+    }
+
     /// A refusal is a successful result, not an error, and must be distinguishable
     /// from an answer.
     func testWebAnswerReportsInsufficientResultsAsAStatusNotAnError() throws {
@@ -519,7 +790,7 @@ final class StdioServerTests: XCTestCase {
 
         let server = try startInitializedServer(environment: [
             "SEARXNG_BASE_URL": stub.baseURL.absoluteString,
-            "DEEPSEEK_API_KEY": "sk-test-key-0123456789abcdef",
+            "DEEPSEEK_API_KEY": Fixtures.syntheticDeepSeekKey,
             "DEEPSEEK_BASE_URL": stub.baseURL.absoluteString,
         ])
         defer { server.stop() }
@@ -596,7 +867,7 @@ final class StdioServerTests: XCTestCase {
 
         let server = try startInitializedServer(environment: [
             "SEARXNG_BASE_URL": stub.baseURL.absoluteString,
-            "DEEPSEEK_API_KEY": "sk-test-key-0123456789abcdef",
+            "DEEPSEEK_API_KEY": Fixtures.syntheticDeepSeekKey,
             "DEEPSEEK_BASE_URL": stub.baseURL.absoluteString,
         ])
         defer { server.stop() }
@@ -638,7 +909,7 @@ final class StdioServerTests: XCTestCase {
 
         let server = try startInitializedServer(environment: [
             "SEARXNG_BASE_URL": stub.baseURL.absoluteString,
-            "DEEPSEEK_API_KEY": "sk-test-key-0123456789abcdef",
+            "DEEPSEEK_API_KEY": Fixtures.syntheticDeepSeekKey,
             "DEEPSEEK_BASE_URL": stub.baseURL.absoluteString,
         ])
         defer { server.stop() }
@@ -689,12 +960,21 @@ final class StdioServerTests: XCTestCase {
         let server = try startInitializedServer(environment: [:])
         defer { server.stop() }
 
+        // Every row asserts the *specific* refusal it provokes. The two classes carry different
+        // operator actions — a URL that is not absolute is the caller's typo, while a blocked
+        // scheme, host or address is a security decision — so accepting any message containing
+        // "Refused" as a fallback made the whole `expected` column unenforceable (ledger B18).
         let cases: [(id: Int, url: String, expected: String)] = [
             (10, "file:///etc/passwd", "public http/https"),
             (11, "http://localhost:8080/admin", "public http/https"),
             (12, "http://169.254.169.254/latest/meta-data/", "public http/https"),
             (13, "http://10.0.0.1/", "public http/https"),
-            (14, "javascript:alert(1)", "valid absolute URL"),
+            // `URL(string:)` accepts `javascript:alert(1)`: it is a syntactically valid absolute
+            // URL, so this is a policy refusal, not a parse failure. The old fallback hid that
+            // distinction by passing whichever arm the code happened to take.
+            (14, "javascript:alert(1)", "public http/https"),
+            // And this is what the other arm looks like: no parseable absolute URL at all.
+            (15, "ht tp://x", "valid absolute URL"),
         ]
 
         for testCase in cases {
@@ -714,7 +994,7 @@ final class StdioServerTests: XCTestCase {
             let content = try XCTUnwrap(result["content"] as? [[String: Any]])
             let text = content.compactMap { $0["text"] as? String }.joined()
             XCTAssertTrue(
-                text.contains(testCase.expected) || text.contains("Refused"),
+                text.contains(testCase.expected),
                 "for \(testCase.url) expected \(testCase.expected), got: \(text)"
             )
         }
@@ -793,6 +1073,188 @@ final class StdioServerTests: XCTestCase {
         XCTAssertEqual(thirdResult["isError"] as? Bool, true)
     }
 
+    /// Send one `tools/call` and return what the caller would see.
+    private func callTool(
+        _ server: ServerProcess,
+        id: Int,
+        name: String,
+        arguments: [String: Any]
+    ) throws -> (isError: Bool, text: String, structured: [String: Any]?) {
+        try server.send([
+            "jsonrpc": "2.0",
+            "id": id,
+            "method": "tools/call",
+            "params": ["name": name, "arguments": arguments],
+        ])
+        let response = try server.readResponse(id: id)
+        XCTAssertNil(
+            response["error"],
+            "\(name) with \(arguments) must not be a protocol error"
+        )
+        let result = try XCTUnwrap(response["result"] as? [String: Any])
+        let content = try XCTUnwrap(result["content"] as? [[String: Any]])
+        let text = content.compactMap { $0["text"] as? String }.joined(separator: "\n")
+        return (result["isError"] as? Bool == true, text, result["structuredContent"] as? [String: Any])
+    }
+
+    /// A search response with `resultCount` distinct-domain results.
+    private static func searchBody(resultCount: Int) -> String {
+        let results = (1...resultCount).map { index in
+            """
+            {"url":"https://result\(index).example/doc","title":"Result \(index)",\
+            "content":"Body text for result \(index).","engine":"brave"}
+            """
+        }.joined(separator: ",")
+        return "{\"query\":\"q\",\"results\":[\(results)]}"
+    }
+
+    /// Every argument guard must name the argument it rejected.
+    ///
+    /// Only three malformed shapes were covered — a missing `query`, a `max_results` of the wrong
+    /// type and an unknown tool — so the array, enum and required-string guards could each regress
+    /// into a generic failure, or into a protocol error, without the suite noticing (ledger B32).
+    func testToolArgumentGuardsNameTheArgumentTheyReject() throws {
+        let server = try startInitializedServer(environment: [:])
+        defer { server.stop() }
+
+        let cases: [(id: Int, name: String, arguments: [String: Any], expected: String)] = [
+            (
+                40, "web_search",
+                ["query": "ok", "include_domains": (0..<21).map { "d\($0).example" }],
+                "include_domains"
+            ),
+            (41, "web_search", ["query": "ok", "exclude_domains": [1, 2]], "exclude_domains"),
+            (42, "web_search", ["query": "ok", "recency": "yesterday"], "recency"),
+            (43, "web_search", ["query": "ok", "mode": "quick"], "mode"),
+            (44, "web_search", ["query": "   "], "query"),
+            (45, "web_open", ["url": "   "], "url"),
+        ]
+        for testCase in cases {
+            let outcome = try callTool(
+                server,
+                id: testCase.id,
+                name: testCase.name,
+                arguments: testCase.arguments
+            )
+            XCTAssertTrue(outcome.isError, "\(testCase.arguments) must be refused")
+            XCTAssertTrue(
+                outcome.text.contains(testCase.expected),
+                "the message must name \(testCase.expected), got: \(outcome.text)"
+            )
+        }
+    }
+
+    /// `web_search` and `web_answer` must parse their shared arguments with one parser.
+    ///
+    /// The two handlers ran byte-identical *copies* of the discovery block, so one could be
+    /// changed and the other left behind without the schema parity lint noticing: that lint
+    /// compares the advertised constraints, not the handlers behind them (ledger B58). This
+    /// sends the same rejected value to both tools and requires the same error text back.
+    func testTheTwoSearchToolsParseTheirSharedArgumentsIdentically() throws {
+        let server = try startInitializedServer(environment: [:])
+        defer { server.stop() }
+
+        let cases: [(id: Int, argument: String, value: Any, expected: String)] = [
+            (60, "provider", "bogus", "`provider` must be one of"),
+            (62, "locale", "-", "`locale` must look like"),
+            (64, "recency", "yesterday", "recency"),
+            (66, "mode", "quick", "mode"),
+            (68, "max_results", "many", "max_results"),
+            (70, "include_domains", "not-an-array", "include_domains"),
+            (72, "exclude_domains", (0..<21).map { "d\($0).example" }, "exclude_domains"),
+        ]
+        for testCase in cases {
+            var arguments: [String: Any] = ["query": "swift concurrency"]
+            arguments[testCase.argument] = testCase.value
+
+            let search = try callTool(
+                server,
+                id: testCase.id,
+                name: "web_search",
+                arguments: arguments
+            )
+            let answer = try callTool(
+                server,
+                id: testCase.id + 1,
+                name: "web_answer",
+                arguments: arguments
+            )
+
+            XCTAssertTrue(search.isError, "web_search must refuse \(testCase.value)")
+            XCTAssertTrue(answer.isError, "web_answer must refuse \(testCase.value)")
+            XCTAssertTrue(
+                search.text.contains(testCase.expected),
+                "the shared parser must name \(testCase.expected), got: \(search.text)"
+            )
+            XCTAssertEqual(
+                answer.text,
+                search.text,
+                "web_answer must give the same parse error as web_search for "
+                    + "\(testCase.argument)=\(testCase.value)"
+            )
+        }
+    }
+
+    /// The documented clamps are part of the tool contract.
+    ///
+    /// `max_results` is capped at 20 and floored at 1, and `max_characters` is floored at 1 000.
+    /// A clamp that disappeared would silently change what a caller can ask for — or let a model
+    /// ask for a fifty-megabyte page — and nothing tested any of them (ledger B32).
+    func testToolArgumentClampsAreEnforced() throws {
+        let page =
+            "<html><body><p>"
+            + String(repeating: "long page text ", count: 500)
+            + "</p></body></html>"
+        let stub = try LoopbackServer(responses: [
+            .init(status: 200, body: Self.searchBody(resultCount: 25)),
+            .init(status: 200, body: Self.searchBody(resultCount: 25)),
+            .init(status: 200, body: page),
+        ])
+        let server = try startInitializedServer(environment: [
+            "SEARXNG_BASE_URL": stub.baseURL.absoluteString,
+            // `web_open` fetches the loopback stub, which the SSRF policy refuses by default.
+            "SEARCH_ALLOW_PRIVATE_NETWORK": "1",
+            // Pin the provider set. This test asserts the result-count clamp, and CI runs the whole
+            // suite a second time with placeholder provider credentials present: with Tavily and
+            // Brave configured, the balanced fan-out spends its slots on providers that call the
+            // real vendor APIs with a bogus key and fail, so the stub's answer — and the clamp
+            // assertion — depended on ambient credentials and the network. Disabling everything but
+            // SearXNG makes the answer come from the stub alone, in every environment.
+            "SEARCH_DISABLED_PROVIDERS":
+                "tavily,brave,mojeek,exa,open_web_search,parallel,duckduckgo,startpage",
+        ])
+        defer { server.stop() }
+
+        let capped = try callTool(
+            server,
+            id: 50,
+            name: "web_search",
+            arguments: ["query": "clamp", "max_results": 50]
+        )
+        let cappedResults = try XCTUnwrap(capped.structured?["results"] as? [[String: Any]])
+        XCTAssertEqual(cappedResults.count, 20, "max_results is capped at the documented 20")
+
+        let floored = try callTool(
+            server,
+            id: 51,
+            name: "web_search",
+            arguments: ["query": "clamp", "max_results": 0]
+        )
+        let flooredResults = try XCTUnwrap(floored.structured?["results"] as? [[String: Any]])
+        XCTAssertEqual(flooredResults.count, 1, "max_results is floored at 1")
+
+        let pageResult = try callTool(
+            server,
+            id: 52,
+            name: "web_open",
+            arguments: ["url": stub.baseURL.absoluteString, "max_characters": 10]
+        )
+        let characters = try XCTUnwrap(pageResult.structured?["text_characters"] as? Int)
+        XCTAssertGreaterThan(characters, 10, "max_characters is floored at 1 000, not honoured at 10")
+        XCTAssertLessThanOrEqual(characters, 1_000, "the floored budget is still the cap")
+        XCTAssertEqual(pageResult.structured?["truncated"] as? Bool, true)
+    }
+
     func testServerStaysResponsiveAfterAFailedToolCall() throws {
         // A failure must not poison the session or deadlock the message loop.
         let server = try startInitializedServer(environment: [:])
@@ -833,13 +1295,33 @@ final class StdioServerTests: XCTestCase {
         // And the operator-facing diagnostics are on stderr.
         try server.send(["jsonrpc": "2.0", "id": 61, "method": "tools/list"])
         _ = try server.readResponse(id: 61)
-        let stderr = String(
-            decoding: server.stderrPipe.fileHandleForReading.availableData,
-            as: UTF8.self
-        )
+        let stderr = server.stderrText()
         XCTAssertTrue(
             stderr.contains("SwiftWebSearchMCP"),
             "expected startup diagnostics on stderr, got: \(stderr.prefix(400))"
         )
+    }
+
+    /// The empty-configuration warning must name every variable that can register a provider.
+    ///
+    /// It used to name five of the eight, so an operator who had the scraper and open-web-search
+    /// paths available was told only about API keys (ledger B114).
+    func testEmptyConfigurationWarningNamesEveryProviderVariable() throws {
+        let server = try startInitializedServer(environment: [:])
+        defer { server.stop() }
+
+        try server.send(["jsonrpc": "2.0", "id": 70, "method": "tools/list"])
+        _ = try server.readResponse(id: 70)
+        let stderr = server.stderrText()
+        for variable in [
+            "TAVILY_API_KEY", "BRAVE_SEARCH_API_KEY", "MOJEEK_API_KEY", "EXA_API_KEY",
+            "SEARXNG_BASE_URL", "OPEN_WEB_SEARCH_URL", "SEARCH_ENABLE_SCRAPERS",
+            "SEARCH_ENABLE_PARALLEL",
+        ] {
+            XCTAssertTrue(
+                stderr.contains(variable),
+                "the empty-configuration warning is missing \(variable): \(stderr)"
+            )
+        }
     }
 }

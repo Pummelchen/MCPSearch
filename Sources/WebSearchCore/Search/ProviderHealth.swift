@@ -115,11 +115,6 @@ public actor ProviderHealth {
         }
     }
 
-    /// Attach a human-readable note, e.g. why an optional provider is inert.
-    public func setNote(_ note: String?, for provider: ProviderID) {
-        notes[provider] = note
-    }
-
     /// Reserve the right to make one request to this provider.
     ///
     /// - Returns: nil when the request may proceed; otherwise the reason it was
@@ -140,7 +135,21 @@ public actor ProviderHealth {
                     )
                 }
             } else {
-                _ = await breaker.shouldAttempt()
+                // `.halfOpen` admits exactly one probe: `shouldAttempt` claims it for the first
+                // caller and refuses the rest. Discarding that refusal let every concurrent caller
+                // through, so a provider recovering from failures took the whole fan-out instead
+                // of one request (ledger B11). `.closed` always returns true, so this cannot
+                // refuse a healthy provider.
+                let allowed = await breaker.shouldAttempt()
+                if !allowed {
+                    return ProviderFailure(
+                        provider: provider,
+                        category: .circuitOpen,
+                        message:
+                            "\(provider.displayName) is being probed after failures; this request "
+                            + "is skipped until that probe finishes."
+                    )
+                }
             }
         }
 
@@ -170,6 +179,14 @@ public actor ProviderHealth {
     }
 
     // MARK: - Outcomes
+
+    /// Give back a claimed half-open probe after a request that produced no outcome.
+    ///
+    /// Used when the caller was cancelled: the probe was claimed, the provider never answered, and
+    /// leaving the claim in place would strand the breaker (ledger B52).
+    public func releaseProbe(_ provider: ProviderID) async {
+        await breakers[provider]?.releaseProbe()
+    }
 
     public func recordSuccess(
         _ provider: ProviderID,
@@ -260,11 +277,12 @@ public actor ProviderHealth {
 
         // `timeUntilAvailable()` returns a nested optional because the limiter
         // lookup is itself failable; flatten it explicitly.
-        let waitForToken: Duration? = if let limiter = limiters[provider] {
-            await limiter.timeUntilAvailable()
-        } else {
-            nil
-        }
+        let waitForToken: Duration? =
+            if let limiter = limiters[provider] {
+                await limiter.timeUntilAvailable()
+            } else {
+                nil
+            }
 
         let status: Status
         if !configured {

@@ -1,0 +1,123 @@
+# B118 — the invalid `--transport` error named two of the four accepted spellings
+
+Host: this Mac (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## What was wrong
+
+B114 made `usage` render the `--transport` help line from the `TransportName` table, so `--help`
+lists all four accepted spellings. The rejection message did not come along:
+
+```swift
+// TransportConfiguration.swift, before
+guard let name = TransportName(rawValue: raw) else {
+    throw OptionError.invalidValue(
+        flag: "--transport",
+        value: raw,
+        expected: "stdio or http"        // hardcoded, and now the only place that disagrees
+    )
+}
+```
+
+So a caller who mistyped was told the legal set was smaller than it is, and the more natural
+`--transport streamable-http` — an alias the parser accepts — looked unsupported.
+
+## The fix
+
+The accepted-value phrase now has one producer, `TransportName.acceptedValues`, rendered from the
+same table `parse` resolves against. `usage` and the rejection message both print it, so the
+documented set and the error set cannot drift apart again:
+
+```swift
+enum TransportName: String, CaseIterable {
+    case stdio
+    case http
+    case streamableHyphen = "streamable-http"
+    case streamableUnderscore = "streamable_http"
+
+    /// The accepted spellings as one phrase.
+    ///
+    /// Both `usage` and the `--transport` rejection message render from this, so the
+    /// documented set and the set the error names cannot drift apart. …
+    static var acceptedValues: String {
+        allCases.map(\.rawValue).joined(separator: ", ")
+    }
+}
+```
+
+The error now reads
+`Invalid value for --transport: 'carrier-pigeon' (expected stdio, http, streamable-http, streamable_http)`.
+The usage line is byte-for-byte the same phrase. No public signature changed; `acceptedValues` is
+internal to `ServerOptions`, and `TransportName` itself is unchanged.
+
+## The assertion
+
+`TransportConfigurationTests.testInvalidTransportIsRejected` pinned the old wording
+(`expected: "stdio or http"`). It now pins the full list as a literal, and additionally requires the
+same phrase to appear in `--help`:
+
+```swift
+let expected = "stdio, http, streamable-http, streamable_http"
+assertRejects(["--transport", "carrier-pigeon"], expecting: .invalidValue(..., expected: expected))
+XCTAssertTrue(
+    ServerOptions.usage.contains("Transport to serve on: \(expected)."),
+    ServerOptions.usage
+)
+```
+
+No new test method was added: the existing rejection test is now strictly stronger, and the B114
+lint `testUsageDocumentsEveryFlagTheParserAccepts` still checks each `TransportName` spelling is a
+whole token in the usage text.
+
+## Proof the test can fail
+
+M1 — restore the hardcoded two-value list in `parse` (the original defect), test unchanged:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter "TransportConfigurationTests/testInvalidTransportIsRejected"
+Tests/WebSearchCoreTests/TransportConfigurationTests.swift:145: error: -[WebSearchCoreTests.TransportConfigurationTests testInvalidTransportIsRejected] : XCTAssertEqual failed: ("Invalid value for --transport: 'carrier-pigeon' (expected stdio or http)") is not equal to ("Invalid value for --transport: 'carrier-pigeon' (expected stdio, http, streamable-http, streamable_http)")
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testInvalidTransportIsRejected]' failed (0.133 seconds).
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.133 (0.133) seconds
+```
+
+The failure text is exactly the drift the finding describes: the pre-fix error advertises
+`stdio or http` while the usage line documents all four. `TransportConfiguration.swift` was then
+restored from a copy and verified byte-identical:
+
+```
+$ cp "$SCRATCH/b118-TransportConfiguration.clean.swift" Sources/WebSearchCore/Support/TransportConfiguration.swift
+$ diff -u "$SCRATCH/b118-TransportConfiguration.clean.swift" Sources/WebSearchCore/Support/TransportConfiguration.swift
+    # no output
+$ shasum -a 256 "$SCRATCH/b118-TransportConfiguration.clean.swift" Sources/WebSearchCore/Support/TransportConfiguration.swift
+212db31b010091dcbae3298aa76a0ef4b815db2b850060d4d3acb2462c3ab68c  $SCRATCH/b118-TransportConfiguration.clean.swift
+212db31b010091dcbae3298aa76a0ef4b815db2b850060d4d3acb2462c3ab68c  Sources/WebSearchCore/Support/TransportConfiguration.swift
+```
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (10.07s)                                                    0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+	 Executed 504 tests, with 6 tests skipped and 0 failures (0 unexpected) in 22.549 (22.623) seconds
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (39.24s)                                                    0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+0 diagnostics                                                               exit=0
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 84 files.                    exit=0
+
+$ python3 scripts/third_party_notices.py
+THIRD-PARTY-NOTICES.md covers all 8 resolved packages at the pinned versions exit=0
+```
+
+The count is unchanged at 504 (B87's count): this strengthens an existing assertion rather than
+adding a method. The 6 skips are the pre-existing environment-gated ones.
+
+## Noted
+
+`MCPSMonitor`'s option parser has its own error wording and is not part of this finding; it does not
+parse `--transport`, so there is no second transport list to keep in sync.

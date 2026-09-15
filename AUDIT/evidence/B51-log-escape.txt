@@ -1,0 +1,56 @@
+# B51 — `Log.escape` made a line single-line but not inert
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+```swift
+// Logging.swift (before)
+for character in value {
+    switch character {
+    case "\\": escaped += "\\\\"
+    case "\"": escaped += "\\\""
+    case "\n": escaped += "\\n"
+    case "\r": escaped += "\\r"
+    case "\t": escaped += "\\t"
+    default: escaped.append(character)
+    }
+}
+```
+
+The escape set is chosen to keep one event on one line, and it does that. It does *not* make the
+value inert: every other control character passed straight through to fd 2, so a query containing
+`ESC[2J` or a C1 byte (`0x9B`) could clear the screen, move the cursor or start a sequence the
+terminal then completes with whatever the next diagnostic bytes happen to be. The query is logged
+when `SEARCH_LOG_QUERIES` is on, and the same `escape` is used for provider notes and errors.
+
+## Fails-before evidence
+
+With only the five original escapes, the new test shows the raw scalars surviving:
+
+```
+$ swift test --filter testEscapeMakesControlCharactersInert
+error: ... XCTAssertEqual failed: ("q[2J31m") is not equal to ("q\\u{1B}[2J\\u{07}\\u{9B}31m\\u{200B}")
+error: ... no control or format scalar may survive: "q\u{1B}[2J\u{07}31m"
+```
+
+## The fix
+
+Every `Cc` and `Cf` scalar that is not one of the five compact escapes is rendered as itself in
+braces — `\u{1B}`, `\u{9B}` — so the diagnostic stays one line, stays readable, and cannot drive
+anything. `Cf` is included because those scalars reorder or hide text without taking a column, the
+same rule the monitor's renderer applies (B25).
+
+## Verification
+
+```
+$ swift test --filter testEscape
+Executed 2 tests, with 0 failures (0 unexpected)
+
+$ swift test
+Executed 477 tests, with 6 skipped and 0 failures (0 unexpected) in 18.392 seconds
+
+$ swift build -c release --scratch-path $SCRATCH -Xswiftc -warnings-as-errors      0 warnings, 0 errors
+$ swift-format lint --recursive --strict Sources Tests                             0 diagnostics
+$ swiftlint lint --strict                                                          0 violations in 83 files
+```

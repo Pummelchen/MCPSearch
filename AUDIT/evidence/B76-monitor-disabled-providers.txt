@@ -1,0 +1,150 @@
+# B76 — the monitor honours `SEARCH_DISABLED_PROVIDERS`
+
+Host: this Mac (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## The premise, checked first
+
+True, and it survives B78's deletion of `ProviderStatus.State.unavailable` — which is exactly
+the interaction B78 recorded. Read from the code at HEAD:
+
+```
+$ git show HEAD:Sources/WebSearchCore/Search/ProviderRegistry.swift | sed -n '30,36p'
+    public func isEnabled(_ id: ProviderID) -> Bool {
+        configuration.providerEnabled[id] ?? true
+    }
+    public func isConfigured(_ id: ProviderID) -> Bool {
+        providers[id]?.isConfigured ?? false
+    }
+```
+
+`ProviderProbe.isConfigured` delegated to that second function only, `Monitor.refresh` built its
+probe set as `probeTargets().filter { isConfigured($0) }`, `ProviderProbe.probe` guarded on the
+adapter's own `isConfigured`, and `Monitor.init` passed `configured:` into
+`ProviderStatus.pending`, which started at `.configuredButIdle` ("ready — press p to probe").
+`SEARCH_DISABLED_PROVIDERS` populates `configuration.providerEnabled[id] = false`
+(`AppConfiguration.swift:449-456`) and is consulted only by `ProviderRegistry.isEnabled` /
+`isEligible`, so a disabled provider was labelled ready, listed in the probe set, and probed —
+spending a credit the server would never have spent.
+
+**On reintroducing `.unavailable`.** B78 deleted the case because nothing produced it and said
+B76 owns the producer. B78 was right, and this task introduces it with its semantics rather
+than inheriting a renderer branch that never ran. The new state is produced in exactly one
+place — `ProviderStatus.pending(provider:configured:enabled:hint:)` when `enabled` is false —
+and a disabled provider is rendered `OFF`, not `IDLE`, so it is no longer presented as ready.
+
+## What changed
+
+* `ProviderStatus.State.unavailable`, produced by a new `enabled:` parameter on `pending`
+  (default `true`, so existing callers are unchanged) when the operator switched the provider
+  off. Being switched off is reported ahead of a missing credential: it is the operator's own
+  doing and the reason the provider will not run. `ProviderStatus.isInService` is the "the run
+  expects this to serve" predicate that both `notConfigured` and `unavailable` fail.
+* `ProviderProbe.isEnabled` (delegates to the registry) and `mayProbe` (`isEnabled && isConfigured`),
+  plus `probeableTargets()` = the display order filtered by `mayProbe`.
+* `ProviderProbe.probe` now refuses a disabled provider with
+  `"disabled via SEARCH_DISABLED_PROVIDERS"` before touching the adapter, so a direct call
+  cannot spend a request either.
+* `Monitor.init` passes `enabled:`; `Monitor.refresh` uses `providerProbe.probeableTargets()`.
+* `Renderer` gains the `OFF` glyph/colour, the note `disabled via SEARCH_DISABLED_PROVIDERS`,
+  and a `N disabled` summary term that appears only when the count is non-zero.
+* `Options.exitCode` filters providers with `isInService`, so an all-disabled provider set does
+  not make a scripted run exit 1 — the B46 interaction flagged in that task's evidence.
+
+## The tests
+
+* `ProviderProbeTests.testProbeableTargetsExcludeDisabledAndUnconfiguredProviders` — an
+  adapter that is present and usable but switched off is excluded, while `probeTargets()` still
+  lists it, so the display order and the probe set are pinned separately.
+* `ProviderProbeTests.testDisabledProviderIsNeverProbedAndReportsWhy` — `probe` returns the
+  disabled outcome with `.notConfigured`, and the mock provider's `callCount` stays 0.
+* `MonitorModelTests.testPendingProviderDistinguishesDisabledFromUnconfigured` — the three
+  states (`IDLE`, `NO KEY`, `OFF`) and `isInService` for each, including disabled-plus-keyless.
+* `RendererTests.testDisabledProviderIsShownAsOffRatherThanReady` — the row says `OFF` and names
+  the switch, and does **not** say "ready — press p to probe" or `set TAVILY_API_KEY`; the
+  summary carries `1 disabled`.
+* `MonitorOptionsTests.testDisabledProvidersDoNotFailTheHealthCheck` — an all-disabled set exits
+  0, while a disabled provider plus one enabled-and-failing provider still exits 1.
+
+## Proof the tests can fail (two mutations, each restored byte-identical)
+
+**M1 — the monitor ignores the switch again.** `mayProbe` reverted to `isConfigured(id)` and
+the `isEnabled` guard removed from `probe`:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter 'ProviderProbeTests/testProbeableTargets…|ProviderProbeTests/testDisabledProviderIsNeverProbed…'
+ProbeTests.swift:255: error: … testProbeableTargetsExcludeDisabledAndUnconfiguredProviders : XCTAssertEqual failed: ("[ProviderID.tavily, ProviderID.exa]") is not equal to ("[ProviderID.tavily]")
+ProbeTests.swift:268: error: … testDisabledProviderIsNeverProbedAndReportsWhy : XCTAssertFalse failed
+ProbeTests.swift:270: error: … XCTAssertTrue failed
+ProbeTests.swift:274: error: … XCTAssertFalse failed
+ProbeTests.swift:275: error: … XCTAssertEqual failed: ("nil") is not equal to ("Optional(ProviderFailure.FailureCategory.notConfigured)")
+ProbeTests.swift:276: error: … XCTAssertEqual failed: ("nil") is not equal to ("Optional("disabled via SEARCH_DISABLED_PROVIDERS")")
+ProbeTests.swift:277: error: … XCTAssertEqual failed: ("1") is not equal to ("0") - a disabled provider must not be probed
+	 Executed 2 tests, with 7 failures (0 unexpected)
+```
+
+That is the finding reproduced: the disabled provider is in the probe set and is called.
+
+**M2 — `enabled` is ignored.** `ProviderStatus.pending` reverted to
+`configured ? .configuredButIdle : .notConfigured`:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter 'MonitorModelTests/testPendingProviderDistinguishes…|RendererTests/testDisabledProviderIsShownAsOffRatherThanReady'
+MonitorTests.swift:649: error: … XCTAssertEqual failed: ("configuredButIdle") is not equal to ("unavailable")
+MonitorTests.swift:650: error: … XCTAssertEqual failed: ("IDLE") is not equal to ("OFF")
+MonitorTests.swift:651: error: … XCTAssertFalse failed - a switched-off provider is not a failure to count
+MonitorTests.swift:659: error: … XCTAssertEqual failed: ("notConfigured") is not equal to ("unavailable") - being switched off is reported ahead of a missing credential
+MonitorTests.swift:407: error: … XCTAssertFalse failed - a provider that will not be probed must not be advertised as ready
+	 Executed 2 tests, with 8 failures (0 unexpected)
+```
+
+Restores: `diff -q` empty for both; SHA-256 `70896d61…` (ProviderProbe) and `bbb6c058…`
+(MonitorModel).
+
+## Measured on the real process
+
+The dashboard frame for a disabled, otherwise-usable SearXNG endpoint (a refused loopback port,
+`--iterations 1 --no-nodes --no-colour`), with `SEARCH_DISABLED_PROVIDERS=searxng`:
+
+```
+  PROVIDERS   0 ok · 0 failing · 8 without credentials · 1 disabled
+  ◐ SearXNG      aggregator  OFF          –       –   –     –  disabled via SEARCH_DISABLED_PROVIDERS
+```
+
+exit status 0. Before the fix this row read `IDLE` with "ready — press p to probe" and the first
+pass would have probed the endpoint.
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (13.03s)                                                    0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+	 Executed 546 tests, with 6 tests skipped and 0 failures (0 unexpected) in 27.112 (27.165) seconds
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (40.95s)                                                    0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+0 diagnostics                                                               exit=0
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 86 files.                    exit=0
+
+$ python3 scripts/third_party_notices.py
+THIRD-PARTY-NOTICES.md covers all 8 resolved packages at the pinned versions
+
+$ python3 scripts/monitor_tty_smoke.py "$SCRATCH/arm64-apple-macosx/release/mcps-mon"
+MONITOR TTY SMOKE PASSED                                                    exit=0
+```
+
+546 is 541 at HEAD plus 5 new tests. The 6 skips are the pre-existing environment-gated ones.
+The PTY smoke was run because this task changes the provider table the display paints; its
+stub provider is enabled, so its `p`-probes-and-shows-OK assertion is unaffected.
+
+## Deviation from the spec
+
+None. The expected-correct asked for the monitor's ready/configured notion to factor in
+`registry.isEnabled(id)` and for a disabled provider to be presented as unavailable; both are
+done, and the reintroduction of `ProviderStatus.State.unavailable` follows B78's recorded
+instruction to introduce it with its semantics.

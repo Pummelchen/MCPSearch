@@ -1,0 +1,181 @@
+# B109 — the response-level resale discount overrode the per-result attribution
+
+Host: this Mac (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## What was wrong
+
+`RankFusion.fuse` documented — in the comment directly above the code — that the aggregator
+discount is decided **per result**, because one aggregator instance can serve one page from
+Brave and another from an engine nobody else owns. It then ORed the response-level answer into
+the per-result answer anyway:
+
+```swift
+// RankFusion.swift, before
+let responseResellsOwnedIndex = RankFusion.resellsIndexAlreadyOwned(
+    response: response, ownedFamilies: ownedFamilies)
+...
+rawWeight: weight(
+    for: contributionFamily, provider: provider, base: base,
+    duplicatedOwnedIndex: responseResellsOwnedIndex || resoldFamily != nil,
+    configuration: configuration)
+```
+
+Two consequences, both reachable whenever a local SearXNG (or Open Web Search) response reports
+engines for the whole response and for individual results:
+
+| # | Where | Defect | Effect |
+|---|-------|--------|--------|
+| 1 | `fuse`, `duplicatedOwnedIndex:` | The response-level flag was ORed into every result, so one resold page discounted **all** of its siblings — including pages whose own `upstreamEngines` name nobody else's index. | The per-result refinement the comment promises did nothing once the response-level list also matched. |
+| 2 | `resellsIndexAlreadyOwned` | It omitted the `family.isIndependentIndex` guard that the per-result `resoldFamily` applies, so a response-level hit on Google or DuckDuckGo counted as duplicating an "owned index". | The same provenance was judged differently depending on which level the adapter reported it at, and a non-owned family was treated as an owned one. |
+
+`response.upstreamEngines` is populated by the aggregator adapters (`SearXNGProvider.swift:107-111,153`,
+`OpenWebSearchProvider.swift:116-120,157`), and both adapters also populate per-result
+`upstreamEngines` when the vendor reports `engine`/`engines` per item
+(`SearXNGProvider.engines(of:)` returns `nil` when the item carries none). So a response could
+legitimately carry both, which is exactly the case that was mishandled.
+
+## The fix
+
+The response-level answer is now only the fallback for a result that carries no attribution of
+its own; a result with its own `upstreamEngines` is judged on that alone.
+
+```
+$ git diff -- Sources/WebSearchCore/Search/RankFusion.swift
+@@ -149,6 +150,19 @@ public enum RankFusion {
+                 )
+                 let contributionFamily = resoldFamily ?? family
+ 
++                // A result that carries its own engine attribution is judged on that
++                // attribution alone; the response-level list is consulted only when the
++                // adapter could not say where this particular result came from. ORing the
++                // two asked "did *any* page of this response resell an owned index?", which
++                // discounted every sibling of one resold page and defeated the per-result
++                // refinement the comment above describes (ledger B109).
++                let duplicatedOwnedIndex: Bool
++                if result.upstreamEngines == nil {
++                    duplicatedOwnedIndex = responseResellsOwnedIndex
++                } else {
++                    duplicatedOwnedIndex = resoldFamily != nil
++                }
++
+                 cluster.add(
+                     result: result,
+                     provider: provider,
+@@ -158,8 +172,7 @@ public enum RankFusion {
+                         for: contributionFamily,
+                         provider: provider,
+                         base: base,
+-                        duplicatedOwnedIndex: responseResellsOwnedIndex
+-                            || resoldFamily != nil,
++                        duplicatedOwnedIndex: duplicatedOwnedIndex,
+                         configuration: configuration
+                     )
+                 )
+@@ -281,6 +299,7 @@ public enum RankFusion {
+         guard response.provider.isAggregator, !ownedFamilies.isEmpty else { return false }
+         for engine in response.upstreamEngines {
+             if let family = RankFusion.family(forUpstreamEngine: engine),
++                family.isIndependentIndex,
+                 ownedFamilies.contains(family)
+             {
+                 return true
+```
+
+`resellsIndexAlreadyOwned` now applies the same `isIndependentIndex` guard as `resoldFamily`,
+and its doc comment states that the two must agree. No public signature changed; `weight` is
+untouched.
+
+## The tests
+
+Three tests were added to `Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift` (in
+`RankFusionTests`), and `testUpstreamEngineMappingDetectsDuplication` was extended:
+
+* `testAggregatorDiscountIsPerResultEvenWhenTheResponseNamesAnOwnedIndex` — the response-level
+  list names Brave while the two results name Brave and Wikipedia respectively. Asserts the
+  resold page scores `1/61 + 0.7/61` and its sibling keeps the full `1/62`. Under the old OR this
+  was the only test that distinguished the two levels and it failed.
+* `testAggregatorDiscountFallsBackToResponseLevelWithoutPerResultEngines` — pins the fallback, so
+  a later change cannot drop it: with both results carrying no attribution, a response-level
+  Brave hit must discount both (`0.7/62`).
+* `testResponseLevelDiscountIgnoresNonIndependentFamilies` — a directly configured Startpage
+  (family `.google`) plus a SearXNG response whose response-level list is `google`; the
+  aggregator must keep the full `1/61`.
+* `testUpstreamEngineMappingDetectsDuplication` gains a direct assertion that
+  `resellsIndexAlreadyOwned` returns false for `ownedFamilies: [.google]` with a `google`
+  upstream engine.
+
+## Proof the tests can fail (mutation, not assertion)
+
+Each mutation temporarily restored the old production behaviour, the exact command was run, and
+the fix was restored from a copy (verified identical with `diff`; SHA-256 of the restored file is
+the same as the backup's).
+
+M1 — restore the `responseResellsOwnedIndex || resoldFamily != nil` OR:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter "RankFusionTests/testAggregatorDiscountIsPerResultEvenWhenTheResponseNamesAnOwnedIndex"
+Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift:455: error: -[WebSearchCoreTests.RankFusionTests testAggregatorDiscountIsPerResultEvenWhenTheResponseNamesAnOwnedIndex] : XCTAssertEqualWithAccuracy failed: ("0.01129032258064516") is not equal to ("0.016129032258064516") +/- ("0.0001") - a result whose own engines name nobody else's index must keep the full vote
+Test Case '-[WebSearchCoreTests.RankFusionTests testAggregatorDiscountIsPerResultEvenWhenTheResponseNamesAnOwnedIndex]' failed (0.120 seconds).
+	 Executed 1 test, with 1 failure (0 unexpected) in 0.120 (0.120) seconds
+```
+
+`0.01129` is `0.7/62` and `0.016129` is `1/62`: the sibling had lost the discount, exactly the
+defect.
+
+M2 — drop the `family.isIndependentIndex` guard from `resellsIndexAlreadyOwned`:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter "RankFusionTests/testResponseLevelDiscountIgnoresNonIndependentFamilies|RankFusionTests/testUpstreamEngineMappingDetectsDuplication"
+Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift:560: error: -[WebSearchCoreTests.RankFusionTests testResponseLevelDiscountIgnoresNonIndependentFamilies] : XCTAssertEqualWithAccuracy failed: ("0.011475409836065573") is not equal to ("0.01639344262295082") +/- ("0.0001") - reselling a non-independent family must not discount the aggregator
+Test Case '-[WebSearchCoreTests.RankFusionTests testResponseLevelDiscountIgnoresNonIndependentFamilies]' failed (0.075 seconds).
+Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift:606: error: -[WebSearchCoreTests.RankFusionTests testUpstreamEngineMappingDetectsDuplication] : XCTAssertFalse failed
+Test Case '-[WebSearchCoreTests.RankFusionTests testUpstreamEngineMappingDetectsDuplication]' failed (0.002 seconds).
+	 Executed 2 tests, with 2 failures (0 unexpected) in 0.076 (0.077) seconds
+```
+
+M3 — delete the fallback (`duplicatedOwnedIndex = resoldFamily != nil` unconditionally):
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter "RankFusionTests/testAggregatorDiscountFallsBackToResponseLevelWithoutPerResultEngines"
+Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift:510: error: -[WebSearchCoreTests.RankFusionTests testAggregatorDiscountFallsBackToResponseLevelWithoutPerResultEngines] : XCTAssertEqualWithAccuracy failed: ("0.03278688524590164") is not equal to ("0.027868852459016394") +/- ("0.0001") - without per-result engines the response-level list discounts the resold page
+Tests/WebSearchCoreTests/FusionAndReliabilityTests.swift:516: error: -[WebSearchCoreTests.RankFusionTests testAggregatorDiscountFallsBackToResponseLevelWithoutPerResultEngines] : XCTAssertEqualWithAccuracy failed: ("0.016129032258064516") is not equal to ("0.01129032258064516") +/- ("0.0001") - without per-result engines the response-level list applies to every result
+	 Executed 1 test, with 2 failures (0 unexpected) in 0.078 (0.078) seconds
+```
+
+After restoring the file, the whole class is green:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter RankFusionTests
+	 Executed 23 tests, with 0 failures (0 unexpected) in 0.009 (0.010) seconds
+```
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (5.81s)                                                     0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+	 Executed 493 tests, with 6 tests skipped and 0 failures (0 unexpected)
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (19.34s)                                                    0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+0 diagnostics                                                               exit=0
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 84 files.                    exit=0
+```
+
+The suite count is 493, not the 490 baseline: this change adds the three tests above (490 + 3 =
+493). Every run reports the same 6 pre-existing environment-gated skips.
+
+## Noted, not changed
+
+The response-level fallback deliberately does not fold the contribution family the way the
+per-result path does — with only a response-level list there is no way to say *which* result
+belongs to the owned index, so the whole response is discounted but keeps the aggregator's own
+family. That asymmetry is pre-existing and is covered by
+`testAggregatorAloneIsDiscountedAgainstIndependentIndex`; this task only stopped the
+response-level answer from overriding a per-result one.

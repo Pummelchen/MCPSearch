@@ -314,11 +314,107 @@ final class ConfigurationTests: XCTestCase {
         XCTAssertNil(parsed["# a comment"])
     }
 
-    func testEnvironmentOverridesConfigFile() {
-        // Simulated by merging manually: file values first, environment second.
-        var merged = AppConfiguration.parseDotEnv("SEARCH_MAX_RESULTS=3")
-        merged["SEARCH_MAX_RESULTS"] = "11"
-        XCTAssertEqual(AppConfiguration.parse(merged).defaultMaxResults, 11)
+    /// Environment variables beat the config file, and the file fills what they are silent about.
+    ///
+    /// The previous version of this test merged a dictionary by hand and then called `parse`, so
+    /// `load` — the function the server actually calls — was never executed with a file at all
+    /// (ledger B31).
+    func testEnvironmentOverridesConfigFile() throws {
+        let file = try writeTemporaryConfig(
+            """
+            SEARCH_MAX_RESULTS=3
+            TAVILY_API_KEY=tvly-from-file
+            """
+        )
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+
+        let configuration = AppConfiguration.load(
+            environment: ["SEARCH_MAX_RESULTS": "11"],
+            configFileURL: file
+        )
+
+        XCTAssertEqual(configuration.defaultMaxResults, 11, "the environment must win")
+        XCTAssertEqual(configuration.tavilyAPIKey, "tvly-from-file", "the file fills the rest")
+        XCTAssertTrue(configuration.issues.isEmpty, "\(configuration.issues)")
+    }
+
+    /// `PARALLEL_MCP_URL=` is how an operator removes the built-in Parallel endpoint.
+    ///
+    /// The clearing branch in `parse` tests for a present-but-empty value, and `load` drops empty
+    /// environment values, so it could never run: the documented-looking way to remove the default
+    /// silently kept it (ledger B59).
+    func testAnEmptyParallelMCPURLRemovesTheDefault() {
+        XCTAssertNotNil(
+            AppConfiguration.load(environment: [:], configFileURL: nil).parallelMCPURL,
+            "the built-in default is present with no configuration"
+        )
+        XCTAssertNil(
+            AppConfiguration.load(
+                environment: ["PARALLEL_MCP_URL": ""],
+                configFileURL: nil
+            ).parallelMCPURL,
+            "an explicitly empty value must clear the default"
+        )
+    }
+
+    /// `SEARCH_CONFIG_FILE` is the documented way to point at a file, and `load` must read it.
+    func testConfigFileNamedByTheEnvironmentIsLoaded() throws {
+        let file = try writeTemporaryConfig("SEARCH_MAX_RESULTS=4")
+        defer { try? FileManager.default.removeItem(at: file.deletingLastPathComponent()) }
+
+        let configuration = AppConfiguration.load(
+            environment: ["SEARCH_CONFIG_FILE": file.path],
+            configFileURL: nil
+        )
+
+        XCTAssertEqual(configuration.defaultMaxResults, 4)
+        XCTAssertTrue(configuration.issues.isEmpty, "\(configuration.issues)")
+    }
+
+    /// A config file that was asked for and is missing is an issue, not "no config file" (B09).
+    ///
+    /// Nothing exercised the `load` path that produces it; the existing issue tests build the
+    /// configuration from a dictionary (ledger B31).
+    func testMissingConfigFileIsReportedAsAnIssue() {
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent("missing-\(UUID().uuidString).env")
+
+        let configuration = AppConfiguration.load(
+            environment: ["SEARCH_CONFIG_FILE": missing.path],
+            configFileURL: nil
+        )
+
+        XCTAssertTrue(
+            configuration.issues.contains {
+                $0.kind == .unreadableConfigFile && $0.key == AppConfiguration.Key.configFile.rawValue
+            },
+            "a missing file must be reported: \(configuration.issues)"
+        )
+    }
+
+    /// A path that exists but cannot be read is reported too, never treated as an empty file.
+    func testUnreadableConfigFileIsReportedAsAnIssue() throws {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("config-dir-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        let configuration = AppConfiguration.load(environment: [:], configFileURL: directory)
+
+        XCTAssertTrue(
+            configuration.issues.contains { $0.kind == .unreadableConfigFile },
+            "an unreadable file must be reported: \(configuration.issues)"
+        )
+    }
+
+    /// A unique temporary dotenv; the caller removes its directory.
+    private func writeTemporaryConfig(_ contents: String) throws -> URL {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("mcps-config-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let file = directory.appendingPathComponent("config.env")
+        try contents.write(to: file, atomically: true, encoding: .utf8)
+        return file
     }
 
     func testUnknownProviderNamesInOrderAreIgnored() {
@@ -327,6 +423,221 @@ final class ConfigurationTests: XCTestCase {
         ])
         XCTAssertEqual(configuration.providerOrder.first, .brave)
         XCTAssertFalse(configuration.providerOrder.contains { $0.rawValue == "nonsense" })
+    }
+    /// A typo used to be indistinguishable from "not configured": the value was dropped and the
+    /// default applied with no diagnostic, which is how an operator ends up with no providers and
+    /// no explanation (ledger B09).
+    func testUnusableConfiguredValuesAreReported() throws {
+        var environment = [
+            "SEARCH_REQUEST_TIMEOUT_MS": "lots",
+            "SEARCH_LOG_LEVEL": "verbose",
+            "SEARCH_ENABLE_SCRAPERS": "maybe",
+            "SEARXNG_BASE_URL": "searx.example.com",
+        ]
+        environment["SEARCH_CONFIG_FILE"] = "/definitely/not/here/config.env"
+
+        let configuration = AppConfiguration.load(environment: environment)
+
+        let byKey = Dictionary(
+            grouping: configuration.issues,
+            by: \.key
+        ).mapValues { $0.map(\.kind) }
+        XCTAssertEqual(byKey["SEARCH_CONFIG_FILE"], [.unreadableConfigFile])
+        XCTAssertEqual(byKey["SEARCH_REQUEST_TIMEOUT_MS"], [.unparseableValue])
+        XCTAssertEqual(byKey["SEARCH_LOG_LEVEL"], [.unparseableValue])
+        XCTAssertEqual(byKey["SEARCH_ENABLE_SCRAPERS"], [.unparseableValue])
+        XCTAssertEqual(byKey["SEARXNG_BASE_URL"], [.invalidURL])
+
+        // The defaults are used, and the schemeless endpoint is *not* configured — which is the
+        // part that matters: a relative URL must never reach a request.
+        XCTAssertEqual(configuration.requestTimeout, AppConfiguration().requestTimeout)
+        XCTAssertEqual(configuration.logLevel, AppConfiguration().logLevel)
+        XCTAssertNil(configuration.searxngBaseURL)
+        XCTAssertFalse(configuration.enableScrapers)
+    }
+
+    /// A value that is fine must not produce a complaint, and a schemeless URL must be the only
+    /// thing rejected about an otherwise valid configuration.
+    func testAValidConfigurationReportsNothing() throws {
+        var environment = [
+            "SEARCH_REQUEST_TIMEOUT_MS": "12000",
+            "SEARCH_LOG_LEVEL": "debug",
+            "SEARCH_ENABLE_SCRAPERS": "yes",
+            "SEARXNG_BASE_URL": "http://127.0.0.1:8888",
+        ]
+        environment["TAVILY_API_KEY"] = Fixtures.syntheticDeepSeekKey
+
+        let configuration = AppConfiguration.load(environment: environment)
+
+        XCTAssertEqual(configuration.issues, [])
+        XCTAssertEqual(configuration.requestTimeout, .milliseconds(12_000))
+        XCTAssertEqual(configuration.logLevel, .debug)
+        XCTAssertTrue(configuration.enableScrapers)
+        XCTAssertEqual(configuration.searxngBaseURL?.absoluteString, "http://127.0.0.1:8888")
+    }
+
+    /// A requested-but-missing config file is reported by name; the environment still applies.
+    func testAMissingConfigFileIsNamedInTheIssues() throws {
+        let configuration = AppConfiguration.load(
+            environment: [
+                "SEARCH_CONFIG_FILE": "/definitely/not/here/config.env",
+                "SEARCH_LOG_LEVEL": "warning",
+            ]
+        )
+        XCTAssertEqual(configuration.issues.count, 1)
+        let issue = try XCTUnwrap(configuration.issues.first)
+        XCTAssertEqual(issue.kind, .unreadableConfigFile)
+        XCTAssertTrue(issue.detail.contains("/definitely/not/here/config.env"), issue.detail)
+        XCTAssertEqual(configuration.logLevel, .warning, "the environment still applies")
+    }
+
+}
+
+/// The one authority for "which variable enables me" (ledger B57).
+final class ProviderEnablementTests: XCTestCase {
+
+    /// Every provider states at least one requirement, and every requirement is an environment
+    /// variable `AppConfiguration.Key` already knows about. The `inputs(for:)` switch is
+    /// exhaustive, so a new `ProviderID` cannot compile without an entry; this pins that the
+    /// entry is not empty and that its name is a real key.
+    func testEveryProviderNamesAtLeastOneKnownVariable() {
+        let known = Set(AppConfiguration.Key.allCases.map(\.rawValue))
+        for id in ProviderID.allCases {
+            let inputs = ProviderEnablement.inputs(for: id)
+            XCTAssertFalse(inputs.isEmpty, "\(id.rawValue) declares no enablement requirements")
+            for input in inputs {
+                XCTAssertTrue(
+                    known.contains(input.variableName),
+                    "\(id.rawValue) names \(input.variableName), which is not an AppConfiguration.Key"
+                )
+            }
+        }
+    }
+
+    /// Parallel is the provider that needs two inputs, in the order an operator supplies them:
+    /// the switch first, then the endpoint it gates.
+    func testParallelRequiresTheFlagAndThenTheEndpoint() {
+        XCTAssertEqual(
+            ProviderEnablement.inputs(for: .parallel),
+            [.parallelEnabled, .parallelEndpoint]
+        )
+        for id in ProviderID.allCases where id != .parallel {
+            XCTAssertEqual(
+                ProviderEnablement.inputs(for: id).count, 1,
+                "\(id.rawValue) is expected to need exactly one input"
+            )
+        }
+    }
+
+    /// The startup inventory and the "no provider is configured" error read one list,
+    /// deduplicated in provider order: the two scrapers share a switch, and Parallel
+    /// contributes two inputs.
+    func testAllInputsAreDeduplicatedInProviderOrder() {
+        let names = ProviderEnablement.allInputs.map(\.variableName)
+        XCTAssertEqual(Set(names).count, names.count, "a variable is named twice: \(names)")
+        XCTAssertEqual(
+            names,
+            [
+                "TAVILY_API_KEY", "BRAVE_SEARCH_API_KEY", "MOJEEK_API_KEY", "EXA_API_KEY",
+                "SEARXNG_BASE_URL", "OPEN_WEB_SEARCH_URL", "SEARCH_ENABLE_SCRAPERS",
+                "SEARCH_ENABLE_PARALLEL", "PARALLEL_MCP_URL",
+            ]
+        )
+    }
+
+    /// The drift the finding records: with the flag on and the endpoint absent, the operator
+    /// must be told about `PARALLEL_MCP_URL` — advice they have not taken — rather than the
+    /// flag they already set.
+    func testTheParallelInstructionNamesTheEndpointWhenTheFlagIsOn() {
+        var configuration = Fixtures.configuration(enableParallel: true)
+        configuration.parallelMCPURL = nil
+
+        XCTAssertEqual(
+            ProviderEnablement.missingInputs(for: .parallel, in: configuration),
+            [.parallelEndpoint]
+        )
+        let instruction = ProviderEnablement.instruction(for: .parallel, in: configuration)
+        XCTAssertTrue(instruction.contains("PARALLEL_MCP_URL"), instruction)
+        XCTAssertFalse(
+            instruction.contains("SEARCH_ENABLE_PARALLEL"),
+            "the flag is already on, so naming it is not actionable: \(instruction)"
+        )
+        XCTAssertEqual(instruction, "Set PARALLEL_MCP_URL to the upstream MCP endpoint.")
+    }
+
+    func testBothParallelInputsAreNamedWhenNeitherIsPresent() {
+        var configuration = Fixtures.configuration(enableParallel: false)
+        configuration.parallelMCPURL = nil
+
+        XCTAssertEqual(
+            ProviderEnablement.inputsToName(for: .parallel, in: configuration),
+            [.parallelEnabled, .parallelEndpoint]
+        )
+        XCTAssertEqual(
+            ProviderEnablement.assignmentList(for: .parallel, in: configuration),
+            "SEARCH_ENABLE_PARALLEL=true and PARALLEL_MCP_URL"
+        )
+    }
+
+    /// Satisfaction is per input, so a provider is usable only when the whole set is present.
+    func testSatisfactionTracksEveryInput() {
+        var configuration = Fixtures.configuration(enableScrapers: false, enableParallel: true)
+        XCTAssertTrue(ProviderEnablement.isSatisfied(.tavily, in: configuration) == false)
+        XCTAssertEqual(
+            ProviderEnablement.missingInputs(for: .tavily, in: configuration),
+            [.tavilyAPIKey]
+        )
+
+        configuration.tavilyAPIKey = "tvly-test-key-000000000000"
+        XCTAssertTrue(ProviderEnablement.isSatisfied(.tavily, in: configuration))
+        // An empty string is not a credential.
+        configuration.tavilyAPIKey = ""
+        XCTAssertFalse(ProviderEnablement.isSatisfied(.tavily, in: configuration))
+
+        configuration.enableScrapers = true
+        XCTAssertTrue(ProviderEnablement.isSatisfied(.duckDuckGo, in: configuration))
+        // Parallel has the flag on and the default endpoint present.
+        XCTAssertTrue(ProviderEnablement.isSatisfied(.parallel, in: configuration))
+    }
+
+    /// The SearXNG guidance survives the consolidation, because naming the variable alone is
+    /// the deployment mistake that keeps biting operators.
+    func testTheSearxngInstructionKeepsItsJSONGuidance() {
+        let configuration = Fixtures.configuration()
+        XCTAssertEqual(
+            ProviderEnablement.instruction(for: .searxng, in: configuration),
+            "Set SEARXNG_BASE_URL to an instance with JSON output enabled."
+        )
+    }
+
+    /// The status tool, the factory's own notes and the monitor's hint are the same authority
+    /// read three times, so all three give the endpoint for this configuration.
+    func testTheStatusToolAndTheMonitorHintAgreeForParallel() async {
+        var configuration = Fixtures.configuration(enableParallel: true)
+        configuration.parallelMCPURL = nil
+        let pipeline = SearchPipelineFactory.make(
+            configuration: configuration,
+            http: MockHTTPClient()
+        )
+        let expected = ProviderEnablement.instruction(for: .parallel, in: configuration)
+
+        // `web_search_status` overlays the registry's ineligible reason onto the health note,
+        // so this is the string an operator actually sees.
+        let states = await pipeline.orchestrator.status()
+        let parallel = states.first { $0.provider == .parallel }
+        XCTAssertEqual(parallel?.note, expected, "web_search_status must give actionable advice")
+        XCTAssertTrue(parallel?.note?.contains("PARALLEL_MCP_URL") ?? false, parallel?.note ?? "")
+
+        // The factory's own note (what `ProviderHealth` stores) is derived from the same call.
+        let healthNote = await pipeline.health.state(
+            for: .parallel,
+            configured: pipeline.registry.isConfigured(.parallel),
+            enabled: pipeline.registry.isEnabled(.parallel)
+        ).note
+        XCTAssertEqual(healthNote, expected)
+
+        let probe = ProviderProbe(registry: pipeline.registry, configuration: configuration)
+        XCTAssertEqual(probe.setupHint(for: .parallel), "PARALLEL_MCP_URL")
     }
 }
 
@@ -337,11 +648,23 @@ final class DurationTests: XCTestCase {
         XCTAssertEqual(Duration.seconds(2).milliseconds, 2000)
     }
 
-    func testClockElapsedUsesNanoseconds() {
-        let clock = SystemClock()
+    /// The nanosecond-to-millisecond conversion, driven by a clock we control.
+    ///
+    /// The old version measured the real clock immediately after starting it and asserted the
+    /// result was non-negative — a division of an unsigned delta, which no implementation of that
+    /// signature can violate. The name promised nanosecond handling that was never exercised
+    /// (ledger B69).
+    func testElapsedMillisecondsConvertsANanosecondDelta() {
+        let clock = TestClock()
         let start = clock.uptimeNanoseconds()
-        let elapsed = clock.elapsedMilliseconds(since: start)
-        XCTAssertGreaterThanOrEqual(elapsed, 0)
+        XCTAssertEqual(clock.elapsedMilliseconds(since: start), 0, "no time has passed")
+
+        clock.advance(by: .milliseconds(1_500))
+        XCTAssertEqual(clock.elapsedMilliseconds(since: start), 1_500)
+
+        // Sub-second remainders are truncated, not rounded up.
+        clock.advance(by: .milliseconds(400))
+        XCTAssertEqual(clock.elapsedMilliseconds(since: start), 1_900)
     }
 
     func testTestClockAdvances() {
@@ -358,6 +681,36 @@ final class DurationTests: XCTestCase {
         // An HTTP-date in the past must clamp to zero rather than go negative.
         let past = RetryAfter.parse("Wed, 21 Oct 2015 07:28:00 GMT")
         XCTAssertEqual(past?.milliseconds, 0)
+    }
+
+    /// `Retry-After` comes from an upstream response, so it is untrusted input. A value large
+    /// enough to overflow `Int` used to trap the process in `Int(seconds * 1000)` (ledger B06):
+    /// `Retry-After: 1e30` from any provider, or from a rate-limited Jina response, killed every
+    /// connected client. Finite values are clamped, non-finite ones are treated as absent so the
+    /// caller falls back to its own backoff.
+    func testRetryAfterBoundsHostileValuesInsteadOfTrapping() {
+        XCTAssertEqual(RetryAfter.parse("1e30")?.milliseconds, 86_400_000)
+        XCTAssertEqual(RetryAfter.parse("\(RetryAfter.maximumSeconds * 2)")?.milliseconds, 86_400_000)
+        XCTAssertNil(RetryAfter.parse("inf"))
+        XCTAssertNil(RetryAfter.parse("-inf"))
+        XCTAssertNil(RetryAfter.parse("nan"))
+        // A negative delta was already clamped to zero; it must stay there.
+        XCTAssertEqual(RetryAfter.parse("-5")?.milliseconds, 0)
+        // The ordinary case is unchanged.
+        XCTAssertEqual(RetryAfter.parse("7")?.milliseconds, 7000)
+    }
+
+    func testJinaRetryAfterBodyIsBoundedByTheSameRule() {
+        XCTAssertNil(JinaReaderFetcher.retryAfterFromBody(Data(#"{"retryAfter": "soon"}"#.utf8)))
+        XCTAssertNil(JinaReaderFetcher.retryAfterFromBody(Data(#"{"retryAfter": null}"#.utf8)))
+        XCTAssertEqual(
+            JinaReaderFetcher.retryAfterFromBody(Data(#"{"retryAfter": 1e33}"#.utf8))?.milliseconds,
+            86_400_000
+        )
+        XCTAssertEqual(
+            JinaReaderFetcher.retryAfterFromBody(Data(#"{"retryAfter": 3}"#.utf8))?.milliseconds,
+            3000
+        )
     }
 }
 
@@ -376,8 +729,45 @@ final class LoggingTests: XCTestCase {
         XCTAssertFalse(Log.hash("query").contains("query"))
     }
 
+    /// The digest must be keyed, not the public FNV-1a it used to be.
+    ///
+    /// The old value was recomputable by anyone: a log reader could hash a candidate query with
+    /// the same public algorithm and confirm it, so the "non-reversible" doc claim was false.
+    /// These are the exact FNV-1a outputs the defective function produced, computed independently
+    /// of the Swift code; a keyed digest must not reproduce them (ledger B85).
+    func testHashIsNotTheUnkeyedFNV1aDigest() {
+        let knownFNV1a = [
+            "swift concurrency": "q13a54df77317abdf",
+            "my secret search terms": "qcdc8b5bd8d3de1dc",
+            "query": "qb1068f146c4596c3",
+        ]
+        for (query, digest) in knownFNV1a {
+            XCTAssertNotEqual(
+                Log.hash(query),
+                digest,
+                "hash(\(query)) reproduces the unkeyed FNV-1a digest"
+            )
+        }
+    }
+
     func testEscapeKeepsOutputOnOneLine() {
         XCTAssertEqual(Log.escape("a\nb\tc\"d\\e"), "a\\nb\\tc\\\"d\\\\e")
+    }
+
+    /// A value must not be able to drive the terminal through a diagnostic.
+    ///
+    /// Keeping the line intact is not enough: `ESC[2J` and the C1 range were passed through, so a
+    /// query could clear the screen or move the cursor of whoever was reading stderr (ledger B51).
+    func testEscapeMakesControlCharactersInert() {
+        let hostile = "q\u{1B}[2J\u{07}\u{9B}31m\u{200B}"
+        let escaped = Log.escape(hostile)
+        XCTAssertEqual(escaped, "q\\u{1B}[2J\\u{07}\\u{9B}31m\\u{200B}")
+        XCTAssertFalse(
+            escaped.unicodeScalars.contains {
+                $0.properties.generalCategory == .control || $0.properties.generalCategory == .format
+            },
+            "no control or format scalar may survive: \(escaped.debugDescription)"
+        )
     }
 
     func testLogRespectsLevelThreshold() {
@@ -404,5 +794,85 @@ final class LoggingTests: XCTestCase {
         let log = Log(level: .none) { _ in count += 1 }
         log.error("should not appear")
         XCTAssertEqual(count, 0)
+    }
+
+    // MARK: Standard-error queue (ledger B91)
+
+    /// The default sink frames each event and hands it to the queue; it must not write to fd 2
+    /// itself, because that write is what blocked the logging task.
+    func testTheDefaultSinkRoutesFramedLinesThroughTheQueue() {
+        nonisolated(unsafe) var written: [String] = []
+        let lock = NSLock()
+        let queue = StderrQueue(limit: 8) { line in
+            lock.lock()
+            written.append(line)
+            lock.unlock()
+        }
+        defer { queue.finish() }
+
+        let sink = Log.makeStandardErrorSink(queue: queue)
+        sink("first")
+        sink("second")
+        XCTAssertTrue(queue.flush(), "the queue must drain")
+
+        lock.lock()
+        let captured = written
+        lock.unlock()
+        XCTAssertEqual(captured, ["first\n", "second\n"], "one framed line per call, in order")
+    }
+
+    /// A full queue drops the newest line rather than blocking the caller or growing without
+    /// bound, and the lines it does write keep their order.
+    ///
+    /// The writer is parked inside the injected writer closure, which is what makes this
+    /// deterministic: `submit` must return while the consumer is stopped, and the drop counter is
+    /// observed directly instead of being timed.
+    func testAFullQueueDropsInsteadOfBlockingTheCaller() {
+        nonisolated(unsafe) var written: [String] = []
+        let lock = NSLock()
+        let took = DispatchSemaphore(value: 0)
+        let release = DispatchSemaphore(value: 0)
+        let queue = StderrQueue(limit: 2) { line in
+            took.signal()
+            release.wait()
+            lock.lock()
+            written.append(line)
+            lock.unlock()
+        }
+        defer {
+            queue.finish()
+            for _ in 0..<4 { release.signal() }
+        }
+
+        queue.submit("one\n")
+        // Wait until the writer holds "one" and is parked, so only the queue's two slots remain.
+        XCTAssertEqual(took.wait(timeout: .now() + 5), .success, "the writer thread must start")
+
+        queue.submit("two\n")
+        queue.submit("three\n")
+        // Full and stopped: this call must return, not wait for the writer.
+        queue.submit("four\n")
+        XCTAssertEqual(queue.droppedLines, 1, "a full queue must drop the newest line")
+
+        // Release the writer for the drop note, for "two" and for "three"; the last release lets
+        // "three" finish, and `flush` then waits for that write rather than for the queue to
+        // empty.
+        for _ in 0..<3 {
+            release.signal()
+            XCTAssertEqual(took.wait(timeout: .now() + 5), .success, "the writer must continue")
+        }
+        release.signal()
+        XCTAssertTrue(queue.flush(), "the writer must drain once it is released")
+
+        lock.lock()
+        let captured = written
+        lock.unlock()
+        let dropped = captured.filter { $0.contains("dropped 1 log lines") }
+        XCTAssertEqual(dropped.count, 1, "the gap must be reported once: \(captured)")
+        XCTAssertEqual(
+            captured.filter { !$0.contains("dropped 1 log lines") },
+            ["one\n", "two\n", "three\n"],
+            "order and framing must survive the queue"
+        )
     }
 }

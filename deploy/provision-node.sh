@@ -14,6 +14,32 @@ LOG_PREFIX="[$(date +%H:%M:%S) $NODE_NAME]"
 say() { echo "$LOG_PREFIX $*"; }
 fail() { echo "$LOG_PREFIX ERROR: $*" >&2; exit 1; }
 
+# Install the generated key into the rendered settings file, and prove it landed.
+#
+# Every other mutation in this script carries a `|| fail`, and this one did not: if `sed` failed,
+# the container started with the literal, tracked, publicly known placeholder as its signing key
+# and the canary still answered JSON, so the run reported success (ledger B17). Extracted as a
+# function so the guard can be exercised without provisioning a node.
+install_secret_key() {
+    local settings_file="$1"
+    local key="$2"
+    # The settings file is created by a plain redirect, so under the default umask 022 it is
+    # 0644, and the substitution below copies the same secret the 0600 key file holds into it.
+    # BSD `sed -i` preserves the original file's mode rather than applying the umask (measured:
+    # a 0600 input stays 0600, a 0644 input stays 0644), so the mode is corrected here after the
+    # substitution and then asserted, rather than assumed from the umask (ledger B49).
+    sed -i '' "s|__SECRET_KEY__|${key}|" "${settings_file}" \
+        || fail "could not install the SearXNG secret key into ${settings_file}"
+    chmod 600 "${settings_file}" \
+        || fail "could not restrict the mode of ${settings_file}"
+    if grep -qF '__SECRET_KEY__' "${settings_file}"; then
+        fail "${settings_file} still contains the __SECRET_KEY__ placeholder; refusing to start a container that would sign with a known key"
+    fi
+    if ! grep -qF "secret_key: \"${key}\"" "${settings_file}"; then
+        fail "${settings_file} does not contain the generated secret key; refusing to start"
+    fi
+}
+
 # Keep the VM small: these machines have 8 GB of RAM and are also doing other work.
 COLIMA_CPU="${COLIMA_CPU:-2}"
 COLIMA_MEMORY="${COLIMA_MEMORY:-2}"
@@ -26,11 +52,58 @@ SEARXNG_CANARY_PORT="${SEARXNG_CANARY_PORT:-8899}"
 # cluster (Apple Silicon nodes). To update: pull the new tag, exercise it, then replace the
 # digest here and in deploy/docker-compose.yml.
 SEARXNG_IMAGE="${SEARXNG_IMAGE:-searxng/searxng@sha256:e084201aa606fafce2151c8dc2844c9c3309025e90fbe7163b4f5e5183e474f0}"
+# The transferred image tarball, if the operator has one to hand: pass its path explicitly
+# (SEARXNG_IMAGE_TAR=/path/to/searxng-image.tar). There is deliberately no default under a
+# shared directory: a fixed /tmp/searxng-image.tar could be planted by any local user
+# (ledger B86).
+SEARXNG_IMAGE_TAR="${SEARXNG_IMAGE_TAR:-}"
 
 # Used below. Failing here is clearer than failing half way through provisioning.
 for tool in curl python3 openssl; do
     command -v "$tool" >/dev/null 2>&1 || fail "$tool is required but not installed"
 done
+
+# ---------------------------------------------------------------------------
+# Private scratch space
+# ---------------------------------------------------------------------------
+# Every log below used to be written to a fixed name under the shared, world-writable
+# /tmp. A plain `>` follows a symlink planted there, so a local user could make this run
+# — an account that also has cached sudo — truncate or clobber any file the provisioning
+# account can write, and could substitute a transferred image tarball for one of their
+# choosing (ledger B86). One unpredictable directory, created 0700, holds every artefact
+# of this run instead, so no other local user can name a path inside it.
+#
+# Extracted as a function so the guard can be exercised without provisioning a node.
+make_provision_tmp() {
+    local dir
+    dir="$(mktemp -d)" || return 1
+    install -d -m 700 "${dir}" || return 1
+    printf '%s\n' "${dir}"
+}
+
+PROVISION_TMP="$(make_provision_tmp)" \
+    || fail "could not create a private temporary directory for the provisioning logs"
+
+# Remove the directory however the script ends — `fail` exits, so the EXIT trap covers the
+# failure path as well as the success one (ledger B86). On a failed run the log `fail` just
+# pointed at is the diagnostic and the directory is about to go, so its tail is shown
+# first; bounded so a chatty install cannot bury the real error. The removal itself is
+# reported rather than fatal: this runs while the script is already exiting, so `fail`
+# here would recurse.
+cleanup_provision_tmp() {
+    local status="$1" log
+    [ -n "${PROVISION_TMP:-}" ] || return 0
+    if [ "${status}" -ne 0 ]; then
+        for log in "${PROVISION_TMP}"/*.log; do
+            [ -f "${log}" ] || continue
+            echo "--- ${log} (last 40 lines) ---" >&2
+            tail -n 40 "${log}" >&2
+        done
+    fi
+    rm -rf "${PROVISION_TMP}" \
+        || say "could not remove the private temporary directory ${PROVISION_TMP}"
+}
+trap 'cleanup_provision_tmp $?' EXIT
 
 # ---------------------------------------------------------------------------
 # 0. sudo
@@ -65,11 +138,28 @@ done
 
 if ! command -v brew >/dev/null 2>&1; then
     say "installing Homebrew (non-interactive)"
+    # Downloaded to a file and checked against a pinned digest instead of being piped into a
+    # shell. A pipe runs whatever arrived — a truncated download, a proxy's error page — and
+    # nothing ties the bytes to a reviewed script. The digest below is the whole of that tie,
+    # so when upstream changes this stops with instructions rather than running something new
+    # (audit task A07).
+    HOMEBREW_INSTALLER_URL="https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh"
+    HOMEBREW_INSTALLER_SHA256="25548e1da7930c1563dbbe2cb05834a4131c4da09234540b6fdac812fda3c287"
+    installer="$(mktemp -t homebrew-install)"
+    if ! curl -fsSL "${HOMEBREW_INSTALLER_URL}" -o "${installer}"; then
+        rm -f "${installer}"
+        fail "could not download the Homebrew installer"
+    fi
+    actual="$(shasum -a 256 "${installer}" | awk '{print $1}')"
+    if [ "${actual}" != "${HOMEBREW_INSTALLER_SHA256}" ]; then
+        rm -f "${installer}"
+        fail "Homebrew installer digest changed (expected ${HOMEBREW_INSTALLER_SHA256}, got ${actual}); review ${HOMEBREW_INSTALLER_URL} and update the pin in this script"
+    fi
     # NONINTERACTIVE avoids the "press RETURN" prompt; sudo is already cached above.
-    NONINTERACTIVE=1 /bin/bash -c \
-        "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)" \
-        >/tmp/brew-install.log 2>&1 \
-        || fail "Homebrew install failed; see /tmp/brew-install.log"
+    NONINTERACTIVE=1 /bin/bash "${installer}" > "${PROVISION_TMP}/brew-install.log" 2>&1
+    install_status=$?
+    rm -f "${installer}"
+    [ "${install_status}" -eq 0 ] || fail "Homebrew install failed; see ${PROVISION_TMP}/brew-install.log"
     for prefix in /opt/homebrew /usr/local; do
         [ -x "${prefix}/bin/brew" ] && eval "$("${prefix}/bin/brew" shellenv)" && break
     done
@@ -93,8 +183,8 @@ if ! command -v colima >/dev/null 2>&1 || ! command -v docker >/dev/null 2>&1; t
     # because it cannot create symlinks into an /Applications/Docker.app that is not
     # there. The binaries are what matter, so they are checked below.
     HOMEBREW_NO_AUTO_UPDATE=1 HOMEBREW_NO_INSTALL_CLEANUP=1 \
-        brew install colima docker docker-compose >/tmp/brew-pkgs.log 2>&1 \
-        || say "brew reported a problem (see /tmp/brew-pkgs.log); verifying binaries"
+        brew install colima docker docker-compose > "${PROVISION_TMP}/brew-pkgs.log" 2>&1 \
+        || say "brew reported a problem (see ${PROVISION_TMP}/brew-pkgs.log); verifying binaries"
 fi
 
 # The docker *client* formula installs its binary but can fail to link it when a
@@ -102,8 +192,8 @@ fi
 # idempotent and is exactly what was missing on the first three nodes.
 if ! command -v docker >/dev/null 2>&1; then
     say "linking the docker CLI"
-    brew link --overwrite docker >/tmp/brew-link.log 2>&1 \
-        || say "brew link reported a problem (see /tmp/brew-link.log)"
+    brew link --overwrite docker > "${PROVISION_TMP}/brew-link.log" 2>&1 \
+        || say "brew link reported a problem (see ${PROVISION_TMP}/brew-link.log)"
 fi
 
 command -v colima >/dev/null 2>&1 || fail "colima not installed"
@@ -148,8 +238,8 @@ if ! colima status >/dev/null 2>&1; then
         --disk "$COLIMA_DISK" \
         --vm-type vz \
         --mount-type virtiofs \
-        >/tmp/colima-start.log 2>&1 \
-        || fail "colima start failed; see /tmp/colima-start.log"
+        > "${PROVISION_TMP}/colima-start.log" 2>&1 \
+        || fail "colima start failed; see ${PROVISION_TMP}/colima-start.log"
 fi
 colima status >/dev/null 2>&1 || fail "colima is not running"
 
@@ -231,21 +321,55 @@ outgoing:
   pool_maxsize: 20
 SETTINGS
 
-# The heredoc is quoted, so the key is substituted afterwards rather than expanded inline.
-sed -i '' "s|__SECRET_KEY__|${SECRET_KEY}|" "${INSTALL_DIR}/searxng/settings.yml"
+# The heredoc is quoted, so the key is substituted afterwards rather than expanded inline. The
+# substitution is checked and verified, never assumed (ledger B17). The mode is set before the
+# key is written, not only after: `chmod` here means the secret is never briefly readable, and
+# because `sed -i` preserves the mode it survives the substitution (ledger B49).
+chmod 600 "${INSTALL_DIR}/searxng/settings.yml" \
+    || fail "could not restrict the mode of the SearXNG settings file"
+install_secret_key "${INSTALL_DIR}/searxng/settings.yml" "${SECRET_KEY}"
+
+# Stage a transferred image tarball inside the private directory, load it, and prove that
+# what landed is the pinned image, before the canary ever sees it.
+#
+# The source path is the operator's explicit choice; staging it means the path `docker
+# load` opens is one no other local user can name or rewrite (ledger B86). `docker load`
+# itself trusts the tarball, and the guard below only proves the pinned *reference* is
+# absent — not that the tarball carries it. The container is always *run* by the
+# digest-pinned reference, so a tampered tarball cannot simply execute as the pinned image;
+# that reference is the control. This comparison is defence in depth: it fails closed on a
+# load whose result the script can see does not match the pin, instead of trusting the
+# daemon's store. `RepoDigests` is what the daemon records for the reference, so an image
+# loaded under a different name cannot pass it.
+load_pinned_image() {
+    local source="$1"
+    local staged="${PROVISION_TMP}/searxng-image.tar"
+    local loaded_digest
+    cp "${source}" "${staged}" \
+        || fail "could not stage ${source} in ${PROVISION_TMP}"
+    docker load -i "${staged}" > "${PROVISION_TMP}/docker-load.log" 2>&1 \
+        || fail "docker load failed; see ${PROVISION_TMP}/docker-load.log"
+    loaded_digest="$(docker image inspect --format '{{index .RepoDigests 0}}' "${SEARXNG_IMAGE}" 2>/dev/null)"
+    if [ "${loaded_digest}" != "${SEARXNG_IMAGE}" ]; then
+        fail "the image loaded from ${source} is not the pinned ${SEARXNG_IMAGE} (RepoDigests: '${loaded_digest}'); refusing to run it"
+    fi
+}
 
 # Prefer a locally-loaded image (transferred over the LAN) so each node does not
-# re-download ~200 MB from the internet.
+# re-download ~200 MB from the internet. The tarball's source is an explicit input
+# (SEARXNG_IMAGE_TAR) rather than the fixed /tmp/searxng-image.tar the script used to look
+# for (ledger B86).
 if docker image inspect "${SEARXNG_IMAGE}" >/dev/null 2>&1; then
     say "searxng image already present"
-elif [ -f /tmp/searxng-image.tar ]; then
-    say "loading searxng image from /tmp/searxng-image.tar"
-    docker load -i /tmp/searxng-image.tar >/tmp/docker-load.log 2>&1 \
-        || fail "docker load failed; see /tmp/docker-load.log"
+elif [ -n "${SEARXNG_IMAGE_TAR}" ]; then
+    [ -f "${SEARXNG_IMAGE_TAR}" ] \
+        || fail "SEARXNG_IMAGE_TAR is set but is not a file: ${SEARXNG_IMAGE_TAR}"
+    say "loading searxng image from ${SEARXNG_IMAGE_TAR}"
+    load_pinned_image "${SEARXNG_IMAGE_TAR}"
 else
     say "pulling searxng image from the internet"
-    docker pull "${SEARXNG_IMAGE}" >/tmp/docker-pull.log 2>&1 \
-        || fail "docker pull failed; see /tmp/docker-pull.log"
+    docker pull "${SEARXNG_IMAGE}" > "${PROVISION_TMP}/docker-pull.log" 2>&1 \
+        || fail "docker pull failed; see ${PROVISION_TMP}/docker-pull.log"
 fi
 
 # Validate the image before touching the running instance. The previous behaviour removed
@@ -258,8 +382,8 @@ docker run -d \
     --name mcps-searxng-canary \
     -p "127.0.0.1:${SEARXNG_CANARY_PORT}:8080" \
     -v "${INSTALL_DIR}/searxng/settings.yml:/etc/searxng/settings.yml:ro" \
-    "${SEARXNG_IMAGE}" >/tmp/docker-canary.log 2>&1 \
-    || fail "canary container failed to start; see /tmp/docker-canary.log"
+    "${SEARXNG_IMAGE}" > "${PROVISION_TMP}/docker-canary.log" 2>&1 \
+    || fail "canary container failed to start; see ${PROVISION_TMP}/docker-canary.log"
 if ! wait_for_json "${SEARXNG_CANARY_PORT}"; then
     docker rm -f mcps-searxng-canary >/dev/null 2>&1
     fail "the new image does not answer JSON; the running instance was left untouched"
@@ -267,34 +391,134 @@ fi
 docker rm -f mcps-searxng-canary >/dev/null 2>&1
 say "canary answered JSON; replacing the running instance"
 
-docker rm -f mcps-searxng >/dev/null 2>&1
+# ---------------------------------------------------------------------------
+# 4b. Replace the running instance without a point of no return
+# ---------------------------------------------------------------------------
+# The canary above proved the *image* on a spare loopback port, but the canary is not the
+# production binding: `-p ${SEARXNG_PORT}:8080` is what fails when something already holds
+# ${SEARXNG_PORT}, and a container can start and still never answer JSON on that port.
+# Removing the running container first, as this script did, made every one of those failures
+# final — the node keeps no compose file, tag or image for the old container, so there was
+# nothing to restore and the only recovery was to edit the script and re-run it (ledger B50).
+#
+# The old container is therefore renamed aside and *stopped* — which frees the port but keeps
+# its configuration — and the replacement is run and proven under the production name and
+# port. Only then is the previous container removed. Any failure in between is rolled back:
+# the partial replacement is removed, the previous container is renamed back and started, and
+# the node keeps serving what it served before the run. Extracted as functions so the
+# rollback can be exercised without provisioning a node.
+PREVIOUS_CONTAINER_NAME="mcps-searxng-previous"
+# Non-empty only while a previous container is aside awaiting proof or rollback, so a first
+# provisioning run — which has nothing to restore — takes the same failure paths as before.
+SWAP_PREVIOUS_NAME=""
+# The digest the previous container ran, kept for the READY output so a rollback after this
+# run is one command rather than an archaeology exercise (ledger B50).
+PREVIOUS_IMAGE=""
 
-# Bound to all interfaces on the node so the main machine can reach it over the LAN.
-# The node itself is on a private network and the instance has no authentication, so
-# this is a LAN-only exposure by design: no port forwarding, no public DNS.
-docker run -d \
-    --name mcps-searxng \
-    --restart unless-stopped \
-    -p "${SEARXNG_PORT}:8080" \
-    -v "${INSTALL_DIR}/searxng/settings.yml:/etc/searxng/settings.yml:ro" \
-    "${SEARXNG_IMAGE}" >/tmp/docker-run.log 2>&1 \
-    || fail "docker run failed; see /tmp/docker-run.log"
+# Put the previous container back under its canonical name and start it. A no-op when no
+# container is aside, so callers need not track that themselves. It reports rather than
+# fails: it runs on the way to the real error, and `fail` here would hide that error
+# (ledger B50).
+restore_previous_instance() {
+    [ -n "${SWAP_PREVIOUS_NAME}" ] || return 0
+    docker rm -f mcps-searxng >/dev/null 2>&1
+    docker rename "${SWAP_PREVIOUS_NAME}" mcps-searxng \
+        || say "could not rename ${SWAP_PREVIOUS_NAME} back to mcps-searxng"
+    docker start mcps-searxng > "${PROVISION_TMP}/docker-restore.log" 2>&1 \
+        || say "could not restart mcps-searxng; see ${PROVISION_TMP}/docker-restore.log"
+    say "restored the previous mcps-searxng container"
+    SWAP_PREVIOUS_NAME=""
+}
 
-say "waiting for searxng to answer JSON"
-wait_for_json "${SEARXNG_PORT}" || fail "searxng did not answer JSON on port ${SEARXNG_PORT}"
+# Every failure inside the swap goes through here: the node is left as it was found, then the
+# run stops with the message the failure would have produced before (ledger B50).
+swap_fail() {
+    restore_previous_instance
+    fail "$*"
+}
+
+replace_running_instance() {
+    if docker container inspect mcps-searxng >/dev/null 2>&1; then
+        PREVIOUS_IMAGE="$(docker inspect --format '{{.Config.Image}}' mcps-searxng 2>/dev/null)"
+        # Renamed aside, never removed: this container is the only record of how the node was
+        # serving, and it is what a rollback restores (ledger B50).
+        docker rm -f "${PREVIOUS_CONTAINER_NAME}" >/dev/null 2>&1
+        docker rename mcps-searxng "${PREVIOUS_CONTAINER_NAME}" \
+            || fail "could not rename the running container aside; it is still serving on port ${SEARXNG_PORT}"
+        SWAP_PREVIOUS_NAME="${PREVIOUS_CONTAINER_NAME}"
+        # `stop` frees the production port without destroying the configuration; `--restart
+        # unless-stopped` will not bring it back while it is stopped by hand.
+        docker stop "${PREVIOUS_CONTAINER_NAME}" > "${PROVISION_TMP}/docker-stop.log" 2>&1 \
+            || swap_fail "could not stop the previous container; see ${PROVISION_TMP}/docker-stop.log"
+    fi
+
+    docker rm -f mcps-searxng >/dev/null 2>&1
+
+    # Bound to all interfaces on the node so the main machine can reach it over the LAN.
+    # The node itself is on a private network and the instance has no authentication, so
+    # this is a LAN-only exposure by design: no port forwarding, no public DNS.
+    docker run -d \
+        --name mcps-searxng \
+        --restart unless-stopped \
+        -p "${SEARXNG_PORT}:8080" \
+        -v "${INSTALL_DIR}/searxng/settings.yml:/etc/searxng/settings.yml:ro" \
+        "${SEARXNG_IMAGE}" > "${PROVISION_TMP}/docker-run.log" 2>&1 \
+        || swap_fail "docker run failed; see ${PROVISION_TMP}/docker-run.log"
+
+    say "waiting for searxng to answer JSON"
+    wait_for_json "${SEARXNG_PORT}" || swap_fail "searxng did not answer JSON on port ${SEARXNG_PORT}"
+
+    # Proven on the production port: only now is the previous container expendable.
+    if [ -n "${SWAP_PREVIOUS_NAME}" ]; then
+        docker rm -f "${SWAP_PREVIOUS_NAME}" >/dev/null 2>&1
+        SWAP_PREVIOUS_NAME=""
+    fi
+}
+
+replace_running_instance
 
 # Survive a reboot. The container has `--restart unless-stopped`, but that only helps
 # once the Docker daemon is running, and the Colima VM does not start itself.
 if brew services list 2>/dev/null | grep -q '^colima'; then
-    brew services start colima >/tmp/brew-services.log 2>&1 \
+    brew services start colima > "${PROVISION_TMP}/brew-services.log" 2>&1 \
         && say "colima registered to start at login" \
-        || say "could not register colima as a service (see /tmp/brew-services.log)"
+        || say "could not register colima as a service (see ${PROVISION_TMP}/brew-services.log)"
 fi
 
 # Report an address that exists. Printing a hostname as if it were a URL sent operators
 # hunting for a network fault that was really a missing Tailscale install.
-TAILSCALE_IP="$(/usr/local/bin/tailscale ip -4 2>/dev/null | head -1)"
-[ -n "$TAILSCALE_IP" ] || TAILSCALE_IP="$(/Applications/Tailscale.app/Contents/MacOS/Tailscale ip -4 2>/dev/null | head -1)"
+#
+# Resolve the CLI instead of assuming where it was installed. `command -v` is tried first
+# because the Homebrew section above already applied this node's `shellenv`, so it finds the
+# formula from whichever prefix the node actually uses — /opt/homebrew/bin on Apple Silicon,
+# /usr/local/bin on Intel. The old lookup tried only the Intel prefix, so an Apple Silicon
+# node with the formula installed fell through to the LAN address (ledger B48). The app
+# bundle is not on PATH and its binary is named `Tailscale`, unlike the formula's `tailscale`,
+# so those known paths are tried after `command -v`.
+tailscale_cli() {
+    local found candidate
+    found="$(command -v tailscale 2>/dev/null)"
+    if [ -n "${found}" ]; then
+        printf '%s\n' "${found}"
+        return 0
+    fi
+    for candidate in "$@"; do
+        if [ -x "${candidate}" ]; then
+            printf '%s\n' "${candidate}"
+            return 0
+        fi
+    done
+    return 1
+}
+
+TAILSCALE_CLI="$(tailscale_cli \
+    /opt/homebrew/bin/tailscale \
+    /usr/local/bin/tailscale \
+    /Applications/Tailscale.app/Contents/MacOS/Tailscale)"
+TAILSCALE_IP=""
+if [ -n "${TAILSCALE_CLI}" ]; then
+    TAILSCALE_IP="$("${TAILSCALE_CLI}" ip -4 2>/dev/null | head -1)"
+fi
 
 if [ -n "$TAILSCALE_IP" ]; then
     say "READY  searxng http://${TAILSCALE_IP}:${SEARXNG_PORT} (Tailscale)"
@@ -308,5 +532,11 @@ else
         say "searxng is listening on port ${SEARXNG_PORT}, but neither tailscale nor a LAN"
         say "address could be determined; set SEARXNG_BASE_URL to http://<node>:${SEARXNG_PORT}"
     fi
+fi
+# The previous container has been removed by now, so its digest is not on the node in any
+# form the operator can discover; printing it here is what makes a rollback one command
+# (ledger B50).
+if [ -n "${PREVIOUS_IMAGE}" ] && [ "${PREVIOUS_IMAGE}" != "${SEARXNG_IMAGE}" ]; then
+    say "previous image digest (rollback): ${PREVIOUS_IMAGE}"
 fi
 say "container: $(docker ps --filter name=mcps-searxng --format '{{.Status}}')"

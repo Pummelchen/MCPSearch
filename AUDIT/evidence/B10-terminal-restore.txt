@@ -1,0 +1,53 @@
+# B10 - Ctrl-C left the terminal in raw mode, and the quit branch was unreachable
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) - branch audit/2026-09-13
+
+## What was wrong
+
+KeyReader claims crash safety - "raw is dropped when the process exits so a crash cannot leave the
+user's shell unusable" - but the only restore paths are the explicit restore() at the end of the run
+and deinit, and neither runs when a signal terminates the process. The raw termios cleared only
+ICANON | ECHO, leaving ISIG set, so Ctrl-C was delivered as SIGINT (default action: terminate) and
+never reached the dashboard's own `case "q", "Q", "\u{03}"` branch - that branch was dead in a real
+terminal.
+
+## What is fixed (verified)
+
+ISIG is now cleared as well, so the byte arrives and the branch runs, restoring the cursor and the
+termios state through the normal exit path. The PTY harness drives it end to end:
+
+```
+$ python3 scripts/monitor_tty_smoke.py <mcps-mon, built fresh>
+  `q` exited 0, restored the cursor and printed the summary
+  Ctrl-C byte exited 0 and restored the cursor
+MONITOR TTY SMOKE PASSED
+```
+
+## What is not fixed (recorded as B107)
+
+An externally delivered signal still leaves the terminal raw:
+
+```
+MONITOR TTY SMOKE FAILED: SIGINT: expected exit 0, got -2
+```
+
+A dispatch-source implementation (SIG_IGN + DispatchSource.makeSignalSource, handler restoring the
+terminal and exiting) was written and **reverted**: with it the monitor stopped painting its first
+frame entirely, while builds of HEAD and of HEAD + the ISIG change alone pass the harness. The cause
+is not understood, so it was not committed. The harness cases for SIGINT and SIGTERM are written and
+deliberately **not** committed: they would leave CI red. They are recorded in B107.
+
+## Why the task stays PROGRESS
+
+SIGTERM - what a supervisor, `kill`, or a terminal teardown sends - still leaves the shell in raw
+mode with the cursor hidden. The user-visible Ctrl-C case is fixed; the signal case is B107's, and
+this task is not closed by narrowing to the half that passes.
+
+## Verification
+
+```
+$ swift test                                             429 tests, 6 skipped, 0 failures
+$ swift build --build-tests -Xswiftc -warnings-as-errors 0 warnings, 0 errors
+$ swift-format --strict / swiftlint --strict             0 diagnostics / exit 0
+$ ruff check / pyright strict                            clean / 0 errors
+```

@@ -97,7 +97,12 @@ public actor RateLimiter {
             if let minimumInterval = policy.minimumInterval, let lastAcquire {
                 let elapsed = clock.now().timeIntervalSince(lastAcquire)
                 let remaining = minimumInterval.seconds - elapsed
-                if remaining > 0 { return .milliseconds(Int(remaining * 1000)) }
+                // Rounded up, like the token branch below: a truncated estimate can be up to a
+                // millisecond short, so a caller that sleeps exactly what it was told can wake a
+                // hair before the threshold and be denied again. A remainder that rounds to zero
+                // is "available now", not a zero-length wait (ledger B116).
+                let milliseconds = Int((remaining * 1000).rounded(.up))
+                if milliseconds > 0 { return .milliseconds(milliseconds) }
             }
             return nil
         }

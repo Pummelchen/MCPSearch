@@ -1,0 +1,36 @@
+# B47 — `example.env` blamed the shipped settings for something only the image does
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+```
+# IMPORTANT: your instance must enable JSON output. The shipped settings.yml
+# enables only `html`, so set `search.formats: [html, json]` or format=json
+# returns HTTP 403.
+```
+
+"the shipped settings.yml" reads as *this repository's* `deploy/searxng/settings.yml`, which by then
+already enabled `[html, json]` (and says so in its own header: "The stock image ships with
+`search.formats: [html]` only"). The sentence therefore told an operator to fix a file that was
+already correct, and did not point them at the file that exists for exactly this reason.
+
+## The fix
+
+```
+# IMPORTANT: your instance must enable JSON output. The SearXNG image's *stock*
+# settings.yml enables only `html`, so format=json returns HTTP 403; the settings
+# the deployment in this repository ships (deploy/searxng/settings.yml) already
+# enables `[html, json]`, so an instance started from it needs nothing.
+```
+
+## Verification
+
+`AUDIT/baseline`'s inventory of documented variables is unchanged, and the environment-contract
+test (A12) still passes: `example.env` documents every `AppConfiguration.Key` — checked by
+`swift test --filter EnvironmentContractTests` and by the full suite below.
+
+```
+$ swift test
+Executed 477 tests, with 6 skipped and 0 failures (0 unexpected)
+```

@@ -31,6 +31,125 @@ final class FetchBehaviorTests: XCTestCase {
         )
     }
 
+    /// A textual body that is not HTML is returned as raw text: no title, the bytes as sent.
+    ///
+    /// The branch existed untested, so nothing pinned that a `text/plain` page is *not* run
+    /// through the HTML extractor (which would return an empty or mangled document) and that the
+    /// title stays absent rather than being invented (ledger B30).
+    func testAPlainTextBodyIsReturnedAsRawText() async throws {
+        // The body deliberately looks like markup: a plain-text page must reach the caller
+        // byte-for-byte, so if this were routed through the HTML extractor the angle-bracket text
+        // would be dropped and the whitespace collapsed — which is what the assertion below
+        // catches (the first version of this test used a body the two paths agreed on).
+        let body = "plain text with <tags> and   double  spaces"
+        let server = try LoopbackServer(responses: [
+            .init(
+                status: 200,
+                headers: ["Content-Type": "text/plain; charset=utf-8"],
+                body: body
+            )
+        ])
+
+        let result = try await fetch(server)
+
+        XCTAssertEqual(result.method, .rawText)
+        XCTAssertNil(result.title, "a non-HTML body has no title to report")
+        XCTAssertEqual(result.text, body, "raw text must not be parsed as markup")
+        XCTAssertEqual(result.statusCode, 200)
+    }
+
+    /// A non-textual body is refused rather than decoded into mojibake.
+    ///
+    /// The content-type gate is a security-adjacent control: the earlier fix removed `application/pdf`
+    /// from the allow-list because a PDF came back as Latin-1 garbage labelled `raw_text`
+    /// (ledger B16). An image must take the same path (ledger B30).
+    func testANonTextualContentTypeIsRefused() async throws {
+        let server = try LoopbackServer(responses: [
+            .init(status: 200, headers: ["Content-Type": "image/png"], body: "not really a png")
+        ])
+
+        do {
+            _ = try await fetch(server)
+            XCTFail("an image must not be returned as readable text")
+        } catch let error as SearchError {
+            guard case .extractionFailed = error else {
+                return XCTFail("an image must be an extraction failure, got \(error)")
+            }
+        }
+    }
+
+    /// The byte cap is enforced during the transfer, so an oversized page is refused, not buffered.
+    ///
+    /// `BoundedResponseBody.read` enforces `maxFetchedPageBytes` mid-stream (ledger B07), and the
+    /// rejection surfaces as `.extractionFailed` — the same shape the post-hoc cap check used to
+    /// produce. Nothing exercised that mapping (ledger B30).
+    func testAPageLargerThanTheConfiguredCapIsRefused() async throws {
+        var configuration = Fixtures.configuration()
+        configuration.maxFetchedPageBytes = 1_024
+        let fetcher = DirectHTTPFetcher(
+            configuration: configuration,
+            policy: URLPolicy(allowPrivateNetwork: true),
+            log: .disabled
+        )
+        let server = try LoopbackServer(responses: [
+            .init(status: 200, body: String(repeating: "x", count: 4_096))
+        ])
+
+        do {
+            _ = try await fetcher.fetch(
+                FetchRequest(url: server.baseURL),
+                maxRedirects: 5,
+                allowedContentTypePrefixes: ["text/", "application/json"],
+                maxCharacters: 12_000
+            )
+            XCTFail("a page over the cap must be refused")
+        } catch let error as SearchError {
+            guard case .extractionFailed = error else {
+                return XCTFail("a page over the cap must be an extraction failure, got \(error)")
+            }
+        }
+    }
+
+    /// A timeout is the URL's failure, never a search provider's.
+    ///
+    /// The mapping from `URLError.timedOut` to a URL-scoped failure is what keeps `web_open` from
+    /// blaming Tavily for a slow origin — the same attribution rule as the 403 test above, and the
+    /// branch had no test (ledger B30).
+    func testATimeoutIsScopedToTheURL() async throws {
+        var configuration = Fixtures.configuration()
+        configuration.requestTimeout = .milliseconds(300)
+        let fetcher = DirectHTTPFetcher(
+            configuration: configuration,
+            policy: URLPolicy(allowPrivateNetwork: true),
+            log: .disabled
+        )
+        let server = try LoopbackServer(responses: [
+            .init(status: 200, body: "too late", delayMilliseconds: 3_000)
+        ])
+
+        do {
+            _ = try await fetcher.fetch(
+                FetchRequest(url: server.baseURL),
+                maxRedirects: 5,
+                allowedContentTypePrefixes: ["text/", "application/json"],
+                maxCharacters: 12_000
+            )
+            XCTFail("expected a timeout")
+        } catch let error as SearchError {
+            guard case .fetchFailed(let url, let reason) = error else {
+                return XCTFail("a timeout must be a fetch failure, got \(error)")
+            }
+            XCTAssertEqual(url, server.baseURL)
+            XCTAssertTrue(reason.lowercased().contains("timed out"), reason)
+            for name in ["Tavily", "Brave", "Mojeek", "Exa", "SearXNG", "Parallel"] {
+                XCTAssertFalse(
+                    error.safeDescription.contains(name),
+                    "a timeout must not mention \(name): \(error.safeDescription)"
+                )
+            }
+        }
+    }
+
     func testNonSuccessStatusIsReportedAsAFetchFailure() async throws {
         let server = try LoopbackServer(responses: [.init(status: 403, body: "denied")])
 

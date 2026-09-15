@@ -33,8 +33,9 @@ import subprocess
 import sys
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
-from typing import Any
+from typing import Any, cast
 
 # Provider and synthesis variables are cleared so the run is hermetic: an exported API
 # key must not change the outcome of this test.
@@ -77,6 +78,16 @@ class Failure(Exception):
     """A smoke-test assertion failed."""
 
 
+class BindRace(Failure):
+    """The child exited because another process took the chosen port first.
+
+    ``free_loopback_port`` reports a port that was free when it was chosen, not one that is
+    reserved, so another process can bind it before the child does and the child then exits
+    with ``EADDRINUSE``. That is a retryable startup accident rather than a smoke-test
+    failure: ``start_http_server`` re-picks a port for it (ledger B117).
+    """
+
+
 def locate_binary() -> str:
     positional = [a for a in sys.argv[1:] if not a.startswith("--")]
     if positional:
@@ -101,8 +112,11 @@ class Server:
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "SEARCH_LOG_LEVEL": "debug",
         }
-        for name in SCRUBBED_VARIABLES:
-            environment.pop(name, None)
+        # Prove the scrub rather than assume it: the dictionary above is built from scratch, so no
+        # provider variable can be present. Popping keys that were never there asserted nothing
+        # (ledger B45).
+        leaked = set(environment) & set(SCRUBBED_VARIABLES)
+        assert not leaked, f"the child environment still carries {sorted(leaked)}"
 
         self.process = subprocess.Popen(
             [binary],
@@ -135,7 +149,7 @@ class Server:
             ) from error
         if not isinstance(message, dict):
             raise Failure(f"expected a JSON object on stdout, got: {line!r}")
-        return message
+        return cast("dict[str, Any]", message)
 
     def request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         self._next_id += 1
@@ -162,7 +176,7 @@ class Server:
         assert self.process.stderr is not None
         try:
             return self.process.stderr.read()
-        except Exception:  # pragma: no cover - best effort in a failure path
+        except OSError, ValueError:  # pragma: no cover - best effort in a failure path
             return "<unavailable>"
 
     def close(self) -> int:
@@ -183,10 +197,11 @@ def check_initialize(server: Server) -> None:
     result = response.get("result")
     if not isinstance(result, dict):
         raise Failure(f"initialize returned no result: {response}")
-    info = result.get("serverInfo", {})
+    result_obj = cast("dict[str, Any]", result)
+    info: dict[str, Any] = result_obj.get("serverInfo") or {}
     if info.get("name") != "SwiftWebSearchMCP":
         raise Failure(f"unexpected server name: {info}")
-    if not result.get("protocolVersion"):
+    if not result_obj.get("protocolVersion"):
         raise Failure("initialize did not negotiate a protocol version")
     print(f"  initialize ok (server={info.get('name')} {info.get('version')})")
 
@@ -195,10 +210,15 @@ def check_initialize(server: Server) -> None:
 
 def check_tools(server: Server) -> None:
     response = server.request("tools/list")
-    tools = response.get("result", {}).get("tools")
+    result_obj = cast("dict[str, Any]", response.get("result") or {})
+    tools = result_obj.get("tools")
     if not isinstance(tools, list):
         raise Failure(f"tools/list returned no tools: {response}")
-    names = {tool.get("name") for tool in tools}
+    # The isinstance check is the validation; the cast tells the type checker what it proved.
+    tool_list = cast("list[dict[str, Any]]", tools)
+    names: set[str] = {
+        cast("str", tool["name"]) for tool in tool_list if isinstance(tool.get("name"), str)
+    }
     missing = set(REQUIRED_TOOLS) - names
     if missing:
         raise Failure(f"tools/list is missing {sorted(missing)}; advertised {sorted(names)}")
@@ -208,15 +228,19 @@ def check_tools(server: Server) -> None:
         # is visible in the smoke log instead of silently accepted.
         print(f"  note: {sorted(undocumented)} advertised but not listed in this script")
 
-    for tool in tools:
+    for tool in tool_list:
         schema = tool.get("inputSchema")
-        if not isinstance(schema, dict) or schema.get("type") != "object":
+        if not isinstance(schema, dict):
             raise Failure(f"tool {tool.get('name')} has no object inputSchema")
-        if not isinstance(schema.get("properties"), dict):
+        typed_schema = cast("dict[str, Any]", schema)
+        if typed_schema.get("type") != "object":
+            raise Failure(f"tool {tool.get('name')} has no object inputSchema")
+        if not isinstance(typed_schema.get("properties"), dict):
             raise Failure(f"tool {tool.get('name')} has no properties")
 
-    search = next(t for t in tools if t["name"] == "web_search")
-    properties = set(search["inputSchema"]["properties"])
+    search = next(t for t in tool_list if t["name"] == "web_search")
+    search_schema = cast("dict[str, Any]", search["inputSchema"])
+    properties = set(cast("list[str]", search_schema["properties"]))
     expected_properties = {
         "query",
         "max_results",
@@ -231,10 +255,10 @@ def check_tools(server: Server) -> None:
         raise Failure(
             f"web_search schema drifted: {sorted(properties)} != {sorted(expected_properties)}"
         )
-    print(f"  tools/list ok ({len(tools)} tools, schema verified)")
+    print(f"  tools/list ok ({len(tool_list)} tools, schema verified)")
 
 
-def check_unconfigured_search_is_a_tool_error(server: Server) -> None:
+def check_unconfigured_search_is_a_tool_error(server: Server) -> str:
     """With no provider configured, a search must fail cleanly and helpfully."""
     response = server.request(
         "tools/call",
@@ -243,11 +267,15 @@ def check_unconfigured_search_is_a_tool_error(server: Server) -> None:
     result = response.get("result")
     if not isinstance(result, dict):
         raise Failure(f"tools/call returned no result: {response}")
-    if result.get("isError") is not True:
+    result_obj = cast("dict[str, Any]", result)
+    if result_obj.get("isError") is not True:
         raise Failure(f"expected isError=true with no provider configured: {result}")
-    text = " ".join(
-        block.get("text", "") for block in result.get("content", []) if isinstance(block, dict)
-    )
+    raw_content = result_obj.get("content")
+    if raw_content is not None and not isinstance(raw_content, list):
+        raise Failure(f"tools/call content is not a list: {result}")
+    content = cast("list[Any]", raw_content or [])
+    blocks = [cast("dict[str, Any]", block) for block in content if isinstance(block, dict)]
+    text = " ".join(block.get("text", "") for block in blocks if isinstance(block.get("text"), str))
     if "TAVILY_API_KEY" not in text and "not configured" not in text:
         raise Failure(f"error message is not actionable: {text!r}")
     print("  web_search without a provider fails as an actionable tool error")
@@ -259,9 +287,14 @@ def check_unconfigured_search_is_a_tool_error(server: Server) -> None:
 # ---------------------------------------------------------------------------
 
 
-def http_exchange(port: int, body: dict[str, Any], session: str | None = None,
-                  accept: str = "application/json, text/event-stream",
-                  path: str = "/mcp", origin: str | None = None):
+def http_exchange(
+    port: int,
+    body: dict[str, Any],
+    session: str | None = None,
+    accept: str = "application/json, text/event-stream",
+    path: str = "/mcp",
+    origin: str | None = None,
+):
     """POST one JSON-RPC message and return (status, headers, messages).
 
     The response is either a complete JSON body (initialize) or a chunked
@@ -287,57 +320,110 @@ def http_exchange(port: int, body: dict[str, Any], session: str | None = None,
         while True:
             try:
                 chunk = connection.recv(65536)
-            except socket.timeout:
+            except TimeoutError:
                 break
             if not chunk:
                 break
             raw += chunk
 
-    text = raw.decode("utf-8", "replace")
-    head, _, rest = text.partition("\r\n\r\n")
-    status_line = head.split("\r\n")[0]
+    head, _, raw_body = raw.partition(b"\r\n\r\n")
+    head_text = head.decode("utf-8", "replace")
+    status_line = head_text.split("\r\n")[0]
     status = int(status_line.split()[1]) if len(status_line.split()) > 1 else 0
 
     headers: dict[str, str] = {}
-    for line in head.split("\r\n")[1:]:
+    for line in head_text.split("\r\n")[1:]:
         if ":" in line:
             name, value = line.split(":", 1)
             headers[name.strip().lower()] = value.strip()
 
-    # De-chunk if the body is chunked.
+    # De-chunk the raw bytes, before decoding: a chunk header carries a *byte* count, so
+    # framing a decoded ``str`` lets any multi-byte character in the body shift every later
+    # boundary and truncate or corrupt the recovered stream (ledger B81).
     if headers.get("transfer-encoding", "").lower() == "chunked":
-        pieces, remaining = [], rest
+        pieces: list[bytes] = []
+        remaining = raw_body
         while True:
-            index = remaining.find("\r\n")
+            index = remaining.find(b"\r\n")
             if index < 0:
                 break
             try:
-                size = int(remaining[:index].split(";")[0], 16)
+                size = int(remaining[:index].split(b";")[0], 16)
             except ValueError:
                 break
             if size == 0:
                 break
-            pieces.append(remaining[index + 2:index + 2 + size])
-            remaining = remaining[index + 2 + size + 2:]
-        rest = "".join(pieces)
+            pieces.append(remaining[index + 2 : index + 2 + size])
+            remaining = remaining[index + 2 + size + 2 :]
+        raw_body = b"".join(pieces)
 
-    messages = [json.loads(m) for m in re.findall(r"^data: (\{.*\})$", rest, re.M)]
+    rest = raw_body.decode("utf-8", "replace")
+    messages: list[Any] = [
+        json.loads(m) for m in re.findall(r"^data: (\{.*\})$", rest, re.MULTILINE)
+    ]
     if not messages and rest.strip().startswith("{"):
         messages = [json.loads(rest)]
     return status, headers, messages
 
 
-def wait_for_health(port: int, timeout: float = 20.0) -> None:
-    """Poll /health until the HTTP transport is accepting connections."""
+def child_stderr(process: subprocess.Popen[str]) -> str:
+    """Read a child's stderr for a failure message, never raising."""
+    stream = process.stderr
+    if stream is None:
+        return "<no stderr pipe>"
+    try:
+        # The child has exited, so its pipe is at EOF and this returns rather than blocking.
+        return stream.read().strip() or "<empty>"
+    except OSError, ValueError:  # pragma: no cover - best effort in a failure path
+        return "<unavailable>"
+
+
+# The server reports a failed bind through ``HTTPHostError.bindFailed`` as
+# ``Could not bind <host>:<port> — <reason>``, so that phrase on stderr is the lost-race
+# signature. A startup failure of any other kind is surfaced on the first attempt rather than
+# retried, so a real defect is never masked (ledger B117).
+BIND_FAILURE_MARKER = "Could not bind"
+
+# Attempts at starting the HTTP child before giving up. One lost race is plausible; three in a
+# row means the port is not what is wrong, and the last diagnostic is reported (ledger B117).
+HTTP_START_ATTEMPTS = 3
+
+
+def wait_for_health(port: int, process: subprocess.Popen[str], timeout: float = 20.0) -> None:
+    """Poll /health until the HTTP transport is accepting connections.
+
+    The child is polled on every pass: a server that has already exited will never bind,
+    so the loop can say so at once with the child's own stderr instead of waiting out the
+    timeout and blaming the port (ledger B83). An exit whose stderr carries the server's
+    bind-failure diagnostic raises ``BindRace`` so the caller can retry (ledger B117).
+    """
+    # The URL is built from a port number, so the scheme and host are asserted rather than
+    # assumed: `urlopen` would happily follow a `file://` URL, and a probe that can be pointed
+    # anywhere is exactly what the audit flagged (ledger A08).
+    health_url = f"http://127.0.0.1:{port}/health"
+    parsed = urllib.parse.urlparse(health_url)
+    if parsed.scheme != "http" or parsed.hostname != "127.0.0.1":
+        raise Failure(f"refusing to probe a non-loopback URL: {health_url}")
     deadline = time.time() + timeout
     while time.time() < deadline:
+        exit_code = process.poll()
+        if exit_code is not None:
+            stderr = child_stderr(process)
+            message = (
+                f"HTTP server is not listening on port {port}: it exited with code "
+                f"{exit_code} before the transport came up; stderr:\n{stderr}"
+            )
+            # Classify before reporting: the same exit is either a lost bind race the caller
+            # can retry away, or a real startup failure it must not retry (ledger B117).
+            if BIND_FAILURE_MARKER in stderr:
+                raise BindRace(message)
+            raise Failure(message)
         try:
-            with urllib.request.urlopen(
-                f"http://127.0.0.1:{port}/health", timeout=2
-            ) as response:
+            # nosemgrep: dynamic-urllib-use-detected
+            with urllib.request.urlopen(health_url, timeout=2) as response:
                 if response.status == 200:
                     return
-        except (urllib.error.URLError, ConnectionError, OSError):
+        except urllib.error.URLError, ConnectionError, OSError:
             time.sleep(0.25)
     raise Failure(f"HTTP transport did not become healthy on port {port}")
 
@@ -345,7 +431,10 @@ def wait_for_health(port: int, timeout: float = 20.0) -> None:
 def free_loopback_port() -> int:
     """Ask the OS for an unused loopback port.
 
-    A fixed port would make two concurrent smoke runs collide, which matters because
+    The port is free *when it is chosen*, not reserved: the probe socket is closed before
+    the child is started, so another process can take the port in that window. That is why
+    ``start_http_server`` retries with a fresh port rather than trusting this one (ledger
+    B117). A fixed port would make two concurrent smoke runs collide, which matters because
     this script is cheap enough to run in parallel.
     """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
@@ -353,23 +442,61 @@ def free_loopback_port() -> int:
         return probe.getsockname()[1]
 
 
-def run_http_smoke(binary: str) -> None:
-    """Start the server in HTTP mode and exercise the Streamable HTTP transport."""
-    port = free_loopback_port()
+def start_http_server(binary: str) -> tuple[int, subprocess.Popen[str]]:
+    """Start the HTTP child, re-picking the port if it loses the bind race.
+
+    Returns the port the child was told to use and the live process. The child's own bind is
+    authoritative: because ``free_loopback_port`` only reports a port that was free when it
+    was chosen, a lost race is retried on a fresh port instead of being reported as a smoke
+    failure. Anything that is not a bind failure — a bad flag, an unreadable config file, a
+    live child that never becomes healthy — propagates on the first attempt, so retrying
+    cannot mask a real defect (ledger B117).
+    """
     environment = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
         "SEARCH_LOG_LEVEL": "info",
     }
+    last_race: BindRace | None = None
+    for _ in range(HTTP_START_ATTEMPTS):
+        port = free_loopback_port()
+        # A fresh child and fresh pipes every attempt: a pipe belongs to the child it was
+        # attached to, so it is not reused across attempts.
+        process = subprocess.Popen(
+            [binary, "--transport", "http", "--port", str(port)],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env=environment,
+            text=True,
+        )
+        try:
+            wait_for_health(port, process)
+        except BindRace as race:
+            # BindRace is only raised for a child that has already exited, so there is
+            # nothing to clean up before re-picking a port. Print it rather than retrying
+            # silently, so a run that keeps racing is visible in the smoke log.
+            last_race = race
+            print(f"  note: lost the bind race on port {port}; retrying on a fresh port")
+            continue
+        except Failure:
+            # A live child that never became healthy is not the race: stop it here, because
+            # the caller never receives a process to clean up on this path.
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=10)
+            raise
+        return port, process
 
-    process = subprocess.Popen(
-        [binary, "--transport", "http", "--port", str(port)],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        env=environment,
-        text=True,
+    assert last_race is not None
+    raise Failure(
+        f"the HTTP child lost the bind race on {HTTP_START_ATTEMPTS} ports in a row; "
+        f"last failure:\n{last_race}"
     )
+
+
+def run_http_smoke(binary: str) -> None:
+    """Start the server in HTTP mode and exercise the Streamable HTTP transport."""
+    port, process = start_http_server(binary)
     try:
-        wait_for_health(port)
         print(f"  /health ok on port {port}")
 
         status, headers, messages = http_exchange(
@@ -390,8 +517,10 @@ def run_http_smoke(binary: str) -> None:
         session = headers.get("mcp-session-id")
         if not session:
             raise Failure("HTTP initialize did not return an Mcp-Session-Id header")
-        print(f"  initialize ok over HTTP (session issued, protocol "
-              f"{messages[0]['result']['protocolVersion']})")
+        print(
+            f"  initialize ok over HTTP (session issued, protocol "
+            f"{messages[0]['result']['protocolVersion']})"
+        )
 
         status, _, _ = http_exchange(
             port, {"jsonrpc": "2.0", "method": "notifications/initialized"}, session

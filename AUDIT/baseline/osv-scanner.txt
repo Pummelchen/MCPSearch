@@ -1,0 +1,6 @@
+Scanning dir .
+Starting filesystem walk for root: /
+Scanned ./Package.resolved file and found 8 packages
+End status: 312 dirs visited, 897 inodes visited, 1 Extract calls, 19.111833ms elapsed, 19.111ms wall time
+
+No issues found

@@ -43,10 +43,12 @@ public struct BraveProvider: SearchProvider {
     public func search(_ request: SearchRequest) async throws -> ProviderSearchResponse {
         let started = DispatchTime.now().uptimeNanoseconds
 
-        guard var components = URLComponents(
-            url: BraveProvider.endpoint,
-            resolvingAgainstBaseURL: false
-        ) else {
+        guard
+            var components = URLComponents(
+                url: BraveProvider.endpoint,
+                resolvingAgainstBaseURL: false
+            )
+        else {
             throw SearchError.unsupportedRequest(.brave, "could not build request URL")
         }
 
@@ -115,18 +117,20 @@ public struct BraveProvider: SearchProvider {
             // snippet; the rest are appended only when the primary is thin, to
             // avoid burning context on near-duplicate text.
             let snippet = BraveProvider.composeSnippet(item)
-            guard let result = ResultNormalizer.make(
-                provider: .brave,
-                rank: index + 1,
-                title: item.title,
-                urlString: item.url,
-                snippet: snippet,
-                publishedAt: item.pageAge.flatMap(JSONCoding.date(from:)),
-                score: nil,
-                content: nil,
-                request: request,
-                seenKeys: &seen
-            ) else { continue }
+            guard
+                let result = ResultNormalizer.make(
+                    provider: .brave,
+                    rank: index + 1,
+                    title: item.title,
+                    urlString: item.url,
+                    snippet: snippet,
+                    publishedAt: item.pageAge.flatMap(JSONCoding.date(from:)),
+                    score: nil,
+                    content: nil,
+                    request: request,
+                    seenKeys: &seen
+                )
+            else { continue }
             results.append(result)
         }
 
@@ -210,8 +214,9 @@ public struct BraveProvider: SearchProvider {
 
     // MARK: - Wire types
 
+    /// Brave's response `type` and the error body's `id`/`status`/`detail`/`type` are
+    /// not read by any code path, so they are not decoded (ledger B66).
     struct BraveResponse: Decodable {
-        let type: String?
         let query: Query?
         let web: Web?
 
@@ -248,13 +253,9 @@ public struct BraveProvider: SearchProvider {
     }
 
     struct BraveErrorResponse: Decodable {
-        let type: String?
         let error: ErrorBody?
 
         struct ErrorBody: Decodable {
-            let id: String?
-            let status: Int?
-            let detail: String?
             let code: String?
             let meta: Meta?
 

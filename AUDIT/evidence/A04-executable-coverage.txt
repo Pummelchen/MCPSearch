@@ -1,0 +1,81 @@
+# A04 — the executables' coverage was unmeasurable
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## Before
+
+`SwiftWebSearchMCP` reported **0 measured lines**: the MCP surface is driven as a *subprocess* by
+`StdioServerTests`, `HTTPTransportTests`, `ErrorReportingTests` and `SchemaCompatibilityTests`, and a
+child process inheriting the test run's `LLVM_PROFILE_FILE` writes into the same file as the test
+process — so no counters for it ever reached the report. The monitor's 29.5 % was the part its
+*in-process* option tests reach; its rendering code had never been measured either.
+
+```
+$ xcrun llvm-cov export <binaries> -instr-profile merged.profdata
+Sources/ line coverage: 6864/10069 = 68.2 %      # the executables counted as 0
+  SwiftWebSearchMCP      0/ 2007 =  0.0 %
+  MCPSMonitor          314/ 1044 = 30.1 %
+  WebSearchCore       6550/ 7018 = 93.3 %
+```
+
+The mechanism, measured rather than assumed: with a per-child profile path the 42 children
+produced 42 files and **all of them were empty** — the profiling runtime flushes at exit, and the
+harnesses stop their server with a signal, so the at-exit write never ran.
+
+## The fix
+
+1. `ServerTestSupport.childEnvironment(base:)` gives every spawned server its own profile path,
+   derived from the test process's `LLVM_PROFILE_FILE` directory, and only when that variable is
+   set (an instrumented run). All four spawn sites use it.
+2. The child path contains `%c`, which puts the runtime in **continuous mode**: counters are
+   written while the process runs, so a child that is signalled still leaves a usable profile.
+   `%p` keeps two children started in the same second apart.
+3. The coverage step merges every `codecov/*.profraw` with `llvm-profdata merge -sparse` and
+   exports once per binary — the test bundle, `SwiftWebSearchMCP` and `mcps-mon` — then hands all
+   the reports to `scripts/coverage_floor.py`, which now accepts several and counts each file once.
+
+## After
+
+```
+$ swift test --enable-code-coverage     # 42 children, 42 non-empty profiles
+$ python3 scripts/coverage_floor.py "$PWD/Sources/" 80 coverage-*.json
+Sources/ line coverage: 8773/10069 = 87.1 % (floor 80 %, 51 files from 3 report(s))
+  SwiftWebSearchMCP   1729/ 2007 = 86.1 %      # was unmeasured
+  MCPSMonitor          157/ 522 = 30.1 %      # in-process tests only; the PTY smoke runs separately
+  WebSearchCore       6887/ 7540 = 91.3 %
+```
+
+## The floor is a real gate
+
+```
+$ python3 scripts/coverage_floor.py "$PWD/Sources/" 80 coverage-*.json   exit 0
+$ python3 scripts/coverage_floor.py "$PWD/Sources/" 95 coverage-*.json
+::error::Sources/ line coverage is 87.1 %, below the 95 % floor. …   exit 1
+```
+
+The CI floor moved from 80 % of a set that excluded the executables to 80 % of the full set —
+a stricter check, because the two largest previously-invisible files are now counted.
+
+## Verification
+
+* Full suite: 413 tests, 6 skipped, 0 failures.
+* `swift-format --strict` 0 diagnostics; `swiftlint --strict` exit 0; `ruff` clean; `pyright` strict 0 errors.
+* Coverage: 87.1 % against the 80 % floor, and the floor fails at 95 %.
+* CI is dispatched for this change (see the ledger for the run result).
+
+## CI, on this branch
+
+```
+$ gh workflow run CI --ref audit/2026-09-13
+$ gh run watch 34737285617 --exit-status
+✓ build-and-test    in 3m58s
+✓ static-analysis   in 36s
+exit 0   https://github.com/Pummelchen/MCPSearch/actions/runs/34737285617
+
+build-and-test  Coverage floor (Sources/)
+  Sources/ line coverage: 8773/10069 = 87.1 % (floor 80 %, 51 files from 3 report(s))
+```
+
+The runner produced the same figures as this Mac, including the three reports (test bundle,
+server, monitor) — so the subprocess profiles, the merge and the per-binary export all work
+outside the environment they were developed in.

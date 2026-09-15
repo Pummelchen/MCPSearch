@@ -1,0 +1,1323 @@
+Fetching https://github.com/apple/swift-system.git from cache
+Fetching https://github.com/apple/swift-collections.git from cache
+Fetching https://github.com/modelcontextprotocol/swift-sdk.git from cache
+Fetching https://github.com/apple/swift-log.git from cache
+Fetching https://github.com/apple/swift-nio.git from cache
+Fetching https://github.com/mattt/eventsource.git from cache
+Fetched https://github.com/mattt/eventsource.git from cache (0.65s)
+Fetching https://github.com/apple/swift-atomics.git from cache
+Fetched https://github.com/apple/swift-system.git from cache (0.67s)
+Fetching https://github.com/scinfu/SwiftSoup.git from cache
+Fetched https://github.com/apple/swift-log.git from cache (0.77s)
+Fetched https://github.com/modelcontextprotocol/swift-sdk.git from cache (0.77s)
+warning: 'swift-nio': skipping cache due to an error: The file “maintenance.lock” doesn’t exist.
+Fetched https://github.com/apple/swift-collections.git from cache (0.80s)
+Fetched https://github.com/apple/swift-atomics.git from cache (0.67s)
+Fetched https://github.com/scinfu/SwiftSoup.git from cache (0.66s)
+[1/85845] Fetching swift-nio
+Fetched https://github.com/apple/swift-nio.git from cache (6.37s)
+Computing version for https://github.com/apple/swift-nio.git
+Computed https://github.com/apple/swift-nio.git at 2.102.0 (6.40s)
+Computing version for https://github.com/scinfu/SwiftSoup.git
+Computed https://github.com/scinfu/SwiftSoup.git at 2.13.5 (0.02s)
+Computing version for https://github.com/modelcontextprotocol/swift-sdk.git
+Computed https://github.com/modelcontextprotocol/swift-sdk.git at 0.12.1 (0.02s)
+Computing version for https://github.com/apple/swift-system.git
+Computed https://github.com/apple/swift-system.git at 1.8.1 (0.02s)
+Computing version for https://github.com/apple/swift-collections.git
+Computed https://github.com/apple/swift-collections.git at 1.6.0 (0.03s)
+Computing version for https://github.com/apple/swift-atomics.git
+Computed https://github.com/apple/swift-atomics.git at 1.3.1 (0.02s)
+Computing version for https://github.com/mattt/eventsource.git
+Computed https://github.com/mattt/eventsource.git at 1.5.1 (0.02s)
+Computing version for https://github.com/apple/swift-log.git
+Computed https://github.com/apple/swift-log.git at 1.15.1 (0.03s)
+Creating working copy for https://github.com/scinfu/SwiftSoup.git
+Working copy of https://github.com/scinfu/SwiftSoup.git resolved at 2.13.5
+Creating working copy for https://github.com/mattt/eventsource.git
+Working copy of https://github.com/mattt/eventsource.git resolved at 1.5.1
+Creating working copy for https://github.com/modelcontextprotocol/swift-sdk.git
+Working copy of https://github.com/modelcontextprotocol/swift-sdk.git resolved at 0.12.1
+Creating working copy for https://github.com/apple/swift-log.git
+Working copy of https://github.com/apple/swift-log.git resolved at 1.15.1
+Creating working copy for https://github.com/apple/swift-atomics.git
+Working copy of https://github.com/apple/swift-atomics.git resolved at 1.3.1
+Creating working copy for https://github.com/apple/swift-collections.git
+Working copy of https://github.com/apple/swift-collections.git resolved at 1.6.0
+Creating working copy for https://github.com/apple/swift-nio.git
+Working copy of https://github.com/apple/swift-nio.git resolved at 2.102.0
+Creating working copy for https://github.com/apple/swift-system.git
+Working copy of https://github.com/apple/swift-system.git resolved at 1.8.1
+Building for debugging...
+[0/52] ~/Library/Caches/MCPSearch/audit-tsan/arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.derived/runner.swift
+[1/52] Write sources
+[1/52] Copying PrivacyInfo.xcprivacy
+[1/52] Write sources
+[7/52] Write mcps-mon-entitlement.plist
+[10/52] Write sources
+[14/52] Write SwiftWebSearchMCP-entitlement.plist
+[14/52] Write sources
+[26/52] Compiling CNIOWindows shim.c
+[27/52] Compiling CNIOWindows WSAStartup.c
+[28/52] Compiling CNIOWASI CNIOWASI.c
+[29/52] Compiling CNIOOpenBSD shim.c
+[30/52] Compiling CNIOLinux shim.c
+[31/52] Compiling CNIOLinux liburing_shims.c
+[32/52] Compiling CNIOFreeBSD shim.c
+[33/52] Write swift-version--58304C5D6DBC2206.txt
+[34/52] Compiling CSystem shims.c
+[35/52] Compiling _AtomicsShims.c
+[36/56] Compiling CNIOLLHTTP c_nio_http.c
+[37/56] Compiling CNIOPosix event_loop_id.c
+[38/79] Compiling CNIOLLHTTP c_nio_api.c
+[39/156] Compiling CNIODarwin shim.c
+[40/156] Compiling CNIOLLHTTP c_nio_llhttp.c
+[42/179] Emitting module InternalCollectionsUtilities
+[43/181] Compiling InternalCollectionsUtilities UnsafeMutableRawBufferPointer+Extras.swift
+[44/181] Compiling InternalCollectionsUtilities UnsafeRawBufferPointer+Extras.swift
+[45/181] Compiling InternalCollectionsUtilities _SortedCollection.swift
+[46/181] Compiling InternalCollectionsUtilities _UniqueCollection.swift
+[47/181] Compiling InternalCollectionsUtilities LifetimeOverride.swift
+[48/181] Compiling InternalCollectionsUtilities RandomAccessCollection+Offsets.swift
+[49/181] Compiling InternalCollectionsUtilities Span+Extras.swift
+[50/181] Compiling _NIOBase64 Base64.swift
+[51/181] Emitting module _NIOBase64
+[52/181] Compiling _NIODataStructures PriorityQueue.swift
+[53/181] Compiling InternalCollectionsUtilities _UnsafeBitSet+_Word.swift
+[54/181] Compiling InternalCollectionsUtilities _UnsafeBitSet.swift
+[55/181] Compiling InternalCollectionsUtilities Debugging.swift
+[56/181] Compiling InternalCollectionsUtilities Descriptions.swift
+[57/181] Compiling InternalCollectionsUtilities FixedWidthInteger+roundUpToPowerOfTwo.swift
+[58/181] Compiling Logging LoggingSystem.swift
+[59/182] Compiling InternalCollectionsUtilities String+Padding.swift
+[60/182] Compiling InternalCollectionsUtilities _UnsafeBitSet+Index.swift
+[61/182] Compiling InternalCollectionsUtilities UnsafeBufferPointer+Extras.swift
+[62/182] Compiling InternalCollectionsUtilities UnsafeMutableBufferPointer+Extras.swift
+[63/182] Compiling Logging MetadataProvider.swift
+[68/186] Compiling InternalCollectionsUtilities Integer rank.swift
+[69/186] Compiling InternalCollectionsUtilities UInt+first and last set bit.swift
+[70/186] Compiling InternalCollectionsUtilities UInt+reversed.swift
+[70/186] Write sources
+[72/186] Emitting module _NIODataStructures
+[73/186] Compiling _NIODataStructures Heap.swift
+[74/186] Compiling _NIODataStructures _TinyArray.swift
+[75/186] Compiling SwiftSoup ParseSettings.swift
+[76/186] Compiling SwiftSoup Parser.swift
+[77/186] Compiling SwiftSoup ParsingStrings.swift
+[78/186] Compiling SwiftSoup Pattern.swift
+[79/186] Compiling SwiftSoup Profiler.swift
+[80/186] Compiling SwiftSoup QueryParser.swift
+[81/186] Compiling SwiftSoup SwiftSoup.swift
+[82/186] Compiling SwiftSoup Tag.swift
+[83/222] Compiling ContainersPreview Drain+Map.swift
+[84/222] Compiling ContainersPreview Drain+Reduce.swift
+[85/222] Compiling ContainersPreview Drain.swift
+[86/222] Compiling ContainersPreview Producer+Collect.swift
+[87/222] Compiling ContainersPreview Producer+Filter.swift
+[88/240] Compiling ContainersPreview Container+SpanwiseZip.swift
+[89/240] Compiling ContainersPreview Container.swift
+[90/240] Compiling ContainersPreview ContainerIterator.swift
+[91/240] Compiling ContainersPreview DynamicContainer.swift
+[92/240] Compiling ContainersPreview MutableContainer.swift
+[93/244] Emitting module SystemPackage
+[94/244] Compiling ContainersPreview Ref.swift
+[95/244] Compiling ContainersPreview Shared.swift
+[96/244] Compiling ContainersPreview SpanIterator.swift
+[97/244] Compiling ContainersPreview UniqueBox.swift
+[98/244] Compiling Atomics OptionalRawRepresentable.swift
+[99/244] Compiling Atomics RawRepresentable.swift
+[100/244] Compiling Atomics AtomicBool.swift
+[101/244] Compiling Atomics IntegerConformances.swift
+[102/244] Compiling Atomics PointerConformances.swift
+[103/244] Compiling Logging Logger+Attributes.swift
+[105/244] Compiling Atomics Primitives.native.swift
+[106/244] Compiling Logging Logger+With.swift
+[109/244] Emitting module Logging
+[112/244] Compiling Logging Logger.swift
+[113/244] Compiling ContainersPreview Producer+Map.swift
+[114/244] Compiling ContainersPreview Producer+Reduce.swift
+[115/244] Compiling ContainersPreview Producer.swift
+[116/244] Compiling ContainersPreview InputSpan.swift
+[117/244] Compiling ContainersPreview MutableRef.swift
+[118/244] Compiling Atomics AtomicInteger.swift
+[119/244] Compiling Atomics AtomicOptionalWrappable.swift
+[120/244] Compiling Atomics AtomicReference.swift
+[121/244] Compiling Atomics UnsafeAtomic.swift
+[122/244] Compiling Atomics UnsafeAtomicLazyReference.swift
+[123/244] Emitting module ContainersPreview
+[124/244] Compiling Atomics ManagedAtomic.swift
+[125/244] Compiling Atomics ManagedAtomicLazyReference.swift
+[126/244] Compiling ContainersPreview RangeExpression2.swift
+[127/244] Compiling ContainersPreview RangeReplaceableContainer.swift
+[128/244] Compiling ContainersPreview Strideable+Limits.swift
+[130/244] Compiling Atomics AtomicMemoryOrderings.swift
+[131/244] Compiling Atomics DoubleWord.swift
+[132/244] Compiling Atomics AtomicStorage.swift
+[133/244] Compiling Atomics AtomicValue.swift
+[134/244] Compiling ContainersPreview OutputSpan+Extras.swift
+[135/244] Compiling ContainersPreview TemporaryAllocation.swift
+[136/244] Compiling ContainersPreview BorrowingIteratorProtocol+Copy.swift
+[137/244] Compiling ContainersPreview BorrowingIteratorProtocol+ElementsEqual.swift
+[138/244] Compiling ContainersPreview BorrowingIteratorProtocol+Filter.swift
+[139/285] Compiling DequeModule Deque+Hashable.swift
+[140/285] Compiling DequeModule Deque+Testing.swift
+[141/285] Compiling DequeModule RigidDeque+Equatable.swift
+[142/285] Compiling DequeModule RigidDeque+Experimental.swift
+[143/285] Compiling DequeModule RigidDeque+Hashable.swift
+[144/285] Compiling DequeModule RigidDeque+Initializers.swift
+[145/285] Compiling DequeModule Deque._Storage.swift
+[146/285] Compiling DequeModule Deque._UnsafeHandle.swift
+[147/287] Compiling DequeModule Deque+Collection.swift
+[148/287] Compiling DequeModule Deque+CustomReflectable.swift
+[149/287] Compiling DequeModule Deque+Descriptions.swift
+[150/287] Compiling DequeModule Deque+Equatable.swift
+[151/287] Compiling DequeModule Deque+ExpressibleByArrayLiteral.swift
+[152/287] Compiling DequeModule UniqueDeque+Container.swift
+[153/287] Compiling DequeModule UniqueDeque+Deprecated.swift
+[154/287] Compiling DequeModule UniqueDeque+Descriptions.swift
+[155/287] Compiling DequeModule UniqueDeque+Equatable.swift
+[156/287] Compiling DequeModule UniqueDeque+Experimental.swift
+[160/292] Compiling DequeModule UniqueDeque+Hashable.swift
+[162/292] Compiling DequeModule UniqueDeque+Initializers.swift
+[163/292] Compiling DequeModule UniqueDeque+Insertions.swift
+[164/292] Compiling DequeModule UniqueDeque+Prepend.swift
+[165/292] Compiling DequeModule UniqueDeque+Removals.swift
+[166/292] Compiling DequeModule _DequeBuffer.swift
+[167/292] Compiling DequeModule _DequeBufferHeader.swift
+[168/292] Compiling DequeModule RigidDeque+Append.swift
+[169/292] Compiling DequeModule RigidDeque+Consumption.swift
+[170/292] Compiling DequeModule RigidDeque+Container.swift
+[171/292] Compiling DequeModule RigidDeque+Descriptions.swift
+[172/292] Compiling DequeModule RigidDeque+Insertions.swift
+[173/292] Compiling DequeModule RigidDeque+Prepend.swift
+[174/292] Compiling DequeModule Deque+Extras.swift
+[175/292] Compiling Atomics IntegerOperations.swift
+[176/292] Compiling Atomics Unmanaged extensions.swift
+[177/292] Compiling DequeModule RigidDeque+Removals.swift
+[178/292] Compiling DequeModule RigidDeque+Replacements.swift
+[179/292] Compiling DequeModule RigidDeque+Testing.swift
+[180/292] Compiling DequeModule RigidDeque.swift
+[181/292] Compiling DequeModule UniqueDeque+Append.swift
+[182/292] Compiling DequeModule UniqueDeque+Consumption.swift
+[195/292] Compiling EventSource AsyncSequence+Events.swift
+[196/292] Compiling EventSource EventSource+AsyncHTTPClient.swift
+[197/292] Emitting module EventSource
+[198/292] Compiling EventSource AsyncEventsSequence.swift
+[199/292] Emitting module Atomics
+[222/292] Emitting module DequeModule
+[223/292] Compiling DequeModule UniqueDeque+Replacements.swift
+[224/292] Compiling DequeModule UniqueDeque.swift
+[225/292] Compiling DequeModule _DequeSlot.swift
+[226/292] Compiling DequeModule _UnsafeDequeHandle.swift
+[227/292] Compiling DequeModule _UnsafeDequeSegments.swift
+[228/292] Compiling EventSource EventSource.swift
+[229/335] Compiling MCP Client.swift
+[230/335] Compiling MCP Elicitation.swift
+[231/335] Compiling MCP Roots.swift
+[232/335] Compiling MCP Sampling.swift
+[233/335] Compiling MCP Data+Extensions.swift
+[234/335] Compiling MCP Completion.swift
+[235/335] Compiling MCP StatefulHTTPServerTransport.swift
+[236/335] Compiling MCP StatelessHTTPServerTransport.swift
+[237/342] Compiling SwiftSoup HtmlTreeBuilderState.swift
+[238/342] Compiling SwiftSoup LRUCache.swift
+[239/342] Compiling SwiftSoup Mutex.swift
+[240/342] Compiling SwiftSoup Node.swift
+[241/342] Compiling SwiftSoup NodeTraversor.swift
+[242/342] Compiling SwiftSoup NodeVisitor.swift
+[243/342] Compiling SwiftSoup OrderedSet.swift
+[244/342] Compiling SwiftSoup ParseError.swift
+[245/342] Compiling SwiftSoup TreeBuilder.swift
+[246/342] Compiling SwiftSoup UTF8Arrays.swift
+[247/342] Compiling SwiftSoup UnicodeScalar.swift
+[248/342] Compiling SwiftSoup Validate.swift
+[249/342] Compiling SwiftSoup Whitelist.swift
+[250/342] Compiling SwiftSoup XmlDeclaration.swift
+[251/342] Compiling SwiftSoup XmlTreeBuilder.swift
+[252/342] Compiling MCP Icon.swift
+[253/342] Compiling MCP Lifecycle.swift
+[254/342] Compiling MCP OAuthDiscoveryClient.swift
+[255/342] Compiling MCP OAuthErrors.swift
+[256/342] Compiling MCP OAuthModels.swift
+[257/342] Compiling MCP OAuthTokenEndpointClient.swift
+[258/342] Compiling MCP OAuthURLValidator.swift
+[259/342] Compiling MCP Cancellation.swift
+[260/342] Compiling MCP Ping.swift
+[261/342] Compiling MCP Progress.swift
+[262/342] Compiling MCP RequestContext.swift
+[263/342] Compiling MCP Value.swift
+[264/342] Compiling MCP Versioning.swift
+[264/347] Compiling c-nioatomics.c
+[271/347] Compiling MCP OAuthWWWAuthenticateParser.swift
+[272/347] Compiling MCP PKCE.swift
+[273/347] Compiling MCP TokenStorage.swift
+[274/347] Compiling MCP Error.swift
+[275/347] Compiling MCP ID.swift
+[283/347] Compiling MCP Logging.swift
+[284/347] Compiling MCP Prompts.swift
+[285/347] Compiling MCP Resources.swift
+[287/347] Compiling MCP Messages.swift
+[288/347] Compiling MCP PendingRequest.swift
+[289/347] Compiling MCP Transport.swift
+[290/347] Compiling MCP HTTPClientTransport.swift
+[291/347] Compiling MCP HTTPRequestValidation.swift
+[292/347] Compiling MCP HTTPServerTypes.swift
+[293/347] Emitting module SwiftSoup
+[294/347] Compiling MCP OAuthAuthorizationCodeFlow.swift
+[295/347] Compiling MCP OAuthAuthorizer.swift
+[296/347] Compiling MCP OAuthClientRegistrar.swift
+[297/347] Compiling MCP OAuthConfiguration.swift
+[298/347] Compiling MCP OAuthConstants.swift
+[299/347] Compiling MCP OAuthDiscovery.swift
+[315/347] Compiling MCP InMemoryTransport.swift
+[316/347] Compiling MCP NetworkTransport.swift
+[317/347] Compiling MCP StdioTransport.swift
+[318/347] Compiling MCP UnitInterval.swift
+[326/347] Compiling c-atomics.c
+[328/392] Compiling NIOConcurrencyHelpers NIOThreadPoolWorkAvailable.swift
+[329/392] Compiling NIOConcurrencyHelpers lock.swift
+[330/392] Emitting module NIOConcurrencyHelpers
+[331/392] Compiling NIOConcurrencyHelpers NIOLockedValueBox.swift
+[332/392] Compiling NIOConcurrencyHelpers NIOLock.swift
+[333/392] Compiling NIOConcurrencyHelpers NIOAtomic.swift
+[334/392] Compiling NIOConcurrencyHelpers atomics.swift
+[335/456] Compiling NIOCore EventLoopFuture+Deprecated.swift
+[336/456] Compiling NIOCore EventLoopFuture+WithEventLoop.swift
+[337/456] Compiling NIOCore EventLoopFuture.swift
+[338/456] Compiling NIOCore FileDescriptor.swift
+[339/456] Compiling NIOCore FileHandle.swift
+[340/456] Compiling NIOCore Linux.swift
+[341/456] Compiling NIOCore MarkedCircularBuffer.swift
+[342/456] Compiling NIOCore MulticastChannel.swift
+[343/456] Compiling NIOCore NIOAny.swift
+[344/456] Compiling NIOCore NIOCloseOnErrorHandler.swift
+[345/461] Compiling NIOCore FileRegion.swift
+[346/461] Compiling NIOCore GlobalSingletons.swift
+[347/461] Compiling NIOCore IO.swift
+[348/461] Compiling NIOCore IOData.swift
+[349/461] Compiling NIOCore NIOCoreSendableMetatype.swift
+[350/461] Compiling NIOCore IPProtocol.swift
+[351/461] Compiling NIOCore IntegerBitPacking.swift
+[352/461] Compiling NIOCore IntegerTypes.swift
+[353/461] Compiling NIOCore Interfaces.swift
+[359/469] Compiling NIOCore ChannelInvoker.swift
+[360/469] Compiling NIOCore ChannelOption.swift
+[361/469] Compiling NIOCore ChannelPipeline.swift
+[362/469] Compiling NIOCore AddressedEnvelope.swift
+[363/469] Compiling NIOCore AsyncAwaitSupport.swift
+[364/469] Compiling NIOCore AsyncChannel.swift
+[365/469] Compiling NIOCore AsyncChannelHandler.swift
+[366/469] Compiling NIOCore AsyncChannelInboundStream.swift
+[367/469] Compiling NIOCore AsyncChannelOutboundWriter.swift
+[368/469] Compiling NIOCore NIOAsyncSequenceProducer.swift
+[369/469] Compiling NIOCore NIOAsyncSequenceProducerStrategies.swift
+[370/469] Compiling NIOCore NIOAsyncWriter.swift
+[375/469] Emitting module MCP
+[376/469] Compiling NIOCore ByteBuffer-multi-int.swift
+[377/469] Compiling NIOCore ByteBuffer-quicBinaryEncodingStrategy.swift
+[378/469] Compiling NIOCore ByteBuffer-views.swift
+[379/469] Compiling NIOCore Channel.swift
+[380/469] Compiling NIOCore ChannelHandler.swift
+[381/469] Compiling NIOCore ChannelHandlers.swift
+[382/469] Compiling NIOCore NIOSplitLinesMessageDecoder.swift
+[383/469] Compiling NIOCore NIOTransportAccessibleChannelCore.swift
+[384/469] Compiling NIOCore RecvByteBufferAllocator.swift
+[385/469] Compiling NIOCore CircularBuffer.swift
+[386/469] Compiling NIOCore Codec.swift
+[387/469] Emitting module WebSearchCore
+[403/469] Compiling WebSearchCore Clock.swift
+[404/469] Compiling WebSearchCore HTTPClient.swift
+[405/469] Compiling WebSearchCore JSONCoding.swift
+[406/469] Compiling WebSearchCore Logging.swift
+[407/469] Compiling WebSearchCore TransportConfiguration.swift
+[408/489] Emitting module MCPSMonitor
+[409/489] Compiling NIOCore SingleStepByteToMessageDecoder.swift
+[410/489] Compiling NIOCore SocketAddresses.swift
+[411/489] Compiling NIOCore SocketOptionProvider.swift
+[412/489] Compiling NIOCore SystemCallHelpers.swift
+[413/489] Compiling NIOCore TimeAmount+Duration.swift
+[414/489] Compiling NIOCore TypeAssistedChannelHandler.swift
+[415/489] Compiling NIOCore UniversalBootstrapSupport.swift
+[416/489] Compiling NIOCore Utilities.swift
+[428/489] Compiling NIOCore ConvenienceOptionSupport.swift
+[429/489] Compiling NIOCore DeadChannel.swift
+[430/489] Compiling NIOCore DispatchQueue+WithFuture.swift
+[431/489] Compiling NIOCore EventLoop+Deprecated.swift
+[432/489] Compiling NIOCore EventLoop+SerialExecutor.swift
+[433/489] Compiling NIOCore EventLoop.swift
+[434/489] Compiling NIOCore EventLoopFuture+AssumeIsolated.swift
+[444/489] Compiling NIOCore NIOThrowingAsyncSequenceProducer.swift
+[445/489] Compiling NIOCore BSDSocketAPI.swift
+[446/489] Compiling NIOCore ByteBuffer-aux.swift
+[447/489] Compiling NIOCore ByteBuffer-binaryEncodedLengthPrefix.swift
+[448/489] Compiling NIOCore ByteBuffer-conversions.swift
+[449/489] Compiling NIOCore ByteBuffer-core.swift
+[450/489] Compiling NIOCore ByteBuffer-hex.swift
+[451/489] Compiling NIOCore ByteBuffer-int.swift
+[452/489] Compiling NIOCore ByteBuffer-lengthPrefix.swift
+[453/489] Compiling MCPSMonitor main.swift
+[453/489] Write Objects.LinkFileList
+[454/489] Linking mcps-mon
+[455/489] Applying mcps-mon
+[457/491] Emitting module NIOCore
+[458/491] Compiling WebSearchCoreTests HTMLExtractorTests.swift
+[459/491] Compiling WebSearchCoreTests HTTPClientTests.swift
+[460/491] Compiling WebSearchCoreTests HTTPTransportTests.swift
+[461/491] Compiling WebSearchCoreTests FetchBehaviorTests.swift
+[462/491] Compiling WebSearchCoreTests FetchFallbackTests.swift
+[463/491] Compiling WebSearchCoreTests FusionAndReliabilityTests.swift
+[464/491] Compiling WebSearchCoreTests AnswerSynthesizerTests.swift
+[465/491] Compiling WebSearchCoreTests CoreUnitTests.swift
+[466/491] Compiling WebSearchCoreTests ErrorReportingTests.swift
+[467/546] Compiling NIOEmbedded AsyncTestingChannel.swift
+[468/546] Emitting module NIOEmbedded
+[469/546] Compiling NIOEmbedded AsyncTestingEventLoop.swift
+[470/546] Compiling NIOEmbedded Embedded.swift
+[471/546] Compiling NIOPosix PipePair.swift
+[472/546] Compiling NIOPosix Pool.swift
+[473/546] Compiling NIOPosix PosixSingletons+ConcurrencyTakeOver.swift
+[474/546] Compiling NIOPosix PosixSingletons.swift
+[475/546] Compiling NIOPosix RawSocketBootstrap.swift
+[476/546] Compiling NIOPosix Resolver.swift
+[477/546] Compiling NIOPosix Selectable.swift
+[478/553] Compiling NIOPosix IO.swift
+[479/553] Compiling NIOPosix IntegerBitPacking.swift
+[480/553] Compiling NIOPosix IntegerTypes.swift
+[481/553] Compiling NIOPosix Linux.swift
+[482/553] Compiling NIOPosix LinuxCPUSet.swift
+[483/553] Compiling NIOPosix LinuxUring.swift
+[484/553] Compiling NIOPosix MultiThreadedEventLoopGroup.swift
+[485/553] Compiling NIOPosix ThreadPosix.swift
+[486/553] Compiling NIOPosix ThreadWindows.swift
+[487/553] Compiling NIOPosix Utilities.swift
+[488/553] Compiling NIOPosix VsockAddress.swift
+[489/553] Compiling NIOPosix VsockChannelEvents.swift
+[490/553] Compiling NIOPosix Windows.swift
+[491/553] Compiling NIOPosix resource_bundle_accessor.swift
+[492/553] Compiling NIOPosix Bootstrap.swift
+[493/553] Compiling NIOPosix ControlMessage.swift
+[494/553] Compiling NIOPosix DatagramVectorReadManager.swift
+[495/553] Compiling NIOPosix Errors+Any.swift
+[496/553] Compiling NIOPosix FileDescriptor.swift
+[497/553] Compiling NIOPosix GetaddrinfoResolver.swift
+[498/553] Compiling NIOPosix HappyEyeballs.swift
+[499/553] Compiling NIOPosix ServerSocket.swift
+[500/553] Compiling NIOPosix Socket.swift
+[501/553] Compiling NIOPosix SocketChannel.swift
+[502/553] Compiling NIOPosix SocketProtocols.swift
+[503/553] Compiling NIOPosix StructuredConcurrencyHelpers.swift
+[504/553] Compiling NIOPosix System.swift
+[505/553] Compiling NIOPosix Thread.swift
+[506/553] Emitting module NIOPosix
+[507/553] Compiling NIOPosix BSDSocketAPICommon.swift
+[508/553] Compiling NIOPosix BSDSocketAPIPosix.swift
+[509/553] Compiling NIOPosix BSDSocketAPIWindows.swift
+[510/553] Compiling NIOPosix BaseSocket.swift
+[511/553] Compiling NIOPosix BaseSocketChannel+AccessibleTransport.swift
+[512/553] Compiling NIOPosix BaseSocketChannel+SocketOptionProvider.swift
+[513/553] Compiling NIOPosix BaseSocketChannel.swift
+[514/553] Compiling NIOPosix BaseStreamSocketChannel.swift
+[515/553] Compiling NIOPosix SelectableChannel.swift
+[516/553] Compiling NIOPosix SelectableEventLoop.swift
+[517/553] Compiling NIOPosix SelectorEpoll.swift
+[518/553] Compiling NIOPosix SelectorGeneric.swift
+[519/553] Compiling NIOPosix SelectorKqueue.swift
+[520/553] Compiling NIOPosix SelectorUring.swift
+[521/553] Compiling NIOPosix SelectorWSAPoll.swift
+[522/553] Compiling NIOPosix NIOPosixSendableMetatype.swift
+[523/553] Compiling NIOPosix NIORandomizedDNSResolver.swift
+[524/553] Compiling NIOPosix NIOThreadPool.swift
+[525/553] Compiling NIOPosix NonBlockingFileIO.swift
+[526/553] Compiling NIOPosix PendingDatagramWritesManager.swift
+[527/553] Compiling NIOPosix PendingWritesManager.swift
+[528/553] Compiling NIOPosix PipeChannel.swift
+[529/555] Compiling NIO Exports.swift
+[530/555] Emitting module NIO
+[531/572] Emitting module WebSearchCoreTests
+[532/574] Compiling NIOHTTP1 HTTPServerPipelineHandler.swift
+[533/574] Compiling NIOHTTP1 HTTPServerProtocolErrorHandler.swift
+[534/576] Compiling NIOHTTP1 HTTPHeaderValidator.swift
+[535/576] Compiling NIOHTTP1 HTTPHeaders+Validation.swift
+[536/576] Compiling NIOHTTP1 HTTPPipelineSetup.swift
+[537/576] Emitting module NIOHTTP1
+[538/576] Compiling NIOHTTP1 NIOTypedHTTPClientUpgradeHandler.swift
+[539/576] Compiling NIOHTTP1 NIOTypedHTTPClientUpgraderStateMachine.swift
+[540/576] Compiling NIOHTTP1 NIOHTTPClientUpgradeHandler.swift
+[541/576] Compiling NIOHTTP1 NIOHTTPObjectAggregator.swift
+[542/576] Compiling NIOHTTP1 NIOTypedHTTPServerUpgradeHandler.swift
+[543/576] Compiling NIOHTTP1 NIOTypedHTTPServerUpgraderStateMachine.swift
+[544/576] Compiling NIOHTTP1 HTTPServerRequestMethodQueue.swift
+[545/576] Compiling NIOHTTP1 HTTPServerUpgradeHandler.swift
+[546/576] Compiling NIOHTTP1 HTTPTypedPipelineSetup.swift
+[547/576] Compiling NIOHTTP1 HTTPTypes.swift
+[548/576] Compiling NIOHTTP1 ByteCollectionUtils.swift
+[549/576] Compiling NIOHTTP1 HTTPDecoder.swift
+[550/576] Compiling NIOHTTP1 HTTPEncoder.swift
+[556/582] Compiling WebSearchCoreTests URLPolicyTests.swift
+[559/582] Compiling MCPSMonitorTests MonitorOptionsTests.swift
+[560/582] Emitting module MCPSMonitorTests
+[572/584] Compiling SwiftWebSearchMCP ToolHandlers.swift
+[573/584] Emitting module SwiftWebSearchMCP
+[574/584] Compiling SwiftWebSearchMCP ToolSchemas.swift
+[575/584] Compiling SwiftWebSearchMCP HTTPMCPHost.swift
+[576/584] Compiling SwiftWebSearchMCP main.swift
+[577/584] Compiling SwiftWebSearchMCP MCPServer.swift
+[577/584] Write Objects.LinkFileList
+[578/584] Linking SwiftWebSearchMCP
+[579/584] Applying SwiftWebSearchMCP
+[581/584] Compiling SwiftWebSearchMCPPackageTests runner.swift
+[582/584] Emitting module SwiftWebSearchMCPPackageTests
+[582/584] Write Objects.LinkFileList
+[583/584] Linking SwiftWebSearchMCPPackageTests
+Build complete! (39.77s)
+Test Suite 'All tests' started at 2026-09-13 09:30:30.029.
+Test Suite 'SwiftWebSearchMCPPackageTests.xctest' started at 2026-09-13 09:30:30.055.
+Test Suite 'AnswerSynthesizerTests' started at 2026-09-13 09:30:30.055.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testAnswerWithNoCitationsIsAllowed]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testAnswerWithNoCitationsIsAllowed]' passed (0.003 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testAuthenticationFailureDoesNotEchoTheResponseBody]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testAuthenticationFailureDoesNotEchoTheResponseBody]' passed (0.011 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testCorpusClipsLongContentAndKeepsNumberingAligned]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testCorpusClipsLongContentAndKeepsNumberingAligned]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testCorpusPrefersSnippetOverPageContent]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testCorpusPrefersSnippetOverPageContent]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testCredentialNeverAppearsOutsideTheAuthorizationHeader]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testCredentialNeverAppearsOutsideTheAuthorizationHeader]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testDisablesThinkingExplicitlyByDefault]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testDisablesThinkingExplicitlyByDefault]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testEnablesThinkingWhenAsked]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testEnablesThinkingWhenAsked]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testIsNotConfiguredWithoutAKey]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testIsNotConfiguredWithoutAKey]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testMalformedJSONFailsCleanly]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testMalformedJSONFailsCleanly]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testRateLimitFailureIsActionable]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testRateLimitFailureIsActionable]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testReasoningContentIsNeverTheAnswer]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testReasoningContentIsNeverTheAnswer]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testRefusalIsReportedAsInsufficientNotAsAnAnswer]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testRefusalIsReportedAsInsufficientNotAsAnAnswer]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testRenumbersCitationsToBeContiguous]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testRenumbersCitationsToBeContiguous]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testRetriesWithoutReasoningWhenTheFirstAttemptIsEmpty]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testRetriesWithoutReasoningWhenTheFirstAttemptIsEmpty]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testReturnsAnswerWithValidatedCitations]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testReturnsAnswerWithValidatedCitations]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testSendsGroundingPromptWithNumberedResults]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testSendsGroundingPromptWithNumberedResults]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testStripsCitationsThatReferenceNothingSupplied]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testStripsCitationsThatReferenceNothingSupplied]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testThrowsOnEmptyResultSet]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testThrowsOnEmptyResultSet]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testThrowsWhenUnconfiguredRatherThanGuessing]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testThrowsWhenUnconfiguredRatherThanGuessing]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testUsesGenerousTimeoutNotTheSearchTimeout]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testUsesGenerousTimeoutNotTheSearchTimeout]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testValidatorBoundaries]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testValidatorBoundaries]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testVendorErrorObjectIsSurfaced]' started.
+Test Case '-[WebSearchCoreTests.AnswerSynthesizerTests testVendorErrorObjectIsSurfaced]' passed (0.000 seconds).
+Test Suite 'AnswerSynthesizerTests' passed at 2026-09-13 09:30:30.091.
+	 Executed 22 tests, with 0 failures (0 unexpected) in 0.023 (0.035) seconds
+Test Suite 'CircuitBreakerTests' started at 2026-09-13 09:30:30.091.
+Test Case '-[WebSearchCoreTests.CircuitBreakerTests testConfigurationFailuresDoNotOpenTheBreaker]' started.
+Test Case '-[WebSearchCoreTests.CircuitBreakerTests testConfigurationFailuresDoNotOpenTheBreaker]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.CircuitBreakerTests testFailedProbeReopensWithFreshCooldown]' started.
+Test Case '-[WebSearchCoreTests.CircuitBreakerTests testFailedProbeReopensWithFreshCooldown]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.CircuitBreakerTests testHalfOpenAllowsExactlyOneProbeAfterCooldown]' started.
+Test Case '-[WebSearchCoreTests.CircuitBreakerTests testHalfOpenAllowsExactlyOneProbeAfterCooldown]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.CircuitBreakerTests testOpensAfterThresholdConsecutiveTransientFailures]' started.
+Test Case '-[WebSearchCoreTests.CircuitBreakerTests testOpensAfterThresholdConsecutiveTransientFailures]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.CircuitBreakerTests testResetClearsEverything]' started.
+Test Case '-[WebSearchCoreTests.CircuitBreakerTests testResetClearsEverything]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.CircuitBreakerTests testStartsClosedAndAllowsRequests]' started.
+Test Case '-[WebSearchCoreTests.CircuitBreakerTests testStartsClosedAndAllowsRequests]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.CircuitBreakerTests testSuccessfulProbeClosesTheBreaker]' started.
+Test Case '-[WebSearchCoreTests.CircuitBreakerTests testSuccessfulProbeClosesTheBreaker]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.CircuitBreakerTests testSuccessResetsConsecutiveFailureCount]' started.
+Test Case '-[WebSearchCoreTests.CircuitBreakerTests testSuccessResetsConsecutiveFailureCount]' passed (0.000 seconds).
+Test Suite 'CircuitBreakerTests' passed at 2026-09-13 09:30:30.093.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.002 (0.003) seconds
+Test Suite 'ConfigurationTests' started at 2026-09-13 09:30:30.093.
+Test Case '-[WebSearchCoreTests.ConfigurationTests testDefaultsStartWithNoCredentials]' started.
+Test Case '-[WebSearchCoreTests.ConfigurationTests testDefaultsStartWithNoCredentials]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ConfigurationTests testDisabledProvidersAreParsed]' started.
+Test Case '-[WebSearchCoreTests.ConfigurationTests testDisabledProvidersAreParsed]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ConfigurationTests testDotEnvParsingHandlesCommentsQuotesAndExport]' started.
+Test Case '-[WebSearchCoreTests.ConfigurationTests testDotEnvParsingHandlesCommentsQuotesAndExport]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ConfigurationTests testEnvironmentOverridesConfigFile]' started.
+Test Case '-[WebSearchCoreTests.ConfigurationTests testEnvironmentOverridesConfigFile]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ConfigurationTests testInvalidValuesFallBackToDefaults]' started.
+Test Case '-[WebSearchCoreTests.ConfigurationTests testInvalidValuesFallBackToDefaults]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ConfigurationTests testMaxResultsIsClamped]' started.
+Test Case '-[WebSearchCoreTests.ConfigurationTests testMaxResultsIsClamped]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ConfigurationTests testProviderOrderIsConfigurableAndKeepsAllProvidersReachable]' started.
+Test Case '-[WebSearchCoreTests.ConfigurationTests testProviderOrderIsConfigurableAndKeepsAllProvidersReachable]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ConfigurationTests testReadsAllDocumentedEnvironmentVariables]' started.
+Test Case '-[WebSearchCoreTests.ConfigurationTests testReadsAllDocumentedEnvironmentVariables]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ConfigurationTests testReadsSynthesisEnvironmentVariables]' started.
+Test Case '-[WebSearchCoreTests.ConfigurationTests testReadsSynthesisEnvironmentVariables]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ConfigurationTests testSynthesisDefaultsAreInertWithoutAKey]' started.
+Test Case '-[WebSearchCoreTests.ConfigurationTests testSynthesisDefaultsAreInertWithoutAKey]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ConfigurationTests testSynthesisKeyDoesNotAlterProviderSelection]' started.
+Test Case '-[WebSearchCoreTests.ConfigurationTests testSynthesisKeyDoesNotAlterProviderSelection]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ConfigurationTests testThereIsNoConnectTimeoutSetting]' started.
+Test Case '-[WebSearchCoreTests.ConfigurationTests testThereIsNoConnectTimeoutSetting]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ConfigurationTests testUnknownProviderNamesInOrderAreIgnored]' started.
+Test Case '-[WebSearchCoreTests.ConfigurationTests testUnknownProviderNamesInOrderAreIgnored]' passed (0.000 seconds).
+Test Suite 'ConfigurationTests' passed at 2026-09-13 09:30:30.097.
+	 Executed 13 tests, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+Test Suite 'DurationTests' started at 2026-09-13 09:30:30.097.
+Test Case '-[WebSearchCoreTests.DurationTests testClockElapsedUsesNanoseconds]' started.
+Test Case '-[WebSearchCoreTests.DurationTests testClockElapsedUsesNanoseconds]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.DurationTests testRetryAfterParsesSecondsAndHTTPDate]' started.
+Test Case '-[WebSearchCoreTests.DurationTests testRetryAfterParsesSecondsAndHTTPDate]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.DurationTests testSecondsConversion]' started.
+Test Case '-[WebSearchCoreTests.DurationTests testSecondsConversion]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.DurationTests testTestClockAdvances]' started.
+Test Case '-[WebSearchCoreTests.DurationTests testTestClockAdvances]' passed (0.000 seconds).
+Test Suite 'DurationTests' passed at 2026-09-13 09:30:30.100.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'ErrorReportingTests' started at 2026-09-13 09:30:30.100.
+Test Case '-[WebSearchCoreTests.ErrorReportingTests testBlockedURLIsDistinctFromFetchFailure]' started.
+Test Case '-[WebSearchCoreTests.ErrorReportingTests testBlockedURLIsDistinctFromFetchFailure]' passed (0.348 seconds).
+Test Case '-[WebSearchCoreTests.ErrorReportingTests testErrorResultIsTextOnly]' started.
+Test Case '-[WebSearchCoreTests.ErrorReportingTests testErrorResultIsTextOnly]' passed (0.326 seconds).
+Test Case '-[WebSearchCoreTests.ErrorReportingTests testExplicitConfiguredProviderSucceeds]' started.
+Test Case '-[WebSearchCoreTests.ErrorReportingTests testExplicitConfiguredProviderSucceeds]' passed (0.365 seconds).
+Test Case '-[WebSearchCoreTests.ErrorReportingTests testExplicitUnconfiguredProviderDoesNotSilentlyFallBack]' started.
+Test Case '-[WebSearchCoreTests.ErrorReportingTests testExplicitUnconfiguredProviderDoesNotSilentlyFallBack]' passed (0.331 seconds).
+Test Case '-[WebSearchCoreTests.ErrorReportingTests testFetchFailureIsNotAttributedToASearchProvider]' started.
+Test Case '-[WebSearchCoreTests.ErrorReportingTests testFetchFailureIsNotAttributedToASearchProvider]' passed (1.717 seconds).
+Test Case '-[WebSearchCoreTests.ErrorReportingTests testServerRemainsUsableAfterRepeatedErrors]' started.
+Test Case '-[WebSearchCoreTests.ErrorReportingTests testServerRemainsUsableAfterRepeatedErrors]' passed (0.411 seconds).
+Test Case '-[WebSearchCoreTests.ErrorReportingTests testTransportErrorTextNeverEchoesTheRequestURL]' started.
+Test Case '-[WebSearchCoreTests.ErrorReportingTests testTransportErrorTextNeverEchoesTheRequestURL]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ErrorReportingTests testTransportReasonsAreCuratedAndSpecific]' started.
+Test Case '-[WebSearchCoreTests.ErrorReportingTests testTransportReasonsAreCuratedAndSpecific]' passed (0.000 seconds).
+Test Suite 'ErrorReportingTests' passed at 2026-09-13 09:30:33.601.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 3.500 (3.501) seconds
+Test Suite 'FetchBehaviorTests' started at 2026-09-13 09:30:33.601.
+Test Case '-[WebSearchCoreTests.FetchBehaviorTests testMissingPageKeepsItsOwnDistinctError]' started.
+Test Case '-[WebSearchCoreTests.FetchBehaviorTests testMissingPageKeepsItsOwnDistinctError]' passed (0.569 seconds).
+Test Case '-[WebSearchCoreTests.FetchBehaviorTests testNonSuccessStatusIsReportedAsAFetchFailure]' started.
+Test Case '-[WebSearchCoreTests.FetchBehaviorTests testNonSuccessStatusIsReportedAsAFetchFailure]' passed (0.005 seconds).
+Test Case '-[WebSearchCoreTests.FetchBehaviorTests testSuccessfulHTMLFetchProducesReadableText]' started.
+Test Case '-[WebSearchCoreTests.FetchBehaviorTests testSuccessfulHTMLFetchProducesReadableText]' passed (0.067 seconds).
+Test Case '-[WebSearchCoreTests.FetchBehaviorTests testTextAlreadyOpeningWithTheTitleIsDetected]' started.
+Test Case '-[WebSearchCoreTests.FetchBehaviorTests testTextAlreadyOpeningWithTheTitleIsDetected]' passed (0.000 seconds).
+Test Suite 'FetchBehaviorTests' passed at 2026-09-13 09:30:34.243.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.641 (0.642) seconds
+Test Suite 'FetchFallbackTests' started at 2026-09-13 09:30:34.243.
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testBlockedURLIsNeverRetriedThroughTheReader]' started.
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testBlockedURLIsNeverRetriedThroughTheReader]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testNativeExtractionSucceedsWithoutConsultingTheReader]' started.
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testNativeExtractionSucceedsWithoutConsultingTheReader]' passed (0.004 seconds).
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testReader429ReportsTheBodyRetryDelayAsAFetchFailure]' started.
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testReader429ReportsTheBodyRetryDelayAsAFetchFailure]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testReaderDisabledReturnsTheThinNativeExtractionWithAWarning]' started.
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testReaderDisabledReturnsTheThinNativeExtractionWithAWarning]' passed (0.003 seconds).
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testReaderEmptyBodyIsAnExtractionFailure]' started.
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testReaderEmptyBodyIsAnExtractionFailure]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testReaderParsesMarkdownTitleAndBody]' started.
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testReaderParsesMarkdownTitleAndBody]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testReaderParsesTheJSONEnvelope]' started.
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testReaderParsesTheJSONEnvelope]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testReaderRejectionIsAFetchFailureAndNamesNoSearchProvider]' started.
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testReaderRejectionIsAFetchFailureAndNamesNoSearchProvider]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testReaderTruncatesToTheCharacterBudget]' started.
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testReaderTruncatesToTheCharacterBudget]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testSearchPipelineFactoryHonoursTheJinaReaderFlag]' started.
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testSearchPipelineFactoryHonoursTheJinaReaderFlag]' passed (0.006 seconds).
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testThinNativeExtractionFallsBackToTheReader]' started.
+Test Case '-[WebSearchCoreTests.FetchFallbackTests testThinNativeExtractionFallsBackToTheReader]' passed (0.003 seconds).
+Test Suite 'FetchFallbackTests' passed at 2026-09-13 09:30:34.262.
+	 Executed 11 tests, with 0 failures (0 unexpected) in 0.019 (0.020) seconds
+Test Suite 'HTMLExtractorTests' started at 2026-09-13 09:30:34.262.
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testBoilerplateMatchingIsTokenBasedNotSubstring]' started.
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testBoilerplateMatchingIsTokenBasedNotSubstring]' passed (0.035 seconds).
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testClipReportsTruncationOnWordBoundary]' started.
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testClipReportsTruncationOnWordBoundary]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testDecodesEntitiesAndCollapsesWhitespace]' started.
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testDecodesEntitiesAndCollapsesWhitespace]' passed (0.002 seconds).
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testExtractsTitle]' started.
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testExtractsTitle]' passed (0.037 seconds).
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testFallsBackToBodyWhenNoSemanticContainer]' started.
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testFallsBackToBodyWhenNoSemanticContainer]' passed (0.002 seconds).
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testHandlesEmptyDocument]' started.
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testHandlesEmptyDocument]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testKeepsArticleProse]' started.
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testKeepsArticleProse]' passed (0.007 seconds).
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testNormalizeWhitespaceLimitsBlankLines]' started.
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testNormalizeWhitespaceLimitsBlankLines]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testPreservesHeadingAndListStructure]' started.
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testPreservesHeadingAndListStructure]' passed (0.007 seconds).
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testRemovesHiddenElements]' started.
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testRemovesHiddenElements]' passed (0.002 seconds).
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testRemovesScriptsStylesAndNavigation]' started.
+Test Case '-[WebSearchCoreTests.HTMLExtractorTests testRemovesScriptsStylesAndNavigation]' passed (0.006 seconds).
+Test Suite 'HTMLExtractorTests' passed at 2026-09-13 09:30:34.362.
+	 Executed 11 tests, with 0 failures (0 unexpected) in 0.098 (0.099) seconds
+Test Suite 'HTTPClientTests' started at 2026-09-13 09:30:34.362.
+Test Case '-[WebSearchCoreTests.HTTPClientTests testCancellationPropagatesAsCancelled]' started.
+Test Case '-[WebSearchCoreTests.HTTPClientTests testCancellationPropagatesAsCancelled]' passed (0.207 seconds).
+Test Case '-[WebSearchCoreTests.HTTPClientTests testDoesNotRetryNonIdempotentRequest]' started.
+Test Case '-[WebSearchCoreTests.HTTPClientTests testDoesNotRetryNonIdempotentRequest]' passed (0.002 seconds).
+Test Case '-[WebSearchCoreTests.HTTPClientTests testDoesNotRetryNonTransientClientError]' started.
+Test Case '-[WebSearchCoreTests.HTTPClientTests testDoesNotRetryNonTransientClientError]' passed (0.002 seconds).
+Test Case '-[WebSearchCoreTests.HTTPClientTests testEnforcesResponseSizeLimit]' started.
+Test Case '-[WebSearchCoreTests.HTTPClientTests testEnforcesResponseSizeLimit]' passed (0.002 seconds).
+Test Case '-[WebSearchCoreTests.HTTPClientTests testGivesUpAfterMaxAttempts]' started.
+Test Case '-[WebSearchCoreTests.HTTPClientTests testGivesUpAfterMaxAttempts]' passed (0.173 seconds).
+Test Case '-[WebSearchCoreTests.HTTPClientTests testHeaderLookupIsCaseInsensitive]' started.
+Test Case '-[WebSearchCoreTests.HTTPClientTests testHeaderLookupIsCaseInsensitive]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.HTTPClientTests testHonorsRetryAfterHeader]' started.
+Test Case '-[WebSearchCoreTests.HTTPClientTests testHonorsRetryAfterHeader]' passed (1.031 seconds).
+Test Case '-[WebSearchCoreTests.HTTPClientTests testRetriesTransientServerErrorForIdempotentRequest]' started.
+Test Case '-[WebSearchCoreTests.HTTPClientTests testRetriesTransientServerErrorForIdempotentRequest]' passed (0.432 seconds).
+Test Case '-[WebSearchCoreTests.HTTPClientTests testSucceedsOnFirstAttemptWithoutRetrying]' started.
+Test Case '-[WebSearchCoreTests.HTTPClientTests testSucceedsOnFirstAttemptWithoutRetrying]' passed (0.003 seconds).
+Test Case '-[WebSearchCoreTests.HTTPClientTests testTextDecodingFallsBackToLatin1]' started.
+Test Case '-[WebSearchCoreTests.HTTPClientTests testTextDecodingFallsBackToLatin1]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.HTTPClientTests testTransportFailureIsTransient]' started.
+Test Case '-[WebSearchCoreTests.HTTPClientTests testTransportFailureIsTransient]' passed (0.002 seconds).
+Test Suite 'HTTPClientTests' passed at 2026-09-13 09:30:36.217.
+	 Executed 11 tests, with 0 failures (0 unexpected) in 1.854 (1.856) seconds
+Test Suite 'HTTPTransportTests' started at 2026-09-13 09:30:36.217.
+Test Case '-[WebSearchCoreTests.HTTPTransportTests testARequestWithoutASessionIsRefused]' started.
+Test Case '-[WebSearchCoreTests.HTTPTransportTests testARequestWithoutASessionIsRefused]' passed (0.420 seconds).
+Test Case '-[WebSearchCoreTests.HTTPTransportTests testCrossOriginRequestIsRefusedButLoopbackOriginIsServed]' started.
+Test Case '-[WebSearchCoreTests.HTTPTransportTests testCrossOriginRequestIsRefusedButLoopbackOriginIsServed]' passed (0.449 seconds).
+Test Case '-[WebSearchCoreTests.HTTPTransportTests testHealthEndpointAnswersTheDocumentedBody]' started.
+Test Case '-[WebSearchCoreTests.HTTPTransportTests testHealthEndpointAnswersTheDocumentedBody]' passed (0.427 seconds).
+Test Case '-[WebSearchCoreTests.HTTPTransportTests testInitializeIssuesASessionAndNegotiatesTheProtocolVersion]' started.
+Test Case '-[WebSearchCoreTests.HTTPTransportTests testInitializeIssuesASessionAndNegotiatesTheProtocolVersion]' passed (0.430 seconds).
+Test Case '-[WebSearchCoreTests.HTTPTransportTests testOversizedBodyIsRefusedWithPayloadTooLarge]' started.
+Test Case '-[WebSearchCoreTests.HTTPTransportTests testOversizedBodyIsRefusedWithPayloadTooLarge]' passed (0.421 seconds).
+Test Case '-[WebSearchCoreTests.HTTPTransportTests testToolsListOverSSEStreamsTheToolInventory]' started.
+Test Case '-[WebSearchCoreTests.HTTPTransportTests testToolsListOverSSEStreamsTheToolInventory]' passed (0.447 seconds).
+Test Case '-[WebSearchCoreTests.HTTPTransportTests testUnknownPathIsNotFoundAndNonPostIsRejected]' started.
+Test Case '-[WebSearchCoreTests.HTTPTransportTests testUnknownPathIsNotFoundAndNonPostIsRejected]' passed (0.416 seconds).
+Test Suite 'HTTPTransportTests' passed at 2026-09-13 09:30:39.228.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 3.009 (3.010) seconds
+Test Suite 'LiveProviderTests' started at 2026-09-13 09:30:39.228.
+Test Case '-[WebSearchCoreTests.LiveProviderTests testInvalidKeyIsClassifiedAsAuthenticationFailure]' started.
+./Tests/WebSearchCoreTests/LiveProviderTests.swift:112: -[WebSearchCoreTests.LiveProviderTests testInvalidKeyIsClassifiedAsAuthenticationFailure] : Test skipped - Live tests skipped: set SEARCH_LIVE_TESTS=1 to run tests that spend real provider credits.
+Test Case '-[WebSearchCoreTests.LiveProviderTests testInvalidKeyIsClassifiedAsAuthenticationFailure]' skipped (0.001 seconds).
+Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveOrchestratedSearchFusesAndCaches]' started.
+./Tests/WebSearchCoreTests/LiveProviderTests.swift:112: -[WebSearchCoreTests.LiveProviderTests testLiveOrchestratedSearchFusesAndCaches] : Test skipped - Live tests skipped: set SEARCH_LIVE_TESTS=1 to run tests that spend real provider credits.
+Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveOrchestratedSearchFusesAndCaches]' skipped (0.001 seconds).
+Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveSearchReturnsNormalizedResults]' started.
+./Tests/WebSearchCoreTests/LiveProviderTests.swift:112: -[WebSearchCoreTests.LiveProviderTests testLiveSearchReturnsNormalizedResults] : Test skipped - Live tests skipped: set SEARCH_LIVE_TESTS=1 to run tests that spend real provider credits.
+Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveSearchReturnsNormalizedResults]' skipped (0.000 seconds).
+Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveSearchWithRecencyReturnsDates]' started.
+./Tests/WebSearchCoreTests/LiveProviderTests.swift:112: -[WebSearchCoreTests.LiveProviderTests testLiveSearchWithRecencyReturnsDates] : Test skipped - Live tests skipped: set SEARCH_LIVE_TESTS=1 to run tests that spend real provider credits.
+Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveSearchWithRecencyReturnsDates]' skipped (0.000 seconds).
+Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveStatusReportsTavilyReadyWithoutLeakingKey]' started.
+./Tests/WebSearchCoreTests/LiveProviderTests.swift:112: -[WebSearchCoreTests.LiveProviderTests testLiveStatusReportsTavilyReadyWithoutLeakingKey] : Test skipped - Live tests skipped: set SEARCH_LIVE_TESTS=1 to run tests that spend real provider credits.
+Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveStatusReportsTavilyReadyWithoutLeakingKey]' skipped (0.000 seconds).
+Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveTestsRequireAnExplicitOptIn]' started.
+Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveTestsRequireAnExplicitOptIn]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveThoroughModeUsesAdvancedDepth]' started.
+./Tests/WebSearchCoreTests/LiveProviderTests.swift:112: -[WebSearchCoreTests.LiveProviderTests testLiveThoroughModeUsesAdvancedDepth] : Test skipped - Live tests skipped: set SEARCH_LIVE_TESTS=1 to run tests that spend real provider credits.
+Test Case '-[WebSearchCoreTests.LiveProviderTests testLiveThoroughModeUsesAdvancedDepth]' skipped (0.000 seconds).
+Test Case '-[WebSearchCoreTests.LiveProviderTests testPlaceholderCredentialsAreNotTreatedAsUsable]' started.
+Test Case '-[WebSearchCoreTests.LiveProviderTests testPlaceholderCredentialsAreNotTreatedAsUsable]' passed (0.000 seconds).
+Test Suite 'LiveProviderTests' passed at 2026-09-13 09:30:39.232.
+	 Executed 8 tests, with 6 tests skipped and 0 failures (0 unexpected) in 0.003 (0.004) seconds
+Test Suite 'LoggingTests' started at 2026-09-13 09:30:39.232.
+Test Case '-[WebSearchCoreTests.LoggingTests testDisabledLogEmitsNothing]' started.
+Test Case '-[WebSearchCoreTests.LoggingTests testDisabledLogEmitsNothing]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.LoggingTests testEscapeKeepsOutputOnOneLine]' started.
+Test Case '-[WebSearchCoreTests.LoggingTests testEscapeKeepsOutputOnOneLine]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.LoggingTests testHashIsStableAndNotReversible]' started.
+Test Case '-[WebSearchCoreTests.LoggingTests testHashIsStableAndNotReversible]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.LoggingTests testLogRespectsLevelThreshold]' started.
+Test Case '-[WebSearchCoreTests.LoggingTests testLogRespectsLevelThreshold]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.LoggingTests testQueryIsHashedByDefault]' started.
+Test Case '-[WebSearchCoreTests.LoggingTests testQueryIsHashedByDefault]' passed (0.000 seconds).
+Test Suite 'LoggingTests' passed at 2026-09-13 09:30:39.234.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'MonitorModelTests' started at 2026-09-13 09:30:39.234.
+Test Case '-[WebSearchCoreTests.MonitorModelTests testNodeCountersAccumulateAcrossProbes]' started.
+Test Case '-[WebSearchCoreTests.MonitorModelTests testNodeCountersAccumulateAcrossProbes]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.MonitorModelTests testProviderCountersAndAverageLatency]' started.
+Test Case '-[WebSearchCoreTests.MonitorModelTests testProviderCountersAndAverageLatency]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.MonitorModelTests testProviderKindClassification]' started.
+Test Case '-[WebSearchCoreTests.MonitorModelTests testProviderKindClassification]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.MonitorModelTests testProviderRecoversAndShowsHealthyAgain]' started.
+Test Case '-[WebSearchCoreTests.MonitorModelTests testProviderRecoversAndShowsHealthyAgain]' passed (0.000 seconds).
+Test Suite 'MonitorModelTests' passed at 2026-09-13 09:30:39.235.
+	 Executed 4 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'MonitorOptionsTests' started at 2026-09-13 09:30:39.236.
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testCustomNodeFlags]' started.
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testCustomNodeFlags]' passed (0.000 seconds).
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testCustomNodesReplaceTheDefaults]' started.
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testCustomNodesReplaceTheDefaults]' passed (0.000 seconds).
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testDefaultNodesAreTheDocumentedAddresses]' started.
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testDefaultNodesAreTheDocumentedAddresses]' passed (0.000 seconds).
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testDefaultsIncludeTheClusterAndDoNotProbe]' started.
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testDefaultsIncludeTheClusterAndDoNotProbe]' passed (0.000 seconds).
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testExplicitOverridePermitsFastProbing]' started.
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testExplicitOverridePermitsFastProbing]' passed (0.000 seconds).
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testFastIntervalIsFineWithoutProbing]' started.
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testFastIntervalIsFineWithoutProbing]' passed (0.000 seconds).
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testFastProbeIntervalIsRaisedAndReported]' started.
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testFastProbeIntervalIsRaisedAndReported]' passed (0.000 seconds).
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testHelpIsRequested]' started.
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testHelpIsRequested]' passed (0.000 seconds).
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testInvalidArgumentsAreRejected]' started.
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testInvalidArgumentsAreRejected]' passed (0.000 seconds).
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testIterationsAndToggles]' started.
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testIterationsAndToggles]' passed (0.000 seconds).
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testNoNodesDisablesNodeProbing]' started.
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testNoNodesDisablesNodeProbing]' passed (0.000 seconds).
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testProbeAndIntervalFlags]' started.
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testProbeAndIntervalFlags]' passed (0.000 seconds).
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testProvidersAreOnlyProbedWhenAsked]' started.
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testProvidersAreOnlyProbedWhenAsked]' passed (0.000 seconds).
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testSlowProbeIntervalIsNotAdjusted]' started.
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testSlowProbeIntervalIsNotAdjusted]' passed (0.000 seconds).
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testUsageDocumentsEveryFlag]' started.
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testUsageDocumentsEveryFlag]' passed (0.000 seconds).
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testWatchIsAnAliasForProbe]' started.
+Test Case '-[MCPSMonitorTests.MonitorOptionsTests testWatchIsAnAliasForProbe]' passed (0.000 seconds).
+Test Suite 'MonitorOptionsTests' passed at 2026-09-13 09:30:39.240.
+	 Executed 16 tests, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+Test Suite 'NodeProbeTests' started at 2026-09-13 09:30:39.240.
+Test Case '-[WebSearchCoreTests.NodeProbeTests testEmptyResultsAreDegraded]' started.
+Test Case '-[WebSearchCoreTests.NodeProbeTests testEmptyResultsAreDegraded]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.NodeProbeTests testJsonDisabledIsDegradedNotDown]' started.
+Test Case '-[WebSearchCoreTests.NodeProbeTests testJsonDisabledIsDegradedNotDown]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.NodeProbeTests testMalformedBodyIsDown]' started.
+Test Case '-[WebSearchCoreTests.NodeProbeTests testMalformedBodyIsDown]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.NodeProbeTests testProbeReportsUpWithEnginesAndUnavailableEngines]' started.
+Test Case '-[WebSearchCoreTests.NodeProbeTests testProbeReportsUpWithEnginesAndUnavailableEngines]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.NodeProbeTests testServerErrorIsDegraded]' started.
+Test Case '-[WebSearchCoreTests.NodeProbeTests testServerErrorIsDegraded]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.NodeProbeTests testTransportFailureIsDown]' started.
+Test Case '-[WebSearchCoreTests.NodeProbeTests testTransportFailureIsDown]' passed (0.000 seconds).
+Test Suite 'NodeProbeTests' passed at 2026-09-13 09:30:39.242.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'ProbeQueriesTests' started at 2026-09-13 09:30:39.242.
+Test Case '-[WebSearchCoreTests.ProbeQueriesTests testQueriesRotateSoRepeatedProbesDoNotAllHitTheSamePage]' started.
+Test Case '-[WebSearchCoreTests.ProbeQueriesTests testQueriesRotateSoRepeatedProbesDoNotAllHitTheSamePage]' passed (0.000 seconds).
+Test Suite 'ProbeQueriesTests' passed at 2026-09-13 09:30:39.243.
+	 Executed 1 test, with 0 failures (0 unexpected) in 0.000 (0.000) seconds
+Test Suite 'ProviderContractTests' started at 2026-09-13 09:30:39.243.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testBackoffIsBoundedAndJittered]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testBackoffIsBoundedAndJittered]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testBraveHappyPath]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testBraveHappyPath]' passed (0.002 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testBraveInvalidTokenIsReportedAsAuthentication]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testBraveInvalidTokenIsReportedAsAuthentication]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testBraveMapsFreshness]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testBraveMapsFreshness]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testBraveOrdinary422IsNotAuthentication]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testBraveOrdinary422IsNotAuthentication]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testBraveTaxonomy]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testBraveTaxonomy]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testDuckDuckGoBotChallengeIsAProviderFailure]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testDuckDuckGoBotChallengeIsAProviderFailure]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testDuckDuckGoChangedMarkupFailsCleanly]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testDuckDuckGoChangedMarkupFailsCleanly]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testDuckDuckGoScraperEndToEnd]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testDuckDuckGoScraperEndToEnd]' passed (0.003 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testDuckDuckGoTaxonomy]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testDuckDuckGoTaxonomy]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testExaHappyPathUsesContentsBlock]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testExaHappyPathUsesContentsBlock]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testExaInvalidKeyIs401]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testExaInvalidKeyIs401]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testExaMapsRecencyToStartPublishedDate]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testExaMapsRecencyToStartPublishedDate]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testExaMissingKeyIs402]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testExaMissingKeyIs402]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testExaTaxonomy]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testExaTaxonomy]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testHTTPStatusMapperClassifiesCorrectly]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testHTTPStatusMapperClassifiesCorrectly]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testMojeekBadKeyInside200ResponseIsAuthentication]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testMojeekBadKeyInside200ResponseIsAuthentication]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testMojeekHappyPathAndQueryParameterAuth]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testMojeekHappyPathAndQueryParameterAuth]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testMojeekMissingKeyIs403]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testMojeekMissingKeyIs403]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testMojeekQuotaStatusIsRateLimited]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testMojeekQuotaStatusIsRateLimited]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testMojeekTaxonomy]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testMojeekTaxonomy]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testOpenWebSearchAcceptsABareTopLevelArray]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testOpenWebSearchAcceptsABareTopLevelArray]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testOpenWebSearchAcceptsEveryEnvelopeShape]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testOpenWebSearchAcceptsEveryEnvelopeShape]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testOpenWebSearchParsesAlternateKeysDefensively]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testOpenWebSearchParsesAlternateKeysDefensively]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testOpenWebSearchTaxonomy]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testOpenWebSearchTaxonomy]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testOpenWebSearchTreatsAnEmptyEnvelopeAsSuccessButAnUnrecognizableBodyAsMalformed]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testOpenWebSearchTreatsAnEmptyEnvelopeAsSuccessButAnUnrecognizableBodyAsMalformed]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testOpenWebSearchWarnsWhenUpstreamEnginesAreAbsent]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testOpenWebSearchWarnsWhenUpstreamEnginesAreAbsent]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testParallelMCPAcceptsAnSSEResponse]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testParallelMCPAcceptsAnSSEResponse]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testParallelMCPDiscoversANonPreferredSearchTool]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testParallelMCPDiscoversANonPreferredSearchTool]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testParallelMCPExtractJSONHandlesBareAndSSEFramings]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testParallelMCPExtractJSONHandlesBareAndSSEFramings]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testParallelMCPHandshakeDiscoveryAndToolCall]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testParallelMCPHandshakeDiscoveryAndToolCall]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testParallelMCPMalformedToolResultFailsCleanly]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testParallelMCPMalformedToolResultFailsCleanly]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testParallelMCPMapsJSONRPCErrors]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testParallelMCPMapsJSONRPCErrors]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testParallelMCPOmitsMaxResultsWhenTheToolDoesNotDeclareIt]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testParallelMCPOmitsMaxResultsWhenTheToolDoesNotDeclareIt]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testParallelMCPTransportStatusesMapToTheSharedTaxonomy]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testParallelMCPTransportStatusesMapToTheSharedTaxonomy]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testRetryableStatusSetIsDeliberatelyNarrow]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testRetryableStatusSetIsDeliberatelyNarrow]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testSearXNGHandlesNullablePublishedDate]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testSearXNGHandlesNullablePublishedDate]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testSearXNGHappyPath]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testSearXNGHappyPath]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testSearXNGJsonDisabledIsAConfigurationProblemNotTransient]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testSearXNGJsonDisabledIsAConfigurationProblemNotTransient]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testSearXNGMapsTimeRange]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testSearXNGMapsTimeRange]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testSearXNGTaxonomy]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testSearXNGTaxonomy]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testStartpageChallengePageIsAProviderFailure]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testStartpageChallengePageIsAProviderFailure]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testStartpageForbiddenAndRateLimitedStatuses]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testStartpageForbiddenAndRateLimitedStatuses]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testStartpageHappyPath]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testStartpageHappyPath]' passed (0.006 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testStartpageIsNotConfiguredWithoutTheScraperOptIn]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testStartpageIsNotConfiguredWithoutTheScraperOptIn]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testStartpageMapsRecencyAndLanguage]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testStartpageMapsRecencyAndLanguage]' passed (0.006 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testTavilyDecodesSnakeCasePublishedDate]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testTavilyDecodesSnakeCasePublishedDate]' passed (0.002 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testTavilyHappyPath]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testTavilyHappyPath]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testTavilyMapsRecencyAndDomainsAndOmitsInvalidFields]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testTavilyMapsRecencyAndDomainsAndOmitsInvalidFields]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testTavilyTaxonomy]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testTavilyTaxonomy]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderContractTests testTavilyUsesAdvancedDepthOnlyInThoroughMode]' started.
+Test Case '-[WebSearchCoreTests.ProviderContractTests testTavilyUsesAdvancedDepthOnlyInThoroughMode]' passed (0.000 seconds).
+Test Suite 'ProviderContractTests' passed at 2026-09-13 09:30:39.290.
+	 Executed 51 tests, with 0 failures (0 unexpected) in 0.043 (0.047) seconds
+Test Suite 'ProviderHealthTests' started at 2026-09-13 09:30:39.290.
+Test Case '-[WebSearchCoreTests.ProviderHealthTests testDeadlineExceededDoesNotTripTheBreaker]' started.
+Test Case '-[WebSearchCoreTests.ProviderHealthTests testDeadlineExceededDoesNotTripTheBreaker]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderHealthTests testFreshlyBuiltPipelineHasItsLimitsInstalled]' started.
+Test Case '-[WebSearchCoreTests.ProviderHealthTests testFreshlyBuiltPipelineHasItsLimitsInstalled]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ProviderHealthTests testOutcomesReachTheBreakerBeforeRecordReturns]' started.
+Test Case '-[WebSearchCoreTests.ProviderHealthTests testOutcomesReachTheBreakerBeforeRecordReturns]' passed (0.000 seconds).
+Test Suite 'ProviderHealthTests' passed at 2026-09-13 09:30:39.291.
+	 Executed 3 tests, with 0 failures (0 unexpected) in 0.001 (0.001) seconds
+Test Suite 'ProviderProbeTests' started at 2026-09-13 09:30:39.291.
+Test Case '-[WebSearchCoreTests.ProviderProbeTests testBuildConfigurationAndRegistryUseTheGivenEnvironment]' started.
+Test Case '-[WebSearchCoreTests.ProviderProbeTests testBuildConfigurationAndRegistryUseTheGivenEnvironment]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ProviderProbeTests testCancellationIsClassifiedAsCancelled]' started.
+Test Case '-[WebSearchCoreTests.ProviderProbeTests testCancellationIsClassifiedAsCancelled]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderProbeTests testIsConfiguredReflectsTheRegistry]' started.
+Test Case '-[WebSearchCoreTests.ProviderProbeTests testIsConfiguredReflectsTheRegistry]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderProbeTests testMissingAdapterIsReportedRatherThanCrashing]' started.
+Test Case '-[WebSearchCoreTests.ProviderProbeTests testMissingAdapterIsReportedRatherThanCrashing]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderProbeTests testProbeClassifiesAProviderFailure]' started.
+Test Case '-[WebSearchCoreTests.ProviderProbeTests testProbeClassifiesAProviderFailure]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderProbeTests testProbeReturnsSuccessAndResultCount]' started.
+Test Case '-[WebSearchCoreTests.ProviderProbeTests testProbeReturnsSuccessAndResultCount]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderProbeTests testProbeTargetsFollowTheConfiguredOrder]' started.
+Test Case '-[WebSearchCoreTests.ProviderProbeTests testProbeTargetsFollowTheConfiguredOrder]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderProbeTests testSetupHintNamesTheRightVariableForEveryProvider]' started.
+Test Case '-[WebSearchCoreTests.ProviderProbeTests testSetupHintNamesTheRightVariableForEveryProvider]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ProviderProbeTests testUnconfiguredProviderIsReportedWithItsSetupHint]' started.
+Test Case '-[WebSearchCoreTests.ProviderProbeTests testUnconfiguredProviderIsReportedWithItsSetupHint]' passed (0.000 seconds).
+Test Suite 'ProviderProbeTests' passed at 2026-09-13 09:30:39.295.
+	 Executed 9 tests, with 0 failures (0 unexpected) in 0.003 (0.004) seconds
+Test Suite 'RankFusionTests' started at 2026-09-13 09:30:39.295.
+Test Case '-[WebSearchCoreTests.RankFusionTests testAggregatorAloneIsDiscountedAgainstIndependentIndex]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testAggregatorAloneIsDiscountedAgainstIndependentIndex]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.RankFusionTests testAggregatorDiscountUsesPerResultEngines]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testAggregatorDiscountUsesPerResultEngines]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.RankFusionTests testAggregatorIsDiscountedOnlyWhenItResellsAnOwnedIndex]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testAggregatorIsDiscountedOnlyWhenItResellsAnOwnedIndex]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.RankFusionTests testAggregatorOnlyResultIsStillReturned]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testAggregatorOnlyResultIsStillReturned]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.RankFusionTests testCorroboratedResultOutranksSingleProviderResult]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testCorroboratedResultOutranksSingleProviderResult]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.RankFusionTests testCorroborationOutranksASingleVoteRegardlessOfProvider]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testCorroborationOutranksASingleVoteRegardlessOfProvider]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.RankFusionTests testDisjointProvidersInterleaveByRankRatherThanByProvider]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testDisjointProvidersInterleaveByRankRatherThanByProvider]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.RankFusionTests testDiversityCappingBackfillsFromOtherDomains]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testDiversityCappingBackfillsFromOtherDomains]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.RankFusionTests testDuplicateURLsCollapseIntoOneResultWithMergedProvenance]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testDuplicateURLsCollapseIntoOneResultWithMergedProvenance]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.RankFusionTests testEmptyInputProducesEmptyOutput]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testEmptyInputProducesEmptyOutput]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.RankFusionTests testFusionIsDeterministic]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testFusionIsDeterministic]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.RankFusionTests testLimitIsRespected]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testLimitIsRespected]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.RankFusionTests testPerDomainDiversityCapsSingleDomainResults]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testPerDomainDiversityCapsSingleDomainResults]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.RankFusionTests testProviderRankIsTheBestRankAchieved]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testProviderRankIsTheBestRankAchieved]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.RankFusionTests testRegistryWeightsCannotOverrideRankOrdering]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testRegistryWeightsCannotOverrideRankOrdering]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.RankFusionTests testRichestSnippetAndEarliestDateArePreserved]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testRichestSnippetAndEarliestDateArePreserved]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.RankFusionTests testSameProviderListingDuplicateURLOnlyVotesOnce]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testSameProviderListingDuplicateURLOnlyVotesOnce]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.RankFusionTests testSameRankResultsTieAndBreakDeterministically]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testSameRankResultsTieAndBreakDeterministically]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.RankFusionTests testTwoIndependentProvidersBothRankAboveAggregatorOnlyResult]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testTwoIndependentProvidersBothRankAboveAggregatorOnlyResult]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.RankFusionTests testUpstreamEngineMappingDetectsDuplication]' started.
+Test Case '-[WebSearchCoreTests.RankFusionTests testUpstreamEngineMappingDetectsDuplication]' passed (0.000 seconds).
+Test Suite 'RankFusionTests' passed at 2026-09-13 09:30:39.306.
+	 Executed 20 tests, with 0 failures (0 unexpected) in 0.009 (0.011) seconds
+Test Suite 'RateLimiterTests' started at 2026-09-13 09:30:39.306.
+Test Case '-[WebSearchCoreTests.RateLimiterTests testBurstIsConsumedThenDenied]' started.
+Test Case '-[WebSearchCoreTests.RateLimiterTests testBurstIsConsumedThenDenied]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.RateLimiterTests testMinimumIntervalEnforcesSpacing]' started.
+Test Case '-[WebSearchCoreTests.RateLimiterTests testMinimumIntervalEnforcesSpacing]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.RateLimiterTests testScraperPolicyIsStricterThanAPIPolicy]' started.
+Test Case '-[WebSearchCoreTests.RateLimiterTests testScraperPolicyIsStricterThanAPIPolicy]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.RateLimiterTests testTimeUntilAvailableReportsAWait]' started.
+Test Case '-[WebSearchCoreTests.RateLimiterTests testTimeUntilAvailableReportsAWait]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.RateLimiterTests testTokensRefillOverTime]' started.
+Test Case '-[WebSearchCoreTests.RateLimiterTests testTokensRefillOverTime]' passed (0.000 seconds).
+Test Suite 'RateLimiterTests' passed at 2026-09-13 09:30:39.307.
+	 Executed 5 tests, with 0 failures (0 unexpected) in 0.001 (0.002) seconds
+Test Suite 'RendererTests' started at 2026-09-13 09:30:39.307.
+Test Case '-[WebSearchCoreTests.RendererTests testColourDoesNotChangeVisibleWidth]' started.
+Test Case '-[WebSearchCoreTests.RendererTests testColourDoesNotChangeVisibleWidth]' passed (0.003 seconds).
+Test Case '-[WebSearchCoreTests.RendererTests testDegenerateTerminalSizeStillRenders]' started.
+Test Case '-[WebSearchCoreTests.RendererTests testDegenerateTerminalSizeStillRenders]' passed (0.003 seconds).
+Test Case '-[WebSearchCoreTests.RendererTests testDegradedNodeShowsUnavailableEngines]' started.
+Test Case '-[WebSearchCoreTests.RendererTests testDegradedNodeShowsUnavailableEngines]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.RendererTests testDurationFormatting]' started.
+Test Case '-[WebSearchCoreTests.RendererTests testDurationFormatting]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.RendererTests testEngineColumnCanBeHidden]' started.
+Test Case '-[WebSearchCoreTests.RendererTests testEngineColumnCanBeHidden]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.RendererTests testFailureMessageIsShown]' started.
+Test Case '-[WebSearchCoreTests.RendererTests testFailureMessageIsShown]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.RendererTests testMillisecondFormatting]' started.
+Test Case '-[WebSearchCoreTests.RendererTests testMillisecondFormatting]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.RendererTests testNeverExceedsTerminalHeight]' started.
+Test Case '-[WebSearchCoreTests.RendererTests testNeverExceedsTerminalHeight]' passed (0.050 seconds).
+Test Case '-[WebSearchCoreTests.RendererTests testNoLineExceedsTerminalWidth]' started.
+Test Case '-[WebSearchCoreTests.RendererTests testNoLineExceedsTerminalWidth]' passed (0.032 seconds).
+Test Case '-[WebSearchCoreTests.RendererTests testRedirectedFrameIsNotPaddedToTheTerminalHeight]' started.
+Test Case '-[WebSearchCoreTests.RendererTests testRedirectedFrameIsNotPaddedToTheTerminalHeight]' passed (0.003 seconds).
+Test Case '-[WebSearchCoreTests.RendererTests testRedirectedFrameKeepsEveryProvider]' started.
+Test Case '-[WebSearchCoreTests.RendererTests testRedirectedFrameKeepsEveryProvider]' passed (0.003 seconds).
+Test Case '-[WebSearchCoreTests.RendererTests testRendersNodeAndProviderNames]' started.
+Test Case '-[WebSearchCoreTests.RendererTests testRendersNodeAndProviderNames]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.RendererTests testTruncatedNamesKeepTheirColumnSeparator]' started.
+Test Case '-[WebSearchCoreTests.RendererTests testTruncatedNamesKeepTheirColumnSeparator]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.RendererTests testUnconfiguredProviderShowsItsSetupHint]' started.
+Test Case '-[WebSearchCoreTests.RendererTests testUnconfiguredProviderShowsItsSetupHint]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.RendererTests testWarningsAreRendered]' started.
+Test Case '-[WebSearchCoreTests.RendererTests testWarningsAreRendered]' passed (0.002 seconds).
+Test Suite 'RendererTests' passed at 2026-09-13 09:30:39.412.
+	 Executed 15 tests, with 0 failures (0 unexpected) in 0.104 (0.105) seconds
+Test Suite 'SchemaCompatibilityTests' started at 2026-09-13 09:30:39.412.
+Test Case '-[WebSearchCoreTests.SchemaCompatibilityTests testAllAdvertisedSchemasSatisfyCrossClientRules]' started.
+Test Case '-[WebSearchCoreTests.SchemaCompatibilityTests testAllAdvertisedSchemasSatisfyCrossClientRules]' passed (0.420 seconds).
+Test Case '-[WebSearchCoreTests.SchemaCompatibilityTests testDefaultsAreDocumentedInDescriptions]' started.
+Test Case '-[WebSearchCoreTests.SchemaCompatibilityTests testDefaultsAreDocumentedInDescriptions]' passed (0.421 seconds).
+Test Case '-[WebSearchCoreTests.SchemaCompatibilityTests testPropertyNamesArePortable]' started.
+Test Case '-[WebSearchCoreTests.SchemaCompatibilityTests testPropertyNamesArePortable]' passed (0.428 seconds).
+Test Case '-[WebSearchCoreTests.SchemaCompatibilityTests testRootIsAlwaysAClosedObject]' started.
+Test Case '-[WebSearchCoreTests.SchemaCompatibilityTests testRootIsAlwaysAClosedObject]' passed (0.428 seconds).
+Test Case '-[WebSearchCoreTests.SchemaCompatibilityTests testToolNamesRespectLengthLimit]' started.
+Test Case '-[WebSearchCoreTests.SchemaCompatibilityTests testToolNamesRespectLengthLimit]' passed (0.433 seconds).
+Test Case '-[WebSearchCoreTests.SchemaCompatibilityTests testToolsAreUsableWithNoOptionalArguments]' started.
+Test Case '-[WebSearchCoreTests.SchemaCompatibilityTests testToolsAreUsableWithNoOptionalArguments]' passed (0.427 seconds).
+Test Suite 'SchemaCompatibilityTests' passed at 2026-09-13 09:30:41.970.
+	 Executed 6 tests, with 0 failures (0 unexpected) in 2.557 (2.558) seconds
+Test Suite 'ScraperTests' started at 2026-09-13 09:30:41.970.
+Test Case '-[WebSearchCoreTests.ScraperTests testDetectsDuckDuckGoBotChallenge]' started.
+Test Case '-[WebSearchCoreTests.ScraperTests testDetectsDuckDuckGoBotChallenge]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ScraperTests testDetectsStartpageAnubisChallenge]' started.
+Test Case '-[WebSearchCoreTests.ScraperTests testDetectsStartpageAnubisChallenge]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.ScraperTests testExcludeHostsFiltersEngineOwnHosts]' started.
+Test Case '-[WebSearchCoreTests.ScraperTests testExcludeHostsFiltersEngineOwnHosts]' passed (0.002 seconds).
+Test Case '-[WebSearchCoreTests.ScraperTests testParsesDuckDuckGoResultsAndUnwrapsRedirects]' started.
+Test Case '-[WebSearchCoreTests.ScraperTests testParsesDuckDuckGoResultsAndUnwrapsRedirects]' passed (0.008 seconds).
+Test Case '-[WebSearchCoreTests.ScraperTests testScrapersReportUnconfiguredWhenDisabled]' started.
+Test Case '-[WebSearchCoreTests.ScraperTests testScrapersReportUnconfiguredWhenDisabled]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.ScraperTests testStructuralFallbackFindsResultLikeAnchors]' started.
+Test Case '-[WebSearchCoreTests.ScraperTests testStructuralFallbackFindsResultLikeAnchors]' passed (0.002 seconds).
+Test Case '-[WebSearchCoreTests.ScraperTests testUnwrapRedirectFallsBackWhenNoTarget]' started.
+Test Case '-[WebSearchCoreTests.ScraperTests testUnwrapRedirectFallsBackWhenNoTarget]' passed (0.000 seconds).
+Test Suite 'ScraperTests' passed at 2026-09-13 09:30:41.986.
+	 Executed 7 tests, with 0 failures (0 unexpected) in 0.015 (0.016) seconds
+Test Suite 'SearchCacheTests' started at 2026-09-13 09:30:41.986.
+Test Case '-[WebSearchCoreTests.SearchCacheTests testCapacityEvictionKeepsCacheBounded]' started.
+Test Case '-[WebSearchCoreTests.SearchCacheTests testCapacityEvictionKeepsCacheBounded]' passed (0.003 seconds).
+Test Case '-[WebSearchCoreTests.SearchCacheTests testEmptyResponsesAreNotCached]' started.
+Test Case '-[WebSearchCoreTests.SearchCacheTests testEmptyResponsesAreNotCached]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.SearchCacheTests testExpiresAfterTTL]' started.
+Test Case '-[WebSearchCoreTests.SearchCacheTests testExpiresAfterTTL]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.SearchCacheTests testKeyIgnoresResultCountOfTheProviderBudget]' started.
+Test Case '-[WebSearchCoreTests.SearchCacheTests testKeyIgnoresResultCountOfTheProviderBudget]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.SearchCacheTests testKeyIncludesModeFiltersAndProviderSet]' started.
+Test Case '-[WebSearchCoreTests.SearchCacheTests testKeyIncludesModeFiltersAndProviderSet]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.SearchCacheTests testStatsTrackHitsAndMisses]' started.
+Test Case '-[WebSearchCoreTests.SearchCacheTests testStatsTrackHitsAndMisses]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.SearchCacheTests testStoresAndRetrievesWithinTTL]' started.
+Test Case '-[WebSearchCoreTests.SearchCacheTests testStoresAndRetrievesWithinTTL]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.SearchCacheTests testZeroTTLDisablesCaching]' started.
+Test Case '-[WebSearchCoreTests.SearchCacheTests testZeroTTLDisablesCaching]' passed (0.000 seconds).
+Test Suite 'SearchCacheTests' passed at 2026-09-13 09:30:41.993.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.006 (0.007) seconds
+Test Suite 'SearchOrchestratorTests' started at 2026-09-13 09:30:41.993.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testAllProvidersFailingThrowsAllProvidersFailed]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testAllProvidersFailingThrowsAllProvidersFailed]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testALocallySkippedProviderIsReplacedByTheNextCandidate]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testALocallySkippedProviderIsReplacedByTheNextCandidate]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testALongLocalThrottleIsReportedRatherThanWaitedOut]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testALongLocalThrottleIsReportedRatherThanWaitedOut]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testAShortLocalThrottleIsWaitedOutRatherThanFailing]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testAShortLocalThrottleIsWaitedOutRatherThanFailing]' passed (0.102 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testBalancedModeFansOutToTwoProviders]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testBalancedModeFansOutToTwoProviders]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testCacheExpiryTriggersAFreshCall]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testCacheExpiryTriggersAFreshCall]' passed (0.002 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testDifferentModesUseDifferentCacheEntries]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testDifferentModesUseDifferentCacheEntries]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testDisabledProviderCannotBeSelectedExplicitly]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testDisabledProviderCannotBeSelectedExplicitly]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testEmptyQueryIsRejected]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testEmptyQueryIsRejected]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testExcludedDomainsAreRemovedEvenIfTheProviderIgnoresTheFilter]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testExcludedDomainsAreRemovedEvenIfTheProviderIgnoresTheFilter]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testExplicitProviderBypassesSelectionPolicy]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testExplicitProviderBypassesSelectionPolicy]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testExplicitProviderFailureExplainsTheReason]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testExplicitProviderFailureExplainsTheReason]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testExplicitUnconfiguredProviderReturnsAClearError]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testExplicitUnconfiguredProviderReturnsAClearError]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testFailuresAreNotCached]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testFailuresAreNotCached]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testFastModeCallsExactlyOneProvider]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testFastModeCallsExactlyOneProvider]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testIncludeDomainsRestrictResultsLocally]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testIncludeDomainsRestrictResultsLocally]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testIndependentIndexesArePreferredOverAggregatorsInAutoSelection]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testIndependentIndexesArePreferredOverAggregatorsInAutoSelection]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testNoConfiguredProviderProducesAnActionableError]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testNoConfiguredProviderProducesAnActionableError]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testOneProviderFailingStillReturnsResults]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testOneProviderFailingStillReturnsResults]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testOpenCircuitBreakerSkipsTheProviderWithoutCallingIt]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testOpenCircuitBreakerSkipsTheProviderWithoutCallingIt]' passed (0.067 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testProvidersReceiveALargerBudgetThanTheFinalResultLimit]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testProvidersReceiveALargerBudgetThanTheFinalResultLimit]' passed (0.002 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testProvidersSkippedByLocalLimitsAreReportedAsTemporarilyUnavailable]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testProvidersSkippedByLocalLimitsAreReportedAsTemporarilyUnavailable]' passed (0.002 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testProviderThatHangsIsCutOffByTheTimeBudget]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testProviderThatHangsIsCutOffByTheTimeBudget]' passed (0.314 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testRateLimitedProviderIsReportedAndOthersContinue]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testRateLimitedProviderIsReportedAndOthersContinue]' passed (0.003 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testScrapersAreExcludedUnlessExplicitlyEnabled]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testScrapersAreExcludedUnlessExplicitlyEnabled]' passed (0.003 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testSecondIdenticalSearchIsServedFromCache]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testSecondIdenticalSearchIsServedFromCache]' passed (0.003 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testStatusCountsSuccessesAndFailures]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testStatusCountsSuccessesAndFailures]' passed (0.003 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testStatusReportsConfigurationGapsWithActionableNotes]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testStatusReportsConfigurationGapsWithActionableNotes]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testThoroughModeFansOutToThreeProviders]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testThoroughModeFansOutToThreeProviders]' passed (0.003 seconds).
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testUpstreamErrorsAreNeverReportedAsNothingAttempted]' started.
+Test Case '-[WebSearchCoreTests.SearchOrchestratorTests testUpstreamErrorsAreNeverReportedAsNothingAttempted]' passed (0.003 seconds).
+Test Suite 'SearchOrchestratorTests' passed at 2026-09-13 09:30:42.516.
+	 Executed 30 tests, with 0 failures (0 unexpected) in 0.518 (0.523) seconds
+Test Suite 'StdioServerTests' started at 2026-09-13 09:30:42.516.
+Test Case '-[WebSearchCoreTests.StdioServerTests testInitializeHandshakeSucceeds]' started.
+Test Case '-[WebSearchCoreTests.StdioServerTests testInitializeHandshakeSucceeds]' passed (0.437 seconds).
+Test Case '-[WebSearchCoreTests.StdioServerTests testInitializeNegotiatesTheProtocolRevisionTheServerSupports]' started.
+Test Case '-[WebSearchCoreTests.StdioServerTests testInitializeNegotiatesTheProtocolRevisionTheServerSupports]' passed (0.733 seconds).
+Test Case '-[WebSearchCoreTests.StdioServerTests testLoggingNeverContaminatesStdout]' started.
+Test Case '-[WebSearchCoreTests.StdioServerTests testLoggingNeverContaminatesStdout]' passed (0.360 seconds).
+Test Case '-[WebSearchCoreTests.StdioServerTests testMalformedArgumentsProduceAnErrorResultNotAProtocolFailure]' started.
+Test Case '-[WebSearchCoreTests.StdioServerTests testMalformedArgumentsProduceAnErrorResultNotAProtocolFailure]' passed (0.423 seconds).
+Test Case '-[WebSearchCoreTests.StdioServerTests testProviderEnumMatchesSelectableProviders]' started.
+Test Case '-[WebSearchCoreTests.StdioServerTests testProviderEnumMatchesSelectableProviders]' passed (0.350 seconds).
+Test Case '-[WebSearchCoreTests.StdioServerTests testSearchAgainstAStubProviderReturnsStructuredAndTextContent]' started.
+Test Case '-[WebSearchCoreTests.StdioServerTests testSearchAgainstAStubProviderReturnsStructuredAndTextContent]' passed (0.442 seconds).
+Test Case '-[WebSearchCoreTests.StdioServerTests testSearchWithoutAnyProviderFailsActionablyRatherThanCrashing]' started.
+Test Case '-[WebSearchCoreTests.StdioServerTests testSearchWithoutAnyProviderFailsActionablyRatherThanCrashing]' passed (0.325 seconds).
+Test Case '-[WebSearchCoreTests.StdioServerTests testServerStaysResponsiveAfterAFailedToolCall]' started.
+Test Case '-[WebSearchCoreTests.StdioServerTests testServerStaysResponsiveAfterAFailedToolCall]' passed (0.474 seconds).
+Test Case '-[WebSearchCoreTests.StdioServerTests testStatusToolReportsProviderConfiguration]' started.
+Test Case '-[WebSearchCoreTests.StdioServerTests testStatusToolReportsProviderConfiguration]' passed (0.336 seconds).
+Test Case '-[WebSearchCoreTests.StdioServerTests testToolsListExposesTheDocumentedToolsWithValidSchemas]' started.
+Test Case '-[WebSearchCoreTests.StdioServerTests testToolsListExposesTheDocumentedToolsWithValidSchemas]' passed (0.414 seconds).
+Test Case '-[WebSearchCoreTests.StdioServerTests testWebAnswerKeepsResultsWhenSynthesisFails]' started.
+Test Case '-[WebSearchCoreTests.StdioServerTests testWebAnswerKeepsResultsWhenSynthesisFails]' passed (0.367 seconds).
+Test Case '-[WebSearchCoreTests.StdioServerTests testWebAnswerRejectsAnUnknownProviderArgument]' started.
+Test Case '-[WebSearchCoreTests.StdioServerTests testWebAnswerRejectsAnUnknownProviderArgument]' passed (0.400 seconds).
+Test Case '-[WebSearchCoreTests.StdioServerTests testWebAnswerReportsInsufficientResultsAsAStatusNotAnError]' started.
+Test Case '-[WebSearchCoreTests.StdioServerTests testWebAnswerReportsInsufficientResultsAsAStatusNotAnError]' passed (0.384 seconds).
+Test Case '-[WebSearchCoreTests.StdioServerTests testWebAnswerReturnsGroundedAnswerWithCitations]' started.
+Test Case '-[WebSearchCoreTests.StdioServerTests testWebAnswerReturnsGroundedAnswerWithCitations]' passed (0.441 seconds).
+Test Case '-[WebSearchCoreTests.StdioServerTests testWebAnswerStripsCitationsToResultsThatWereNeverFetched]' started.
+Test Case '-[WebSearchCoreTests.StdioServerTests testWebAnswerStripsCitationsToResultsThatWereNeverFetched]' passed (0.441 seconds).
+Test Case '-[WebSearchCoreTests.StdioServerTests testWebAnswerWithoutASynthesisKeyReturnsResultsOnly]' started.
+Test Case '-[WebSearchCoreTests.StdioServerTests testWebAnswerWithoutASynthesisKeyReturnsResultsOnly]' passed (0.450 seconds).
+Test Case '-[WebSearchCoreTests.StdioServerTests testWebOpenRejectsDangerousSchemesAndInternalHosts]' started.
+Test Case '-[WebSearchCoreTests.StdioServerTests testWebOpenRejectsDangerousSchemesAndInternalHosts]' passed (0.459 seconds).
+Test Suite 'StdioServerTests' passed at 2026-09-13 09:30:49.753.
+	 Executed 17 tests, with 0 failures (0 unexpected) in 7.234 (7.237) seconds
+Test Suite 'TerminalLayoutTests' started at 2026-09-13 09:30:49.753.
+Test Case '-[WebSearchCoreTests.TerminalLayoutTests testColourCanBeDisabled]' started.
+Test Case '-[WebSearchCoreTests.TerminalLayoutTests testColourCanBeDisabled]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TerminalLayoutTests testDisplayWidthCountsWideCharactersAsTwo]' started.
+Test Case '-[WebSearchCoreTests.TerminalLayoutTests testDisplayWidthCountsWideCharactersAsTwo]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TerminalLayoutTests testDisplayWidthIgnoresEscapeSequences]' started.
+Test Case '-[WebSearchCoreTests.TerminalLayoutTests testDisplayWidthIgnoresEscapeSequences]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TerminalLayoutTests testPadAlignsStyledTextCorrectly]' started.
+Test Case '-[WebSearchCoreTests.TerminalLayoutTests testPadAlignsStyledTextCorrectly]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TerminalLayoutTests testPadRightAligns]' started.
+Test Case '-[WebSearchCoreTests.TerminalLayoutTests testPadRightAligns]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TerminalLayoutTests testTruncateAddsEllipsisAndRespectsWidth]' started.
+Test Case '-[WebSearchCoreTests.TerminalLayoutTests testTruncateAddsEllipsisAndRespectsWidth]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TerminalLayoutTests testTruncateHandlesDegenerateWidths]' started.
+Test Case '-[WebSearchCoreTests.TerminalLayoutTests testTruncateHandlesDegenerateWidths]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TerminalLayoutTests testTruncateLeavesShortTextAlone]' started.
+Test Case '-[WebSearchCoreTests.TerminalLayoutTests testTruncateLeavesShortTextAlone]' passed (0.000 seconds).
+Test Suite 'TerminalLayoutTests' passed at 2026-09-13 09:30:49.755.
+	 Executed 8 tests, with 0 failures (0 unexpected) in 0.002 (0.002) seconds
+Test Suite 'TransportConfigurationTests' started at 2026-09-13 09:30:49.755.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testAcceptsTransportAliases]' started.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testAcceptsTransportAliases]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testBoundaryPortsAreAccepted]' started.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testBoundaryPortsAreAccepted]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testDefaultsToStdio]' started.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testDefaultsToStdio]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testEmptyHostIsRejected]' started.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testEmptyHostIsRejected]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testExplicitStdioWithHTTPOptionsIsRejected]' started.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testExplicitStdioWithHTTPOptionsIsRejected]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testHelpIsRecognized]' started.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testHelpIsRecognized]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testHTTPDefaultsBindToLoopback]' started.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testHTTPDefaultsBindToLoopback]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testInvalidTransportIsRejected]' started.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testInvalidTransportIsRejected]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testLoopbackDetection]' started.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testLoopbackDetection]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testMissingValuesAreRejected]' started.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testMissingValuesAreRejected]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testOptionsCombineInAnyOrder]' started.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testOptionsCombineInAnyOrder]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testOutOfRangePortsAreRejected]' started.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testOutOfRangePortsAreRejected]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testPathIsNormalizedWithLeadingSlash]' started.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testPathIsNormalizedWithLeadingSlash]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testSelectsHTTPTransport]' started.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testSelectsHTTPTransport]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testSupportsEqualsSyntax]' started.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testSupportsEqualsSyntax]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testTransportChoiceDoesNotDependOnArgumentOrder]' started.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testTransportChoiceDoesNotDependOnArgumentOrder]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testTransportOptionsImplyHTTP]' started.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testTransportOptionsImplyHTTP]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testUnknownArgumentIsRejected]' started.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testUnknownArgumentIsRejected]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testUsageDocumentsEveryFlag]' started.
+Test Case '-[WebSearchCoreTests.TransportConfigurationTests testUsageDocumentsEveryFlag]' passed (0.000 seconds).
+Test Suite 'TransportConfigurationTests' passed at 2026-09-13 09:30:49.761.
+	 Executed 19 tests, with 0 failures (0 unexpected) in 0.004 (0.006) seconds
+Test Suite 'URLCanonicalizerTests' started at 2026-09-13 09:30:49.761.
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testDeduplicatesEquivalentURLs]' started.
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testDeduplicatesEquivalentURLs]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testDoesNotCollapseDifferentResources]' started.
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testDoesNotCollapseDifferentResources]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testHostMatchesDomainRespectsSubdomainBoundaries]' started.
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testHostMatchesDomainRespectsSubdomainBoundaries]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testLeavesNonHTTPURLsAlone]' started.
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testLeavesNonHTTPURLsAlone]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testLowercasesHostAndStripsFragment]' started.
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testLowercasesHostAndStripsFragment]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testNormalizeDomainHandlesCommonSpellings]' started.
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testNormalizeDomainHandlesCommonSpellings]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testNormalizesDefaultPorts]' started.
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testNormalizesDefaultPorts]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testNormalizesPercentEncodingCase]' started.
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testNormalizesPercentEncodingCase]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testNormalizesTrailingSlashAndEmptyPath]' started.
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testNormalizesTrailingSlashAndEmptyPath]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testPreservesMeaningfulQueryParametersInOrder]' started.
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testPreservesMeaningfulQueryParametersInOrder]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testRemovesTrackingParametersButKeepsIdentityParameters]' started.
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testRemovesTrackingParametersButKeepsIdentityParameters]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testStripsUserInfoSoCredentialsNeverReachDedupKeys]' started.
+Test Case '-[WebSearchCoreTests.URLCanonicalizerTests testStripsUserInfoSoCredentialsNeverReachDedupKeys]' passed (0.000 seconds).
+Test Suite 'URLCanonicalizerTests' passed at 2026-09-13 09:30:49.764.
+	 Executed 12 tests, with 0 failures (0 unexpected) in 0.002 (0.003) seconds
+Test Suite 'URLPolicyTests' started at 2026-09-13 09:30:49.764.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testAcceptsOrdinaryPublicHTTPAndHTTPS]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testAcceptsOrdinaryPublicHTTPAndHTTPS]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testAcceptsPublicIPLiterals]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testAcceptsPublicIPLiterals]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testAcceptsPublicIPv4MappedLiterals]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testAcceptsPublicIPv4MappedLiterals]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testAllowsHostnameThatResolvesOnlyToPublicAddresses]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testAllowsHostnameThatResolvesOnlyToPublicAddresses]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testEmbeddedIPv4UnwrapsEveryTransportForm]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testEmbeddedIPv4UnwrapsEveryTransportForm]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testIPAddressClassification]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testIPAddressClassification]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testIPAddressRoundTripsItsDescription]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testIPAddressRoundTripsItsDescription]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testIPLiteralDetectionIsStrict]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testIPLiteralDetectionIsStrict]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testPrivateNetworkOptInAllowsInternalTargets]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testPrivateNetworkOptInAllowsInternalTargets]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsBareHostnamesWithoutADot]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsBareHostnamesWithoutADot]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsCredentialsInURL]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsCredentialsInURL]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsHostnameResolvingToAnEmbeddedNonPublicIPv4Address]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsHostnameResolvingToAnEmbeddedNonPublicIPv4Address]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsHostnameResolvingToMetadataAddress]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsHostnameResolvingToMetadataAddress]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsHostnameThatResolvesToPrivateAddress]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsHostnameThatResolvesToPrivateAddress]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsInternalNameSuffixes]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsInternalNameSuffixes]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsIPv6LiteralsThatEmbedANonPublicIPv4Address]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsIPv6LiteralsThatEmbedANonPublicIPv4Address]' passed (0.001 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsLoopbackAndPrivateIPLiterals]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsLoopbackAndPrivateIPLiterals]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsLoopbackNamesAndTheirTricks]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsLoopbackNamesAndTheirTricks]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsNonWebSchemes]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsNonWebSchemes]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsObfuscatedIntegerAndHexForms]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsObfuscatedIntegerAndHexForms]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsWhenAnyResolvedAddressIsPrivate]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testRejectsWhenAnyResolvedAddressIsPrivate]' passed (0.000 seconds).
+Test Case '-[WebSearchCoreTests.URLPolicyTests testResolutionFailureDoesNotBecomeAnSSRFDenial]' started.
+Test Case '-[WebSearchCoreTests.URLPolicyTests testResolutionFailureDoesNotBecomeAnSSRFDenial]' passed (0.000 seconds).
+Test Suite 'URLPolicyTests' passed at 2026-09-13 09:30:49.772.
+	 Executed 22 tests, with 0 failures (0 unexpected) in 0.006 (0.007) seconds
+Test Suite 'SwiftWebSearchMCPPackageTests.xctest' passed at 2026-09-13 09:30:49.772.
+	 Executed 371 tests, with 6 tests skipped and 0 failures (0 unexpected) in 19.668 (19.716) seconds
+Test Suite 'All tests' passed at 2026-09-13 09:30:49.772.
+	 Executed 371 tests, with 6 tests skipped and 0 failures (0 unexpected) in 19.668 (19.743) seconds
+􀟈  Test run started.
+􀄵  Testing Library Version: 1902
+􀄵  Target Platform: arm64e-apple-macos14.0
+􁁛  Test run with 0 tests in 0 suites passed after 0.001 seconds.

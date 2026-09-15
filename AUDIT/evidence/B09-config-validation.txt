@@ -1,0 +1,53 @@
+# B09 — nothing validated the configuration at startup
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+Every value was parsed with a silent fallback: an unparseable integer, a yes/no value that was
+neither, an unknown log level and a schemeless endpoint all became \not configured\ with the
+default applied and no diagnostic anywhere. `SEARCH_CONFIG_FILE` pointing at a missing file was
+treated as \no config file\, so a mistyped path quietly served a different configuration than the
+operator provided. `URL(string:)` was the only URL check, and it is not a validator — it accepts
+`searx.example.com` as a *relative* URL.
+
+## Fails-before evidence
+
+```
+$ swift test --filter ConfigurationTests      # with the diagnostics dropped, as before
+  testAMissingConfigFileIsNamedInTheIssues
+    XCTAssertEqual failed: ("0") is not equal to ("1")
+    XCTUnwrap failed: expected non-nil value of type ConfigurationIssue
+  testUnusableConfiguredValuesAreReported
+    XCTAssertEqual failed: ("nil") is not equal to ("Optional([.unreadableConfigFile])")
+    ... nil vs .unparseableValue for the timeout, log level and scraper flag, and
+    ... nil vs .invalidURL for the schemeless endpoint
+```
+
+## The fix
+
+* **`AppConfiguration.issues`** — a list of `ConfigurationIssue(kind:key:detail:)` with three
+  kinds: `unreadableConfigFile`, `unparseableValue`, `invalidURL`. Nothing is discarded silently
+  any more; the values still fall back to their defaults, which is what the tests assert.
+* **The loader names the file.** A requested `SEARCH_CONFIG_FILE` that does not exist, or exists
+  but cannot be read, is reported by path — and `main.swift` treats it as fatal (log at error,
+  exit 2), because starting with defaults would serve a configuration the operator did not
+  ask for. Values are reported as warnings and the server starts.
+* **URLs are validated, not merely parsed.** A provider or endpoint URL must be absolute
+  `http(s)` with a host; `searx.example.com` is now reported and left unconfigured, so no
+  request is ever built from a relative URL.
+* **The log level lists its alternatives** in the message
+  (`'verbose' is not one of trace, debug, info, warning, error, none`).
+
+## Verification
+
+```
+$ swift test --filter ConfigurationTests
+Executed 32 tests, with 0 failures (0 unexpected)      (3 new)
+
+$ swift test
+(full suite, 6 skipped, 0 failures)
+
+$ swift build --build-tests -Xswiftc -warnings-as-errors   0 warnings, 0 errors
+$ swift-format --strict / swiftlint --strict              0 diagnostics / exit 0
+```

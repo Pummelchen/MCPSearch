@@ -23,12 +23,13 @@ credentials are absent are simply reported as unconfigured.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import os
 import subprocess
 import sys
 import time
-from collections import Counter
+from collections import Counter, defaultdict
 from typing import Any
 
 # 50 queries spread across the kinds of work a coding agent actually does: library
@@ -161,14 +162,21 @@ class Server:
         self.process.stdin.flush()
 
     def read(self) -> dict[str, Any] | None:
+        """Next protocol message, or None only when stdout is at end of stream."""
         assert self.process.stdout is not None
         line = self.process.stdout.readline()
         if not line:
             return None
         try:
             return json.loads(line)
-        except json.JSONDecodeError:
-            return None
+        except json.JSONDecodeError as error:
+            # A line that is not JSON is a corrupted protocol stream, not end of stream:
+            # returning None here let `request` discard the offending line and report a
+            # closed stdout instead (ledger B80).
+            raise RuntimeError(
+                f"stdout is not valid JSON (protocol stream corrupted): {error}; "
+                f"offending line: {line!r}"
+            ) from error
 
     def request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
         self._next_id += 1
@@ -189,16 +197,39 @@ class Server:
 
     def close(self) -> str:
         assert self.process.stdin is not None
-        try:
+        # The child may already have closed its end; closing a pipe then raises OSError or
+        # ValueError, and there is nothing to recover.
+        with contextlib.suppress(OSError, ValueError):
             self.process.stdin.close()
-        except Exception:
-            pass
         try:
             self.process.wait(timeout=30)
         except subprocess.TimeoutExpired:
             self.process.kill()
         assert self.process.stderr is not None
         return self.process.stderr.read()
+
+
+def silent_providers(providers: set[str], usage: dict[str, int]) -> list[str]:
+    """Requested providers that contributed to no query at all."""
+    return sorted(name for name in providers if usage.get(name, 0) == 0)
+
+
+def run_verdict(
+    queries: int, errors: int, providers: set[str], usage: dict[str, int]
+) -> str | None:
+    """Why the run must be reported as a failure, or None when it is a result to interpret.
+
+    A soak that errored on every query, or where a requested provider never contributed, says
+    something other than what its header claims. The second half of that sentence used to be only
+    a comment (ledger B44). Kept separate from `main` so the CI guard can drive every case without
+    running a soak.
+    """
+    if queries and errors == queries:
+        return "every query errored"
+    silent = silent_providers(providers, usage)
+    if silent:
+        return "requested provider(s) contributed to no query: " + ", ".join(silent)
+    return None
 
 
 def build_environment(providers: set[str]) -> dict[str, str]:
@@ -211,14 +242,13 @@ def build_environment(providers: set[str]) -> dict[str, str]:
     """
     environment = dict(os.environ)
 
-    # Anything not explicitly requested is switched off, so the run is unambiguous.
+    # Anything not explicitly requested is switched off, so the run is unambiguous. The value is
+    # *assigned* from the request, never merged with the ambient one: merging kept a requested
+    # provider disabled when the environment already named it, and with every provider requested
+    # the old `if disabled:` guard left the ambient list untouched — both contradicting the run
+    # header, which is what `--providers` is supposed to describe (ledger B23).
     disabled = sorted(set(ALL_PROVIDERS) - providers)
-    if disabled:
-        already = [p.strip() for p in environment.get("SEARCH_DISABLED_PROVIDERS", "").split(",") if p.strip()]
-        for provider in disabled:
-            if provider not in already:
-                already.append(provider)
-        environment["SEARCH_DISABLED_PROVIDERS"] = ",".join(already)
+    environment["SEARCH_DISABLED_PROVIDERS"] = ",".join(disabled)
 
     # Scrapers and Parallel are also opt-in flags, not just registry entries.
     environment["SEARCH_ENABLE_SCRAPERS"] = (
@@ -238,8 +268,7 @@ def parse_dotenv(contents: str) -> dict[str, str]:
         line = raw_line.strip()
         if not line or line.startswith("#"):
             continue
-        if line.startswith("export "):
-            line = line[len("export "):]
+        line = line.removeprefix("export ")
         if "=" not in line:
             continue
         key, _, value = line.partition("=")
@@ -300,20 +329,35 @@ def main() -> int:
     parser.add_argument("binary", nargs="?", default=None)
     parser.add_argument("--queries", type=int, default=len(QUERIES))
     parser.add_argument("--mode", default="balanced", choices=["fast", "balanced", "thorough"])
-    parser.add_argument("--pause", type=float, default=1.0,
-                        help="seconds between queries, to imitate real usage")
-    parser.add_argument("--providers", default="tavily,duckduckgo,parallel",
-                        help="comma-separated providers to run; every other provider "
-                             "is explicitly disabled so the run matches this set")
+    parser.add_argument(
+        "--pause", type=float, default=1.0, help="seconds between queries, to imitate real usage"
+    )
+    parser.add_argument(
+        "--providers",
+        default="tavily,duckduckgo,parallel",
+        help="comma-separated providers to run; every other provider "
+        "is explicitly disabled so the run matches this set",
+    )
     parser.add_argument("--max-results", type=int, default=5)
     args = parser.parse_args()
+
+    # `QUERIES[: args.queries]` with a negative count silently takes queries from the end,
+    # so `--queries -3` ran 48 of 51 while the header presented that as the request; a zero
+    # count starts nothing. Reject both before the run rather than run a different soak than
+    # the one asked for (ledger B82).
+    if args.queries <= 0:
+        parser.error("--queries must be positive")
 
     if args.binary:
         binary = args.binary
     else:
         try:
-            out = subprocess.run(["swift", "build", "-c", "release", "--show-bin-path"],
-                                 capture_output=True, text=True, check=True).stdout.strip()
+            out = subprocess.run(
+                ["swift", "build", "-c", "release", "--show-bin-path"],
+                capture_output=True,
+                text=True,
+                check=True,
+            ).stdout.strip()
         except subprocess.CalledProcessError as error:
             print(f"could not determine build path: {error}", file=sys.stderr)
             return 2
@@ -349,12 +393,9 @@ def main() -> int:
         server.notify("notifications/initialized")
 
         # Baseline: what the server thinks is usable before any traffic.
-        status = server.request(
-            "tools/call", {"name": "web_search_status", "arguments": {}}
-        )
+        status = server.request("tools/call", {"name": "web_search_status", "arguments": {}})
         initial = {
-            p["provider"]: p["status"]
-            for p in status["result"]["structuredContent"]["providers"]
+            p["provider"]: p["status"] for p in status["result"]["structuredContent"]["providers"]
         }
         print("provider status at start:")
         for name, state in sorted(initial.items()):
@@ -367,6 +408,9 @@ def main() -> int:
         latencies: list[int] = []
         failures_by_provider: Counter[str] = Counter()
         failures_by_category: Counter[str] = Counter()
+        # Per provider as well as overall: printing the global counter on every provider's line
+        # attributed every category in the run to every provider that failed at all (ledger B73).
+        categories_by_provider: defaultdict[str, Counter[str]] = defaultdict(Counter)
         usage_by_provider: Counter[str] = Counter()
         errors = 0
         results_total = 0
@@ -391,9 +435,7 @@ def main() -> int:
             payload = response.get("result", {})
             if payload.get("isError"):
                 errors += 1
-                text = " ".join(
-                    block.get("text", "") for block in payload.get("content", [])
-                )
+                text = " ".join(block.get("text", "") for block in payload.get("content", []))
                 print(f"{index:>3} {elapsed:>6}  ERROR  {text[:60]}")
             else:
                 structured = payload.get("structuredContent", {})
@@ -406,8 +448,11 @@ def main() -> int:
                 for failure in failed:
                     failures_by_provider[failure["provider"]] += 1
                     failures_by_category[failure["category"]] += 1
-                mark = "" if not failed else " ".join(
-                    f"{f['provider']}:{f['category']}" for f in failed
+                    categories_by_provider[failure["provider"]][failure["category"]] += 1
+                mark = (
+                    ""
+                    if not failed
+                    else " ".join(f"{f['provider']}:{f['category']}" for f in failed)
                 )
                 print(
                     f"{index:>3} {elapsed:>6} {count:>2} {','.join(used):<22} "
@@ -418,9 +463,7 @@ def main() -> int:
                 time.sleep(args.pause)
 
         wall = time.time() - started
-        status = server.request(
-            "tools/call", {"name": "web_search_status", "arguments": {}}
-        )
+        status = server.request("tools/call", {"name": "web_search_status", "arguments": {}})
         final = status["result"]["structuredContent"]["providers"]
 
         print("\n" + "=" * 78)
@@ -432,8 +475,10 @@ def main() -> int:
         print(f"  wall time          {wall:.1f}s  ({wall / max(1, len(queries)):.2f}s/query)")
         if latencies:
             ordered = sorted(latencies)
-            print(f"  latency min/med/max {ordered[0]}ms / "
-                  f"{ordered[len(ordered) // 2]}ms / {ordered[-1]}ms")
+            print(
+                f"  latency min/med/max {ordered[0]}ms / "
+                f"{ordered[len(ordered) // 2]}ms / {ordered[-1]}ms"
+            )
 
         print("\n  provider participation (queries each contributed to):")
         for name in sorted(providers):
@@ -443,17 +488,20 @@ def main() -> int:
         if not failures_by_provider:
             print("    none")
         for name, count in failures_by_provider.most_common():
-            print(f"    {name:16} {count:>3}  (categories: "
-                  f"{', '.join(sorted({c for c, _ in failures_by_category.items()}))})")
+            print(
+                f"    {name:16} {count:>3}  (categories: "
+                f"{', '.join(sorted(categories_by_provider[name]))})"
+            )
         if failures_by_category:
-            print("    by category: " + ", ".join(
-                f"{c}={n}" for c, n in failures_by_category.most_common()
-            ))
+            print(
+                "    by category: "
+                + ", ".join(f"{c}={n}" for c, n in failures_by_category.most_common())
+            )
 
         print("\n  provider health at end:")
         for provider in final:
             name = provider["provider"]
-            if provider["requests"] or provider["status"] not in ("not_configured",):
+            if provider["requests"] or provider["status"] != "not_configured":
                 print(
                     f"    {name:16} {provider['status']:14} "
                     f"req={provider['requests']:>3} ok={provider['successes']:>3} "
@@ -463,17 +511,18 @@ def main() -> int:
 
         stderr = server.close()
         leaked = find_credential_leaks(stderr, load_secret_values())
-        print(f"\n  credential leak in stderr: {leaked if leaked else 'none'}")
+        print(f"\n  credential leak in stderr: {leaked or 'none'}")
 
         if leaked:
             # A credential in a diagnostic is a defect, not an observation to interpret.
             print(f"\nSOAK FAILED: credential material appeared in stderr: {leaked}")
             return 1
 
-        # A soak that produced errors everywhere, or where the primary provider never
-        # contributed, is a failure of the run rather than a result to interpret.
-        if errors == len(queries) and queries:
-            print("\nSOAK FAILED: every query errored")
+        # A soak that produced errors everywhere, or where a requested provider never
+        # contributed, is a failure of the run rather than a result to interpret (ledger B44).
+        verdict = run_verdict(len(queries), errors, providers, usage_by_provider)
+        if verdict:
+            print(f"\nSOAK FAILED: {verdict}")
             return 1
         print("\nSOAK COMPLETE")
         return 0

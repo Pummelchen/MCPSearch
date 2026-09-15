@@ -58,14 +58,18 @@ final class RankFusionTests: XCTestCase {
         // "solo" is Tavily's top hit but nobody else confirms it.
         let fused = RankFusion.fuse(
             responses: [
-                response(.tavily, [
-                    ("Solo", "https://solo.example.com/only"),
-                    ("Corroborated", "https://both.example.com/page"),
-                ]),
-                response(.brave, [
-                    ("Corroborated", "https://both.example.com/page"),
-                    ("Other", "https://other.example.com/x"),
-                ]),
+                response(
+                    .tavily,
+                    [
+                        ("Solo", "https://solo.example.com/only"),
+                        ("Corroborated", "https://both.example.com/page"),
+                    ]),
+                response(
+                    .brave,
+                    [
+                        ("Corroborated", "https://both.example.com/page"),
+                        ("Other", "https://other.example.com/x"),
+                    ]),
             ],
             limit: 10
         )
@@ -76,11 +80,13 @@ final class RankFusionTests: XCTestCase {
         let fused = RankFusion.fuse(
             responses: [
                 response(.brave, [("Page", "https://example.com/p")]),
-                response(.tavily, [
-                    ("Filler", "https://example.com/filler"),
-                    ("Filler2", "https://example.com/filler2"),
-                    ("Page", "https://example.com/p"),
-                ]),
+                response(
+                    .tavily,
+                    [
+                        ("Filler", "https://example.com/filler"),
+                        ("Filler2", "https://example.com/filler2"),
+                        ("Page", "https://example.com/p"),
+                    ]),
             ],
             limit: 10
         )
@@ -92,10 +98,12 @@ final class RankFusionTests: XCTestCase {
     }
 
     func testSameProviderListingDuplicateURLOnlyVotesOnce() {
-        let duplicate = response(.tavily, [
-            ("Page", "https://example.com/p"),
-            ("Page again", "https://example.com/p?utm_source=x"),
-        ])
+        let duplicate = response(
+            .tavily,
+            [
+                ("Page", "https://example.com/p"),
+                ("Page again", "https://example.com/p?utm_source=x"),
+            ])
         // The normalizer already drops the intra-provider duplicate.
         XCTAssertEqual(duplicate.results.count, 1)
 
@@ -382,6 +390,182 @@ final class RankFusionTests: XCTestCase {
         )
     }
 
+    /// The response-level engine list is a fallback, not an override.
+    ///
+    /// A response can name an owned index at the response level while its individual results
+    /// carry their own attribution, and only one of them resold that index. ORing the two levels
+    /// discounted every sibling of the one resold page, so two results with different provenance
+    /// got the same weight. The per-result attribution must win (ledger B109).
+    func testAggregatorDiscountIsPerResultEvenWhenTheResponseNamesAnOwnedIndex() {
+        func aggregatorResult(url: String, rank: Int, engines: [String]?) -> SearchResult {
+            SearchResult(
+                title: "T",
+                url: URL(string: url)!,
+                provider: .searxng,
+                providerRank: rank,
+                upstreamEngines: engines
+            )
+        }
+
+        let brave = ProviderSearchResponse(
+            provider: .brave,
+            results: [
+                SearchResult(
+                    title: "Resold",
+                    url: URL(string: "https://resold.example.com/")!,
+                    provider: .brave,
+                    providerRank: 1
+                )
+            ]
+        )
+        // The response-level list names Brave, so the whole-response answer is "yes"; the
+        // per-result attribution says the second page came from an engine nobody owns.
+        let aggregator = ProviderSearchResponse(
+            provider: .searxng,
+            results: [
+                aggregatorResult(url: "https://resold.example.com/", rank: 1, engines: ["brave"]),
+                aggregatorResult(
+                    url: "https://fresh.example.com/",
+                    rank: 2,
+                    engines: ["wikipedia"]
+                ),
+            ],
+            upstreamEngines: ["brave"]
+        )
+
+        let fused = RankFusion.fuse(
+            responses: [brave, aggregator],
+            limit: 10,
+            configuration: RankFusion.Configuration(maxResultsPerDomain: 0)
+        )
+        let scores = Dictionary(
+            uniqueKeysWithValues: fused.diagnostics.map {
+                ($0.canonicalURL.absoluteString, $0.score)
+            }
+        )
+
+        // Brave's own vote plus SearXNG's discounted one.
+        XCTAssertEqual(
+            scores["https://resold.example.com/"] ?? 0,
+            (1.0 / 61.0) + (0.7 / 61.0),
+            accuracy: 0.0001,
+            "the page whose own engines name an owned index must be discounted"
+        )
+        // The sibling keeps the full aggregator vote: nothing in *its* attribution is owned.
+        XCTAssertEqual(
+            scores["https://fresh.example.com/"] ?? 0,
+            1.0 / 62.0,
+            accuracy: 0.0001,
+            "a result whose own engines name nobody else's index must keep the full vote"
+        )
+    }
+
+    /// The response-level list still decides when results carry no attribution at all.
+    ///
+    /// Adapters that report engines only for the whole response have no finer signal to offer,
+    /// so the fallback must remain; otherwise their aggregator vote would never be discounted
+    /// (ledger B109).
+    func testAggregatorDiscountFallsBackToResponseLevelWithoutPerResultEngines() {
+        let brave = ProviderSearchResponse(
+            provider: .brave,
+            results: [
+                SearchResult(
+                    title: "Resold",
+                    url: URL(string: "https://resold.example.com/")!,
+                    provider: .brave,
+                    providerRank: 1
+                )
+            ]
+        )
+        let aggregator = ProviderSearchResponse(
+            provider: .searxng,
+            results: [
+                SearchResult(
+                    title: "Resold",
+                    url: URL(string: "https://resold.example.com/")!,
+                    provider: .searxng,
+                    providerRank: 1
+                ),
+                SearchResult(
+                    title: "Fresh",
+                    url: URL(string: "https://fresh.example.com/")!,
+                    provider: .searxng,
+                    providerRank: 2
+                ),
+            ],
+            upstreamEngines: ["brave"]
+        )
+
+        let fused = RankFusion.fuse(
+            responses: [brave, aggregator],
+            limit: 10,
+            configuration: RankFusion.Configuration(maxResultsPerDomain: 0)
+        )
+        let scores = Dictionary(
+            uniqueKeysWithValues: fused.diagnostics.map {
+                ($0.canonicalURL.absoluteString, $0.score)
+            }
+        )
+
+        XCTAssertEqual(
+            scores["https://resold.example.com/"] ?? 0,
+            (1.0 / 61.0) + (0.7 / 61.0),
+            accuracy: 0.0001,
+            "without per-result engines the response-level list discounts the resold page"
+        )
+        XCTAssertEqual(
+            scores["https://fresh.example.com/"] ?? 0,
+            0.7 / 62.0,
+            accuracy: 0.0001,
+            "without per-result engines the response-level list applies to every result"
+        )
+    }
+
+    /// Reselling a family that is not an independent index is not duplicating an owned index.
+    ///
+    /// Startpage and DuckDuckGo are themselves resellers, so a SearXNG response that only used
+    /// Google has not duplicated an index the way a second Brave would. The per-result path has
+    /// always required `isIndependentIndex`; the response-level fallback must agree, or the
+    /// answer depends on which level the adapter happened to report engines at (ledger B109).
+    func testResponseLevelDiscountIgnoresNonIndependentFamilies() {
+        let startpage = ProviderSearchResponse(
+            provider: .startpage,
+            results: [
+                SearchResult(
+                    title: "Google page",
+                    url: URL(string: "https://g.example.com/")!,
+                    provider: .startpage,
+                    providerRank: 1
+                )
+            ]
+        )
+        let aggregator = ProviderSearchResponse(
+            provider: .searxng,
+            results: [
+                SearchResult(
+                    title: "Fresh",
+                    url: URL(string: "https://fresh.example.com/")!,
+                    provider: .searxng,
+                    providerRank: 1
+                )
+            ],
+            upstreamEngines: ["google"]
+        )
+
+        let fused = RankFusion.fuse(
+            responses: [startpage, aggregator],
+            limit: 10,
+            configuration: RankFusion.Configuration(maxResultsPerDomain: 0)
+        )
+        XCTAssertEqual(
+            fused.diagnostics.first { $0.canonicalURL.absoluteString == "https://fresh.example.com/" }?
+                .score ?? 0,
+            1.0 / 61.0,
+            accuracy: 0.0001,
+            "reselling a non-independent family must not discount the aggregator"
+        )
+    }
+
     /// Duplication is detected from the upstream engines an aggregator reports.
     func testUpstreamEngineMappingDetectsDuplication() {
         XCTAssertEqual(RankFusion.family(forUpstreamEngine: "brave"), .brave)
@@ -410,6 +594,20 @@ final class RankFusionTests: XCTestCase {
         let solo = response(.searxng, [("S", "https://s.example.com/1")], upstream: ["wikipedia"])
         XCTAssertFalse(
             RankFusion.resellsIndexAlreadyOwned(response: solo, ownedFamilies: owned)
+        )
+
+        // A response-level hit on a family that is not an independent index is not a
+        // duplicated owned index, matching the per-result test (ledger B109).
+        let nonIndependent = response(
+            .searxng,
+            [("S", "https://s.example.com/1")],
+            upstream: ["google"]
+        )
+        XCTAssertFalse(
+            RankFusion.resellsIndexAlreadyOwned(
+                response: nonIndependent,
+                ownedFamilies: [.google]
+            )
         )
 
         // A non-aggregator is never treated as duplicating.
@@ -842,6 +1040,51 @@ final class SearchCacheTests: XCTestCase {
         XCTAssertEqual(stats.misses, 1)
     }
 
+    /// The lazy sweep must not turn "expired" into "still counted".
+    ///
+    /// `stats().entries` counted only live entries before the sweep became lazy, and it still
+    /// does: an entry whose deadline has passed makes the sweep due, so the count is taken after
+    /// it is removed (ledger B89).
+    func testStatsCountOnlyLiveEntries() async {
+        let clock = TestClock()
+        let cache = SearchCache(clock: clock)
+        let shortKey = SearchCache.Key(request: Fixtures.request("short"), providers: [.tavily])
+        let longKey = SearchCache.Key(request: Fixtures.request("long"), providers: [.tavily])
+        await cache.store(makeResponse("short"), for: shortKey, ttl: .seconds(10))
+        await cache.store(makeResponse("long"), for: longKey, ttl: .seconds(600))
+
+        clock.advance(by: .seconds(20))
+
+        let stats = await cache.stats()
+        XCTAssertEqual(stats.entries, 1, "the expired entry must not be counted")
+        let expired = await cache.get(shortKey)
+        let live = await cache.get(longKey)
+        XCTAssertNil(expired, "an expired entry must never be served")
+        XCTAssertNotNil(live, "the live entry must survive the sweep")
+    }
+
+    /// Expired entries may linger until the next sweep, but they must not hold capacity hostage:
+    /// a live store still evicts to the bound, and it must not evict a live entry to make room
+    /// for itself while expired ones are still there.
+    func testExpiredEntriesDoNotConsumeCapacity() async {
+        let clock = TestClock()
+        let cache = SearchCache(capacity: 8, clock: clock)
+        for index in 0..<8 {
+            let key = SearchCache.Key(request: Fixtures.request("old \(index)"), providers: [.tavily])
+            await cache.store(makeResponse("old \(index)"), for: key, ttl: .seconds(10))
+        }
+
+        clock.advance(by: .seconds(11))
+
+        let liveKey = SearchCache.Key(request: Fixtures.request("live"), providers: [.tavily])
+        await cache.store(makeResponse("live"), for: liveKey, ttl: .seconds(600))
+
+        let stats = await cache.stats()
+        XCTAssertEqual(stats.entries, 1, "the eight expired entries must not count against capacity")
+        let live = await cache.get(liveKey)
+        XCTAssertNotNil(live)
+    }
+
     func testCapacityEvictionKeepsCacheBounded() async {
         let cache = SearchCache(capacity: 8, clock: TestClock())
         for index in 0..<20 {
@@ -859,7 +1102,7 @@ final class SearchCacheTests: XCTestCase {
 /// Provider health: the breaker, the limiter and the counters that both the orchestrator
 /// and `web_search_status` depend on.
 ///
-/// Three invariants live here that used to hold only by luck of scheduling.
+/// Four invariants live here that used to hold only by luck of scheduling.
 final class ProviderHealthTests: XCTestCase {
 
     /// A pipeline must enforce its limits the instant it is returned.
@@ -884,7 +1127,9 @@ final class ProviderHealthTests: XCTestCase {
         // And the allowance is enforced from the very first request.
         var denials = 0
         for _ in 0..<(RateLimiter.Policy.apiDefault.burst + 1) {
-            if await pipeline.health.authorize(.tavily) != nil { denials += 1 }
+            // `await` is not allowed in a `where` clause, so count without an `if`.
+            let refusal = await pipeline.health.authorize(.tavily)
+            denials += refusal == nil ? 0 : 1
         }
         XCTAssertEqual(denials, 1, "only the request past the burst allowance may be refused")
     }
@@ -927,5 +1172,43 @@ final class ProviderHealthTests: XCTestCase {
         XCTAssertEqual(state.circuit.consecutiveFailures, 0)
         XCTAssertEqual(state.failures, 5, "the deadline is still reported to the operator")
         XCTAssertEqual(state.lastErrorCategory, .timeout)
+    }
+
+    /// A half-open breaker admits exactly one caller through `ProviderHealth`.
+    ///
+    /// `authorize` used to discard the breaker's refusal in the half-open state, so every
+    /// caller arriving while the probe was in flight was let through: a provider recovering
+    /// from failures took the whole fan-out instead of a single request. The refusal has to
+    /// reach the orchestrator as the retryable `circuitOpen` failure the breaker intended.
+    func testHalfOpenBreakerAdmitsExactlyOneCallerThroughProviderHealth() async {
+        let clock = TestClock()
+        let health = ProviderHealth(clock: clock)
+        await health.register(
+            .tavily,
+            breakerPolicy: .init(failureThreshold: 1, cooldown: .seconds(30)),
+            ratePolicy: .init(burst: 10, requestsPerMinute: 600)
+        )
+
+        await health.recordFailure(
+            .tavily,
+            failure: ProviderFailure(provider: .tavily, category: .network, message: "boom")
+        )
+        clock.advance(by: .seconds(31))
+
+        let probe = await health.authorize(.tavily)
+        XCTAssertNil(probe, "the first caller after the cooldown becomes the probe")
+
+        let duringProbe = await health.authorize(.tavily)
+        XCTAssertEqual(
+            duringProbe?.category,
+            .circuitOpen,
+            "a second caller must not join the probe while it is in flight"
+        )
+
+        // The refusal must not wedge the provider: once the probe succeeds the breaker closes
+        // and callers are admitted again.
+        await health.recordSuccess(.tavily, latencyMilliseconds: 5, resultCount: 1)
+        let afterRecovery = await health.authorize(.tavily)
+        XCTAssertNil(afterRecovery, "a closed breaker admits callers again")
     }
 }

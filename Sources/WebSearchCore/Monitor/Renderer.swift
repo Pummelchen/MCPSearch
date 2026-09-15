@@ -4,6 +4,11 @@ import Foundation
 ///
 /// Rendering is pure: it takes a model and returns the lines to display. That keeps the
 /// layout testable and means the refresh loop has no drawing logic of its own.
+///
+/// Everything a probe or an error body contributed — node names, engine names, error strings,
+/// warnings — is passed through `Terminal.sanitize` before it is styled or padded. Styling is
+/// applied afterwards, so the dashboard's own escape sequences survive. This is the single
+/// boundary that turns untrusted text into terminal output (ledger B25).
 public struct Renderer: Sendable {
     public var useColour: Bool
     public var showEngines: Bool
@@ -22,7 +27,6 @@ public struct Renderer: Sendable {
         case .degraded: Terminal.colour("◐", .brightYellow, enabled: useColour)
         case .down: Terminal.colour("○", .brightRed, enabled: useColour)
         case .checking: Terminal.colour("·", .grey, enabled: useColour)
-        case .skipped: Terminal.colour("–", .grey, enabled: useColour)
         }
     }
 
@@ -31,9 +35,8 @@ public struct Renderer: Sendable {
         case .healthy: Terminal.colour("●", .brightGreen, enabled: useColour)
         case .configuredButIdle: Terminal.colour("○", .cyan, enabled: useColour)
         case .failing: Terminal.colour("✖", .brightRed, enabled: useColour)
-        case .unavailable: Terminal.colour("◐", .brightYellow, enabled: useColour)
         case .notConfigured: Terminal.colour("–", .grey, enabled: useColour)
-        case .probing: Terminal.colour("·", .grey, enabled: useColour)
+        case .unavailable: Terminal.colour("◐", .brightYellow, enabled: useColour)
         }
     }
 
@@ -42,19 +45,22 @@ public struct Renderer: Sendable {
         switch state {
         case .healthy: return Terminal.colour(label, .brightGreen, enabled: useColour)
         case .failing: return Terminal.colour(label, .brightRed, enabled: useColour)
-        case .unavailable: return Terminal.colour(label, .brightYellow, enabled: useColour)
         case .notConfigured: return Terminal.colour(label, .grey, enabled: useColour)
+        case .unavailable: return Terminal.colour(label, .brightYellow, enabled: useColour)
         default: return Terminal.colour(label, .cyan, enabled: useColour)
         }
     }
 
     private func stateText(_ state: NodeStatus.State) -> String {
-        let label = Terminal.pad(state.label, to: 8)
+        // 10, to match the node table's header and the `used` estimate in `nodeSection`: at 8 the
+        // header's latency/results/ok columns started two characters right of the data's, on every
+        // frame (ledger B67).
+        let label = Terminal.pad(state.label, to: 10)
         switch state {
         case .up: return Terminal.colour(label, .brightGreen, enabled: useColour)
         case .degraded: return Terminal.colour(label, .brightYellow, enabled: useColour)
         case .down: return Terminal.colour(label, .brightRed, enabled: useColour)
-        case .checking, .skipped: return Terminal.colour(label, .grey, enabled: useColour)
+        case .checking: return Terminal.colour(label, .grey, enabled: useColour)
         }
     }
 
@@ -153,7 +159,8 @@ public struct Renderer: Sendable {
         let left = "  \(title)  \(subtitle)"
 
         let uptime = Self.duration(model.uptime)
-        let right = "\(Terminal.colour("up", .grey, enabled: useColour)) \(uptime)  "
+        let right =
+            "\(Terminal.colour("up", .grey, enabled: useColour)) \(uptime)  "
             + "\(Terminal.colour("cycle", .grey, enabled: useColour)) \(Self.milliseconds(model.cycleDuration))  "
             + "\(Terminal.colour("refreshed", .grey, enabled: useColour)) \(Self.clock(model.refreshedAt))  "
 
@@ -172,18 +179,25 @@ public struct Renderer: Sendable {
         let ok = model.providers.filter { $0.state == .healthy }.count
         let bad = model.providers.filter { $0.state == .failing }.count
         let off = model.providers.filter { $0.state == .notConfigured }.count
-        let summary = [
+        let disabled = model.providers.filter { $0.state == .unavailable }.count
+        var summaryParts = [
             "\(ok) ok",
             bad > 0 ? Terminal.colour("\(bad) failing", .brightRed, enabled: useColour) : "0 failing",
             "\(off) without credentials",
-        ].joined(separator: Terminal.colour(" · ", .grey, enabled: useColour))
+        ]
+        // Named only when there is one: a deliberately disabled provider is not a problem
+        // to report on every frame, but its absence from the summary would make the
+        // OFF rows look like a miscount (ledger B76).
+        if disabled > 0 { summaryParts.append("\(disabled) disabled") }
+        let summary = summaryParts.joined(separator: Terminal.colour(" · ", .grey, enabled: useColour))
 
         lines.append("  " + Terminal.bold("PROVIDERS", enabled: useColour) + "   " + summary)
         lines.append(
             Terminal.colour(
-                "  " + headerRow(
-                    "  provider", "kind", "state", "last", "avg", "n", "ok%", "note"
-                ),
+                "  "
+                    + headerRow(
+                        "  provider", "kind", "state", "last", "avg", "n", "ok%", "note"
+                    ),
                 .grey,
                 enabled: useColour
             )
@@ -238,9 +252,18 @@ public struct Renderer: Sendable {
         // otherwise the reason a provider is inactive.
         let note: String
         if let error = status.lastError {
-            note = Terminal.colour(error, .brightRed, enabled: useColour)
+            note = Terminal.colour(Terminal.sanitize(error), .brightRed, enabled: useColour)
         } else if status.state == .notConfigured {
             note = Terminal.colour("set \(status.setupHint)", .grey, enabled: useColour)
+        } else if status.state == .unavailable {
+            // The variable is not the fix here: the operator deliberately switched the
+            // provider off, and the dashboard must not invite a probe it will refuse
+            // (ledger B76).
+            note = Terminal.colour(
+                "disabled via SEARCH_DISABLED_PROVIDERS",
+                .grey,
+                enabled: useColour
+            )
         } else if status.state == .configuredButIdle {
             note = Terminal.colour("ready — press p to probe", .cyan, enabled: useColour)
         } else if status.state == .healthy, let at = status.lastSuccessAt {
@@ -270,7 +293,10 @@ public struct Renderer: Sendable {
         lines.append("  " + Terminal.bold("SEARXNG NODES", enabled: useColour) + "   " + summary)
         lines.append(
             Terminal.colour(
-                "  " + Self.leadingColumn("  node", width: 16) + Terminal.pad("state", to: 10)
+                // No extra indent here: the data rows carry their two spaces inside the name
+                // column, and adding them again put the whole header two columns right of the
+                // values it labels (ledger B67).
+                Self.leadingColumn("  node", width: 16) + Terminal.pad("state", to: 10)
                     + Terminal.pad("latency", to: 9, alignment: .right)
                     + Terminal.pad("results", to: 9, alignment: .right)
                     + Terminal.pad("ok", to: 5, alignment: .right)
@@ -282,7 +308,7 @@ public struct Renderer: Sendable {
 
         for node in model.nodes {
             let name = Self.leadingColumn(
-                "  " + glyph(node.state) + " " + node.name,
+                "  " + glyph(node.state) + " " + Terminal.sanitize(node.name),
                 width: 16
             )
             let state = stateText(node.state)
@@ -304,12 +330,12 @@ public struct Renderer: Sendable {
 
             var detail = ""
             if let error = node.error {
-                detail = Terminal.colour(error, .brightRed, enabled: useColour)
+                detail = Terminal.colour(Terminal.sanitize(error), .brightRed, enabled: useColour)
             } else if showEngines {
-                let healthy = node.engines.joined(separator: ", ")
+                let healthy = Terminal.sanitize(node.engines.joined(separator: ", "))
                 detail = Terminal.colour(healthy, .grey, enabled: useColour)
                 if !node.unavailableEngines.isEmpty {
-                    let missing = node.unavailableEngines.joined(separator: ", ")
+                    let missing = Terminal.sanitize(node.unavailableEngines.joined(separator: ", "))
                     detail += "  " + Terminal.colour("unavailable: \(missing)", .brightYellow, enabled: useColour)
                 }
             }
@@ -330,7 +356,9 @@ public struct Renderer: Sendable {
         var lines = [rule]
 
         for warning in model.warnings.prefix(2) {
-            lines.append("  " + Terminal.colour("⚠ " + warning, .brightYellow, enabled: useColour))
+            lines.append(
+                "  " + Terminal.colour("⚠ " + Terminal.sanitize(warning), .brightYellow, enabled: useColour)
+            )
         }
 
         let keys = [

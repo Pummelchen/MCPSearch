@@ -9,12 +9,31 @@ import XCTest
 /// real socket instead of a mock that would simply encode the same assumptions the
 /// client already makes.
 final class LoopbackServer: @unchecked Sendable {
-    struct Response {
+    struct Response: Sendable {
         var status: Int = 200
         var headers: [String: String] = ["Content-Type": "application/json"]
         var body: String = "{}"
         /// Delay before responding, for timeout tests.
         var delayMilliseconds: Int = 0
+        /// Send the body in pieces and then hold the connection open without finishing it.
+        ///
+        /// `Content-Length` still declares the whole `body`, so a client that waits for the
+        /// complete body waits until it gives up — which is what a hostile, endless page looks
+        /// like. Used to prove a byte cap is enforced *during* the transfer (ledger B07).
+        var drip: Drip?
+
+        struct Drip: Sendable {
+            var chunkBytes: Int
+            var pauseMilliseconds: Int
+            /// How long to hold the unfinished connection open, in seconds.
+            var holdOpenSeconds: Int
+            /// `Content-Length` to declare, when it should be larger than `body`.
+            ///
+            /// Declaring more than is ever sent is what makes the body *incomplete*: a reader
+            /// that insists on the declared length ends in a transport error, while a reader
+            /// that stops at its byte cap reports the cap. That difference is the test.
+            var declaredBytes: Int?
+        }
     }
 
     private let socketFD: Int32
@@ -140,7 +159,8 @@ final class LoopbackServer: @unchecked Sendable {
             }
 
             var headers = "HTTP/1.1 \(response.status) \(LoopbackServer.reason(response.status))\r\n"
-            headers += "Content-Length: \(response.body.utf8.count)\r\n"
+            let declaredBytes = response.drip?.declaredBytes ?? response.body.utf8.count
+            headers += "Content-Length: \(declaredBytes)\r\n"
             headers += "Connection: close\r\n"
             for (name, value) in response.headers {
                 headers += "\(name): \(value)\r\n"
@@ -148,6 +168,31 @@ final class LoopbackServer: @unchecked Sendable {
             headers += "\r\n"
 
             let payload = Array((headers + response.body).utf8)
+            if let drip = response.drip {
+                let headerBytes = Array(headers.utf8)
+                var offset = 0
+                // Headers first, so the client sees Content-Length and starts reading a body.
+                _ = headerBytes.withUnsafeBufferPointer { send(client, $0.baseAddress, $0.count, 0) }
+                while offset < payload.count {
+                    let end = min(offset + drip.chunkBytes, payload.count)
+                    let chunk = Array(payload[offset..<end])
+                    let sent = chunk.withUnsafeBufferPointer {
+                        send(client, $0.baseAddress, $0.count, 0)
+                    }
+                    if sent <= 0 { break }
+                    offset = end
+                    if drip.pauseMilliseconds > 0 {
+                        Thread.sleep(forTimeInterval: Double(drip.pauseMilliseconds) / 1000)
+                    }
+                }
+                // Hold the connection open unfinished, so a client that insists on the declared
+                // Content-Length cannot make progress. Reading returns once the peer gives up.
+                let deadline = Date().addingTimeInterval(Double(drip.holdOpenSeconds))
+                var scratch = [UInt8](repeating: 0, count: 1024)
+                while Date() < deadline, recv(client, &scratch, scratch.count, 0) > 0 {}
+                close(client)
+                continue
+            }
             _ = payload.withUnsafeBufferPointer { send(client, $0.baseAddress, $0.count, 0) }
             close(client)
         }
@@ -184,6 +229,31 @@ final class HTTPClientTests: XCTestCase {
         configured.maxRetryAttempts = maxRetries
         configured.requestTimeout = .seconds(5)
         return URLSessionHTTPClient(configuration: configured, log: .disabled)
+    }
+
+    /// The session's resource timeout is a *total* cap, so it has to clear the largest
+    /// per-request budget the client can be asked to honour. It used to be
+    /// `max(2 × requestTimeout, 30)`, which silently cut the 45 s synthesis budget off at 30 s
+    /// and made `SEARCH_SYNTHESIS_TIMEOUT_MS` above 30 000 inert (ledger B13).
+    func testTheResourceTimeoutClearsEveryPerRequestBudget() {
+        let shipped = AppConfiguration()
+        XCTAssertGreaterThan(
+            URLSessionHTTPClient.resourceTimeout(for: shipped),
+            shipped.synthesisTimeout.seconds,
+            "the default resource timeout must not cap the synthesis budget"
+        )
+
+        // A deployment that raises either budget gets a resource timeout that clears it.
+        var raised = AppConfiguration()
+        raised.synthesisTimeout = .seconds(120)
+        XCTAssertGreaterThan(URLSessionHTTPClient.resourceTimeout(for: raised), 120)
+
+        var slowRequests = AppConfiguration()
+        slowRequests.requestTimeout = .seconds(300)
+        XCTAssertGreaterThan(URLSessionHTTPClient.resourceTimeout(for: slowRequests), 300)
+
+        // And the ordinary case stays bounded rather than becoming unbounded.
+        XCTAssertLessThan(URLSessionHTTPClient.resourceTimeout(for: shipped), 600)
     }
 
     func testSucceedsOnFirstAttemptWithoutRetrying() async throws {
@@ -263,6 +333,56 @@ final class HTTPClientTests: XCTestCase {
         )
     }
 
+    /// A hostile `Retry-After` must not stall a search.
+    ///
+    /// `HTTPPolicy.maxRetryAfter` (5 s as shipped) is the cap on the delay the client is willing
+    /// to honour, so a 429 carrying `Retry-After: 3600` cannot park a tool call for an hour. No
+    /// test covered it: the only header test sends "1", where `min(1 s, 5 s) == 1 s` and the cap
+    /// never applies (ledger B29). The send is raced against a bound just above the cap because
+    /// an unclamped delay would otherwise hold this test — and CI — for the hour the header asks
+    /// for.
+    func testAHostileRetryAfterIsClampedToThePolicyMaximum() async throws {
+        let server = try LoopbackServer(responses: [
+            .init(
+                status: 429,
+                headers: ["Content-Type": "application/json", "Retry-After": "3600"],
+                body: "slow down"
+            ),
+            .init(status: 200, body: #"{"ok":true}"#),
+        ])
+        let client = makeClient(configuration: Fixtures.configuration(), maxRetries: 1)
+        let cap = HTTPPolicy.standard(Fixtures.configuration()).maxRetryAfter.seconds
+
+        let started = DispatchTime.now().uptimeNanoseconds
+        var answered: HTTPResponse?
+        try await withThrowingTaskGroup(of: HTTPResponse?.self) { group in
+            group.addTask { try await client.send(.get(server.baseURL, label: "test")) }
+            group.addTask {
+                try await Task.sleep(for: .seconds(cap + 3))
+                return nil
+            }
+            defer { group.cancelAll() }
+            for try await first in group {
+                answered = first
+                break
+            }
+        }
+        let elapsed = Double(DispatchTime.now().uptimeNanoseconds - started) / 1_000_000_000
+
+        XCTAssertNotNil(
+            answered,
+            "the 3600 s Retry-After was not clamped: the send outlived the cap by more than 3 s"
+        )
+        XCTAssertEqual(answered?.statusCode, 200)
+        XCTAssertEqual(server.requestCount, 2, "one retry, then the answer")
+        XCTAssertGreaterThanOrEqual(
+            elapsed,
+            cap * 0.9,
+            "ignoring Retry-After entirely is not a clamp: the cap itself must still be waited out"
+        )
+        XCTAssertLessThan(elapsed, cap + 3)
+    }
+
     func testEnforcesResponseSizeLimit() async throws {
         let bigBody = String(repeating: "x", count: 10_000)
         let server = try LoopbackServer(responses: [.init(status: 200, body: bigBody)])
@@ -310,11 +430,27 @@ final class HTTPClientTests: XCTestCase {
         case .success:
             XCTFail("expected cancellation")
         case .failure(let error):
-            XCTAssertTrue(
-                error is CancellationError || (error as? HTTPError) != nil,
-                "cancellation must surface as an error, got \(error)"
-            )
+            // Pinning the category, not the existence of an error: `(error as? HTTPError) != nil`
+            // is true for every failure this client can produce, so the old assertion could not
+            // fail and said nothing about cancellation (ledger B24).
+            //
+            // Two shapes are legitimate. The transport maps a cancelled URLSession task to
+            // `.cancelled`, and the retry loop's own `Task.checkCancellation()` throws a raw
+            // `CancellationError`. Everything else — a timeout, a connection failure, a
+            // response-too-large — is a misclassification that changes what the operator sees.
+            if !(error is CancellationError) {
+                XCTAssertEqual(
+                    error as? HTTPError,
+                    .cancelled(label: "test"),
+                    "cancellation must surface as .cancelled for its own request label, got \(error)"
+                )
+            }
         }
+        XCTAssertEqual(
+            server.requestCount,
+            1,
+            "a cancelled request must not be retried: the retry would ignore the caller entirely"
+        )
     }
 
     func testHeaderLookupIsCaseInsensitive() {

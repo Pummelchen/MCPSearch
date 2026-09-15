@@ -1,0 +1,59 @@
+# B14 — web_open had no total deadline
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+Every timeout in the fetch path is an *inactivity* timeout: URLSession's
+`timeoutIntervalForRequest`, the shared client's per-request timeout, the reader's `X-Timeout`. A
+server that dribbles bytes is never inactive, so `web_open` could be held open for as long as
+the origin cared to keep sending — with the MCP client waiting on the tool call.
+
+## Fails-before evidence
+
+A loopback server that declares 40 MB, sends 64 KB and then holds the connection for five
+seconds, fetched with a 400 ms deadline:
+
+```
+$ swift test --filter FetchFallbackTests/testAFetchThatNeverFinishesHitsTheTotalDeadline
+  # without the deadline:
+  XCTAssertTrue failed - request timed out                      # the transport's error, not ours
+  XCTAssertLessThan failed: ("10016") is not less than ("3000") # ten seconds, not four hundred ms
+  Test Case ... failed (10.135 seconds)
+```
+
+Ten seconds is the *inactivity* timeout firing eventually; a slower drip never reaches it, and
+that is the case the finding describes.
+
+## The fix
+
+`WebFetcher.policy.totalTimeout` (30 s by default) is enforced by racing the fetch against a
+sleep, whichever finishes first winning and the loser being cancelled:
+
+```swift
+try await withThrowingTaskGroup(of: FetchResult.self) { group in
+    group.addTask { try await self.performOpen(request) }
+    group.addTask {
+        try await Task.sleep(for: self.policy.totalTimeout)
+        throw SearchError.fetchFailed(request.url, reason: "the page did not finish within \(N)s")
+    }
+    defer { group.cancelAll() }
+    ...
+```
+
+The pipeline factory derives it as `max(requestTimeout × 3, 15 s)`, so a deployment that raises
+`SEARCH_REQUEST_TIMEOUT_MS` for slow origins gets a proportionally patient page fetch, and the
+shipped 10 s request timeout gives the documented 30 s.
+
+## Verification
+
+```
+$ swift test --filter FetchFallbackTests/testAFetchThatNeverFinishesHitsTheTotalDeadline
+Executed 1 test, with 0 failures (0 unexpected) in 0.413 seconds
+
+$ swift test
+Executed 417 tests, with 6 skipped and 0 failures (0 unexpected)
+
+$ swift build --build-tests -Xswiftc -warnings-as-errors   0 warnings, 0 errors
+$ swift-format --strict / swiftlint --strict              0 diagnostics / exit 0
+```

@@ -19,7 +19,13 @@ server:
   # to a private Docker network and used by one client.
   limiter: false
   public_instance: false
-  secret_key: "change-me-local-only-not-a-credential"
+  # `secret_key` is deliberately not set here. SearXNG reads it from the environment
+  # variable `SEARXNG_SECRET` (settings_defaults.py: `SettingsValue(str,
+  # environ_name='SEARXNG_SECRET')`), and an environment variable overrides whatever a
+  # settings file says. Tracking a placeholder here instead means the literal in git is what
+  # signs sessions, and that the image's own "generate a random key when no settings file
+  # exists" path never runs. With neither the variable nor the key set, SearXNG refuses to
+  # start and names the setting, which is the failure mode we want.
   image_proxy: false
 
 search:

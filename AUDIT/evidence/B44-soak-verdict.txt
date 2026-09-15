@@ -1,0 +1,64 @@
+# B44 — the soak's "provider never contributed" failure existed only in a comment
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+```python
+# A soak that produced errors everywhere, or where the primary provider never
+# contributed, is a failure of the run rather than a result to interpret.
+if errors == len(queries) and queries:
+    print("\nSOAK FAILED: every query errored")
+    return 1
+print("\nSOAK COMPLETE")
+return 0
+```
+
+The comment promised two failures; the code implemented one. A requested provider that contributed
+to **no** query at all still let the run report `SOAK COMPLETE`, so a run whose header named a
+provider the body never exercised looked successful.
+
+## Fails-before evidence
+
+The decision is now a pure function (`run_verdict`) and a pure predicate (`silent_providers`), so
+the new CI step can drive every case. Dropping the silent branch from `run_verdict` fails it:
+
+```
+$ bash <the step extracted from ci.yml>
+AssertionError: None            # run_verdict said the run was fine although `brave` never contributed
+```
+
+## The fix
+
+```python
+def silent_providers(providers, usage):
+    return sorted(name for name in providers if usage.get(name, 0) == 0)
+
+def run_verdict(queries, errors, providers, usage) -> str | None:
+    if queries and errors == queries:
+        return "every query errored"
+    silent = silent_providers(providers, usage)
+    if silent:
+        return "requested provider(s) contributed to no query: " + ", ".join(silent)
+    return None
+```
+
+`main` prints `SOAK FAILED: <verdict>` and returns 1 when it is not None — the same shape the leak
+and all-errors checks already used. The threshold is zero contributions for a *requested* provider,
+which is the case the comment named; the summary already prints each provider's participation so the
+number is visible before the verdict.
+
+## Verification
+
+```
+$ bash <soak run semantics step>          # replays green with the branch present
+soak run semantics are enforced
+
+$ bash <step>                             # with the branch removed
+AssertionError: None
+
+$ ruff check scripts && ruff format --check scripts && pyright scripts
+All checks passed! / 5 files already formatted / 0 errors
+$ swift test
+Executed 477 tests, with 6 skipped and 0 failures (0 unexpected)
+```

@@ -1,0 +1,36 @@
+# B56 — `BlockKind.noResults` was never produced
+
+Host: this Mac (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+`ScraperSupport.BlockKind` documented three reasons a scraped page yields nothing, and the comment
+promised they "need different operator responses":
+
+```swift
+case botChallenge = "bot_challenge"     // produced at ScraperSupport.swift:143
+case noResults = "no_results"           // produced nowhere
+case unknownMarkup = "unknown_markup"   // produced at ScraperSupport.swift:198
+```
+
+`grep -rn "noResults" Sources/ Tests/` found the declaration and nothing else: no producer, no
+consumer, no test. An empty page has always been reported as `.unknownMarkup`
+(`detectedBlock: parsed.isEmpty ? .unknownMarkup : nil`), and the only consumer of the enum checks
+`== .botChallenge`, so the promised distinction was never acted on.
+
+## The decision
+
+Delete the case rather than grow behaviour around it. Producing `.noResults` would be cosmetic —
+nothing consumes the distinction, and the empty page already yields an empty successful response —
+while a behaviour change to make a scraper error on an empty page would be a regression, not a fix.
+The doc comment now describes the two states that exist and says that an empty page is
+`.unknownMarkup`.
+
+## Verification
+
+```
+$ grep -rn "noResults" Sources/ Tests/        # no matches
+$ swift build --scratch-path $SCRATCH -Xswiftc -warnings-as-errors      0 warnings, 0 errors
+$ swift test
+Executed 484 tests, with 6 skipped and 0 failures (0 unexpected)
+```

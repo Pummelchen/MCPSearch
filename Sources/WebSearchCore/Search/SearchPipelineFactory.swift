@@ -57,8 +57,6 @@ public enum SearchPipelineFactory {
                     log: log
                 )
             )
-        } else {
-            notes[.tavily] = "Set TAVILY_API_KEY to enable."
         }
 
         if let key = configuration.braveAPIKey, !key.isEmpty {
@@ -70,8 +68,6 @@ public enum SearchPipelineFactory {
                     log: log
                 )
             )
-        } else {
-            notes[.brave] = "Set BRAVE_SEARCH_API_KEY to enable."
         }
 
         if let key = configuration.mojeekAPIKey, !key.isEmpty {
@@ -83,8 +79,6 @@ public enum SearchPipelineFactory {
                     log: log
                 )
             )
-        } else {
-            notes[.mojeek] = "Set MOJEEK_API_KEY to enable."
         }
 
         if let key = configuration.exaAPIKey, !key.isEmpty {
@@ -96,8 +90,6 @@ public enum SearchPipelineFactory {
                     log: log
                 )
             )
-        } else {
-            notes[.exa] = "Set EXA_API_KEY to enable."
         }
 
         if let baseURL = configuration.searxngBaseURL {
@@ -110,8 +102,6 @@ public enum SearchPipelineFactory {
                 ),
                 rate: .selfHosted
             )
-        } else {
-            notes[.searxng] = "Set SEARXNG_BASE_URL to a self-hosted instance with JSON enabled."
         }
 
         if let endpoint = configuration.openWebSearchURL {
@@ -123,8 +113,6 @@ public enum SearchPipelineFactory {
                     log: log
                 )
             )
-        } else {
-            notes[.openWebSearch] = "Set OPEN_WEB_SEARCH_URL to an aggregation endpoint to enable."
         }
 
         // Scrapers are constructed regardless of the flag so that the status tool can
@@ -161,6 +149,15 @@ public enum SearchPipelineFactory {
             )
         }
 
+        // Why a provider is inert is derived from the one enablement authority rather than
+        // written per provider, so the status tool, the tool error text, the monitor and the
+        // startup inventory cannot disagree (ledger B57). Deriving it after registration also
+        // gives the scraper and Parallel entries a note, which they never had.
+        for id in configuration.providerOrder
+        where !ProviderEnablement.isSatisfied(id, in: configuration) {
+            notes[id] = ProviderEnablement.instruction(for: id, in: configuration)
+        }
+
         let health = ProviderHealth(
             clock: clock,
             registrations: registrations,
@@ -183,27 +180,7 @@ public enum SearchPipelineFactory {
             log: log
         )
 
-        // The fetch path is independent of the search providers; it only needs the
-        // SSRF policy and, optionally, the Jina Reader fallback.
-        let urlPolicy = URLPolicy(
-            allowPrivateNetwork: configuration.allowPrivateNetworkFetch
-        )
-        let direct = DirectHTTPFetcher(
-            configuration: configuration,
-            policy: urlPolicy,
-            log: log
-        )
-        let jina: JinaReaderFetcher? =
-            configuration.enableJinaReaderFallback
-            ? JinaReaderFetcher(
-                apiKey: configuration.jinaAPIKey,
-                http: http,
-                configuration: configuration,
-                log: log
-            )
-            : nil
-
-        let fetcher = WebFetcher(direct: direct, jina: jina, log: log)
+        let fetcher = makeFetcher(configuration: configuration, http: http, log: log)
 
         // Synthesis shares the fetched-results contract but not the provider path: it is
         // wired from configuration only, so adding a key can never change which
@@ -224,4 +201,45 @@ public enum SearchPipelineFactory {
             configuration: configuration
         )
     }
+    /// The page fetcher: direct first, the reader as the sanctioned fallback.
+    ///
+    /// Separate from `make` so the composition root stays readable, and because the fetch path
+    /// is independent of the search providers — it needs only the SSRF policy, the optional
+    /// reader, and a deadline.
+    private static func makeFetcher(
+        configuration: AppConfiguration,
+        http: HTTPClient,
+        log: Log
+    ) -> WebFetcher {
+        let urlPolicy = URLPolicy(
+            allowPrivateNetwork: configuration.allowPrivateNetworkFetch
+        )
+        let direct = DirectHTTPFetcher(
+            configuration: configuration,
+            policy: urlPolicy,
+            log: log
+        )
+        let jina: JinaReaderFetcher? =
+            configuration.enableJinaReaderFallback
+            ? JinaReaderFetcher(
+                apiKey: configuration.jinaAPIKey,
+                http: http,
+                configuration: configuration,
+                log: log
+            )
+            : nil
+
+        // The fetch deadline scales with the request timeout (three times it, at least 15 s):
+        // a deployment that raises SEARCH_REQUEST_TIMEOUT_MS for slow origins gets a
+        // proportionally patient page fetch, and the default 10 s gives the documented 30 s.
+        return WebFetcher(
+            direct: direct,
+            policy: WebFetcher.Policy(
+                totalTimeout: max(configuration.requestTimeout * 3, .seconds(15))
+            ),
+            jina: jina,
+            log: log
+        )
+    }
+
 }

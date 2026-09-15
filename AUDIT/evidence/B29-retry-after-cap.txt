@@ -1,0 +1,64 @@
+# B29 — the cap that stops a hostile `Retry-After` stalling a search was untested
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+```swift
+// HTTPClient.send (attempt loop)
+let retryAfter = RetryAfter.parse(response.header("Retry-After"))
+let delay = min(
+    retryAfter ?? policy.backoff(forRetryIndex: retryIndex),
+    policy.maxRetryAfter            // 5 s as shipped
+)
+```
+
+`maxRetryAfter` is the whole protection against a `429` that asks the client to wait an hour,
+and nothing exercised it: `testHonorsRetryAfterHeader` sends `Retry-After: 1`, where
+`min(1 s, 5 s) == 1 s`, so the cap never applies. Deleting the `min` left the suite green.
+
+## Fails-before evidence
+
+Mutation: remove the cap.
+
+```swift
+- let delay = min(retryAfter ?? policy.backoff(forRetryIndex: retryIndex), policy.maxRetryAfter)
++ let delay = retryAfter ?? policy.backoff(forRetryIndex: retryIndex)
+```
+
+```
+$ swift test --filter testAHostileRetryAfterIsClampedToThePolicyMaximum
+error: ... XCTAssertNotNil failed - the 3600 s Retry-After was not clamped: the send outlived the cap by more than 3 s
+error: ... XCTAssertEqual failed: ("nil") is not equal to ("Optional(200)")
+error: ... XCTAssertEqual failed: ("1") is not equal to ("2") - one retry, then the answer
+error: ... XCTAssertLessThan failed: ("8.054665417") is not less than ("8.0")
+Test Case ... failed
+```
+
+The send is raced against `cap + 3 s`, so an unclamped delay fails the test at eight seconds
+instead of holding the suite — and CI — for the hour the header asked for.
+
+## The fix
+
+A loopback server answers `429` with `Retry-After: 3600`, and the test asserts all three halves
+of the contract: a second request happens (the retry), the answer arrives inside the bound, and
+the elapsed time is *at least* the cap — because ignoring the header is not clamping it either.
+
+```swift
+XCTAssertEqual(server.requestCount, 2, "one retry, then the answer")
+XCTAssertGreaterThanOrEqual(elapsed, cap * 0.9, "ignoring Retry-After entirely is not a clamp")
+XCTAssertLessThan(elapsed, cap + 3)
+```
+
+## Verification
+
+```
+$ swift test --filter testAHostileRetryAfterIsClampedToThePolicyMaximum
+Executed 1 test, with 0 failures (0 unexpected) in 5.067 seconds     # the clamped 5 s
+
+$ swift test
+Executed 441 tests, with 6 skipped and 0 failures (0 unexpected) in 17.487 seconds
+
+$ swift-format lint --recursive --strict Sources Tests    0 diagnostics
+$ swiftlint lint --strict                                 0 violations in 78 files
+```

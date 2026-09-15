@@ -75,6 +75,46 @@ public enum Terminal {
         return "\u{1B}[1m\(text)\u{1B}[0m"
     }
 
+    // MARK: - Untrusted text
+
+    /// Replace every terminal-interpreted or invisible scalar with a visible placeholder.
+    ///
+    /// The dashboard prints strings that no part of this program authored: a SearXNG instance
+    /// decides what appears in an engine name, in `unresponsive_engines` and in an error body.
+    /// A terminal *executes* control characters rather than showing them — `ESC[2J` clears the
+    /// screen, `ESC]52;…` writes the clipboard on terminals that allow it, CSI can move the
+    /// cursor, hide it or spoof the window title — so text from a probed instance must never
+    /// reach the tty unfiltered (ledger B25).
+    ///
+    /// Both `Cc` (C0/C1 control) and `Cf` (format: bidirectional overrides, zero-width
+    /// joiners, BOM) are replaced, because `Cf` scalars reorder or hide what the operator
+    /// sees without occupying a column. The renderer's own escapes are unaffected: it styles
+    /// and pads *after* sanitising, so nothing this function returns contains an escape.
+    public static func sanitize(_ text: String) -> String {
+        guard text.unicodeScalars.contains(where: isTerminalControl) else { return text }
+        var sanitised = String()
+        sanitised.reserveCapacity(text.count)
+        for scalar in text.unicodeScalars {
+            if isTerminalControl(scalar) {
+                sanitised.unicodeScalars.append("\u{FFFD}")
+            } else {
+                sanitised.unicodeScalars.append(scalar)
+            }
+        }
+        return sanitised
+    }
+
+    /// Whether a scalar is one the terminal interprets, or one that exists only to reorder
+    /// or join text invisibly (`generalCategory` `Cc` and `Cf`).
+    private static func isTerminalControl(_ scalar: Unicode.Scalar) -> Bool {
+        switch scalar.properties.generalCategory {
+        case .control, .format:
+            return true
+        default:
+            return false
+        }
+    }
+
     // MARK: - Width-safe text
 
     /// Pad to a width, truncating when necessary. Keeps columns aligned even when a
@@ -96,17 +136,52 @@ public enum Terminal {
     public static func truncate(_ text: String, to width: Int) -> String {
         guard width > 0 else { return "" }
         if displayWidth(text) <= width { return text }
-        guard width > 1 else { return String(text.prefix(width)) }
-        // Walk backwards to the last character that fits, then add an ellipsis.
+        guard width > 1 else {
+            // One column cannot hold a character *and* an ellipsis. Return the first visible
+            // character, dropping any leading escapes rather than emitting half of one.
+            var index = text.startIndex
+            while let end = escapeSequenceEnd(in: text, at: index) { index = end }
+            return index < text.endIndex ? String(text[index]) : ""
+        }
+
+        // Walk to the last character that fits, then add an ellipsis. Escape sequences are copied
+        // whole and for free: they occupy no columns, and slicing one in half leaves the terminal
+        // waiting for a sequence it never receives the end of (ledger B53). The previous walk
+        // counted every escape byte as width 1, so styled text was cut short *and* could end in a
+        // bare `ESC`.
         var result = ""
         var used = 0
-        for character in text {
+        var index = text.startIndex
+        while index < text.endIndex {
+            if let end = escapeSequenceEnd(in: text, at: index) {
+                result += text[index..<end]
+                index = end
+                continue
+            }
+            let character = text[index]
             let cost = character.unicodeScalars.reduce(0) { $0 + scalarWidth($1) }
             if used + cost > width - 1 { break }
             result.append(character)
             used += cost
+            index = text.index(after: index)
         }
         return result + "…"
+    }
+
+    /// The end of the ANSI escape sequence starting at `index`, or nil when there is none.
+    ///
+    /// An escape sequence is `ESC [` followed by parameters and one terminating letter, the shape
+    /// this renderer emits; anything longer is not treated as an escape rather than swallowing the
+    /// rest of the line.
+    private static func escapeSequenceEnd(in text: String, at index: String.Index) -> String.Index? {
+        guard text[index] == "\u{1B}", text.index(after: index) < text.endIndex,
+            text[text.index(after: index)] == "["
+        else { return nil }
+        var cursor = text.index(index, offsetBy: 2, limitedBy: text.endIndex) ?? text.endIndex
+        while cursor < text.endIndex, !text[cursor].isLetter {
+            cursor = text.index(after: cursor)
+        }
+        return cursor < text.endIndex ? text.index(after: cursor) : text.endIndex
     }
 
     /// Approximate display width.
@@ -117,19 +192,11 @@ public enum Terminal {
         var width = 0
         var index = text.startIndex
         while index < text.endIndex {
-            let character = text[index]
-            if character == "\u{1B}", text.index(after: index) < text.endIndex,
-               text[text.index(after: index)] == "["
-            {
-                // Skip to the terminating letter of the escape sequence.
-                var cursor = text.index(index, offsetBy: 2, limitedBy: text.endIndex) ?? text.endIndex
-                while cursor < text.endIndex, !text[cursor].isLetter {
-                    cursor = text.index(after: cursor)
-                }
-                index = cursor < text.endIndex ? text.index(after: cursor) : text.endIndex
+            if let end = escapeSequenceEnd(in: text, at: index) {
+                index = end
                 continue
             }
-            width += character.unicodeScalars.reduce(0) { $0 + scalarWidth($1) }
+            width += text[index].unicodeScalars.reduce(0) { $0 + scalarWidth($1) }
             index = text.index(after: index)
         }
         return width
@@ -140,8 +207,8 @@ public enum Terminal {
         case 0..<0x20, 0x7F:
             return 0
         case 0x1100...0x115F, 0x2E80...0xA4CF, 0xAC00...0xD7A3,
-             0xF900...0xFAFF, 0xFE30...0xFE6F, 0xFF00...0xFF60,
-             0xFFE0...0xFFE6, 0x1F300...0x1F64F, 0x1F900...0x1F9FF:
+            0xF900...0xFAFF, 0xFE30...0xFE6F, 0xFF00...0xFF60,
+            0xFFE0...0xFFE6, 0x1F300...0x1F64F, 0x1F900...0x1F9FF:
             return 2
         default:
             return 1
@@ -163,18 +230,26 @@ public final class KeyReader: @unchecked Sendable {
         guard tcgetattr(STDIN_FILENO, &original) == 0 else { return nil }
 
         var raw = original
-        // Non-canonical, no echo: we want each key as it is pressed, invisibly.
-        raw.c_lflag &= ~tcflag_t(ICANON | ECHO)
+        // Non-canonical, no echo: we want each key as it is pressed, invisibly. `ISIG` is cleared
+        // as well, so Ctrl-C arrives as the byte `\u{03}` and the dashboard's own quit branch
+        // handles it. With `ISIG` set the terminal raised `SIGINT` instead, the process died on
+        // the spot, and that branch was unreachable in a real terminal (ledger B10).
+        raw.c_lflag &= ~tcflag_t(ICANON | ECHO | ISIG)
         // Do not wait for a full buffer or translate carriage returns.
         raw.c_cc.0 = 0  // VMIN: return immediately
         raw.c_cc.1 = 0  // VTIME: no inter-byte timeout
         guard tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == 0 else { return nil }
+        // The terminal is ours now, so make sure a supervisor's SIGINT/SIGTERM gives it back:
+        // `deinit` and the normal exit path cannot run when the process is signalled (ledger
+        // B107).
+        SignalRestore.install(restoring: original)
     }
 
     /// Restore the original terminal settings.
     public func restore() {
         var restore = original
         _ = tcsetattr(STDIN_FILENO, TCSAFLUSH, &restore)
+        SignalRestore.remove()
     }
 
     /// Return one pending byte, or nil when nothing has been typed.

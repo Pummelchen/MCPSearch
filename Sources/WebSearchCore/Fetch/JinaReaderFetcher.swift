@@ -40,7 +40,15 @@ public struct JinaReaderFetcher: Sendable {
     ) async throws -> FetchResult {
         let started = DispatchTime.now().uptimeNanoseconds
 
-        let target = baseURL.appendingPathComponent(request.url.absoluteString)
+        // The reader takes the target URL as the *rest of the path*, so it must be appended
+        // verbatim. `appendingPathComponent` percent-encodes `?` and `#` into the path, which
+        // asked the reader for a different resource — `/page%3Fq=1` instead of `/page?q=1`
+        // (ledger B15).
+        var readerURL = baseURL.absoluteString
+        if !readerURL.hasSuffix("/") { readerURL += "/" }
+        guard let target = URL(string: readerURL + request.url.absoluteString) else {
+            throw SearchError.invalidRequest("could not build a reader URL for \(request.url)")
+        }
 
         var headers: [String: String] = [
             // Markdown is the most useful shape for a model's context.
@@ -94,14 +102,17 @@ public struct JinaReaderFetcher: Sendable {
         // with `{code, status, data:{title,url,content}}`, so both shapes are handled.
         let text: String
         let title: String?
+        let reportedURL: URL?
         let contentType = response.header("Content-Type")?.lowercased() ?? ""
         if contentType.contains("json") || response.body.first == UInt8(ascii: "{") {
             let payload = try? JSONCoding.decoder().decode(ReaderResponse.self, from: response.body)
             text = payload?.data?.content ?? ""
             title = payload?.data?.title
+            reportedURL = JinaReaderFetcher.resolvedURL(payload?.data?.url)
         } else {
             text = response.text()
             title = JinaReaderFetcher.leadingTitle(in: text)
+            reportedURL = nil
         }
 
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -110,7 +121,15 @@ public struct JinaReaderFetcher: Sendable {
         }
 
         let clipped = DirectHTTPFetcher.clip(trimmed, to: maxCharacters)
-        var warnings: [String] = []
+        // The target URL — including any userinfo, token or signed query the caller chose —
+        // has now left this machine and was fetched by a third party. `web_open` accepts
+        // authorisation-bearing URLs and the model cannot be relied on to avoid them, so the
+        // disclosure travels with every reader result rather than only the thin-native path
+        // (ledger B87).
+        var warnings: [String] = [
+            "Used Jina Reader (\(baseURL.host() ?? baseURL.absoluteString)), "
+                + "a third-party service that fetched this URL remotely."
+        ]
         if clipped.truncated {
             warnings.append("Content truncated to \(maxCharacters) characters.")
         }
@@ -122,7 +141,11 @@ public struct JinaReaderFetcher: Sendable {
         )
 
         return FetchResult(
-            finalURL: request.url,
+            // The reader reports the URL it handled; trust it only when it is an absolute
+            // http(s) URL, and otherwise fall back to what was asked for (ledger B92). This
+            // cannot invent a redirect the reader did not report — see the note on
+            // `resolvedURL(from:)`.
+            finalURL: reportedURL ?? request.url,
             statusCode: response.statusCode,
             contentType: contentType.isEmpty ? "text/markdown" : contentType,
             title: title,
@@ -135,11 +158,15 @@ public struct JinaReaderFetcher: Sendable {
     }
 
     /// Extract `retryAfter` (seconds) from Reader's rate-limit body.
+    ///
+    /// The value is attacker-influenced (it comes from a third-party service), so it goes
+    /// through the same bounded conversion as the `Retry-After` header: a body of
+    /// `{"retryAfter": 1e33}` used to trap on the `Double` → `Int` conversion.
     static func retryAfterFromBody(_ body: Data) -> Duration? {
         guard let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any],
-              let seconds = object["retryAfter"] as? Double
+            let seconds = object["retryAfter"] as? Double
         else { return nil }
-        return .milliseconds(Int(max(0, seconds) * 1000))
+        return RetryAfter.boundedDuration(seconds: seconds)
     }
 
     /// Reader prefixes markdown output with a `Title: ...` line.
@@ -155,9 +182,29 @@ public struct JinaReaderFetcher: Sendable {
         return nil
     }
 
+    /// The URL reported by the reader in its JSON envelope, when it is usable.
+    ///
+    /// The field is third-party input rendered verbatim as the result's `final_url`, so it is
+    /// accepted only when it parses to an absolute `http`/`https` URL with a host. Anything
+    /// else — absent, relative, `file:`, `javascript:` — returns nil so the caller falls back
+    /// to the requested URL rather than reporting a URL that was never fetched (ledger B92).
+    ///
+    /// What the hosted reader actually puts here: `src/services/snapshot-formatter.ts` sets
+    /// `url: nominalUrl?.toString() || snapshot.href?.trim()`, so `r.jina.ai` reports the
+    /// *nominal* target it was given, not the post-redirect URL, and this change therefore
+    /// does not by itself make the Jina path report redirects. It does make the reader's own
+    /// report authoritative (a self-hosted or future reader that reports the resolved URL is
+    /// now followed) and it validates an attacker-influenced field instead of ignoring it.
+    static func resolvedURL(_ reported: String?) -> URL? {
+        guard let reported, let url = URL(string: reported) else { return nil }
+        guard let scheme = url.scheme?.lowercased(), scheme == "http" || scheme == "https" else {
+            return nil
+        }
+        guard let host = url.host(), !host.isEmpty else { return nil }
+        return url
+    }
+
     struct ReaderResponse: Decodable {
-        let code: Int?
-        let status: String?
         let data: Data?
 
         struct Data: Decodable {

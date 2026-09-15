@@ -1,0 +1,102 @@
+# B104 — mcps-mon crashes on startup in a debug build
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13 · found while testing B10
+
+## The observation
+
+A minimal PTY probe (spawn the binary with `--node stub=http://127.0.0.1:9/ --interval 1` in a 40×120
+pseudo-terminal, scrubbed environment, read for 4 s):
+
+```
+branch debug binary    cursor-hide, clear-screen, then:
+                       Program crashed: Signal 11: Backtracing from 0x19f59b11c…
+                       Program crashed: Bad pointer dereference at 0x0000000000000008
+
+Phase-A baseline debug  runs (10 bytes, no crash)
+branch release binary   runs (no crash)
+CI                      green — it builds and drives the *release* binary
+```
+
+## What it is not
+
+Reverting each of the three files B10 touched — `WebSearchCore/Support/AppConfiguration.swift`
+(B09), `WebSearchCore/Monitor/Terminal.swift` and `MCPSMonitor/main.swift` — to HEAD and rebuilding
+still crashes. So the cause is neither B10 nor B09 and lies elsewhere on the branch: a bisect is
+required.
+
+## Why it is S2 rather than S0/S1
+
+The release artefact — the thing that would ship — is unaffected, and the Swift suite passes
+because nothing exercises the monitor executable in process. But `mcps-mon` is a shipped product
+surface, a developer running the default debug build gets a crash instead of the dashboard, and
+Phase E should not claim "everything green" while a debug build of a shipped binary dies on
+startup.
+
+## Next step (recorded, not yet done)
+
+Bisect between `f3dd8d9` (main) and the branch tip, building only the `MCPSMonitor` target at each
+step and running the probe above; the first bad commit is the cause. Then fold the probe into
+`scripts/monitor_tty_smoke.py` as a "must not crash" check so it cannot regress silently — the
+existing harness only notices because the first frame never arrives, which reports as a timeout
+rather than a crash.
+
+## Bisect result (next round)
+
+Building only the `MCPSMonitor` target with
+`Sources/WebSearchCore/Support/AppConfiguration.swift` replaced by its version at `f3dd8d9` (main):
+
+```
+AppConfiguration now at main's version
+swift build --target MCPSMonitor    0 errors
+probe: crashed: False | bytes: 10
+```
+
+Restoring the branch's committed `AppConfiguration.swift` brings the crash back. **The trigger is the
+B09 change**, not B10 (whose files were reverted in the same experiment) and not the pre-audit
+baseline.
+
+Two further observations:
+
+* The crash is **intermittent**: an 8-second probe of the crashing build produced no crash message
+  at all, while three shorter probes did. That is the signature of memory corruption rather than a
+  deterministic trap.
+* The earlier "not AppConfiguration" experiment in B10's session was **invalid** and is corrected
+  here: `HEAD` was already the B09 commit, so `git show HEAD:…AppConfiguration.swift` restored the
+  crashing version rather than main's.
+
+Next step: review the B09 diff for the specific defect — the structural change is that `parse()`'s
+nested helpers now capture a mutable local `issues` array — or reimplement the diagnostics without
+captured mutable state, and make the PTY probe a "must not crash" check in
+`scripts/monitor_tty_smoke.py` so an intermittent crash reports as a crash rather than a first-frame
+timeout.
+
+## Resolution: not a code defect — a stale incremental build
+
+A **fresh scratch path** (`~/Library/Caches/MCPSearch/b104-fresh`) building the committed code, with
+nothing reverted, and building the **product** rather than the target:
+
+```
+$ swift build --product mcps-mon --scratch-path <fresh>
+Build of product 'mcps-mon' complete!
+clean-build probe: crashed: False | bytes: 10 | alive: True
+clean-build probe: crashed: False | bytes: 10 | alive: True
+```
+
+Two probes, no crash. The same source that crashed 3 of 4 probes from the audit's long-lived scratch
+tree is clean when built from scratch.
+
+**What was actually happening.** B09 added a stored property to `AppConfiguration` — a struct-layout
+change. The audit scratch tree had been built incrementally for many rounds, and the probes were run
+against an executable from an earlier full build while the library beside it had been rebuilt: a
+mixture of object files compiled against two different layouts. That produces exactly the observed
+signature — an intermittent bad-pointer dereference at a small offset, in debug only (the release tree
+was built fresh by CI, and CI stayed green throughout). It is the incremental-build half of the
+Dropbox host hazard this audit already documents in `environment.md`; the missing rule was "build the
+*product* into a *fresh* scratch path before drawing a conclusion from a crash".
+
+`swift build --target <executable>` is the second trap: it compiles the target but does not link the
+executable, so an older binary can sit in the build directory looking current.
+
+**Recorded as**: a build/environment hazard, not a product bug. `B106` tracks the harness-side
+improvement (a "must not crash" probe), which is still worth having: the existing harness reported
+the crash as a first-frame timeout.

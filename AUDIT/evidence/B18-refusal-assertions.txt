@@ -1,0 +1,80 @@
+# B18 — the `web_open` rejection test accepted any refusal
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+```swift
+// StdioServerTests.testWebOpenRejectsDangerousSchemesAndInternalHosts (before)
+XCTAssertTrue(
+    text.contains(testCase.expected) || text.contains("Refused"),
+    "for \(testCase.url) expected \(testCase.expected), got: \(text)"
+)
+```
+
+Every blocked URL answers with "Refused to fetch …", so the `||` disjunct made the whole
+`expected` column unenforceable: any policy refusal satisfied any row. Row 14 declared
+`javascript:alert(1)` → "valid absolute URL", which is not what the code does — and the
+fallback hid it.
+
+## Fails-before evidence
+
+`URL(string:)` accepts `javascript:alert(1)` (it is a syntactically valid absolute URL), so
+the row is a *policy* refusal, not a parse failure:
+
+```
+$ swift -e 'import Foundation; print(URL(string: "javascript:alert(1)") as Any)'
+Optional(javascript:alert(1))
+```
+
+With the original assertion left untouched and a temporary probe added beside it — the probe
+asks only whether the declared string is ever present — the original test passes and the probe
+fails:
+
+```
+$ swift test --filter testWebOpenRejectsDangerousSchemesAndInternalHosts
+error: ... B18 probe: for javascript:alert(1) the declared expectation is never met;
+  got: Refused to fetch that URL: only public http/https URLs are allowed.
+Executed 1 test, with 0 failures ...
+```
+
+That is the finding exactly: the row's expectation was never met and the test was green.
+
+A mutation of the other direction is caught by the strengthened test: adding a scheme guard to
+`ToolHandlers.open` so a non-http scheme is reported as a caller typo
+
+```
+error: ... for javascript:alert(1) expected public http/https, got: `url` must be a valid absolute URL
+error: ... for file:///etc/passwd expected public http/https, got: `url` must be a valid absolute URL
+```
+
+## The fix
+
+The fallback is gone: each row asserts its own message. Row 14 now states the truth
+(`javascript:` is refused by the URL policy, so it expects "public http/https"), and a new row
+covers the other arm with an input that really cannot be parsed (`ht tp://x` → "valid absolute
+URL"), so both error classes stay pinned:
+
+```swift
+XCTAssertTrue(
+    text.contains(testCase.expected),
+    "for \(testCase.url) expected \(testCase.expected), got: \(text)"
+)
+```
+
+The two classes carry different operator actions — "fix your URL" versus "that scheme, host or
+address is not allowed" — and they are no longer interchangeable in the test.
+
+## Verification
+
+```
+$ swift test --filter testWebOpenRejectsDangerousSchemesAndInternalHosts
+Executed 1 test, with 0 failures (0 unexpected) in 0.178 seconds
+
+$ swift test
+Executed 440 tests, with 6 skipped and 0 failures (0 unexpected) in 12.660 seconds
+
+$ swift build -c release --scratch-path $SCRATCH -Xswiftc -warnings-as-errors     0 warnings, 0 errors
+$ swift-format lint --recursive --strict Sources Tests                            0 diagnostics
+$ swiftlint lint --strict                                                         0 violations in 78 files
+```

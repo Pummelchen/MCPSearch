@@ -1,0 +1,130 @@
+# B84 — `IPAddress.v6` accepted any byte count while its accessors indexed 16 bytes
+
+Host: node1 (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## What was wrong
+
+`IPAddress` is public and its IPv6 case carries an unvalidated array:
+
+```swift
+public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
+    case v4(UInt32)
+    case v6([UInt8])
+```
+
+`init?(_:)` only ever produces 16 bytes and every in-tree producer goes through it, so no MCP
+tool path is affected. But the case is public, so a caller can write `IPAddress.v6([1])`, and the
+accessors indexed unconditional fixed offsets:
+
+| accessor | unguarded access |
+| --- | --- |
+| `description` | `stride(to: 16, by: 2)` → `bytes[index + 1]` |
+| `isLoopback` | `bytes[15]` |
+| `embeddedIPv4` | `bytes[0..<10]`, `bytes[10]`, `bytes[11]`, `address(at: 12)` |
+| `isLinkLocal` | `bytes[0]`, `bytes[1]` |
+| `isPrivate` | `bytes[0]` |
+| `isMulticast` | `bytes[0]` |
+| `isUnspecified` | `allSatisfy` — no trap, but `[]` was classified as unspecified |
+
+A shorter array therefore turned a data value into a process crash (`Fatal error: Index out of
+range`) from ordinary library use.
+
+## The fix, and why the public API was kept
+
+**The public API is unchanged.** The fix defends every accessor instead of constraining the case:
+
+* `description` returns `invalid IPv6 (N bytes)` for a non-16-byte value rather than trapping;
+* `isLoopback`, `isLinkLocal`, `isPrivate`, `isMulticast` and `isUnspecified` return `false`;
+* `embeddedIPv4` returns `nil`.
+
+```swift
+case .v6(let bytes):
+    guard bytes.count == 16 else { return false }
+    return (bytes[0] & 0xFE) == 0xFC
+```
+
+The ledger's expected-correct prefers "make the invariant unrepresentable" and explicitly allows
+the guard approach as the minimum. I chose the guard approach because the stronger options all
+change a public enum's associated value:
+
+* a fixed 16-byte tuple payload would drop `Hashable`, because Swift does not synthesise
+  `Hashable`/`Equatable` for tuple payloads, and would still be constructible from any 16 bytes;
+* a public wrapper type would break `IPAddress.v6([...])` at every downstream construction and
+  pattern match, for a defect that is not reachable from `web_open`/`web_search`.
+
+The honest cost of keeping the case: the invariant stays structurally representable, so the
+guards — not the type — are the defence. Every accessor that indexes is now guarded, so a
+malformed value can no longer crash the process; the existing 16-byte producers are unaffected
+because the guards are no-ops for them. `isCloudMetadata` and `isReserved` already used
+`prefix(4)` and `isSharedAddressSpace`/`isBroadcast` return constants, so they needed no change.
+Nothing about the SSRF classification changed for a valid address: the guards only reject lengths
+the parser can never produce, and all existing URL-policy tests stay green.
+
+The v4 arms of `isLoopback`, `isLinkLocal`, `isUnspecified` and `isMulticast` gained an explicit
+`return`. Adding a multi-statement v6 arm turns the switch from an expression into statements, so
+the single-expression v4 arms no longer implicitly return; this is a mechanical consequence of the
+guards, not a behaviour change.
+
+## The test
+
+`URLPolicyTests.testMalformedIPv6ValuesAreClassifiedInsteadOfTrapping` (the existing
+`Tests/WebSearchCoreTests/URLPolicyTests.swift`, in the "IP classification" section) constructs
+`IPAddress.v6` values of 0, 1, 2, 10, 15, 17 and 32 bytes and asserts every accessor returns a
+value without trapping. The 17- and 32-byte cases cover the previously non-trapping but
+semantically meaningless long arrays, and the 0-byte case pins `isUnspecified == false` (the old
+`allSatisfy` called an empty array unspecified). A trap here kills the whole test process rather
+than failing one assertion — which is exactly the crash the test prevents.
+
+## Proof the test can fail (mutation, not assertion)
+
+The seven accessor guards were removed, restoring the pre-fix bodies, and the test was run:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter "URLPolicyTests/testMalformedIPv6ValuesAreClassifiedInsteadOfTrapping"
+error: Process '.../xctest -XCTest WebSearchCoreTests.URLPolicyTests/testMalformedIPv6ValuesAreClassifiedInsteadOfTrapping ...SwiftWebSearchMCPPackageTests.xctest' exited with unexpected signal code 5
+Test Suite 'Selected tests' started at ...
+Test Case '-[WebSearchCoreTests.URLPolicyTests testMalformedIPv6ValuesAreClassifiedInsteadOfTrapping]' started.
+Swift/ContiguousArrayBuffer.swift:692: Fatal error: Index out of range
+```
+
+That is the original defect: `IPAddress.v6(Array(repeating: 0, count: 1)).isLoopback` reads
+`bytes[15]` on a one-element array and aborts the process. The mutated file was then replaced from
+a saved copy and verified byte-identical (`diff` empty; SHA-256 of the restored file equals the
+backup's, `f2040f3b…0eda0b`). The suite is green again:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter URLPolicyTests
+	 Executed 24 tests, with 0 failures (0 unexpected) in 0.004 (0.005) seconds
+```
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete!                                                             0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+	 Executed 506 tests, with 6 tests skipped and 0 failures (0 unexpected) in 20.856 (20.916) seconds
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete!                                                             0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+0 diagnostics                                                               exit=0
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 85 files.                    exit=0
+
+$ python3 scripts/third_party_notices.py
+exit=0
+```
+
+506 = the 504-test baseline plus B54's test and this one. The 6 skips are the pre-existing
+environment-gated ones.
+
+## Noted, not changed
+
+`isUnspecified` previously returned `true` for `.v6([])` and `isLoopback` treated a 16-byte
+all-zero-plus-unset-final-byte value consistently; the guard makes the malformed cases uniformly
+"not in range", which is the answer that cannot be reached from the parser. No in-tree code
+constructs `.v6` except `init?(_:)`, verified by grep.

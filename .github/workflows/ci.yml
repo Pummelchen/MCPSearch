@@ -1,5 +1,11 @@
 name: CI
 
+# Least privilege: every job here only reads the repository. Without this block the job token
+# keeps whatever the repository default is, which is broader than these jobs need — a compromised
+# or mistaken step could write to the repository with it (ledger B38).
+permissions:
+  contents: read
+
 on:
   push:
     branches: [main]
@@ -22,12 +28,14 @@ concurrency:
 
 jobs:
   build-and-test:
-    # The package declares `swift-tools-version: 6.3`, so an older toolchain cannot
+    # The package declares `swift-tools-version: 6.4`, so an older toolchain cannot
     # even parse the manifest: `macos-14` ships Swift 5.10 and fails immediately.
-    # `macos-26` provides Xcode 26.x, which carries Swift 6.3.
+    # GitHub's macOS images are now selected by the Xcode major version rather than by the
+    # OS release, so `xcode-27` is the image that carries the mandated Swift 6.4 toolchain
+    # and its SDKs. It is arm64-only, which matches what this package already required.
     # The MCP Swift SDK declares macOS 13 as its minimum, and the transport tests use
     # Darwin sockets, so macOS is the supported target.
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 30
 
     steps:
@@ -35,7 +43,7 @@ jobs:
       # trailing comment) so a retagged or compromised major-version branch cannot
       # change what runs here.
       - name: Checkout
-        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683  # v4.2.2
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
 
       - name: Select the newest Xcode
         run: |
@@ -54,27 +62,49 @@ jobs:
             xcode-select -p
           fi
 
-      # Fail early and clearly if the runner's toolchain is older than the manifest
-      # requires, rather than emitting a confusing manifest parse error later.
-      - name: Verify Swift toolchain is at least 6.3
+      # This gate is deliberately stricter than the manifest's floor. The manifest stays at 6.3 so
+      # that GitHub's CodeQL Swift scan — which builds with the runner's Swift 6.3.3 and cannot parse
+      # a 6.4 manifest — keeps working; the mandated standard is enforced here instead, where it can
+      # name the toolchain it actually used (ledger B123, B127).
+      - name: Verify Swift toolchain is at least 6.4
         run: |
           set -euo pipefail
           swift --version
-          version="$(swift -version 2>&1 | sed -n 's/.*Swift version \([0-9]*\.[0-9]*\).*/\1/p' | head -1)"
-          echo "Detected Swift $version"
-          major="${version%%.*}"
-          minor="${version##*.}"
-          if [ "$major" -lt 6 ] || { [ "$major" -eq 6 ] && [ "$minor" -lt 3 ]; }; then
-            echo "::error::This package requires swift-tools-version 6.3 or newer; found $version"
+          version="$(swift -version 2>&1 | sed -n 's/.*Swift version \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -1)"
+          # An unparseable version used to make both numeric tests fail, which skipped the
+          # error branch and let the step exit 0 — silently passing on exactly the output-format
+          # change the step exists to catch (ledger B22). Refuse to guess.
+          if [ -z "$version" ]; then
+            echo "::error::could not parse 'Swift version X.Y' from 'swift -version'; refusing to guess"
             exit 1
           fi
+          major="${version%%.*}"
+          minor="${version#*.}"
+          if [ "$major" -lt 6 ] || { [ "$major" -eq 6 ] && [ "$minor" -lt 4 ]; }; then
+            echo "::error::This project is built and verified with Swift 6.4 or newer; found $version"
+            exit 1
+          fi
+          echo "Swift $version satisfies the project's Swift 6.4 requirement"
+
+          # The exact toolchain is whatever the runner image ships, and this workflow does **not**
+          # pin it: the image rotates, and a hard `DEVELOPER_DIR=/Applications/Xcode_<n>.app` fails
+          # the build for a reason unrelated to the change under test. Reproducibility is therefore
+          # not guaranteed here — the floor above is enforced, and the version that actually ran is
+          # published in the run summary so a green run names its compiler (ledger B39).
+          {
+            echo "### Swift toolchain"
+            echo ""
+            echo '```'
+            swift --version
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # Cache the resolved dependency graph and its build products. A cold graph
       # (swift-sdk, swift-nio, SwiftSoup) plus a debug *and* a release build is the
       # difference between a few minutes and the 30-minute budget, and the lockfile
       # makes the key stable until dependencies actually change.
       - name: Cache SwiftPM dependencies and build products
-        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684  # v4.2.3
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: |
             .build
@@ -83,17 +113,82 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-swiftpm-
 
+      # `Package.resolved` must match the manifests. A dependency added or re-ranged without
+      # updating the lockfile means the build resolves a graph nobody reviewed, and the rewrite
+      # happens silently; resolving first and diffing the lockfile turns that into a failure
+      # (ledger B40). The cache above keys off this file, so drift also invalidates the build
+      # products for everyone else.
+      - name: Lockfile matches the manifests
+        run: |
+          set -euo pipefail
+          swift package resolve
+          if ! git diff --exit-code -- Package.resolved; then
+            echo "::error::Package.resolved is out of date; run 'swift package resolve' and commit it"
+            exit 1
+          fi
+
       # Deliberately no provider credentials are configured. The suite is hermetic and
       # must pass with no network access to any search vendor; if a test ever starts
       # depending on a real provider this job will fail and surface it.
-      - name: Build (debug)
-        run: swift build --build-tests
+      #
+      # `-warnings-as-errors` is the warnings gate: this repository builds with zero
+      # warnings, so a new one is a failure rather than something to notice in a log.
+      - name: Build (debug, warnings are errors)
+        run: swift build --build-tests -Xswiftc -warnings-as-errors
 
-      - name: Test
-        run: swift test
+      # Coverage is collected here rather than in a separate job so the profile comes from
+      # the same build the tests ran against.
+      - name: Test (with coverage)
+        run: swift test --enable-code-coverage
 
-      - name: Build (release)
-        run: swift build -c release
+      - name: Coverage floor (Sources/)
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          BIN="$(swift build --show-bin-path)"
+
+          # The MCP server and the monitor only run as subprocesses, and each of them writes
+          # its own profile (see `ServerTestSupport.childEnvironment`). Merging every profile
+          # and exporting once per binary is what makes their code measurable at all — before
+          # this the server reported 0 % while being thoroughly exercised (ledger A04).
+          xcrun llvm-profdata merge -sparse "$BIN"/codecov/*.profraw \
+            -o "$BIN/codecov/merged.profdata"
+          rm -f coverage-*.json
+
+          # The test-bundle name belongs to SwiftPM, not to this repository, and it has already
+          # changed once: Swift 6.3 emitted a single `<Package>PackageTests.xctest`, while
+          # Swift 6.4 emits one bundle per test target under a different product layout. A
+          # hard-coded name therefore stops measuring the tests' own code the moment the
+          # toolchain moves — and does it silently, because exporting only the executables still
+          # produces a report. Discovering the bundles and refusing to run when there are none
+          # is what keeps the floor meaningful (ledger B124).
+          bundles=("$BIN"/*.xctest)
+          if [ ${#bundles[@]} -eq 0 ]; then
+            echo "::error::no *.xctest bundle under $BIN: the coverage gate would not measure the tests"
+            exit 1
+          fi
+          for bundle in "${bundles[@]}"; do
+            name="$(basename "$bundle" .xctest)"
+            echo "exporting coverage for $name"
+            xcrun llvm-cov export "$bundle/Contents/MacOS/$name" \
+              -instr-profile "$BIN/codecov/merged.profdata" \
+              > "coverage-$name.json"
+          done
+          for binary in "$BIN/SwiftWebSearchMCP" "$BIN/mcps-mon"; do
+            xcrun llvm-cov export "$binary" \
+              -instr-profile "$BIN/codecov/merged.profdata" \
+              > "coverage-$(basename "$binary").json"
+          done
+
+          # The floor covers this repository's own Sources/ — the library *and* the two
+          # executables, which only became measurable once the subprocesses started emitting
+          # profiles. Measured 91.8 % on Swift 6.4 (the baseline was 87.1 %); the floor sits
+          # below that with room for a toolchain difference while still failing if a tested path
+          # is lost.
+          python3 scripts/coverage_floor.py "$PWD/Sources/" 80 coverage-*.json
+
+      - name: Build (release, warnings are errors)
+        run: swift build -c release -Xswiftc -warnings-as-errors
 
       # Drives the built executable through a real MCP handshake and asserts that
       # stdout carries only valid JSON-RPC. A stray print anywhere in the server would
@@ -125,3 +220,144 @@ jobs:
           BRAVE_SEARCH_API_KEY: ci-placeholder-not-a-real-key
           SEARXNG_BASE_URL: https://searx.invalid
         run: swift test
+
+  # The gates that do not need an Xcode build. They run in parallel with `build-and-test` so
+  # a formatting or lint failure is reported in a couple of minutes instead of behind a
+  # 30-minute build, and so the build job's budget stays for the build.
+  #
+  # Every tool here is run at the strictest setting it supports, and each is configured by a
+  # file in this repository (`.swift-format`, `.swiftlint.yml`, `ruff.toml`, `pyrightconfig.json`,
+  # `.gitleaks.toml`) rather than by command-line flags, so the standard is reviewable in a diff.
+  static-analysis:
+    # The same image as `build-and-test`: the two jobs must be judged by one toolchain, and
+    # `swift-format`/`swiftlint` are shipped by the image's Xcode release.
+    runs-on: xcode-27
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Install analysis tools
+        run: |
+          set -euo pipefail
+          brew install swift-format swiftlint shellcheck gitleaks osv-scanner ruff semgrep
+          # Print what was installed: the rule *sets* are pinned by the config files above, but
+          # a tool upgrade is still the explanation to look for when a rule fires differently.
+          swift-format --version
+          swiftlint version
+          shellcheck --version | head -2
+          gitleaks version
+          osv-scanner --version
+          ruff --version
+          semgrep --version
+
+      # swift-format owns formatting (audit task A02): 4-space indentation, 120 columns, and
+      # `--strict` so a warning is a failure.
+      - name: Swift formatting
+        run: swift-format lint --recursive --strict Sources Tests Package.swift
+
+      # SwiftLint owns the rules swift-format does not (audit task A03), with its thresholds
+      # and its generated-code exclusion in `.swiftlint.yml`.
+      - name: SwiftLint
+        run: swiftlint lint --strict
+
+      - name: Python lint and formatting
+        run: |
+          set -euo pipefail
+          ruff check scripts
+          ruff format --check scripts
+
+      # Apache-2.0 section 4(d) requires a distributed binary to carry the attribution notices of
+      # the Apache-2.0 components it links, and this repository links two that ship a NOTICE.txt
+      # (swift-nio and swift-log). The notices file is committed and checked against the lockfile
+      # in both directions, so adding a dependency cannot silently drop its attribution (B41).
+      - name: Third-party notices match the lockfile
+        run: python3 scripts/third_party_notices.py
+
+      # The soak harness must make its own `--providers` authoritative: an ambient
+      # SEARCH_DISABLED_PROVIDERS must not keep a requested provider switched off, and requesting
+      # everything must clear the ambient list rather than leave it in place (ledger B23).
+      - name: Soak provider selection is authoritative
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import importlib.util
+          import os
+
+          spec = importlib.util.spec_from_file_location("soak", "scripts/soak.py")
+          soak = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(soak)
+          os.environ["SEARCH_DISABLED_PROVIDERS"] = "tavily"
+
+          environment = soak.build_environment({"tavily", "brave"})
+          disabled = environment["SEARCH_DISABLED_PROVIDERS"].split(",")
+          assert "tavily" not in disabled, disabled
+          assert "mojeek" in disabled, disabled
+
+          every = soak.build_environment(set(soak.ALL_PROVIDERS))
+          assert every["SEARCH_DISABLED_PROVIDERS"] == "", every["SEARCH_DISABLED_PROVIDERS"]
+
+          only_brave = soak.build_environment({"brave"})
+          assert "tavily" in only_brave["SEARCH_DISABLED_PROVIDERS"].split(",")
+          print("soak provider selection is authoritative")
+          PY
+
+      # A requested provider that never contributed makes the soak describe a different run from
+      # the one in its header, which the harness now treats as a failure (ledger B44).
+      - name: Soak run semantics
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import importlib.util
+
+          spec = importlib.util.spec_from_file_location("soak", "scripts/soak.py")
+          soak = importlib.util.module_from_spec(spec)
+          spec.loader.exec_module(soak)
+
+          assert soak.silent_providers({"tavily", "brave"}, {"tavily": 5, "brave": 3}) == []
+          assert soak.silent_providers({"tavily", "brave"}, {"tavily": 5}) == ["brave"]
+          assert soak.silent_providers({"tavily", "brave"}, {}) == ["brave", "tavily"]
+
+          clean = {"tavily": 5, "brave": 3}
+          assert soak.run_verdict(5, 0, {"tavily", "brave"}, clean) is None
+          assert soak.run_verdict(5, 5, {"tavily", "brave"}, clean) == "every query errored"
+          silent = soak.run_verdict(5, 0, {"tavily", "brave"}, {"tavily": 5})
+          assert silent is not None and "brave" in silent, silent
+          print("soak run semantics are enforced")
+          PY
+
+      # pyright is pinned here because it is installed through npx: `typeCheckingMode` is
+      # `strict` in `pyrightconfig.json`.
+      - name: Python types
+        run: npx --yes pyright@1.1.414
+
+      # The harnesses no Swift test can reach: `searxng_health.py` was tested only by pointing it
+      # at a live instance, and `soak.py`'s argument parsing and credential scan were not driven
+      # at all. This also asserts the one contract that crosses the two languages — the provider
+      # environment scrub list in `scripts/mcp_smoke.py` must be set-equal to
+      # `ServerTestSupport.providerEnvironmentVariables`, because a drift leaves a developer's
+      # exported API key visible to the child the smoke test believes it scrubbed (ledger B99).
+      # Its SearXNG cases run against a loopback stub, so it needs no credentials and no live
+      # instance.
+      - name: Python harness tests (searxng_health, soak, scrub list)
+        run: python3 scripts/harness_tests.py
+
+      # The default registry ruleset, deliberately not vendored: a new rule should be able to
+      # fail this job, and `--metrics=off` keeps the scan local.
+      - name: Python security patterns
+        run: semgrep scan --config=p/default --error --metrics=off
+
+      # `-S warning`: the two SC2015/SC2016 notes that remain are deliberate shell idioms
+      # (`eval` of a generated shellenv line, and `A && B || C`), so they are informational.
+      - name: Shell scripts
+        run: shellcheck -S warning deploy/provision-node.sh
+
+      # Full history, not just the working tree: `gitleaks dir` would also read the operator's
+      # git-ignored `config.env` and prove nothing about the repository (audit task A06).
+      - name: Secret scan (full history)
+        run: gitleaks detect --source . --log-opts=--all --redact
+
+      # Scans Package.resolved against the OSV database: the dependency half of the audit.
+      - name: Dependency vulnerabilities
+        run: osv-scanner scan source -r .

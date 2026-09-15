@@ -119,21 +119,23 @@ public struct OpenWebSearchProvider: SearchProvider {
             if let engine = item.engine { upstreamEngines.insert(engine) }
             for engine in item.engines ?? [] { upstreamEngines.insert(engine) }
 
-            guard let result = ResultNormalizer.make(
-                provider: .openWebSearch,
-                rank: item.rank ?? index + 1,
-                title: item.title,
-                urlString: item.url ?? item.link,
-                snippet: item.snippet ?? item.description ?? item.content,
-                publishedAt: (item.publishedAt ?? item.published).flatMap(JSONCoding.date(from:)),
-                score: item.score,
-                content: nil,
-                // Per-result provenance, so fusion discounts the page that resold an owned
-                // index rather than the whole response.
-                upstreamEngines: engines(of: item),
-                request: request,
-                seenKeys: &seen
-            ) else { continue }
+            guard
+                let result = ResultNormalizer.make(
+                    provider: .openWebSearch,
+                    rank: item.rank ?? index + 1,
+                    title: item.title,
+                    urlString: item.url ?? item.link,
+                    snippet: item.snippet ?? item.description ?? item.content,
+                    publishedAt: (item.publishedAt ?? item.published).flatMap(JSONCoding.date(from:)),
+                    score: item.score,
+                    content: nil,
+                    // Per-result provenance, so fusion discounts the page that resold an owned
+                    // index rather than the whole response.
+                    upstreamEngines: engines(of: item),
+                    request: request,
+                    seenKeys: &seen
+                )
+            else { continue }
             results.append(result)
         }
 

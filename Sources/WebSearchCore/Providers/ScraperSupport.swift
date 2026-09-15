@@ -17,12 +17,14 @@ enum ScraperSupport {
 
     /// Why a scraped page yielded nothing. Distinguishing these matters because they
     /// need different operator responses.
+    ///
+    /// There were three cases; `noResults` was never produced by anything and nothing consumed it,
+    /// so an empty page has always been reported as `.unknownMarkup` — the comment promising a
+    /// separate "empty result page" signal described a distinction that did not exist (ledger B56).
     enum BlockKind: String, Sendable {
         /// A bot-challenge / anomaly page was served instead of results.
         case botChallenge = "bot_challenge"
-        /// An empty result page.
-        case noResults = "no_results"
-        /// The page structure did not match any known shape.
+        /// The page structure did not match any known shape, including an empty one.
         case unknownMarkup = "unknown_markup"
     }
 
@@ -58,12 +60,12 @@ enum ScraperSupport {
             return href
         }
         guard let components = URLComponents(string: absolute(href)),
-              let items = components.queryItems
+            let items = components.queryItems
         else { return href }
 
         for name in ["uddg", "url", "u", "q"] {
             if let value = items.first(where: { $0.name == name })?.value,
-               value.lowercased().hasPrefix("http")
+                value.lowercased().hasPrefix("http")
             {
                 return value
             }
@@ -95,6 +97,42 @@ enum ScraperSupport {
         excludeHosts: [String],
         provider: ProviderID
     ) throws -> ParsedPage {
+        // A search page is HTML. A body with no markup at all is an error payload or a
+        // rate-limit notice wearing an HTTP 200; say so, instead of reporting "no results".
+        guard MarkupDepth.containsMarkup(html) else {
+            throw SearchError.malformedResponse(provider)
+        }
+        // Measured: a page nested a few thousand elements deep exhausts the stack of the
+        // cooperative task this runs on and kills the process. Depth is bounded before any
+        // recursive parser sees the markup (`MarkupDepth`), and the parser then gets a stack
+        // with room for the bound (`LargeStackParse`).
+        guard !MarkupDepth.exceedsLimit(html) else {
+            throw SearchError.markupDepthExceeded(MarkupDepth.maximumNesting)
+        }
+        return try LargeStackParse.run {
+            try parseOnCurrentThread(
+                html: html,
+                containerSelectors: containerSelectors,
+                linkSelectors: linkSelectors,
+                snippetSelectors: snippetSelectors,
+                base: base,
+                excludeHosts: excludeHosts,
+                provider: provider
+            )
+        }
+    }
+
+    /// The parse and selection themselves; recursive, so they run on `LargeStackParse`'s
+    /// thread in production and directly in tests that assert the thresholds.
+    static func parseOnCurrentThread(
+        html: String,
+        containerSelectors: [String],
+        linkSelectors: [String],
+        snippetSelectors: [String],
+        base: String,
+        excludeHosts: [String],
+        provider: ProviderID
+    ) throws -> ParsedPage {
         let document: Document
         do {
             document = try SwiftSoup.parse(html)
@@ -112,20 +150,20 @@ enum ScraperSupport {
 
         for containerSelector in containerSelectors {
             guard let containers = try? document.select(containerSelector),
-                  !containers.isEmpty
+                !containers.isEmpty
             else { continue }
 
             for container in containers {
                 guard let link = try? firstMatch(container, selectors: linkSelectors),
-                      let href = try? link.attr("href"),
-                      !href.isEmpty
+                    let href = try? link.attr("href"),
+                    !href.isEmpty
                 else { continue }
 
                 let target = unwrapRedirect(href)
                 let absoluteTarget = absolute(target, base: base)
                 guard let url = URL(string: absoluteTarget),
-                      let host = url.host()?.lowercased(),
-                      !excludeHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) })
+                    let host = url.host()?.lowercased(),
+                    !excludeHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) })
                 else { continue }
 
                 let key = URLCanonicalizer.key(for: url)
@@ -178,8 +216,8 @@ enum ScraperSupport {
             let target = unwrapRedirect(href)
             let absoluteTarget = absolute(target, base: base)
             guard let url = URL(string: absoluteTarget),
-                  let host = url.host()?.lowercased(),
-                  !excludeHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) })
+                let host = url.host()?.lowercased(),
+                !excludeHosts.contains(where: { host == $0 || host.hasSuffix("." + $0) })
             else { continue }
 
             let text = ((try? anchor.text()) ?? "").collapsedWhitespace

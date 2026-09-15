@@ -5,7 +5,7 @@ server that gives local AI clients reliable public-web search and page fetching.
 
 [![CI](https://github.com/Pummelchen/MCPSearch/actions/workflows/ci.yml/badge.svg)](https://github.com/Pummelchen/MCPSearch/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Swift 6.3.3](https://img.shields.io/badge/Swift-6.3.3-orange.svg)
+![Swift 6.4](https://img.shields.io/badge/Swift-6.4-orange.svg)
 [![Stars](https://img.shields.io/github/stars/Pummelchen/MCPSearch?style=flat-square&logo=github&label=Stars&color=e3b341)](https://github.com/Pummelchen/MCPSearch/stargazers)
 [![Views (14d)](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Pummelchen/MCPSearch/main/.github/traffic.json)](https://github.com/Pummelchen/MCPSearch)
 [![Last Commit](https://img.shields.io/github/last-commit/Pummelchen/MCPSearch?style=flat-square&logo=git&label=Last%20Commit&color=2ea44f)](https://github.com/Pummelchen/MCPSearch/commits/main)
@@ -21,7 +21,8 @@ server that gives local AI clients reliable public-web search and page fetching.
   is an error.
 - **Rank fusion, not score comparison.** Provider relevance scores are not on a shared
   scale, so results are fused with weighted Reciprocal Rank Fusion.
-- **Swift 6.3.3**, strict concurrency, no runtime dependency on Node or Python.
+- **Swift 6.4** (built and verified with it; the manifest's floor is 6.3, so older toolchains can
+  still build it), strict concurrency, no runtime dependency on Node or Python.
 - **Client-compatible by construction.** Tool schemas satisfy the strictest consumer's
   validation, and both stdio and Streamable HTTP are supported. No vendor client has been
   connected to this server and that round trip is not planned, so the claim is bounded to
@@ -75,6 +76,18 @@ It binds `127.0.0.1` unless you pass `--host`, and it has no authentication, so 
 TLS-terminating reverse proxy in front before exposing it. Every local client uses the
 default stdio mode.
 
+The server answers only the `Host` names it knows — that is what stops a browser page on
+another site from reaching it — so when a proxy forwards a public name that is not the
+address the server binds, declare it (repeatable):
+
+```bash
+SwiftWebSearchMCP --transport http --host 0.0.0.0 \
+  --http-allowed-host search.example.com
+```
+
+A wildcard bind already accepts the machine's own interface addresses. An undeclared name is
+refused with `421 Misdirected Request` before any MCP handling.
+
 ## Tools
 
 | Tool | Purpose |
@@ -87,6 +100,16 @@ default stdio mode.
 `web_search` takes `query` (required), `max_results`, `recency`, `include_domains`,
 `exclude_domains`, `locale`, `provider` and `mode` (`fast` / `balanced` / `thorough`).
 Provider-specific options are deliberately not exposed.
+
+### Third-party rendering for `web_open`
+
+`web_open` fetches a URL directly first. If the page needs JavaScript, or its native
+extraction is too thin, it falls back to **Jina Reader** (`r.jina.ai`): the full target URL
+— including any credentials, token or signed query parameter in it — is sent to that
+third-party service, which fetches the page on this server's behalf. The fallback is on by
+default; `SEARCH_ENABLE_JINA_READER=false` disables it and `JINA_API_KEY` raises its rate
+limit. The SSRF policy runs before the fallback, so a URL it blocks is never laundered
+through the reader.
 
 ### Answers that cannot invent their sources
 
@@ -109,19 +132,21 @@ export DEEPSEEK_API_KEY=sk-...   # optional; adds web_answer
 
 ## Providers
 
-No account is required to run this. Four of the routes below need no vendor key at all:
+No account is required to run this. Five of the routes below need no vendor key at all: two
+of them still need an endpoint you point them at (a SearXNG instance, or an Open Web Search
+aggregator), two are opt-in scrapers, and Parallel needs only its flag.
 
 | Route | Needs | Notes |
 | --- | --- | --- |
-| **Self-hosted SearXNG** | Docker only | Aggregates Google and Brave with no vendor key. See [Self-Hosting](https://github.com/Pummelchen/MCPSearch/wiki/Self-Hosting). |
-| **Parallel Search MCP** | nothing | Free anonymous tier, measured at exactly 20 calls per window. Enable with `SEARCH_ENABLE_PARALLEL=true`. |
-| **DuckDuckGo** | nothing | Free scraper. Throttles to about one query per 10s. Enable with `SEARCH_ENABLE_SCRAPERS=true`. |
+| **Self-hosted SearXNG** | Docker, plus `SEARXNG_BASE_URL` | Aggregates Google and Brave with no vendor key. See [Self-Hosting](https://github.com/Pummelchen/MCPSearch/wiki/Self-Hosting). |
+| **Parallel Search MCP** | `SEARCH_ENABLE_PARALLEL=true` | Free anonymous tier, measured at exactly 20 calls per window. |
+| **DuckDuckGo** | `SEARCH_ENABLE_SCRAPERS=true` | Free scraper. Throttles to about one query per 10s. |
 | Tavily | `TAVILY_API_KEY` | Good on keyword queries; weaker on interpretive ones. 1 credit per search. |
 | Brave Search | `BRAVE_SEARCH_API_KEY` | Broad independent index. |
 | Mojeek | `MOJEEK_API_KEY` | Independent index, for diversity. Paid API. |
 | Exa | `EXA_API_KEY` | Neural retrieval and highlights. |
-| Open Web Search | `OPEN_WEB_SEARCH_URL` | Aggregation endpoint; contract unverified. |
-| Startpage | none | Currently unusable: the site serves an Anubis proof-of-work challenge. |
+| Open Web Search | `OPEN_WEB_SEARCH_URL` | No vendor key: an aggregation endpoint you supply. Contract unverified. |
+| Startpage | `SEARCH_ENABLE_SCRAPERS=true` | Currently unusable: the site serves an Anubis proof-of-work challenge. |
 
 Run at least two providers. A single provider is brittle in practice: measured on this
 deployment, DuckDuckGo alone failed 41 of 50 queries once its throttle was reached,
@@ -152,7 +177,7 @@ lives there.
 
 ```bash
 swift build                    # debug
-swift test                     # 371 tests, no network required
+swift test                     # 590 tests, no network required
 SEARCH_LIVE_TESTS=1 swift test --filter LiveProviderTests   # opt-in; calls real providers, also needs a key
 python3 scripts/mcp_smoke.py   # end-to-end stdio handshake
 python3 scripts/mcp_smoke.py --http   # end-to-end Streamable HTTP session
@@ -181,13 +206,21 @@ environment or a git-ignored `config.env`). A key alone does not activate them, 
 `docs/` holds the API research the adapters are built on, with every claim labelled
 verified or unverified — see [docs/README.md](docs/README.md).
 
-CI runs on `macos-26` (Swift 6.3): build, test, release build, smoke tests over both
-transports, the pseudo-terminal monitor test, and a second test run with credentials
-present to prove the suite is hermetic.
+CI runs on the `xcode-27` image (Swift 6.4). One job builds with warnings as errors, runs the
+suite with coverage against an 80 % floor on `Sources/`, builds release, drives both transports
+and the dashboard's pseudo-terminal path, and re-runs the suite with placeholder credentials to
+prove it is hermetic. A second job holds the static gates: `swift-format`, SwiftLint, `ruff`,
+`pyright` (strict), `shellcheck`, `semgrep`, a full-history `gitleaks` scan, and `osv-scanner`
+over the locked dependency graph.
 
 ## License
 
 MIT — see [LICENSE](LICENSE). Copyright (c) 2026 André Borchert.
+
+The binary links third-party packages with their own terms. Their licences, and the attribution
+notices that Apache-2.0 requires a distributed work to carry, are collected in
+[THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md); a CI gate keeps that inventory in step with
+`Package.resolved`.
 
 ## Contact
 

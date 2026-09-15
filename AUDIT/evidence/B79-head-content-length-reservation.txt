@@ -1,0 +1,155 @@
+# B79 — a request head no longer sizes the body buffer
+
+Host: this Mac (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## The premise, checked first
+
+True, and reachable exactly as described. At HEAD the handler reserved on the request head:
+
+```swift
+// HTTPMCPHost.swift, before (HTTPMCPHandler.channelRead, `.head`)
+// Bound the body so a single request cannot exhaust memory.
+bodyBuffer.reserveCapacity(
+    min(head.headers.first(name: "content-length").flatMap(Int.init) ?? 4096, 1 << 20))
+```
+
+`Content-Length` is written by the peer, and `ByteBuffer.reserveCapacity` reallocates as soon
+as the requested capacity exceeds the current one. Verified in the pinned dependency rather
+than assumed — `swift-nio` 2.102.0, `Sources/NIOCore/ByteBuffer-core.swift:755`:
+
+```swift
+public mutating func reserveCapacity(_ minimumCapacity: Int) {
+    guard minimumCapacity > self.capacity else { return }
+    let targetCapacity = _toCapacity(minimumCapacity)
+    if isKnownUniquelyReferenced(&self._storage) {
+        self._ensureAvailableCapacity(targetCapacity, at: 0)
+    } else { … }
+}
+```
+
+A fresh `ByteBuffer()` has capacity 0, so `Content-Length: 1048576` allocates 1 MiB on the head
+alone. `maximumBodyBytes` is checked only in `.body`, after bytes have arrived, so nothing
+bounded the head-time allocation. Composed with B90's bound the ceiling was
+`maximumConnections` × 1 MiB = 64 MiB from a peer that sends no body at all — larger before
+B90, and real for the opt-in unauthenticated non-loopback bind (the default loopback bind
+confines it to a local peer).
+
+## A note on measuring it
+
+The allocation is real but not resident, so the obvious measurement does not show it. With the
+defective binary, 64 loopback connections that send only a head with
+`Content-Length: 1048576` and no body:
+
+```
+$ python3 "$SCRATCH/b79_probe.py" "$SCRATCH/…/debug/SwiftWebSearchMCP"
+{"connections": 64, "rss_kib": [23648, 25536], "delta_rss_kib": 1888, "delta_vsz_kib": 0}
+```
+
+A control run declaring `Content-Length: 1` grew RSS by 608 KiB. macOS `malloc` maps a 1 MiB
+allocation and the pages are never touched by `reserveCapacity`, so RSS (and the `ps` virtual
+size field) do not move by 64 MiB. The premise is therefore confirmed against the dependency's
+own implementation and the call site, not by an RSS delta, and the regression test pins the
+*decision* rather than the allocator — see below.
+
+## The fix
+
+The reservation decision moved to `HTTPRequestBodyPolicy` in `WebSearchCore` (next to
+`HTTPTransportConfiguration`, which the host already consumes), and the handler uses it for
+both the reservation and the body cap:
+
+```swift
+// HTTPMCPHost.swift, after (`.head`)
+// A small fixed reservation, owned by `HTTPRequestBodyPolicy`. Reserving the
+// declared `Content-Length` meant a head-only request held up to 1 MiB per
+// connection before any body arrived, because `ByteBuffer.reserveCapacity`
+// reallocates immediately (ledger B79).
+let declaredLength = head.headers.first(name: "content-length").flatMap(Int.init)
+bodyBuffer.reserveCapacity(
+    HTTPRequestBodyPolicy.reservationCapacity(declaredContentLength: declaredLength)
+)
+```
+
+```swift
+// HTTPRequestBodyPolicy.swift (new)
+public static let initialCapacity = 4096
+public static let maximumBodyBytes = 1 << 20  // 1 MiB
+
+public static func reservationCapacity(declaredContentLength: Int?) -> Int {
+    _ = declaredContentLength
+    return initialCapacity
+}
+```
+
+`ByteBuffer.writeBuffer` grows the buffer as `.body` parts actually arrive, and
+`HTTPRequestBodyPolicy.maximumBodyBytes` stays the enforcement point in `.body` — unchanged
+behaviour for every accepted request. `HTTPMCPHandler.maximumBodyBytes` is gone; the cap is
+named once. The `declaredContentLength` parameter is kept deliberately so the decision is
+visible at the call site and a regression has one place to be asserted.
+
+## The tests
+
+New `HTTPRequestBodyPolicyTests` in `Tests/WebSearchCoreTests/TransportConfigurationTests.swift`
+(the file that already covers `HTTPTransportConfiguration`):
+
+* `testReservationIgnoresTheDeclaredContentLength` — `nil`, `0`, `1`, `4096`, `1 << 20` and
+  `Int.max` all reserve `initialCapacity`. This is the discriminating case: at HEAD a 1 MiB
+  declaration reserved 1 MiB.
+* `testReservationIsFarBelowTheBodyCap` — the reservation is at most 64 KiB, below the cap, and
+  64 connections at it stay in the low megabytes, so the head-only case cannot hold a
+  body-sized buffer per connection.
+
+The existing `HTTPTransportTests` (14 cases, including
+`testOversizedBodyIsRefusedWithPayloadTooLarge`, which still gets 413) pass unchanged, and its
+comment now names `HTTPRequestBodyPolicy.maximumBodyBytes`.
+
+## Proof the test can fail (mutation, restored byte-identical)
+
+`reservationCapacity` reverted to the defective expression
+`min(declaredContentLength ?? 4096, maximumBodyBytes)`:
+
+```
+$ swift test --scratch-path "$SCRATCH" --filter 'HTTPRequestBodyPolicyTests'
+TransportConfigurationTests.swift:407: error: … testReservationIgnoresTheDeclaredContentLength : XCTAssertEqual failed: ("0") is not equal to ("4096") - declaring Optional(0) bytes must not change the reservation
+TransportConfigurationTests.swift:407: error: … XCTAssertEqual failed: ("1") is not equal to ("4096") - declaring Optional(1) bytes must not change the reservation
+TransportConfigurationTests.swift:407: error: … XCTAssertEqual failed: ("1048576") is not equal to ("4096") - declaring Optional(1048576) bytes must not change the reservation
+TransportConfigurationTests.swift:407: error: … XCTAssertEqual failed: ("1048576") is not equal to ("4096") - declaring Optional(9223372036854775807) bytes must not change the reservation
+	 Executed 2 tests, with 4 failures (0 unexpected)
+```
+
+The `1048576` results are the finding's defect, reproduced. Restored: `diff -q` empty, SHA-256
+`9799cac4…`.
+
+## Gates
+
+```
+$ swift build --build-tests --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (7.30s)                                                     0 warnings, 0 errors
+
+$ swift test --scratch-path "$SCRATCH"
+	 Executed 548 tests, with 6 tests skipped and 0 failures (0 unexpected) in 29.300 (29.482) seconds
+
+$ swift build -c release --scratch-path "$SCRATCH" -Xswiftc -warnings-as-errors
+Build complete! (38.31s)                                                    0 warnings, 0 errors
+
+$ swift-format lint --recursive --strict Sources Tests Package.swift
+0 diagnostics                                                               exit=0
+
+$ swiftlint lint --strict
+Done linting! Found 0 violations, 0 serious in 87 files.                    exit=0
+
+$ python3 scripts/third_party_notices.py
+THIRD-PARTY-NOTICES.md covers all 8 resolved packages at the pinned versions
+```
+
+548 is 546 at HEAD plus the two new tests. The 6 skips are the pre-existing environment-gated
+ones. SwiftLint now reports 87 files because the policy is a new source file.
+
+## Deviation from the spec
+
+None of substance. The expected-correct allowed either a fixed capacity or lazy growth; this
+fix reserves a fixed 4096 bytes and lets `writeBuffer` grow, with `maximumBodyBytes` unchanged
+as the enforcement point. The only judgement call is placing the constants in `WebSearchCore`
+rather than leaving them private to the handler: the handler is in the executable target, which
+the test target cannot import (the same limitation `HTTPTransportTests` documents), so a private
+constant would have no falsifiable test. The policy sits beside the transport configuration the
+host already reads, and the handler was not otherwise restructured.

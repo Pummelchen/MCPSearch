@@ -1,10 +1,11 @@
 import Foundation
 import Logging
 import MCP
-import NIOHTTP1
 import NIOCore
+import NIOHTTP1
 import NIOPosix
 import WebSearchCore
+import os
 
 /// A minimal, correct HTTP/1.1 server that fronts the MCP SDK's Streamable HTTP
 /// transport.
@@ -24,39 +25,230 @@ import WebSearchCore
 ///   deployment must terminate TLS somewhere.
 /// - **No OAuth.** Both vendors prefer OAuth for remote servers; this serves the
 ///   no-auth case, which is the documented behaviour for anonymous endpoints.
-/// - **No server-initiated streaming.** The SDK's stateless transport answers each
-///   request with a complete JSON response, which is what the JSON transport path
-///   requires. `text/event-stream` payloads are relayed if the SDK ever produces one.
+/// - **No server-initiated streaming.** Responses are complete JSON bodies; if the SDK
+///   produces a `text/event-stream` payload it is relayed verbatim rather than re-framed.
+/// - **Bounded connections.** The listener holds at most `maximumConnections` child channels and
+///   closes one that does not complete a request within the configured request budget. The bound
+///   is on receiving the request, so a streaming response is never treated as idle (ledger B90).
+/// - **One session per client, and as many clients as connect.** The SDK's stateful
+///   transport is single-session and one-shot: it refuses a second `initialize` and, once
+///   terminated, answers 404 forever. This host therefore keeps a registry of sessions,
+///   creating a fresh `Server` + transport pair per `initialize` and routing every later
+///   request by the `Mcp-Session-Id` the SDK issues — `DELETE` included, which releases the
+///   session (ledger B03).
 ///
 /// A separate port serves a plain liveness check at `/health`, so a container or proxy
 /// can probe the process without speaking MCP.
 final class HTTPMCPHost: @unchecked Sendable {
+    /// Builds and starts the MCP server for one session.
+    ///
+    /// Every session needs its own `Server`, because `Server.start(transport:)` binds one
+    /// transport for the life of that server.
+    typealias SessionFactory = @Sendable (StatefulHTTPServerTransport) async throws -> Server
+
     private let configuration: HTTPTransportConfiguration
-    private let transport: StatefulHTTPServerTransport
+    /// The `Host`/`Origin` allow-list the validation pipeline was built with, kept so the
+    /// startup log can name it: a 421 is otherwise a puzzle for an operator (ledger B21).
+    private let originPolicy: HTTPOriginPolicy
+    private let makeServer: SessionFactory
     private let log: Log
     private let group: EventLoopGroup
+    private let validationPipeline: any HTTPRequestValidationPipeline
+    /// How long a connection may stay open without completing a request.
+    ///
+    /// The bound is on *receiving a request*, not on the exchange: it is disarmed the moment the
+    /// request ends, so a response that legitimately streams (an SSE session stream) is never
+    /// mistaken for an idle connection (ledger B90).
+    private let requestCompletionTimeout: Duration
     private var channel: Channel?
+
+    /// Most child connections this listener holds at once.
+    ///
+    /// swift-nio 2.102 has no `ChannelOptions.maxConnections`, and the package deliberately
+    /// depends only on NIOCore/NIOPosix/NIOHTTP1, so `IdleStateHandler` is not available either.
+    /// Both bounds are therefore enforced by this type: the counter below refuses a connection
+    /// once the limit is reached, and `HTTPMCPHandler` closes one that does not complete its
+    /// request in time. Sockets cannot be refused before `accept`, but a refused connection
+    /// costs one descriptor for one event-loop turn instead of living until the peer gives up
+    /// (ledger B90).
+    static let maximumConnections = 64
+
+    /// Live child channels, so the accept path can refuse a connection beyond the bound.
+    private let liveConnections = OSAllocatedUnfairLock<Int>(initialState: 0)
+
+    /// Live sessions, keyed by the id the SDK issued. Lock-guarded rather than actor-isolated
+    /// because the request path is entered from NIO handlers.
+    private let sessions = OSAllocatedUnfairLock<[String: SessionContext]>(initialState: [:])
+
+    /// Resumed by `stop()` so `waitUntilStopped()` can park the process.
+    private let shutdown = OSAllocatedUnfairLock<CheckedContinuation<Void, Never>?>(initialState: nil)
+
+    struct SessionContext: Sendable {
+        let server: Server
+        let transport: StatefulHTTPServerTransport
+    }
+
+    /// Fixed ids: the host has to know a session's id before its transport issues one.
+    private struct FixedSessionIDGenerator: SessionIDGenerator {
+        let sessionID: String
+        func generateSessionID() -> String { sessionID }
+    }
 
     /// Windows-style CRLF is what HTTP/1.1 requires.
     private static let crlf = "\r\n"
 
     init(
         configuration: HTTPTransportConfiguration,
-        transport: StatefulHTTPServerTransport,
+        makeServer: @escaping SessionFactory,
+        requestCompletionTimeout: Duration,
         log: Log
     ) {
         self.configuration = configuration
-        self.transport = transport
+        self.makeServer = makeServer
+        self.requestCompletionTimeout = requestCompletionTimeout
         self.log = log
+        // The same validation for every session: origin, Accept, content type, protocol
+        // version and session header. Origin validation costs nothing for server-to-server
+        // callers and stops a browser page from driving the server.
+        // Derived from the configured bind address rather than hard-coded to loopback: the
+        // documented remote deployment puts a TLS proxy in front of `--host`, and every request
+        // it forwarded carried the deployment's own address in `Host` (ledger B21).
+        let policy = configuration.originPolicy
+        self.originPolicy = policy
+        self.validationPipeline = StandardValidationPipeline(validators: [
+            OriginValidator(allowedHosts: policy.hosts, allowedOrigins: policy.origins),
+            AcceptHeaderValidator(mode: .sseRequired),
+            ContentTypeValidator(),
+            ProtocolVersionValidator(),
+            SessionValidator(),
+        ])
         // One thread per core is the NIO default; a search server is I/O bound.
         self.group = MultiThreadedEventLoopGroup(numberOfThreads: System.coreCount)
+    }
+
+    /// Route one request: to its session when it names one, or into a new session when it is
+    /// an `initialize`.
+    ///
+    /// A request that carries a known `Mcp-Session-Id` goes to that session's transport,
+    /// whatever the method — `POST` for messages, `GET` for the server-sent stream the SDK
+    /// offers, `DELETE` to release the session. A request without a usable session may only be
+    /// a POST carrying `initialize`; anything else is a client error rather than a silently
+    /// shared session (ledger B03).
+    func handle(
+        request: MCP.HTTPRequest,
+        method: HTTPMethod,
+        body: Data?,
+        log: Log
+    ) async -> MCP.HTTPResponse {
+        // `request.header(_:)` is the SDK's case-insensitive accessor: a client may send
+        // `Mcp-Session-Id` in any casing, and HTTP header names are case-insensitive.
+        if let sessionID = request.header(HTTPHeaderName.sessionID),
+            let session = sessions.withLock({ $0[sessionID] })
+        {
+            let response = await session.transport.handleRequest(request)
+            if method == .DELETE, case .ok = response {
+                await closeSession(id: sessionID)
+            }
+            return response
+        }
+
+        guard method == .POST, HTTPMCPHost.isInitializeRequest(body) else {
+            // Say which of the two is wrong instead of answering 405, which said nothing
+            // about sessions at all.
+            guard request.header(HTTPHeaderName.sessionID) == nil else {
+                return .error(
+                    statusCode: 404,
+                    .invalidRequest(
+                        "Not Found: session is unknown or has been released. Initialize again."
+                    )
+                )
+            }
+            return .error(
+                statusCode: 400,
+                .invalidRequest("Bad Request: a POST carrying initialize is required to start a session.")
+            )
+        }
+
+        return await createSession(request: request, log: log)
+    }
+
+    /// Whether the body is a single JSON-RPC `initialize` request.
+    ///
+    /// Parsed here rather than asked of the SDK, because the host has to decide *before* it has
+    /// a transport whether this request may create a session.
+    private static func isInitializeRequest(_ body: Data?) -> Bool {
+        guard let body, !body.isEmpty,
+            let object = try? JSONSerialization.jsonObject(with: body) as? [String: Any]
+        else { return false }
+        return object["method"] as? String == "initialize"
+    }
+
+    /// Create a session's `Server` and transport, then hand it this request.
+    private func createSession(request: MCP.HTTPRequest, log: Log) async -> MCP.HTTPResponse {
+        let sessionID = UUID().uuidString
+        let transport = StatefulHTTPServerTransport(
+            sessionIDGenerator: FixedSessionIDGenerator(sessionID: sessionID),
+            validationPipeline: validationPipeline,
+            logger: Logger(label: "mcp.transport.http")
+        )
+
+        do {
+            let server = try await makeServer(transport)
+            sessions.withLock { $0[sessionID] = SessionContext(server: server, transport: transport) }
+            let response = await transport.handleRequest(request)
+            if case .error = response {
+                // The initialize itself was refused (protocol version, Accept, Origin…): do
+                // not keep a session nobody can use.
+                await closeSession(id: sessionID)
+            }
+            return response
+        } catch {
+            log.error("HTTP session could not be started", metadata: ["error": "\(error)"])
+            await transport.disconnect()
+            return .error(statusCode: 500, .internalError("Could not start an MCP session."))
+        }
+    }
+
+    /// Release a session, if it is still registered.
+    private func closeSession(id: String) async {
+        guard let session = sessions.withLock({ $0.removeValue(forKey: id) }) else { return }
+        await session.transport.disconnect()
+        await session.server.stop()
+        log.info("HTTP session released", metadata: ["sessions": "\(sessions.withLock { $0.count })"])
+    }
+
+    /// Number of live sessions, for tests.
+    var sessionCount: Int { sessions.withLock { $0.count } }
+
+    /// Count a new child channel and report how many are live now.
+    ///
+    /// Called from `HTTPMCPHandler.channelActive`; the matching release is in `channelInactive`,
+    /// which NIO fires for every channel that became active (ledger B90).
+    func registerConnection() -> Int {
+        liveConnections.withLock { live in
+            live += 1
+            return live
+        }
+    }
+
+    /// Release a child channel that has closed.
+    func releaseConnection() {
+        liveConnections.withLock { $0 -= 1 }
+    }
+
+    /// Park until `stop()` is called, so the process lives while sessions come and go.
+    func waitUntilStopped() async {
+        await withCheckedContinuation { continuation in
+            shutdown.withLock { $0 = continuation }
+        }
     }
 
     /// Start listening. Returns once the socket is bound.
     func start() async throws {
         let configuration = self.configuration
-        let transport = self.transport
         let log = self.log
+        let host = self
+        let requestCompletionTimeout = self.requestCompletionTimeout
 
         let bootstrap = ServerBootstrap(group: group)
             .serverChannelOption(ChannelOptions.backlog, value: 256)
@@ -66,7 +258,8 @@ final class HTTPMCPHost: @unchecked Sendable {
                     channel.pipeline.addHandler(
                         HTTPMCPHandler(
                             configuration: configuration,
-                            transport: transport,
+                            host: host,
+                            requestCompletionTimeout: requestCompletionTimeout,
                             log: log
                         )
                     )
@@ -91,6 +284,7 @@ final class HTTPMCPHost: @unchecked Sendable {
                 "url": "http://\(configuration.host):\(boundPort)\(configuration.path)",
                 "health": "http://\(configuration.host):\(boundPort)/health",
                 "loopback_only": "\(configuration.isLoopback)",
+                "allowed_hosts": originPolicy.hosts.joined(separator: ", "),
             ]
         )
 
@@ -108,7 +302,21 @@ final class HTTPMCPHost: @unchecked Sendable {
         if let channel {
             try? await channel.close().get()
         }
+        // Release every session's server and transport before the event loop group goes away.
+        let live = sessions.withLock { dictionary -> [SessionContext] in
+            let values = Array(dictionary.values)
+            dictionary.removeAll()
+            return values
+        }
+        for session in live {
+            await session.transport.disconnect()
+            await session.server.stop()
+        }
         try? await group.shutdownGracefully()
+        shutdown.withLock { continuation in
+            continuation?.resume()
+            continuation = nil
+        }
     }
 }
 
@@ -132,11 +340,18 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
     typealias OutboundOut = HTTPServerResponsePart
 
     private let configuration: HTTPTransportConfiguration
-    private let transport: StatefulHTTPServerTransport
+    private let host: HTTPMCPHost
+    private let requestCompletionTimeout: Duration
     private let log: Log
 
     private var requestHead: HTTPRequestHead?
     private var bodyBuffer: ByteBuffer = ByteBuffer()
+    /// Closes a connection that has not finished its request in time.
+    ///
+    /// Armed when the channel becomes active — before any header has been parsed, so a peer that
+    /// trickles a request line is covered — and disarmed by `end`, which is what keeps a
+    /// long-lived SSE response from being treated as an idle connection (ledger B90).
+    private var requestDeadline: Scheduled<Void>?
     /// Set once a response has been written for the request in flight.
     ///
     /// An oversized body keeps streaming after it is rejected, and each further part used
@@ -146,12 +361,51 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
 
     init(
         configuration: HTTPTransportConfiguration,
-        transport: StatefulHTTPServerTransport,
+        host: HTTPMCPHost,
+        requestCompletionTimeout: Duration,
         log: Log
     ) {
         self.configuration = configuration
-        self.transport = transport
+        self.host = host
+        self.requestCompletionTimeout = requestCompletionTimeout
         self.log = log
+    }
+
+    func channelActive(context: ChannelHandlerContext) {
+        let live = host.registerConnection()
+        context.fireChannelActive()
+        guard live <= HTTPMCPHost.maximumConnections else {
+            log.warning(
+                "Refused an HTTP connection: the listener is at its concurrent-connection limit",
+                metadata: ["limit": "\(HTTPMCPHost.maximumConnections)"]
+            )
+            // `channelInactive` follows and releases the count, so it is not released here.
+            context.close(promise: nil)
+            return
+        }
+        let channel = context.channel
+        // `Duration` carries seconds plus attoseconds; NIO schedules in nanoseconds. The
+        // arithmetic is exact and avoids the trap a Double conversion would bring.
+        let components = requestCompletionTimeout.components
+        let timeout = TimeAmount.nanoseconds(
+            components.seconds * 1_000_000_000 + components.attoseconds / 1_000_000_000
+        )
+        let log = self.log
+        let timeoutDescription = "\(requestCompletionTimeout)"
+        requestDeadline = context.eventLoop.scheduleTask(in: timeout) {
+            log.warning(
+                "Closing an HTTP connection that did not complete a request in time",
+                metadata: ["timeout": timeoutDescription]
+            )
+            channel.close(promise: nil)
+        }
+    }
+
+    func channelInactive(context: ChannelHandlerContext) {
+        requestDeadline?.cancel()
+        requestDeadline = nil
+        host.releaseConnection()
+        context.fireChannelInactive()
     }
 
     func channelRead(context: ChannelHandlerContext, data: NIOAny) {
@@ -163,13 +417,21 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
             requestHead = head
             bodyBuffer.clear()
             didRespond = false
-            // Bound the body so a single request cannot exhaust memory.
-            bodyBuffer.reserveCapacity(min(head.headers.first(name: "content-length").flatMap(Int.init) ?? 4096, 1 << 20))
+            // A small fixed reservation, owned by `HTTPRequestBodyPolicy`. Reserving the
+            // declared `Content-Length` meant a head-only request held up to 1 MiB per
+            // connection before any body arrived, because `ByteBuffer.reserveCapacity`
+            // reallocates immediately (ledger B79).
+            let declaredLength = head.headers.first(name: "content-length").flatMap(Int.init)
+            bodyBuffer.reserveCapacity(
+                HTTPRequestBodyPolicy.reservationCapacity(
+                    declaredContentLength: declaredLength
+                )
+            )
 
         case .body(var buffer):
             guard !didRespond else { return }
             bodyBuffer.writeBuffer(&buffer)
-            if bodyBuffer.readableBytes > HTTPMCPHandler.maximumBodyBytes {
+            if bodyBuffer.readableBytes > HTTPRequestBodyPolicy.maximumBodyBytes {
                 didRespond = true
                 requestHead = nil
                 bodyBuffer.clear()
@@ -182,16 +444,20 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
             }
 
         case .end:
+            // The request is complete. Whatever happens next is a response, and an SSE response
+            // is legitimately long-lived, so the idle bound stops applying here (ledger B90).
+            requestDeadline?.cancel()
+            requestDeadline = nil
             guard let head = requestHead else { return }
             requestHead = nil
-            let body = bodyBuffer.readableBytes > 0
+            let body =
+                bodyBuffer.readableBytes > 0
                 ? Data(bodyBuffer.readableBytesView)
                 : nil
             bodyBuffer.clear()
 
             let handler = self
-            let configuration = self.configuration
-            let transport = self.transport
+            let host = self.host
             let log = self.log
             let eventLoop = context.eventLoop
             let channel = context.channel
@@ -204,8 +470,7 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
                 await handler.dispatch(
                     head: head,
                     body: body,
-                    configuration: configuration,
-                    transport: transport,
+                    host: host,
                     log: log
                 )
             }.whenComplete { result in
@@ -226,10 +491,6 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
             }
         }
     }
-
-    /// Largest accepted request body. MCP requests are small; a search result body is
-    /// produced by the server, not received.
-    static let maximumBodyBytes = 1 << 20  // 1 MiB
 
     /// A prepared response.
     ///
@@ -257,11 +518,16 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
     }
 
     /// Route and handle one request.
+    ///
+    /// A request that carries a known `Mcp-Session-Id` goes to that session's transport,
+    /// whatever its method — `POST` for messages, `GET` for the server-sent stream the SDK
+    /// offers, `DELETE` to release the session. A request without one may only be a POST
+    /// carrying `initialize`, which creates a session; anything else is a client error
+    /// rather than a silently shared session (ledger B03).
     private func dispatch(
         head: HTTPRequestHead,
         body: Data?,
-        configuration: HTTPTransportConfiguration,
-        transport: StatefulHTTPServerTransport,
+        host: HTTPMCPHost,
         log: Log
     ) async -> PreparedResponse {
         let method = head.method
@@ -285,24 +551,11 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
             )
         }
 
-        // Only POST is meaningful to the stateless transport; it produces 405 for
-        // anything else, but rejecting here keeps the error message clearer.
-        guard method == .POST else {
-            return PreparedResponse(
-                status: .methodNotAllowed,
-                headers: [
-                    ("Content-Type", "text/plain; charset=utf-8"),
-                    ("Allow", "POST"),
-                ],
-                body: Data("Method Not Allowed. Use POST for MCP messages.".utf8)
-            )
-        }
-
         // Origin validation: a browser page must not be able to drive this server. Both
         // vendors call server-to-server, so an Origin header is unexpected; if one is
         // present it must be loopback.
         if let origin = head.headers.first(name: "Origin"), !origin.isEmpty {
-            guard HTTPMCPHandler.isLoopbackOrigin(origin) else {
+            guard LoopbackOrigin.isLoopback(origin) else {
                 log.warning("Rejected request from a non-loopback Origin")
                 return PreparedResponse(
                     status: .forbidden,
@@ -314,22 +567,23 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
 
         // Translate headers into the SDK's dictionary form.
         var headers: [String: String] = [:]
-        for header in head.headers {
-            // Preserve the first occurrence, matching HTTP semantics for these fields.
-            if headers[header.name] == nil {
-                headers[header.name] = header.value
-            }
+        // Preserve the first occurrence, matching HTTP semantics for these fields.
+        for header in head.headers where headers[header.name] == nil {
+            headers[header.name] = header.value
         }
 
         let request = MCP.HTTPRequest(
-            method: "POST",
+            method: method.rawValue,
             headers: headers,
             body: body,
             path: path
         )
 
-        let response = await transport.handleRequest(request)
-        return HTTPMCPHandler.prepare(response)
+        // Session routing, including creating a session for an `initialize`, is the host's
+        // business; this layer only speaks HTTP.
+        return HTTPMCPHandler.prepare(
+            await host.handle(request: request, method: method, body: body, log: log)
+        )
     }
 
     /// Convert the SDK's response into status, headers, body and optional stream.
@@ -439,13 +693,6 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
         channel.writeAndFlush(HTTPServerResponsePart.end(nil)).whenComplete { _ in
             channel.close(promise: nil)
         }
-    }
-
-    /// Whether an `Origin` header refers to this machine.
-    private static func isLoopbackOrigin(_ origin: String) -> Bool {
-        guard let url = URL(string: origin), let host = url.host() else { return false }
-        return host == "127.0.0.1" || host == "::1" || host == "localhost"
-            || host.hasPrefix("127.")
     }
 }
 

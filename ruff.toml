@@ -1,0 +1,41 @@
+# Ruff configuration — MCPSearch
+#
+# Audit task A11. Until this file existed the Python scripts were linted by whatever Ruff's
+# *default* rule set happened to be in the installed version, which is not a standard a
+# repository can rely on: with Ruff 0.16.7 the implicit default reports BLE001/S110/UP041/FURB/RUF
+# findings, while an older Ruff reported none of them. Selecting explicitly makes the check
+# reproducible and makes a rule change a reviewed edit to this file.
+
+target-version = "py314"
+line-length = 100
+
+[lint]
+# Deliberately explicit rather than `ALL`: a rule that fires on every line of a 1 500-line script
+# should be adopted on purpose, not inherited.
+select = [
+    "E",    # pycodestyle errors
+    "F",    # pyflakes
+    "W",    # pycodestyle warnings
+    "I",    # import sorting (isort-compatible)
+    "UP",   # pyupgrade: syntax for the minimum supported Python
+    "B",    # flake8-bugbear: likely bugs
+    "BLE",  # flake8-blind-except
+    "SIM",  # flake8-simplify
+    "RUF",  # Ruff's own rules
+    "PERF", # performance
+    "FURB", # refurb idioms
+]
+
+# `S` (bandit) is not selected on purpose. These scripts exist to drive subprocesses, sockets and
+# a pseudo-terminal, and the bandit rules flag exactly those calls; the security questions that
+# matter for this repository are covered by the semgrep pass and by the SSRF tests in the Swift
+# suite, not by linting the smoke-test harnesses.
+
+[lint.per-file-ignores]
+# The PTY harness overrides `BaseHTTPRequestHandler.log_message`, whose name the stdlib chose.
+"scripts/monitor_tty_smoke.py" = ["N802"]
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"

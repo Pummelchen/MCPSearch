@@ -41,7 +41,7 @@ public enum URLCanonicalizer {
         else { return url }
 
         guard let scheme = components.scheme?.lowercased(),
-              scheme == "http" || scheme == "https"
+            scheme == "http" || scheme == "https"
         else { return url }
 
         // 1. Lowercase the hostname, and strip a single trailing dot (the DNS root).
@@ -134,7 +134,8 @@ public enum URLCanonicalizer {
         var kept: [Substring] = []
         kept.reserveCapacity(pairs.count)
         for pair in pairs where !pair.isEmpty {
-            let name = pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+            let name =
+                pair.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
                 .first.map(String.init) ?? ""
             let decodedName = name.removingPercentEncoding ?? name
             if trackingParameters.contains(decodedName.lowercased()) { continue }
@@ -182,9 +183,9 @@ public enum URLCanonicalizer {
     static func isUnreserved(_ byte: UInt8) -> Bool {
         switch byte {
         case UInt8(ascii: "A")...UInt8(ascii: "Z"),
-             UInt8(ascii: "a")...UInt8(ascii: "z"),
-             UInt8(ascii: "0")...UInt8(ascii: "9"),
-             UInt8(ascii: "-"), UInt8(ascii: "."), UInt8(ascii: "_"), UInt8(ascii: "~"):
+            UInt8(ascii: "a")...UInt8(ascii: "z"),
+            UInt8(ascii: "0")...UInt8(ascii: "9"),
+            UInt8(ascii: "-"), UInt8(ascii: "."), UInt8(ascii: "_"), UInt8(ascii: "~"):
             true
         default:
             false

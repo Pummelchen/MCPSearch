@@ -58,16 +58,18 @@ public struct DuckDuckGoProvider: SearchProvider {
 
         let started = DispatchTime.now().uptimeNanoseconds
 
-        guard var components = URLComponents(
-            url: DuckDuckGoProvider.endpoint,
-            resolvingAgainstBaseURL: false
-        ) else {
+        guard
+            var components = URLComponents(
+                url: DuckDuckGoProvider.endpoint,
+                resolvingAgainstBaseURL: false
+            )
+        else {
             throw SearchError.unsupportedRequest(.duckDuckGo, "could not build request URL")
         }
         var items = [URLQueryItem(name: "q", value: request.normalizedQuery)]
         // `kl` is DDG's region hint; it is best-effort and undocumented.
-        if let region = request.locale?.region {
-            items.append(URLQueryItem(name: "kl", value: "\(region.lowercased())-\(region.lowercased())"))
+        if let hint = DuckDuckGoProvider.localeHint(for: request.locale) {
+            items.append(URLQueryItem(name: "kl", value: hint))
         }
         if let df = DuckDuckGoProvider.dateFilter(for: request.recency) {
             items.append(URLQueryItem(name: "df", value: df))
@@ -124,15 +126,17 @@ public struct DuckDuckGoProvider: SearchProvider {
         var seen: Set<String> = []
         var results: [SearchResult] = []
         for (index, item) in page.results.enumerated() {
-            guard let result = ResultNormalizer.make(
-                provider: .duckDuckGo,
-                rank: index + 1,
-                title: item.title,
-                urlString: item.url,
-                snippet: item.snippet,
-                request: request,
-                seenKeys: &seen
-            ) else { continue }
+            guard
+                let result = ResultNormalizer.make(
+                    provider: .duckDuckGo,
+                    rank: index + 1,
+                    title: item.title,
+                    urlString: item.url,
+                    snippet: item.snippet,
+                    request: request,
+                    seenKeys: &seen
+                )
+            else { continue }
             results.append(result)
         }
 
@@ -151,6 +155,17 @@ public struct DuckDuckGoProvider: SearchProvider {
     }
 
     /// DDG's `df` date filter values.
+    /// DDG's `kl` value for a locale hint: `region-language` (`us-en`, `de-de`).
+    ///
+    /// The hint is best-effort and undocumented, but both parts are needed: sending the region in
+    /// both positions produced `us-us`, which is not a `kl` value at all (ledger B60). A locale
+    /// without a region has no hint to send, so none is.
+    static func localeHint(for locale: LocaleHint?) -> String? {
+        guard let locale, let region = locale.region, !region.isEmpty, !locale.language.isEmpty
+        else { return nil }
+        return "\(region.lowercased())-\(locale.language.lowercased())"
+    }
+
     static func dateFilter(for recency: Recency) -> String? {
         switch recency {
         case .any: nil

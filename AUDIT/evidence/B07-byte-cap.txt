@@ -1,0 +1,40 @@
+# B07 — the byte cap during the transfer, evidence after the fix
+
+Host: MacBook-AB.local (arm64, macOS 26.6.2, Swift 6.3.3) · branch audit/2026-09-13
+
+## The tests
+
+```
+$ swift test --filter BoundedBodyTests
+testABodyAtTheCapIsAcceptedAndOneByteMoreIsNot              8 KiB cap: 1024 bytes accepted, 1025 rejected
+testHTTPClientStopsAtTheCapWhileTheBodyIsStillArriving      responseTooLarge(limit: 8192)
+testDirectFetcherStopsAtTheCapWhileTheBodyIsStillArriving   extractionFailed
+Executed 3 tests, with 0 failures (0 unexpected) in 0.016 seconds
+```
+
+The server declares `Content-Length: 50 MB`, sends 512 KB in 64 KB chunks and then holds the
+connection open, so the body is never complete. There is no timing assertion: the tests assert
+on the *error*, and a reader that insists on the declared length fails in the transport
+instead of reporting the cap.
+
+## Mutation evidence — the pre-fix buffering read restored in both callers
+
+```
+$ swift test --filter BoundedBodyTests          # with session.data(for:) back
+testHTTPClientStopsAtTheCapWhileTheBodyIsStillArriving
+  FAILED  expected responseTooLarge from the cap, got timedOut(label: "bounded")   [60.3 s]
+testDirectFetcherStopsAtTheCapWhileTheBodyIsStillArriving
+  FAILED  expected extractionFailed, got fetchFailed(..., "request timed out")       [10.0 s]
+testABodyAtTheCapIsAcceptedAndOneByteMoreIsNot
+  FAILED  a body one byte over the cap must be rejected
+Executed 3 tests, with 3 failures (0 unexpected) in 70.422 seconds
+```
+
+Post-fix the same three run in 16 ms. The mutation was reverted; both callers use
+`BoundedResponseBody.read` again (verified: 0 occurrences of `session.data(for:` and 1
+occurrence of the streaming read in each file).
+
+## Scope
+
+`BoundedResponseBody.read` is now the only place in Sources/ that reads a response body:
+`grep -rn 'data(for:|bytes(for:|Data(contentsOf' Sources/` returns only that helper.

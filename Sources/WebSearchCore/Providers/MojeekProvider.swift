@@ -42,10 +42,12 @@ public struct MojeekProvider: SearchProvider {
     public func search(_ request: SearchRequest) async throws -> ProviderSearchResponse {
         let started = DispatchTime.now().uptimeNanoseconds
 
-        guard var components = URLComponents(
-            url: MojeekProvider.endpoint,
-            resolvingAgainstBaseURL: false
-        ) else {
+        guard
+            var components = URLComponents(
+                url: MojeekProvider.endpoint,
+                resolvingAgainstBaseURL: false
+            )
+        else {
             throw SearchError.unsupportedRequest(.mojeek, "could not build request URL")
         }
 
@@ -139,19 +141,21 @@ public struct MojeekProvider: SearchProvider {
         for (index, item) in (payload.response?.results ?? []).enumerated() {
             // Mojeek's `timestamp` is the last-modified time, in epoch seconds.
             let published = item.timestamp.map { Date(timeIntervalSince1970: TimeInterval($0)) }
-            guard let result = ResultNormalizer.make(
-                provider: .mojeek,
-                rank: index + 1,
-                title: item.title,
-                urlString: item.url,
-                // Mojeek calls the snippet `desc`, not `description`.
-                snippet: item.desc,
-                publishedAt: published,
-                score: item.score,
-                content: nil,
-                request: request,
-                seenKeys: &seen
-            ) else { continue }
+            guard
+                let result = ResultNormalizer.make(
+                    provider: .mojeek,
+                    rank: index + 1,
+                    title: item.title,
+                    urlString: item.url,
+                    // Mojeek calls the snippet `desc`, not `description`.
+                    snippet: item.desc,
+                    publishedAt: published,
+                    score: item.score,
+                    content: nil,
+                    request: request,
+                    seenKeys: &seen
+                )
+            else { continue }
             results.append(result)
         }
 
@@ -216,10 +220,12 @@ public struct MojeekProvider: SearchProvider {
             let head: Head?
             let results: [Item]?
 
+            /// Only `results` is read: `totalEstimatedMatches` is taken from it. The
+            /// cursor fields (`start`, `return`) and the two redundant date spellings
+            /// (`date`, `pdate`) carried no value, so they are not decoded at all
+            /// (ledger B66).
             struct Head: Decodable {
                 let results: Int?
-                let start: Int?
-                let `return`: Int?
             }
 
             struct Item: Decodable {
@@ -227,10 +233,9 @@ public struct MojeekProvider: SearchProvider {
                 let title: String?
                 let desc: String?
                 let score: Double?
-                /// Last-modified time, epoch seconds.
+                /// Last-modified time, epoch seconds. This is the only date Mojeek
+                /// returns that is used.
                 let timestamp: Int?
-                let date: String?
-                let pdate: Int?
             }
         }
     }

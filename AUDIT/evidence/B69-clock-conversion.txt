@@ -1,0 +1,59 @@
+# B69 — the clock test asserted a property that cannot fail
+
+Host: this Mac (arm64, macOS 26.6.2) · branch audit/2026-09-13
+
+## What was wrong
+
+```swift
+func testClockElapsedUsesNanoseconds() {
+    let clock = SystemClock()
+    let start = clock.uptimeNanoseconds()
+    let elapsed = clock.elapsedMilliseconds(since: start)
+    XCTAssertGreaterThanOrEqual(elapsed, 0)
+}
+```
+
+`elapsedMilliseconds` is `Int((uptimeNanoseconds() &- start) / 1_000_000)` — an unsigned delta
+divided down, measured immediately after `start`. The value is 0, and no implementation of that
+signature can violate `>= 0`: the assertion could not fail and the name promised nanosecond handling
+that was never exercised.
+
+## Fails-before evidence
+
+The conversion is now driven by `TestClock`, and a wrong divisor — microseconds treated as
+milliseconds — fails the test:
+
+```
+$ swift test --filter testElapsedMillisecondsConvertsANanosecondDelta
+error: ... XCTAssertEqual failed: ("1500000") is not equal to ("1500")
+error: ... XCTAssertEqual failed: ("1900000") is not equal to ("1900")
+```
+
+The old assertion is satisfied by that same mutation, which is the point.
+
+## The fix
+
+```swift
+let clock = TestClock()
+let start = clock.uptimeNanoseconds()
+XCTAssertEqual(clock.elapsedMilliseconds(since: start), 0, "no time has passed")
+clock.advance(by: .milliseconds(1_500))
+XCTAssertEqual(clock.elapsedMilliseconds(since: start), 1_500)
+clock.advance(by: .milliseconds(400))
+XCTAssertEqual(clock.elapsedMilliseconds(since: start), 1_900)   // truncates, does not round
+```
+
+No wall-clock wait is involved, so the test is deterministic and instant (B35's rule).
+
+## Verification
+
+```
+$ swift test --filter testElapsedMillisecondsConvertsANanosecondDelta
+Executed 1 test, with 0 failures (0 unexpected)
+
+$ swift test
+Executed 483 tests, with 6 skipped and 0 failures (0 unexpected) in 18.702 seconds
+
+$ swift-format lint --recursive --strict Sources Tests    0 diagnostics
+$ swiftlint --strict                                      0 violations in 83 files
+```

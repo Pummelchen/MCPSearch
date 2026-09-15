@@ -19,6 +19,17 @@ import Foundation
 /// 2. **Resolution validation** — resolve the hostname and classify *every*
 ///    returned address, so a DNS name pointing at private space is rejected.
 /// 3. **Redirect validation** — the fetcher re-runs both layers on every hop.
+///
+/// One hop never reaches layer 3, and the limit is worth stating: a redirect to `file:` — the one
+/// scheme `URLSession` handles itself — is refused by `URLSession` *beneath* this policy, without
+/// consulting the fetch delegate, so no `Decision` is produced for it. The refusal is still a policy
+/// position — non-http(s) destinations are never fetched — and `DirectHTTPFetcher` reports it as a
+/// fetch failure whose reason says so, rather than as an opaque transport code (ledger B102).
+///
+/// Every *other* scheme is handed back to the fetcher's loop, which validates the redirect target
+/// here: `validateLexically` applies `allowedSchemes`, so an `ftp:`, `data:` or not-yet-invented
+/// scheme is denied by the same per-hop call as a private address and needs no new code
+/// (ledger B120).
 public struct URLPolicy: Sendable {
     public struct Decision: Sendable, Hashable {
         public let allowed: Bool
@@ -53,7 +64,11 @@ public struct URLPolicy: Sendable {
     /// When true, private/loopback destinations are permitted. Only for a
     /// deliberately internal deployment (e.g. fetching from a company wiki).
     public let allowPrivateNetwork: Bool
-    /// Per-host cached DNS results, so a redirect chain does not re-resolve.
+    /// Resolves a hostname to every address it answers with.
+    ///
+    /// Answers are not remembered here. `DirectHTTPFetcher` hands `validate(_:cache:)` one
+    /// short-lived cache per fetch, so a redirect chain does not ask twice for a host it has
+    /// already checked while a later request still resolves afresh (ledger B88).
     private let resolver: any DNSResolver
 
     public init(
@@ -139,6 +154,19 @@ public struct URLPolicy: Sendable {
     ///   redirect hop is re-validated, and the residual risk is recorded on the tracker as
     ///   an accepted limitation rather than left implicit.
     public func validate(_ url: URL) async -> Decision {
+        // No cache: a caller outside a fetch loop gets a fresh answer every time, which is
+        // the behaviour `DirectHTTPFetcher` relies on across requests (ledger B88).
+        await validate(url, cache: nil)
+    }
+
+    /// Validate the URL, reusing address lookups `cache` already holds.
+    ///
+    /// The cache stores the *address list*, never the decision: every call still classifies
+    /// each address, so a host that answered with private space is denied on every validation
+    /// that uses the cache, and a host the cache has not seen is resolved before it is judged
+    /// (ledger B88). `DirectHTTPFetcher` creates one cache per fetch and discards it, so the
+    /// re-resolution that bounds DNS rebinding survives between requests.
+    func validate(_ url: URL, cache: DNSAnswerCache?) async -> Decision {
         let lexical = validateLexically(url)
         guard lexical.allowed else { return lexical }
 
@@ -147,12 +175,17 @@ public struct URLPolicy: Sendable {
         guard let host = url.host(), !URLPolicy.isIPLiteral(host) else { return .allow }
 
         let addresses: [IPAddress]
-        do {
-            addresses = try await resolver.resolve(host: host)
-        } catch {
-            // Resolution failure is not an SSRF signal; let the fetch try and fail
-            // naturally so the caller sees a real network error.
-            return .allow
+        if let cached = cache?.addresses(for: host) {
+            addresses = cached
+        } else {
+            do {
+                addresses = try await resolver.resolve(host: host)
+            } catch {
+                // Resolution failure is not an SSRF signal; let the fetch try and fail
+                // naturally so the caller sees a real network error.
+                return .allow
+            }
+            cache?.store(addresses, for: host)
         }
 
         for address in addresses {
@@ -218,7 +251,7 @@ public struct URLPolicy: Sendable {
         guard parts.count == 4 else { return false }
         return parts.allSatisfy { part in
             guard !part.isEmpty, part.count <= 3, part.allSatisfy(\.isNumber),
-                  let value = Int(part)
+                let value = Int(part)
             else { return false }
             return (0...255).contains(value)
         }
@@ -245,6 +278,13 @@ public struct URLPolicy: Sendable {
 // MARK: - IP addresses
 
 /// A parsed IP address with the classification predicates the SSRF policy needs.
+///
+/// `case v6` carries a `[UInt8]` rather than a fixed-width tuple so the enum stays
+/// `Hashable` and the presentation form is easy to build, which means a caller can construct
+/// one of any length. `init?(_:)` only ever produces 16 bytes and every in-tree producer goes
+/// through it, but the case is public, so each accessor checks the length before indexing.
+/// A malformed value is classified as "not in this range" (and rendered as malformed) rather
+/// than trapping (ledger B84).
 public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
     case v4(UInt32)
     case v6([UInt8])
@@ -275,6 +315,10 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
             ]
             return bytes.map(String.init).joined(separator: ".")
         case .v6(let bytes):
+            // A public case carrying a byte array can hold any length, so the fixed-width
+            // unpacking below must be guarded (ledger B84). There is no presentation form for
+            // a value that is not a 16-byte address, so say so instead of trapping.
+            guard bytes.count == 16 else { return "invalid IPv6 (\(bytes.count) bytes)" }
             let groups = stride(from: 0, to: 16, by: 2).map { index in
                 String(format: "%x", (UInt16(bytes[index]) << 8) | UInt16(bytes[index + 1]))
             }
@@ -285,8 +329,10 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
     /// 127.0.0.0/8, ::1
     public var isLoopback: Bool {
         switch self {
-        case .v4(let value): (value >> 24) == 127
-        case .v6(let bytes): bytes.dropLast().allSatisfy { $0 == 0 } && bytes[15] == 1
+        case .v4(let value): return (value >> 24) == 127
+        case .v6(let bytes):
+            guard bytes.count == 16 else { return false }
+            return bytes.dropLast().allSatisfy { $0 == 0 } && bytes[15] == 1
         }
     }
 
@@ -303,6 +349,8 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
     /// client address is stored inverted).
     public var embeddedIPv4: IPAddress? {
         guard case .v6(let bytes) = self else { return nil }
+        // Only a 16-byte address has the fixed offsets this unwrapping reads (ledger B84).
+        guard bytes.count == 16 else { return nil }
 
         func address(at offset: Int) -> IPAddress {
             .v4(
@@ -345,8 +393,10 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
     /// 169.254.0.0/16, fe80::/10
     public var isLinkLocal: Bool {
         switch self {
-        case .v4(let value): (value >> 16) == 0xA9FE
-        case .v6(let bytes): (bytes[0] == 0xFE) && (bytes[1] & 0xC0) == 0x80
+        case .v4(let value): return (value >> 16) == 0xA9FE
+        case .v6(let bytes):
+            guard bytes.count == 16 else { return false }
+            return (bytes[0] == 0xFE) && (bytes[1] & 0xC0) == 0x80
         }
     }
 
@@ -362,6 +412,7 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
             // Carrier-grade NAT and other non-public ranges that are still internal.
             return false
         case .v6(let bytes):
+            guard bytes.count == 16 else { return false }
             // fc00::/7 unique local addresses.
             return (bytes[0] & 0xFE) == 0xFC
         }
@@ -382,16 +433,20 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
     /// 0.0.0.0, ::
     public var isUnspecified: Bool {
         switch self {
-        case .v4(let value): value == 0
-        case .v6(let bytes): bytes.allSatisfy { $0 == 0 }
+        case .v4(let value): return value == 0
+        case .v6(let bytes):
+            guard bytes.count == 16 else { return false }
+            return bytes.allSatisfy { $0 == 0 }
         }
     }
 
     /// 224.0.0.0/4, ff00::/8
     public var isMulticast: Bool {
         switch self {
-        case .v4(let value): (value >> 28) == 0xE
-        case .v6(let bytes): bytes[0] == 0xFF
+        case .v4(let value): return (value >> 28) == 0xE
+        case .v6(let bytes):
+            guard bytes.count == 16 else { return false }
+            return bytes[0] == 0xFF
         }
     }
 
@@ -411,7 +466,7 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
         case .v4(let value):
             switch value {
             case 0xA9FE_A9FE,  // 169.254.169.254 (AWS/Azure/GCP/DO)
-                 0x6464_6464:  // 100.100.100.200 (Alibaba)
+                0x6464_6464:  // 100.100.100.200 (Alibaba)
                 return true
             default:
                 return false
@@ -432,7 +487,12 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
             let b = (value >> 16) & 0xFF
             if a >= 240 { return true }  // 240.0.0.0/4 reserved
             if a == 0 { return true }  // 0.0.0.0/8 "this network"; only 0.0.0.0 was caught
-            if a == 192, b == 0 { return true }  // 192.0.0.0/24
+            // Deliberately the whole 192.0.0.0/16, not only the IETF-assigned 192.0.0.0/24 the
+            // comment here used to name. The range holds protocol assignments, TEST-NET-1
+            // (192.0.2.0/24) and the 6to4 relay anycast block, none of which a web page fetch
+            // should ever reach; refusing the surrounding /16 as well errs towards refusal, which
+            // is the right direction for this check (ledger B62).
+            if a == 192, b == 0 { return true }
             if a == 198, (18...19).contains(b) { return true }  // benchmarking
             return false
         case .v6(let bytes):
@@ -443,6 +503,43 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
 }
 
 // MARK: - DNS
+
+/// DNS answers remembered for the length of one fetch.
+///
+/// `URLPolicy` used to declare a per-host cache it did not have, and `DirectHTTPFetcher`
+/// validated a redirect target once for the hop and again at the top of the loop, so a
+/// two-hop chain paid for the same lookup three times. Handing this object to
+/// `validate(_:cache:)` turns the repeat calls into memo hits without changing what is
+/// decided, because the address list is cached and the classification is not (ledger B88).
+///
+/// Scope is the whole point. One instance is created per `DirectHTTPFetcher.fetch` and
+/// dropped when it returns, so the next request resolves again. A cache that outlived the
+/// request would weaken the policy's DNS-rebinding bound in the one direction that matters:
+/// a name that resolved to public space a moment ago would be re-validated against that
+/// stale answer while `URLSession` connects to whatever it resolves to now.
+final class DNSAnswerCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var answers: [String: [IPAddress]] = [:]
+
+    /// The addresses an earlier lookup in this fetch produced, or nil when it has none.
+    func addresses(for host: String) -> [IPAddress]? {
+        lock.lock()
+        defer { lock.unlock() }
+        // Host names are case-insensitive (RFC 4343), so the memo is too.
+        return answers[host.lowercased()]
+    }
+
+    /// Remember a successful lookup.
+    ///
+    /// A resolution *failure* is deliberately not stored. The policy lets a failing lookup
+    /// through so the fetch fails with a real network error, and remembering that as "no
+    /// addresses" would pin a transient resolver failure for the rest of the fetch.
+    func store(_ addresses: [IPAddress], for host: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        answers[host.lowercased()] = addresses
+    }
+}
 
 /// Resolves hostnames to addresses. Injectable so SSRF tests never touch DNS.
 public protocol DNSResolver: Sendable {
@@ -487,7 +584,9 @@ public struct SystemDNSResolver: DNSResolver {
                             nil, 0,
                             NI_NUMERICHOST
                         ) == 0 {
-                            let text = String(decoding: buffer.prefix { $0 != 0 }.map(UInt8.init(bitPattern:)), as: UTF8.self)
+                            let text =
+                                String(bytes: buffer.prefix { $0 != 0 }.map(UInt8.init(bitPattern:)), encoding: .utf8)
+                                ?? ""
                             // Strip an IPv6 zone index (`fe80::1%en0`).
                             let cleaned = text.split(separator: "%").first.map(String.init) ?? text
                             if let address = IPAddress(cleaned) { addresses.append(address) }
