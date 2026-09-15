@@ -81,10 +81,10 @@ jobs:
           major="${version%%.*}"
           minor="${version#*.}"
           if [ "$major" -lt 6 ] || { [ "$major" -eq 6 ] && [ "$minor" -lt 4 ]; }; then
-            echo "::error::This package requires swift-tools-version 6.4 or newer; found $version"
+            echo "::error::This project is built and verified with Swift 6.4 or newer; found $version"
             exit 1
           fi
-          echo "Swift $version satisfies swift-tools-version 6.4"
+          echo "Swift $version satisfies the project's Swift 6.4 requirement"
 
           # The exact toolchain is whatever the runner image ships, and this workflow does **not**
           # pin it: the image rotates, and a hard `DEVELOPER_DIR=/Applications/Xcode_<n>.app` fails

@@ -145,34 +145,41 @@ Two things worth carrying forward:
 
 ## Open tasks
 
-| — | — | — | *(none: every S3 task is DONE or BLOCKED-with-owner)* | — |
-
-The queue order is this table's order.
-
-| id | sev | category | title | file |
-| --- | --- | --- | --- | --- |
-| B103 | S3 | test | The tool-layer cancellation branches are still not exercised by any test | `Sources/SwiftWebSearchMCP/ToolHandlers.swift:91-93, 142-143, 237` |
-| B121 | S3 | unsafe | HTTPError.invalidURL's detail is interpolated verbatim into the caller-facing message, so a URL-shaped | `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift (unsuppor` |
+**None.** `AUDIT/ledger.json` holds **139 tasks, all DONE, 0 BLOCKED**. The rows that used to sit here
+(`B103`, `B121`) were closed in the previous session, and `B122` — the one BLOCKED-with-owner item,
+the cancellation-contract decision — was resolved in the go-live session by propagating the
+cancellation. The audit-branch queue is therefore empty; the only remaining work is merging
+[PR #1](https://github.com/Pummelchen/MCPSearch/pull/1).
 
 ## Next steps, in order
 
-1. Continue the S3 queue above, one commit per task, each with its own evidence file, ledger rows
-   and CI record.
-2. **Phase E is COMPLETE and the pull request is open.** The S3 queue is finished (133 DONE,
-   1 BLOCKED-with-owner) and the acceptance gate passed on node1 from a fresh clone; see
-   `AUDIT/evidence/PHASE-E-independent-host.txt`. **PR #1** is open against `main`:
-   https://github.com/Pummelchen/MCPSearch/pull/1 — `MERGEABLE`, a fast-forward (`main` has no
-   commit the branch lacks), with `main` still untouched at `f3dd8d9`. The remaining work is review
-   and the B122 decision, not code. It is an acceptance gate, not a task
-   list: a fresh clone on an independent host, zero warnings, the full suite green **repeatedly**
-   (a single green run has already hidden one real flake, B116), coverage at or above the 80 % floor
-   via `scripts/coverage_floor.py`, every scanner clean or waived in writing, the ledger containing
-   only DONE or BLOCKED-with-owner, the wiki tracker mirrored, and finally a pull request of
-   `audit/2026-09-13` into `main`. The Phase E checklist: a fresh clone on an independent host (node1 is the designated one, and the
-   baseline is already established here), zero warnings, full suite green **repeatedly**, coverage
-   at or above the 80 % floor, every scanner clean or waived in writing, the ledger containing only
-   DONE or BLOCKED-with-owner, the wiki tracker mirrored, and finally a pull request to `main`.
+1. **Merge [PR #1](https://github.com/Pummelchen/MCPSearch/pull/1)** into `main`. It is
+   `MERGEABLE` and a fast-forward again: `main` advanced eight commits after the PR opened, so it was
+   merged *into* the branch (`B125`) rather than rebased, and the single `README.md` conflict was
+   resolved by keeping both sides. Nothing else is outstanding.
+2. After the merge, `main` carries the audit. The five S0 equivalents and the rest of the fixes stop
+   being branch-only, which is the whole point of the exercise.
+3. **Human actions recorded but deliberately not taken** (see the wiki `Project-Tracker`, ISSUE-20 and
+   ISSUE-21): rotate the GitHub PAT that sits in cleartext in the local wiki clones' `.git/config`;
+   and decide what to do about GitHub's AI code-scanning check, which fails on every PR head with a
+   Copilot service error (`CAPIError: 400 The requested model is not supported`) that no repository
+   change can influence.
 
+### The Phase E checklist, and where it now stands
+
+A fresh clone on an independent host, zero warnings, the full suite green, coverage at or above the
+80 % floor, every scanner clean or waived in writing, zero placeholders, a ledger with no non-BLOCKED
+open task, the wiki tracker mirrored, and a pull request into `main`.
+
+Verified twice: **node1** at `891b94f` (2026-09-14, preserved as
+`AUDIT/evidence/PHASE-E-2026-09-14-node1.txt`) and **node2** at `6c91ef1` (2026-09-15, a host that
+developed none of the changes) — 0 warnings, 590 tests / 0 failures, `Sources/` coverage 91.7 %
+against the 80 % floor, all 18 gates clean. Artifact:
+`AUDIT/evidence/PHASE-E-independent-host.txt`.
+
+> **Why Phase E ran twice.** The branch changed after the first run: `B122`–`B127` were closed, and
+> `B123`/`B127` changed the toolchain the build runs on. A verification of a commit that is no longer
+> the tip is worth re-doing rather than citing.
 ## Things a new session should know that are easy to rediscover badly
 
 * `AUDIT/environment.md` lists the host facts, the fleet, the secret-scan method and the build
