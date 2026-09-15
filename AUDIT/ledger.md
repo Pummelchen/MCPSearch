@@ -16,14 +16,14 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 
 | Metric | Count |
 | --- | --- |
-| Tasks enumerated | 139 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover, B116-B121 found while fixing and recording, B122-B127 found in the go-live session) |
+| Tasks enumerated | 140 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover, B116-B121 found while fixing and recording, B122-B128 found in the go-live session) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 139 |
+| DONE | 140 |
 | START (reproduced, expected behaviour written) | 0 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
-Severity of the whole set: **S0 3, S1 11, S2 35, S3 90** — 3/3 S0 are DONE; 11/11 S1 are DONE; 35/35 S2 are DONE; 90/90 S3 are DONE. Tasks not DONE: 0.
+Severity of the whole set: **S0 3, S1 11, S2 36, S3 90** — 3/3 S0 are DONE; 11/11 S1 are DONE; 36/36 S2 are DONE; 90/90 S3 are DONE. Tasks not DONE: 0.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -173,6 +173,7 @@ waived in writing.
 | B125 | **S1** | repository / delivery | `README.md` (Licence/Contact section), https://github.com/Pummelchen/MCPSearch/pull/1 | PR #1 cannot fast-forward: main advanced 8 commits and README.md conflicts, while the PR and the wiki still claim a clean one-click merge | incomplete | DONE | node1 (arm64, macOS 27.0, Swift 6.4) | go-live session: comparing main against the audit branch before Phase E |
 | B126 | S3 | repository / docs | `README.md:179` (test count), `README.md:208` (CI description) | The README states 371 tests and a CI description that omits every gate the audit added | docs | DONE | node1 (arm64, macOS 27.0, Swift 6.4) | go-live session: verifying the README's claims after merging main (B125) |
 | B127 | **S1** | CI / repository | `Package.swift:1` | The Swift 6.4 manifest floor broke GitHub's CodeQL Swift scan; the floor returns to 6.3 and the 6.4 requirement is enforced by the CI gate instead | deps | DONE | node1 (arm64, macOS 27.0, Swift 6.4) | CI on PR #1 (B123's head): the CodeQL check failed |
+| B128 | S2 | CI / repository | `Package.swift:1`, `.github/workflows/codeql.yml` | CodeQL moved to advanced setup on the xcode-27 image with a manual Swift build, so the manifest declares Swift 6.4 and SAST keeps running | deps | DONE | node1 (arm64, macOS 27.0, Swift 6.4) | owner instruction following B127: take the alternative B127 rejected |
 
 ---
 
@@ -225,7 +226,76 @@ Full before/expected-correct records are in `ledger.json` (`raw_file` names this
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
 
+## B128 — CodeQL moved to advanced setup, so the manifest can declare Swift 6.4 without losing SAST
+
+**Severity S2** · **category** deps · **status** DONE · **host** node1 (arm64, macOS 27.0, Swift 6.4)
+
+**This is `B127`'s rejected alternative, taken deliberately by the owner.** `B127` restored
+`swift-tools-version: 6.3` because raising it to 6.4 broke GitHub's CodeQL Swift scan: default setup
+builds on its own runner image with Swift 6.3.3, which cannot parse a 6.4 manifest at all. That kept
+SAST but left the manifest declaring a toolchain the project neither supports nor verifies — a
+documentation defect of the same kind the audit exists to remove. The owner chose to pay the heavier
+price instead: keep SAST *and* declare 6.4, by no longer depending on default setup.
+
+**The change.**
+
+* `.github/workflows/codeql.yml` (new) — advanced CodeQL on the same `xcode-27` image as the rest of
+  CI, with `build-mode: manual` and the repository's own
+  `swift build --build-tests -Xswiftc -warnings-as-errors` between `init` and `analyze`.
+  `github/codeql-action` is pinned to v4 by full SHA
+  (`b96794f015dfd88f77b49b1c93e0fa7110f94c63`), as every other action in this repository is.
+  Triggers: `push` and `pull_request` to `main`, a weekly `schedule` (the cadence default setup used,
+  so a quiet repository is still scanned against new queries) and `workflow_dispatch`.
+  The job takes `security-events: write` and nothing else beyond `contents: read` and `actions: read`.
+* `Package.swift` declares `swift-tools-version: 6.4` again, with the round trip recorded in the
+  comment so the next reader does not repeat it.
+* `.github/workflows/ci.yml`'s toolchain-gate comment no longer explains a floor that is lower than
+  the gate — the two now agree, and the gate's remaining value is a readable failure plus the exact
+  compiler in the run summary.
+
+**A detail that would have made the scan silently worthless.** There is deliberately **no
+`actions/cache` step** in the CodeQL job, unlike `ci.yml`. CodeQL's Swift extractor produces its
+database by tracing the build; a restored `.build` turns that build into a no-op, and a traced build
+that compiles nothing yields an empty database — an analysis that reports "no findings" because it
+never saw the code. A cold build on every run is the price of the analysis meaning anything. The
+reason is written in the workflow, because the missing cache looks like an oversight otherwise.
+
+**Why this is not closing `B127` by narrowing it.** `B127`'s finding was "the raised floor removed a
+SAST gate"; that finding was correct and its fix was correct for the constraint it had. This task
+removes the constraint. The note is left on `B127` rather than quietly rewriting it.
+
+**Verification.**
+
+* Locally on Swift 6.4 with the 6.4 manifest: `swift package resolve` leaves `Package.resolved`
+  byte-identical; debug and release builds with `-warnings-as-errors` exit 0; **590 tests /
+  6 skipped / 0 failures**.
+* Both workflows parse as YAML and keep their action pins.
+* The scan itself can only be observed on a runner, and the first attempt corrected the plan this
+  task was written with. The analysis **ran correctly** — the traced build took 6 minutes, 1,480,563
+  AST nodes were extracted with 0 unresolved, and the SARIF was produced and uploaded — and was then
+  rejected:
+
+  ```
+  CodeQL analyses from advanced configurations cannot be processed when the default setup is enabled
+  ```
+
+  So "verify the new workflow first, then switch off default setup" is **impossible**: GitHub refuses
+  to process advanced-configuration results while default setup is on, which is exactly the overlap a
+  careful rollout would want. The order has to be the other way round. After the switch the same
+  workflow ran green and GitHub recorded the analysis (`/language:swift`, `CodeQL`, 0 results,
+  `refs/heads/audit/2026-09-13`) with `Analysis upload status is complete.`
+* `code-scanning/alerts` was empty (0 open, 0 closed) before the switch, so nothing was lost by
+  disabling default setup; existing alerts are retained by GitHub when the mode changes.
+
+Evidence: the workflow run on the pull request, and `.github/workflows/codeql.yml`.
+
 ## B127 — the 6.4 manifest floor broke the CodeQL SAST gate, so the floor is 6.3 again
+
+> **Superseded in part by B128 (owner-directed, 2026-09-15).** The low floor chosen here was the price
+> of keeping CodeQL *default* setup, which cannot build a 6.4 manifest. `B128` removed that
+> dependency: CodeQL now runs in advanced setup on the `xcode-27` image with a manual `swift build`,
+> and `Package.swift` declares `swift-tools-version: 6.4` again. The finding and the fix below were
+> correct for the constraint they had.
 
 **Severity S1** · **category** deps · **status** DONE · **host** node1 (arm64, macOS 27.0, Swift 6.4)
 

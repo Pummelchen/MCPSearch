@@ -1,14 +1,17 @@
-// swift-tools-version: 6.3
+// swift-tools-version: 6.4
 // SwiftWebSearchMCP — a Swift-native web search MCP server.
 //
-// The floor is deliberately below the toolchain this repository is built and verified with
-// (Swift 6.4 / Xcode 27 — `.github/workflows/ci.yml` runs on the `xcode-27` image and fails if the
-// compiler is older than 6.4). A lower floor is strictly more permissive: an older toolchain can
-// still build it, so nothing is gained by raising it. Raising it to 6.4 was tried and reverted:
-// GitHub's CodeQL Swift scan (default setup) builds with the runner's Swift 6.3.3 and cannot parse
-// a 6.4 manifest at all, so the raised floor silently cost the repository its CodeQL SAST gate — a
-// worse state than the baseline (ledger B127). Strict concurrency is pinned per target with
-// `swiftLanguageMode(.v6)`, not by the floor.
+// The floor is the toolchain this project is built and verified with: Swift 6.4 / Xcode 27, on the
+// `xcode-27` image in `.github/workflows/ci.yml`, with warnings as errors. Strict concurrency is
+// pinned per target with `swiftLanguageMode(.v6)`, not by this line.
+//
+// This line has been 6.4, 6.3 and now 6.4 again. The round trip is worth recording because it is not
+// visible from here: GitHub's CodeQL *default setup* builds with the runner image's Swift 6.3.3 and
+// cannot parse a 6.4 manifest, so raising the floor silently removed the repository's CodeQL SAST
+// gate (ledger B127). The answer was not to keep the floor low but to stop depending on default
+// setup — `.github/workflows/codeql.yml` now runs CodeQL in advanced mode on the same `xcode-27`
+// image with a manual `swift build`, so the manifest declares the toolchain the project actually
+// uses and SAST still runs (ledger B128).
 
 import PackageDescription
 

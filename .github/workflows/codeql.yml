@@ -1,0 +1,109 @@
+name: CodeQL
+
+# Advanced setup, on purpose. The repository's manifest declares `swift-tools-version: 6.4`, and
+# GitHub's CodeQL *default setup* builds with the runner image's Swift 6.3.3 — which cannot parse a
+# 6.4 manifest at all, so it fails at autobuild before any analysis runs and the repository silently
+# loses its CodeQL gate (ledger B127). Default setup offers no way to choose a toolchain. This
+# workflow instead runs on the same `xcode-27` image the rest of CI uses and builds manually, so the
+# manifest can declare the toolchain the project is actually verified with and SAST still runs
+# (ledger B128).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Weekly, matching the cadence the default setup used, so a repository with no pull request
+    # traffic is still scanned against new queries.
+    - cron: "27 3 * * 1"
+  workflow_dispatch:
+
+# Least privilege at the top level; the job opts into exactly one more scope below.
+permissions:
+  contents: read
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (swift)
+    # The same image as `.github/workflows/ci.yml`: the analysis must be produced by the toolchain
+    # the project is built with, otherwise the database is of code nobody compiles.
+    runs-on: xcode-27
+    # The default setup's Swift analysis took ~19 minutes; the manual build adds the cold build.
+    timeout-minutes: 75
+
+    permissions:
+      # Required to upload the analysis results to code scanning.
+      security-events: write
+      # Required by the CodeQL action to read its own workflow run.
+      actions: read
+      contents: read
+
+    steps:
+      # Actions are pinned to a full commit SHA (with the human-readable version in a trailing
+      # comment) for the same reason `ci.yml` pins them: a retagged major-version branch cannot
+      # change what runs here.
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+
+      - name: Select the newest Xcode
+        run: |
+          set -euo pipefail
+          # The `xcode-27` image ships the toolchain under a versioned name (for example
+          # `Xcode_27_beta_6.app`), so select it explicitly rather than trusting the image default.
+          shopt -s nullglob
+          candidates=(/Applications/Xcode_*.app)
+          if [ ${#candidates[@]} -gt 0 ]; then
+            latest="$(printf '%s\n' "${candidates[@]}" | sort -V | tail -1)"
+            echo "Selecting $latest"
+            sudo xcode-select -s "$latest"
+          else
+            echo "No versioned Xcode found; keeping the image default"
+            xcode-select -p
+          fi
+
+      # The same gate as `ci.yml`. A manifest parse error is otherwise reported as an opaque CodeQL
+      # autobuild failure, which is exactly how the 6.3/6.4 mismatch hid the first time.
+      - name: Verify Swift toolchain is at least 6.4
+        run: |
+          set -euo pipefail
+          swift --version
+          version="$(swift -version 2>&1 | sed -n 's/.*Swift version \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -1)"
+          if [ -z "$version" ]; then
+            echo "::error::could not parse 'Swift version X.Y' from 'swift -version'; refusing to guess"
+            exit 1
+          fi
+          major="${version%%.*}"
+          minor="${version#*.}"
+          if [ "$major" -lt 6 ] || { [ "$major" -eq 6 ] && [ "$minor" -lt 4 ]; }; then
+            echo "::error::This project is built and verified with Swift 6.4 or newer; found $version"
+            exit 1
+          fi
+          echo "Swift $version satisfies the project's Swift 6.4 requirement"
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@b96794f015dfd88f77b49b1c93e0fa7110f94c63  # v4
+        with:
+          languages: swift
+          # Swift is compiled, so a build is required. `manual` rather than `autobuild` because the
+          # build below is the repository's own command, not CodeQL's guess at one.
+          build-mode: manual
+
+      # CodeQL's Swift extractor traces this build, so the database is the code CI actually accepts.
+      # The command is deliberately identical to `ci.yml`'s debug build.
+      #
+      # There is deliberately NO `actions/cache` step here, unlike `ci.yml`. A restored `.build`
+      # makes this build a no-op, and a traced build that compiles nothing yields an empty database
+      # — a scan that reports "no findings" because it saw no code. A cold build every time is the
+      # price of the analysis meaning anything.
+      - name: Build (debug, warnings are errors)
+        run: swift build --build-tests -Xswiftc -warnings-as-errors
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@b96794f015dfd88f77b49b1c93e0fa7110f94c63  # v4
+        with:
+          category: "/language:swift"

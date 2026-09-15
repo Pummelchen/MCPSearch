@@ -21,8 +21,7 @@ server that gives local AI clients reliable public-web search and page fetching.
   is an error.
 - **Rank fusion, not score comparison.** Provider relevance scores are not on a shared
   scale, so results are fused with weighted Reciprocal Rank Fusion.
-- **Swift 6.4** (built and verified with it; the manifest's floor is 6.3, so older toolchains can
-  still build it), strict concurrency, no runtime dependency on Node or Python.
+- **Swift 6.4**, strict concurrency, no runtime dependency on Node or Python.
 - **Client-compatible by construction.** Tool schemas satisfy the strictest consumer's
   validation, and both stdio and Streamable HTTP are supported. No vendor client has been
   connected to this server and that round trip is not planned, so the claim is bounded to
@@ -211,7 +210,8 @@ suite with coverage against an 80 % floor on `Sources/`, builds release, drives 
 and the dashboard's pseudo-terminal path, and re-runs the suite with placeholder credentials to
 prove it is hermetic. A second job holds the static gates: `swift-format`, SwiftLint, `ruff`,
 `pyright` (strict), `shellcheck`, `semgrep`, a full-history `gitleaks` scan, and `osv-scanner`
-over the locked dependency graph.
+over the locked dependency graph. A third runs `CodeQL` over the Swift sources on the same image,
+building them by hand so the analysis is of the toolchain this project actually uses.
 
 ## License
 
