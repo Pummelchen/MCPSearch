@@ -21,7 +21,8 @@ server that gives local AI clients reliable public-web search and page fetching.
   is an error.
 - **Rank fusion, not score comparison.** Provider relevance scores are not on a shared
   scale, so results are fused with weighted Reciprocal Rank Fusion.
-- **Swift 6.4**, strict concurrency, no runtime dependency on Node or Python.
+- **Swift 6.4** (built and verified with it; the manifest's floor is 6.3, so older toolchains can
+  still build it), strict concurrency, no runtime dependency on Node or Python.
 - **Client-compatible by construction.** Tool schemas satisfy the strictest consumer's
   validation, and both stdio and Streamable HTTP are supported. No vendor client has been
   connected to this server and that round trip is not planned, so the claim is bounded to

@@ -16,14 +16,14 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 
 | Metric | Count |
 | --- | --- |
-| Tasks enumerated | 138 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover, B116-B121 found while fixing and recording, B122-B126 found in the go-live session) |
+| Tasks enumerated | 139 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover, B116-B121 found while fixing and recording, B122-B124 found in the go-live session) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 138 |
+| DONE | 139 |
 | START (reproduced, expected behaviour written) | 0 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
-Severity of the whole set: **S0 3, S1 10, S2 35, S3 90** — 3/3 S0 are DONE; 10/10 S1 are DONE; 35/35 S2 are DONE; 90/90 S3 are DONE. Tasks not DONE: 0.
+Severity of the whole set: **S0 3, S1 11, S2 35, S3 90** — 3/3 S0 are DONE; 11/11 S1 are DONE; 35/35 S2 are DONE; 90/90 S3 are DONE. Tasks not DONE: 0.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -172,6 +172,7 @@ waived in writing.
 | B123 | S2 | repository / CI | `Package.swift:1`, `.github/workflows/ci.yml:36`, `:65`, `:208` | The package declares and CI verifies Swift 6.3 while the mandated toolchain is Swift 6.4 (Xcode 27), and the fleet has moved to 6.4 | deps | DONE | node1 (arm64, macOS 27.0, Swift 6.4) | go-live session brief §1 (mandated toolchain) measured against the fleet |
 | B125 | **S1** | repository / delivery | `README.md` (Licence/Contact section), https://github.com/Pummelchen/MCPSearch/pull/1 | PR #1 cannot fast-forward: main advanced 8 commits and README.md conflicts, while the PR and the wiki still claim a clean one-click merge | incomplete | DONE | node1 (arm64, macOS 27.0, Swift 6.4) | go-live session: comparing main against the audit branch before Phase E |
 | B126 | S3 | repository / docs | `README.md:179` (test count), `README.md:208` (CI description) | The README states 371 tests and a CI description that omits every gate the audit added | docs | DONE | node1 (arm64, macOS 27.0, Swift 6.4) | go-live session: verifying the README's claims after merging main (B125) |
+| B127 | **S1** | CI / repository | `Package.swift:1` | The Swift 6.4 manifest floor broke GitHub's CodeQL Swift scan; the floor returns to 6.3 and the 6.4 requirement is enforced by the CI gate instead | deps | DONE | node1 (arm64, macOS 27.0, Swift 6.4) | CI on PR #1 (B123's head): the CodeQL check failed |
 
 ---
 
@@ -223,6 +224,61 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B127 — the 6.4 manifest floor broke the CodeQL SAST gate, so the floor is 6.3 again
+
+**Severity S1** · **category** deps · **status** DONE · **host** node1 (arm64, macOS 27.0, Swift 6.4)
+
+**Found by CI, on the pull request, after `B123`.** The CodeQL check for the `xcode-27` head failed,
+and its log names the cause exactly:
+
+```
+Analyze (swift) Autobuild  error: 'mcpsearch': package 'mcpsearch' is using Swift tools version
+6.4.0 but the installed version is 6.3.3
+A fatal error occurred: Exit status 1 from command: [.../swift/tools/autobuild.sh]
+```
+
+GitHub's CodeQL Swift scan runs under the repository's **default setup**, which builds on its own
+runner image with **Swift 6.3.3**, and that toolchain cannot even parse a manifest declaring 6.4.
+Nothing in the repository can select a newer toolchain for default setup. So `B123`'s
+`swift-tools-version: 6.4` silently removed a SAST gate that the baseline had — a worse state than
+the baseline, which §3 forbids without a justified task.
+
+**Why this counts as a regression rather than acceptable churn.** The pre-change runs on `main` and
+on the PR both show CodeQL green; the failure appears on the first head carrying the raised floor.
+Losing the scan is invisible from the repository (the workflow is not in the tree — it is a code
+scanning setting), which is precisely why a failing check must be read rather than assumed to be
+infrastructure noise.
+
+**The fix, and why it is not a weakening.** `Package.swift` returns to `swift-tools-version: 6.3`
+with a comment recording why. A **lower** floor is strictly more permissive — an older toolchain can
+still build the package — so nothing that was checked before is unchecked now. The mandated standard
+is enforced where it can name the compiler it used: CI runs on `xcode-27` and its gate fails below
+6.4, and strict concurrency is pinned per target with `swiftLanguageMode(.v6)` rather than by the
+floor. This restores CodeQL **and** keeps 6.4 verification, so the gate set is strictly larger than
+either alternative.
+
+**Alternatives rejected.**
+
+1. *Keep the 6.4 floor and add an advanced CodeQL workflow on `xcode-27`, disabling default setup.*
+   Technically sound and it would preserve both, but it replaces a working GitHub-managed gate with
+   repository-managed machinery that depends on the same **public-preview** `xcode-27` image the
+   build job already depends on, and it requires a code-scanning settings change outside the
+   repository. More moving parts to protect a declaration that buys nothing: it was `B123`'s
+   inference that the manifest must name 6.4, not a requirement of the standard.
+2. *Keep the 6.4 floor and accept the CodeQL failure.* Rejected outright — it trades a real SAST
+   gate for a version string.
+
+**Note left on B123 rather than a silent edit,** because the brief forbids closing or narrowing a
+task by changing its scope quietly. `B123` stands as the task that adopted the mandated toolchain in
+CI, the README and `environment.md`; its `swift-tools-version` half is superseded here, and the
+supersession is recorded in `B123`'s own notes.
+
+**Verification.** `swift build --build-tests -Xswiftc -warnings-as-errors` on Swift 6.4 with
+`swift-tools-version: 6.3` succeeds with 0 warnings, `swift package resolve` leaves
+`Package.resolved` byte-identical, and the full 18-gate set passes (see the Phase E artifact). The
+CodeQL scan itself can only be re-checked on the pull request, which is the next step after this
+commit.
 
 ## B126 — the README's suite count and CI description are corrected
 
@@ -294,6 +350,11 @@ put the audit's work on `main`: that is the PR merge, which happens only after P
 
 ## B123 — the declared and verified toolchain is now Swift 6.4 (Xcode 27)
 
+> **Amended by B127 (go-live session, 2026-09-15).** The `swift-tools-version: 6.4` half of this task
+> was reverted to 6.3. Raising the floor broke GitHub's CodeQL Swift scan — default setup builds with
+> Swift 6.3.3 and cannot parse a 6.4 manifest — which silently removed a SAST gate the baseline had.
+> Everything else here stands: CI runs on the `xcode-27` image and gates on 6.4 or newer, and the
+> README, `environment.md` and the wiki record 6.4 as the verified toolchain. See `B127`.
 **Severity S2** · **category** deps · **status** DONE · **host** node1 (arm64, macOS 27.0, Swift 6.4)
 
 **Found by measuring the fleet against the session's standard.** The brief for this session

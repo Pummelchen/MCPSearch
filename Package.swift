@@ -1,5 +1,14 @@
-// swift-tools-version: 6.4
+// swift-tools-version: 6.3
 // SwiftWebSearchMCP — a Swift-native web search MCP server.
+//
+// The floor is deliberately below the toolchain this repository is built and verified with
+// (Swift 6.4 / Xcode 27 — `.github/workflows/ci.yml` runs on the `xcode-27` image and fails if the
+// compiler is older than 6.4). A lower floor is strictly more permissive: an older toolchain can
+// still build it, so nothing is gained by raising it. Raising it to 6.4 was tried and reverted:
+// GitHub's CodeQL Swift scan (default setup) builds with the runner's Swift 6.3.3 and cannot parse
+// a 6.4 manifest at all, so the raised floor silently cost the repository its CodeQL SAST gate — a
+// worse state than the baseline (ledger B127). Strict concurrency is pinned per target with
+// `swiftLanguageMode(.v6)`, not by the floor.
 
 import PackageDescription
 

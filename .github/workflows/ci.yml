@@ -62,8 +62,10 @@ jobs:
             xcode-select -p
           fi
 
-      # Fail early and clearly if the runner's toolchain is older than the manifest
-      # requires, rather than emitting a confusing manifest parse error later.
+      # This gate is deliberately stricter than the manifest's floor. The manifest stays at 6.3 so
+      # that GitHub's CodeQL Swift scan — which builds with the runner's Swift 6.3.3 and cannot parse
+      # a 6.4 manifest — keeps working; the mandated standard is enforced here instead, where it can
+      # name the toolchain it actually used (ledger B123, B127).
       - name: Verify Swift toolchain is at least 6.4
         run: |
           set -euo pipefail

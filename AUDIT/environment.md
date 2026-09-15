@@ -37,10 +37,12 @@ verification host.
 | node1–node4 | **6.4** (`swiftlang-6.4.0.34.1`) | **27.0** (27A266a, `/Applications/Xcode.app`) | **27.0** (26A428) | 29.8.0 | 0.10.3 | node1 3.14.7 |
 
 The brief for this session mandates Swift 6.4 (Xcode 27) with strict concurrency and
-warnings-as-errors, so the revision is adopted rather than rolled back: `Package.swift` declares
-`swift-tools-version: 6.4`, CI runs on the `xcode-27` image (GitHub's macOS images are now
-selected by Xcode major version, not by OS release) and the workflow's toolchain gate requires
-6.4 or newer. Ledger: `B123`. The image is in public preview, which is the only way to obtain
+warnings-as-errors, so the revision is adopted rather than rolled back: CI runs on the `xcode-27`
+image (GitHub's macOS images are now selected by Xcode major version, not by OS release) and the
+workflow's toolchain gate requires 6.4 or newer. The manifest's floor stays at
+`swift-tools-version: 6.3`: a lower floor is strictly more permissive, and raising it to 6.4 broke
+GitHub's CodeQL Swift scan, which builds with the runner's Swift 6.3.3 and cannot parse a 6.4
+manifest — see `B127`. Ledger: `B123`. The image is in public preview, which is the only way to obtain
 Xcode 27 on a hosted runner; that is recorded as the accepted alternative in `B123`.
 
 Two consequences measured while adopting it:

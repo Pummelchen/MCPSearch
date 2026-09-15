@@ -24,9 +24,12 @@ Five tasks were added and closed, and the record above is this session's state:
 * **B122** — the parked decision. A caller's cancellation during synthesis is now propagated as a
   `CancellationError` (consistent with `B04` for search and fetch), so the tool layer's cancelled arm
   is reachable; `B97`'s opposite expectation was re-pinned as part of the same change.
-* **B123** — the mandated toolchain. `Package.swift` declares `swift-tools-version: 6.4`, CI runs on
-  `xcode-27`, and the gate requires 6.4. The fleet had already been upgraded to Swift 6.4 / Xcode 27 /
-  macOS 27 out from under the audit; `environment.md` §1.1 records it.
+* **B123** — the mandated toolchain. CI runs on `xcode-27` and its gate requires 6.4; the fleet had
+  already been upgraded to Swift 6.4 / Xcode 27 / macOS 27 out from under the audit; `environment.md`
+  §1.1 records it.
+* **B127** — the manifest floor stays at `swift-tools-version: 6.3`. Raising it to 6.4 broke GitHub's
+  CodeQL Swift scan, which builds with the runner's Swift 6.3.3 and cannot parse a 6.4 manifest, so a
+  raised floor silently cost the repository a SAST gate.
 * **B124** — found by running the gates on the new toolchain: SwiftPM 6.4 emits one test bundle per
   target under `out/Products`, so the coverage gate's hard-coded bundle path no longer resolved. It
   now discovers the bundles and fails loudly if there are none.
