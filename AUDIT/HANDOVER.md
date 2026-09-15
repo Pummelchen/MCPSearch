@@ -159,11 +159,26 @@ cancellation. The audit-branch queue is therefore empty; the only remaining work
    resolved by keeping both sides. Nothing else is outstanding.
 2. After the merge, `main` carries the audit. The five S0 equivalents and the rest of the fixes stop
    being branch-only, which is the whole point of the exercise.
-3. **Human actions recorded but deliberately not taken** (see the wiki `Project-Tracker`, ISSUE-20 and
-   ISSUE-21): rotate the GitHub PAT that sits in cleartext in the local wiki clones' `.git/config`;
-   and decide what to do about GitHub's AI code-scanning check, which fails on every PR head with a
-   Copilot service error (`CAPIError: 400 The requested model is not supported`) that no repository
-   change can influence.
+3. **Human actions recorded** (see the wiki `Project-Tracker`, ISSUE-20 and ISSUE-21).
+
+   **ISSUE-21 is closed.** GitHub's AI code-scanning check was auto-enabled on this repository and
+   failed on every PR head with a Copilot service error (`CAPIError: 400 The requested model is not
+   supported`) that no repository change could influence. The cause is on the service side: the
+   Autofind job asks `api.individual.githubcopilot.com` for the model
+   `sweagent-capi:claude-opus-5`, which an individual Copilot plan does not serve, so the job died
+   in under 90 seconds without ever reaching a scan — it could not have reported a finding. It was
+   never a gate either: `main` is unprotected and carries no rulesets, so it blocked nothing and
+   only painted every pull request red.
+
+   The decision is to disable it rather than leave a check that can only ever error. AI Scan for
+   pull requests is off via `PATCH /repos/{owner}/{repo}/code-scanning/ai-scan` with
+   `{"pr_scan": "disabled"}` — here, and on every other non-archived `Pummelchen` repository, since
+   each had it auto-enabled and would have failed identically on its next pull request. The two
+   archived repositories carry no such setting. Re-enabling is the same endpoint with `"enabled"`,
+   and is worth revisiting only with a Copilot entitlement that serves the requested model.
+
+   **ISSUE-20 remains open, and is the more serious of the two:** rotate the GitHub PAT that sits in
+   cleartext in the local wiki clones' `.git/config`.
 
 ### The Phase E checklist, and where it now stands
 
