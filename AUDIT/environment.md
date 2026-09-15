@@ -83,6 +83,21 @@ repository — `git ls-files` shows 69 `.swift`, 4 `.py`, 3 `.yml`, 1 `.sh`, 1 `
 This is recorded as N/A rather than BLOCKED: BLOCKED is for a tool that could not be
 installed, and no such tool is needed for a language that is absent.
 
+### Scope framing: this is one Swift package, not a 20+ project monorepo
+
+The brief's §2 preamble describes "a monorepo with 20+ increasingly interdependent projects" and
+§2.2 asks for a cross-project dependency graph. **That is not this repository**, and the record says
+so rather than inventing projects to fill the shape. The whole scope is a single SwiftPM package with
+**three targets** (`WebSearchCore`, `SwiftWebSearchMCP`, `MCPSMonitor`), one package manifest, one
+lockfile and one product graph — enumerated in [`inventory.md`](inventory.md).
+
+The parts of §2 that do apply were done: the units and their build systems (§2.1), the
+cross-unit contracts — environment variables, the MCP tool schemas, the SearXNG HTTP contract, the
+executable-name contract between the tests and SwiftPM (§2.2), the trust boundaries (§2.3: the
+`web_open` SSRF edge, every provider response, the untrusted corpus fed to the answering model, and
+the operator-facing terminal that renders remote engine names), and blast radius (§2.4: `WebSearchCore`
+is consumed by both executables, so it is audited at the higher severity — `A04`, `B07`, `B122`).
+
 ---
 
 ## 3. Installed by this audit
@@ -152,15 +167,44 @@ those two paths and that exact literal and which keeps the default ruleset (`[ex
 useDefault = true`); the working tree no longer contains the literal. Ledger: A06.
 
 
-### Nothing installed on the fleet
+### Tools installed on the fleet (go-live session, 2026-09-15)
 
-No package, container or file was installed on node1–node4 or on the VPS during this
-session. Phase E clones the repository to a node and builds there; if that requires
-installing anything, it is appended to this table first, and the clone/build artefacts are
-removed afterwards. The nodes already carry exactly the toolchain Phase E needs.
+The first sessions installed nothing on the fleet. The go-live session installed the **static-analysis
+tooling on `node2`**, because Phase E must be runnable on the machine that verifies rather than only
+on the machine that developed the change, and `node2` had only `ruff`, `shellcheck`, `npx` and Xcode.
 
-Containers: none created so far. Any container used later is disposable — no audit state
-lives only inside one.
+```bash
+# on node2, 2026-09-15, Homebrew at /opt/homebrew
+brew install swift-format swiftlint gitleaks osv-scanner semgrep
+```
+
+| Host | What | Version | Install method |
+| --- | --- | --- | --- |
+| `node2` | `swift-format` | 603.0.0 | Homebrew |
+| `node2` | `swiftlint` | 0.65.1 | Homebrew |
+| `node2` | `gitleaks` | 8.30.1 | Homebrew |
+| `node2` | `semgrep` | 1.176.0 | Homebrew (pulled `certifi`, `pydantic`, `rpds-py`, `tree-sitter`, `dwarfutils`, `libev`) |
+| `node2` | `osv-scanner` | 2.6.0 | Homebrew |
+| `node2` | `pyright` | 1.1.414 | **not installed** — run through `npx --yes pyright@1.1.414`, as CI does |
+
+`brew install` exited non-zero on `node2`: the `certifi` and `pydantic` dependencies could not be
+symlinked because Homebrew's Python 3.14 site-packages already contain them
+(`Error: The brew link step did not complete successfully`). Every requested tool is installed and
+runs at the version above; the non-zero status is the link step, not the install. `osv-scanner` is
+2.6.0 here against 2.5.1 on `node1` and in CI — both report no issues, and CI is where the
+reproducible pinned number lives.
+
+**Returning `node2` to a known state:** `brew uninstall swift-format swiftlint gitleaks osv-scanner
+semgrep`. Nothing else on the node was changed. The Phase E clone and scratch tree
+(`~/mcps-phaseE`, `~/Library/Caches/MCPSearch/phaseE-final`) are removed after the run.
+
+Containers: none created. No audit state lives only inside a container.
+
+### Earlier statement, kept for the record
+
+The paragraph that used to stand here read: "No package, container or file was installed on
+node1–node4 or on the VPS during this session." That was true of the first sessions and is false
+from 2026-09-15, so it is superseded by the table above rather than silently edited away.
 
 ---
 

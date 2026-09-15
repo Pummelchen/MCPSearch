@@ -172,7 +172,7 @@ A fresh clone on an independent host, zero warnings, the full suite green, cover
 open task, the wiki tracker mirrored, and a pull request into `main`.
 
 Verified twice: **node1** at `891b94f` (2026-09-14, preserved as
-`AUDIT/evidence/PHASE-E-2026-09-14-node1.txt`) and **node2** at `6c91ef1` (2026-09-15, a host that
+`AUDIT/evidence/PHASE-E-2026-09-14-node1.txt`) and **node2** at `6e0f70a` (2026-09-15, a host that
 developed none of the changes) — 0 warnings, 590 tests / 0 failures, `Sources/` coverage 91.7 %
 against the 80 % floor, all 18 gates clean. Artifact:
 `AUDIT/evidence/PHASE-E-independent-host.txt`.

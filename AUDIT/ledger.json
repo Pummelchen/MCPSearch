@@ -9,7 +9,7 @@
     "phase_e": {
       "status": "COMPLETE",
       "host": "node2 (Mac14,3, arm64, macOS 27.0, Xcode 27.0, Swift 6.4) - a host that did not develop any of the changes",
-      "verified_commit": "6c91ef1",
+      "verified_commit": "6e0f70a",
       "fresh_clone": true,
       "warnings": 0,
       "suite": "590 tests, 6 skipped, 0 failures",
@@ -25,7 +25,7 @@
       "pull_request": "https://github.com/Pummelchen/MCPSearch/pull/1",
       "pull_request_number": 1,
       "toolchain_revision": "Swift 6.4 / Xcode 27; CI runner xcode-27; manifest floor deliberately 6.3 so GitHub's CodeQL Swift scan keeps building (B127)",
-      "verified_commit_scope": "Commits after 6c91ef1 touch AUDIT/ only; Sources, Tests, Package.swift and .github are byte-identical to the verified tree (git diff --name-only 6c91ef1..HEAD has no non-AUDIT path)."
+      "verified_commit_scope": "Commits after 6e0f70a touch AUDIT/ only; Sources, Tests, Package.swift and .github are byte-identical to the verified tree (git diff --name-only 6e0f70a..HEAD has no non-AUDIT path)."
     }
   },
   "tasks": [
