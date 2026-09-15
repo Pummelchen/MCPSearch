@@ -38,7 +38,7 @@ server that gives local AI clients reliable public-web search and page fetching.
 
 ## Quick start
 
-Download a prebuilt universal macOS binary (Apple Silicon and Intel) from the
+Download a prebuilt macOS binary for Apple silicon (M1 and later) from the
 [latest release](https://github.com/Pummelchen/MCPSearch/releases/latest), or build from source:
 
 ```bash

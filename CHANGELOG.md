@@ -14,7 +14,10 @@ Verified before release: **590 tests, 6 skipped, 0 failures**, `Sources/` line c
 against an 80 % floor, zero compiler warnings in debug and release under `-warnings-as-errors` on
 Swift 6.4 / Xcode 27, and the full gate set (formatter, linter, type checker, SAST, secret scan over
 full history, dependency CVE scan) clean. Prebuilt binaries are smoke-tested over a real stdio
-handshake on both architectures. See `AUDIT/` for the pre-production audit this release comes from.
+handshake before publication. See `AUDIT/` for the pre-production audit this release comes from.
+
+**Architecture:** Apple silicon only (`arm64`, M1 and later). There is no Intel slice — the project
+is built and verified on the `xcode-27` runner image, which is arm64-only.
 
 ### Added
 
@@ -35,7 +38,7 @@ handshake on both architectures. See `AUDIT/` for the pre-production audit this 
 - **Self-hosting** — a digest-pinned SearXNG compose file and a provisioning script for a headless
   Apple-silicon node, with a per-node generated secret key and a canary check before replacing a
   running instance.
-- **Prebuilt universal macOS binaries** (Apple Silicon and Intel) attached to each release, with
+- **Prebuilt macOS binaries for Apple silicon** (M1 and later) attached to each release, with
   `SHA256SUMS`.
 - **Documentation** — a wiki covering installation, compatibility, tools, architecture, providers,
   configuration, reliability, security, self-hosting, the monitor and troubleshooting, plus `docs/`
