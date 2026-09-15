@@ -62,10 +62,11 @@ jobs:
             xcode-select -p
           fi
 
-      # This gate is deliberately stricter than the manifest's floor. The manifest stays at 6.3 so
-      # that GitHub's CodeQL Swift scan — which builds with the runner's Swift 6.3.3 and cannot parse
-      # a 6.4 manifest — keeps working; the mandated standard is enforced here instead, where it can
-      # name the toolchain it actually used (ledger B123, B127).
+      # The manifest declares the same requirement, so this gate is not a second standard — it is a
+      # readable failure. A manifest parse error surfaces as the opaque "package 'mcpsearch' is using
+      # Swift tools version 6.4.0 but the installed version is 6.3.3", which is exactly how the
+      # 6.3/6.4 mismatch hid until CI ran (ledger B123, B127, B128). The step also publishes the
+      # exact compiler into the run summary, so a green run names its toolchain.
       - name: Verify Swift toolchain is at least 6.4
         run: |
           set -euo pipefail

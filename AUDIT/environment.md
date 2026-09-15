@@ -37,13 +37,19 @@ verification host.
 | node1–node4 | **6.4** (`swiftlang-6.4.0.34.1`) | **27.0** (27A266a, `/Applications/Xcode.app`) | **27.0** (26A428) | 29.8.0 | 0.10.3 | node1 3.14.7 |
 
 The brief for this session mandates Swift 6.4 (Xcode 27) with strict concurrency and
-warnings-as-errors, so the revision is adopted rather than rolled back: CI runs on the `xcode-27`
-image (GitHub's macOS images are now selected by Xcode major version, not by OS release) and the
-workflow's toolchain gate requires 6.4 or newer. The manifest's floor stays at
-`swift-tools-version: 6.3`: a lower floor is strictly more permissive, and raising it to 6.4 broke
-GitHub's CodeQL Swift scan, which builds with the runner's Swift 6.3.3 and cannot parse a 6.4
-manifest — see `B127`. Ledger: `B123`. The image is in public preview, which is the only way to obtain
-Xcode 27 on a hosted runner; that is recorded as the accepted alternative in `B123`.
+warnings-as-errors, so the revision is adopted rather than rolled back: the manifest declares
+`swift-tools-version: 6.4`, CI runs on the `xcode-27` image (GitHub's macOS images are now selected
+by Xcode major version, not by OS release) and the workflow's toolchain gate requires 6.4 or newer.
+Ledger: `B123`.
+
+The floor's history is worth keeping because it explains a workflow that would otherwise look
+redundant. It was raised to 6.4, reverted to 6.3 because raising it broke GitHub's CodeQL Swift scan
+(`B127` — default setup builds with the runner's Swift 6.3.3 and cannot parse a 6.4 manifest), and
+then returned to 6.4 once the dependency on default setup was removed: `B128` moved CodeQL to
+advanced setup in `.github/workflows/codeql.yml`, on the same `xcode-27` image with a manual
+`swift build`, so the manifest can declare the toolchain the project actually uses and SAST still
+runs. The image is in public preview, which is the only way to obtain Xcode 27 on a hosted runner;
+that is recorded as the accepted alternative in `B123`.
 
 Two consequences measured while adopting it:
 
@@ -61,7 +67,7 @@ Two consequences measured while adopting it:
 
 | Language | Compiler/runtime | Formatter | Linter | Type checker | Static analysis | SAST | Dependency CVE | Secret scan |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Swift (`swift-tools-version: 6.4`) | Swift 6.4, strict concurrency (language mode 6) | `swift-format` 603.0.0 | `swiftlint` 0.65.1 | compiler (Swift 6 type checker) | `swift build --sanitize=address` / `thread` | `semgrep` 1.176.0, CodeQL (GitHub default setup, Swift) | `osv-scanner` 2.5.1 on `Package.resolved` | `gitleaks` 8.30.1, full history |
+| Swift (`swift-tools-version: 6.4`) | Swift 6.4, strict concurrency (language mode 6) | `swift-format` 603.0.0 | `swiftlint` 0.65.1 | compiler (Swift 6 type checker) | `swift build --sanitize=address` / `thread` | `semgrep` 1.176.0, CodeQL (advanced setup, `.github/workflows/codeql.yml`, `github/codeql-action` v4 pinned by SHA) | `osv-scanner` 2.5.1 on `Package.resolved` | `gitleaks` 8.30.1, full history |
 | Python (`scripts/*.py`) | CPython 3.14.7 | `ruff format` (ruff 0.16.7) | `ruff check` | `pyright` 1.1.414 | `pyright` | `semgrep` 1.176.0 | none (stdlib only — see §3) | `gitleaks` |
 | Bash (`deploy/provision-node.sh`) | `/bin/bash` 3.2 (macOS) | — | `shellcheck` | — | — | `semgrep` | — | `gitleaks` |
 | YAML (`ci.yml`, `docker-compose.yml`, `settings.yml`) | — | — | `python3 -c yaml.safe_load` parse check | — | — | `semgrep` | — | `gitleaks` |
