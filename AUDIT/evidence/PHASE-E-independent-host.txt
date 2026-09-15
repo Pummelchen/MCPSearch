@@ -1,110 +1,110 @@
-# Phase E — verification on the independent host
+# Phase E — verification on an independent host (go-live session)
 
-Host: **node1** (Mac14,3 Mac mini M2, 8 GB, macOS 26.6.2, Swift 6.3.3 / Xcode 26.6, Python 3.14.7)
-Branch: `audit/2026-09-13` at `891b94f` · date 2026-09-14
+Host: **node2** (Mac14,3 Mac mini M2, 8 GB, macOS 27.0, Swift 6.4 / Xcode 27.0, Python 3.14.7)
+Branch: `audit/2026-09-13` at `6c91ef1` · date 2026-09-15
 
-`node1` is the host `AUDIT/environment.md` designated for Phase E, and it is a genuinely
-independent machine from the one the audit ran on: different hardware, different working copy
-(`~/Downloads/MCPSearch`, not a Dropbox folder), and the branch was **re-cloned from the remote**
-rather than reused.
+The previous Phase E (2026-09-14, node1, `891b94f`) is preserved verbatim as
+[`PHASE-E-2026-09-14-node1.txt`](PHASE-E-2026-09-14-node1.txt). This is a second, independent
+run, because the branch changed after it: `B122`, `B123`, `B124`, `B125`, `B126` and `B127` were
+closed, and `B123`/`B127` changed the toolchain the build runs on.
+
+**`node2` did not develop any of it.** The go-live session's changes were written on `node1`; the
+fixes the first session wrote were written on `node1` and `MacBook-AB.local`. `node2` therefore
+satisfies the "a machine that did NOT do the development" requirement, and is a different machine
+from the one that ran the first Phase E.
 
 ## The gate, item by item
 
 | # | Requirement | Result |
 | --- | --- | --- |
-| 1 | Fresh clone on an independent host | `git clone --branch audit/2026-09-13 --single-branch` into a clean directory; clone HEAD `891b94f` matches the audited HEAD; 279 tracked files; `Sources/`, `Tests/` and `AUDIT/ledger.json` verified **byte-identical** to the audited tree (`diff -r` clean) |
-| 2 | Zero warnings | `swift build --build-tests -Xswiftc -warnings-as-errors` → **Build complete, exit 0**; `swift build -c release …` → **Build complete, exit 0** |
-| 3 | Full suite green, repeatedly | **588 tests, 6 skipped, 0 failures** on three consecutive runs (33.3 s / 32.9 s / 32.9 s) |
-| 4 | Coverage at or above the 80 % floor | **91.6 %** of `Sources/` lines (10 423 / 11 375 across 57 files, merged from 3 instrumented binaries), floor 80 % — `coverage_floor.py` exit 0 |
-| 5 | Every scanner clean or waived in writing | see the table below — all clean, one written waiver |
-| 6 | Ledger contains only DONE or BLOCKED-with-owner | **133 DONE, 1 BLOCKED-with-owner (B122), 0 START** |
-| 7 | Wiki tracker mirrored | `Project-Tracker.md` updated to the same commit and pushed |
-
-## Coverage, against the recorded baseline
-
-| Metric | Baseline @ `f3dd8d9` | Phase E @ `891b94f` |
-| --- | --- | --- |
-| `Sources/` lines | 84.3 % | **91.6 %** |
-| `WebSearchCore` | 88.2 % | (included above) |
-| `SwiftWebSearchMCP` | **0 % measured** (driven as a subprocess) | measured, via the per-child profile merge A04 added |
-| `MCPSMonitor` | 29.5 % | measured, same mechanism |
-
-The executables went from unmeasurable to measured, and the repository total rose by 7.3 points.
-Both were A04/A10 outcomes, so the floor is now protecting a number that means something.
+| 1 | Fresh clone on an independent host | `rm -rf ~/mcps-phaseE` then `git clone --branch audit/2026-09-13 --single-branch`; clone HEAD `6c91ef1dc14b70759778927e5fc678b0651ac070` equals the pushed tip; `git status --porcelain` **empty**; 282 tracked files; **not** a shallow clone. `AUDIT/ledger.json` SHA-256 `0114e36e704a5335a0e959bfd69d16c434491e0ba0fc8db91afffdafc748eb11` is **byte-identical** to the development tree's |
+| 2 | Clean build, zero warnings | `swift build --build-tests -Xswiftc -warnings-as-errors` → exit 0; `swift build -c release -Xswiftc -warnings-as-errors` → exit 0; `grep -c "warning:"` over the whole run → **0** |
+| 3 | Full suite green | **590 tests, 6 skipped, 0 failures** (`Executed 550 tests, with 6 tests skipped and 0 failures` + `Executed 40 tests, with 0 failures`) |
+| 4 | Coverage at or above the floor | **91.7 %** of `Sources/` lines — `10451/11394`, 57 files, 4 reports merged — against the 80 % floor; `coverage_floor.py` exit 0 |
+| 5 | Every scanner clean or waived in writing | `semgrep` 0 · `gitleaks` full history 0 (written waiver, `.gitleaks.toml`, for the synthetic literals from `41d56935`) · `osv-scanner` 0 (osv-scanner 2.6.0 here, 2.5.1 on node1 — see the note below) · `swift-format --strict` 0 · `swiftlint --strict` 0 · `ruff` clean · `pyright --strict` 0 · `shellcheck` 0 |
+| 6 | Zero placeholders | §5 sweep re-run in this session: no literal `TODO`/`FIXME`/`HACK`/`WIP`/`STUB`/`NotImplemented`/`fatalError`/`try!`/`as!`/`#warning` in `Sources/`; the only "placeholder" strings are the deployment placeholders that provisioning **refuses** to start with and the test-side guards that reject placeholder credentials. No always-true validator, no stub body, no canned production data |
+| 7 | Ledger has no non-BLOCKED open task | **139 DONE, 0 PROGRESS, 0 START, 0 BLOCKED** of 139 enumerated (`AUDIT/ledger.json`) |
+| 8 | Wiki tracker mirrored | `Project-Tracker.md` updated to this commit's state; the ledger wins on conflict |
 
 ## The gate run in full
 
-```
-$ swift build --build-tests --scratch-path "$S" -Xswiftc -warnings-as-errors
-Build complete! (47.83s)                                     exit 0
-$ swift test --scratch-path "$S"                             (three runs)
-Executed 588 tests, with 6 tests skipped and 0 failures (0 unexpected) in 33.300s
-Executed 588 tests, with 6 tests skipped and 0 failures (0 unexpected) in 32.863s
-Executed 588 tests, with 6 tests skipped and 0 failures (0 unexpected) in 32.905s
-$ swift build -c release --scratch-path "$S" -Xswiftc -warnings-as-errors
-Build complete! (106.86s)                                    exit 0
-
-$ python3 scripts/coverage_floor.py "$PWD/Sources/" 80 coverage-*.json
-Sources/ line coverage: 10423/11375 = 91.6 % (floor 80 %, 57 files from 3 report(s))
-                                                             exit 0
-```
-
-### The one `warning:` line is not a compiler diagnostic
-
-A clean rebuild prints exactly two lines matching `warning:`:
+All 18 gates were run by one scripted pass (`gates.sh`, kept outside the repository) so the
+sequence is reproducible rather than remembered:
 
 ```
-warning: 'swiftsoup': skipping cache due to an error: The file "maintenance.lock" doesn't exist.
-warning: 'swift-system': skipping cache due to an error: The file "maintenance.lock" doesn't exist.
+GATE PASS: debug build (warnings as errors)          GATE PASS: python harness tests
+GATE PASS: hermetic suite                            GATE PASS: mcp_smoke stdio
+GATE PASS: coverage floor                            GATE PASS: mcp_smoke http
+GATE PASS: release build (warnings as errors)        GATE PASS: monitor tty smoke
+GATE PASS: swift-format                              GATE PASS: hermeticity re-run with
+GATE PASS: swiftlint                                            placeholder credentials
+GATE PASS: ruff                                      GATE PASS: semgrep
+GATE PASS: pyright                                   GATE PASS: gitleaks
+GATE PASS: shellcheck                                GATE PASS: osv-scanner
+GATE PASS: third-party notices
+ALL GATES PASSED
 ```
 
-These are **SwiftPM dependency-cache notices**, not compiler diagnostics — the same phenomenon
-`AUDIT/environment.md` recorded at baseline. `-warnings-as-errors` exiting 0 is the proof that no
-compiler warning was emitted, and the distinction is stated here because the raw grep would
-otherwise look like two warnings.
+Suite, twice in the same pass (once with coverage, once under placeholder credentials to prove
+hermeticity):
 
-## Scanners
+```
+Executed 550 tests, with 6 tests skipped and 0 failures (0 unexpected) in 34.807s
+Executed 40 tests, with 0 failures (0 unexpected) in 0.334s
+Sources/ line coverage: 10451/11394 = 91.7 % (floor 80 %, 57 files from 4 report(s))
+```
 
-| Scanner | Scope | Result |
+## Against the recorded baseline
+
+| Metric | Baseline @ `f3dd8d9` | Phase E @ `6c91ef1` |
 | --- | --- | --- |
-| `swift-format lint --recursive --strict` | `Sources Tests Package.swift` | **0 diagnostics** |
-| `swiftlint lint --strict` | repository | **0 violations, 0 serious in 92 files** |
-| `ruff check` / `ruff format --check` | `scripts/` | clean · 7 files already formatted |
-| `pyright` (**strict**) | `scripts/` | **0 errors, 0 warnings, 0 informations** |
-| `shellcheck` | `deploy/provision-node.sh` | 2 info-level notes (SC2016, SC2015) — both pre-existing, neither introduced |
-| `gitleaks detect --log-opts=--all` | **full history**, 278 commits, 6.08 MB | **no leaks found**, exit 0 |
-| `osv-scanner` | `Package.resolved`, 8 packages | **no issues found**, exit 0 |
-| `semgrep --config auto --error` | whole tree | **0 findings**, exit 0 |
-| YAML parse | `ci.yml`, `docker-compose.yml`, `settings.yml` | 3/3 parse |
-| `third_party_notices.py` | lockfile inventory | covers all 8 resolved packages |
-| `harness_tests.py` | cross-language harness contract | passed, 16 tests |
+| Tests (hermetic) | 371 | **590** |
+| Coverage — `Sources/` lines | 84.3 % | **91.7 %** |
+| Coverage — `SwiftWebSearchMCP` | **0 % measured** | measured (per-child profile merge, A04) |
+| Coverage — `MCPSMonitor` | 29.5 % | measured (same mechanism) |
+| Debug/release warnings | 0 | **0**, now under `-warnings-as-errors` on Swift 6.4 |
+| `swiftlint` | 491 findings | **0** in our own code |
+| `swift-format` | 19 155 diagnostics | **0** |
+| AddressSanitizer | **CRASH** | clean |
+| gitleaks (full history) | 5 findings | 0, one written waiver |
+| osv-scanner | 0 | 0 |
+| CodeQL | green on `main` | **green again** — `B123` broke it and `B127` restored it |
 
-### The written waiver, and why it is narrow
+## Where the verification ran, and what was installed
 
-`.gitleaks.toml` carries a waiver for **five synthetic test literals** from commit `41d56935`, an
-AND of those two file paths and that exact literal, keeping `[extend] useDefault = true`. The
-working tree no longer contains them. This is a documented waiver, not a disabled check: the scan
-runs the full history and ruleset and reports zero findings.
+Scanning and lint tooling was installed on `node2` for this run, because the gates must be
+runnable on the machine that verifies rather than only on the machine that developed. Recorded in
+[`AUDIT/environment.md`](../environment.md) §1.1, with versions:
 
-The shellcheck notes are **not** waived — they are info-level style notes that A03 deliberately
-retained rather than suppressed, and the count is unchanged from A03's record.
+| Tool | node1 (development) | node2 (this run) | Install |
+| --- | --- | --- | --- |
+| `swift-format` | 603.0.0 | 603.0.0 | Homebrew |
+| `swiftlint` | 0.65.1 | 0.65.1 | Homebrew |
+| `gitleaks` | 8.30.1 | 8.30.1 | Homebrew |
+| `semgrep` | 1.176.0 | 1.176.0 | Homebrew |
+| `osv-scanner` | 2.5.1 | **2.6.0** | Homebrew |
+| `ruff` | 0.16.7 | 0.16.7 | Homebrew |
+| `shellcheck` | present | 0.11.0 | Homebrew |
+| `pyright` | 1.1.414 | 1.1.414 via `npx` | not installed globally |
 
-## What this does and does not establish
+Two notes, recorded rather than smoothed over:
 
-* **Establishes**: the branch builds warning-free and passes its suite on hardware the audit did
-  not run on, from a clone with no local state; coverage clears the floor with margin; every
-  linter, type checker, secret scanner, CVE scanner and SAST pass is clean or waived in writing;
-  the ledger is in a terminal state.
-* **Does not establish**: that any vendor MCP client has completed a handshake. That is
-  **refused, not pending** — ISSUE-6 was closed as not-planned, and the compatibility claim is
-  bounded to the documented strict-mode rules, the schema lint and the local protocol tests.
-* **Depends on** the one BLOCKED task: `B122` (cancellation during synthesis is swallowed) is an
-  owner decision, recorded rather than resolved unilaterally.
+* **`osv-scanner` differs by a minor version** (2.6.0 on node2, 2.5.1 on node1 and in CI). Both
+  report no issues for this dependency graph, so the gate's verdict is the same; the version is
+  pinned in CI, which is where the reproducible number lives.
+* **`brew install` exited 1 on node2** while installing `semgrep`'s dependencies: `certifi` and
+  `pydantic` could not be symlinked because Homebrew's Python 3.14 site-packages already contain
+  them. Every requested tool is installed and runs at the version above; the non-zero exit is the
+  link step, not the install. No container was created, and nothing else was installed.
 
-## Repeat-run honesty
+## What is *not* verified here
 
-The suite was run three times here because a **single** green run has already hidden a real defect
-in this audit: `B116`, a local-throttle boundary race that failed about once in twenty runs and
-which CI had passed repeatedly. Three consecutive clean runs of 588 tests is stronger evidence
-than one, but it is not a proof of absence — the deterministic test B116 added is what actually
-pins that race.
+* **No vendor MCP client round trip.** Refused, not pending: providing an OpenAI or Anthropic
+  account was declined, so the compatibility claim stays bounded to the documented rules, the
+  schema lint and the protocol tests.
+* **Live provider coverage is Tavily-only**, behind `SEARCH_LIVE_TESTS=1`. Every other adapter is
+  verified against fixtures and the published API notes.
+* **`CodeQL` is verified by CI, not here.** `B123` broke it by raising the manifest floor to 6.4
+  (GitHub's default-setup runner builds with Swift 6.3.3 and cannot parse a 6.4 manifest); `B127`
+  restored the 6.3 floor. The check can only be observed on the pull request, and its state at the
+  time of writing is recorded in the ledger under `B127`.

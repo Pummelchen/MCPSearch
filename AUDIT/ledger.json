@@ -8,20 +8,23 @@
     "note": "Machine-readable twin of ledger.md. ledger.md wins on conflict with the wiki tracker; ledger.json wins on conflict with ledger.md for field values.",
     "phase_e": {
       "status": "COMPLETE",
-      "host": "node1 (Mac14,3, arm64, macOS 26.6.2, Swift 6.3.3)",
-      "verified_commit": "891b94f",
+      "host": "node2 (Mac14,3, arm64, macOS 27.0, Xcode 27.0, Swift 6.4) - a host that did not develop any of the changes",
+      "verified_commit": "6c91ef1",
       "fresh_clone": true,
       "warnings": 0,
-      "suite": "588 tests, 6 skipped, 0 failures, three consecutive runs",
-      "coverage_sources_lines_percent": 91.6,
+      "suite": "590 tests, 6 skipped, 0 failures",
+      "coverage_sources_lines_percent": 91.7,
       "coverage_floor_percent": 80,
-      "scanners": "swift-format 0, swiftlint 0/92 files, ruff clean, pyright strict 0, shellcheck 2 pre-existing info notes, gitleaks full history 0 (written waiver for 5 synthetic literals), osv-scanner 0, semgrep 0",
-      "ledger_terminal": "133 DONE, 1 BLOCKED-with-owner (B122), 0 START",
+      "scanners": "swift-format 0, swiftlint 0, ruff clean, pyright strict 0, shellcheck 0, semgrep 0, gitleaks full history 0 (written waiver in .gitleaks.toml), osv-scanner 0",
+      "placeholder_sweep": "0 literal markers in Sources/ (re-run this session)",
+      "ledger_terminal": "139 DONE, 0 PROGRESS, 0 START, 0 BLOCKED",
       "wiki_mirrored": true,
       "artifact": "AUDIT/evidence/PHASE-E-independent-host.txt",
-      "open_item": "B122 requires a maintainer decision (propagate cancellation and re-pin B97, or delete the unreachable arm)",
+      "previous_phase_e": "AUDIT/evidence/PHASE-E-2026-09-14-node1.txt (node1 at 891b94f, before B122-B127)",
+      "open_item": "none - B122 was resolved as 'propagate cancellation' and every other task is DONE",
       "pull_request": "https://github.com/Pummelchen/MCPSearch/pull/1",
-      "pull_request_number": 1
+      "pull_request_number": 1,
+      "toolchain_revision": "Swift 6.4 / Xcode 27; CI runner xcode-27; manifest floor deliberately 6.3 so GitHub's CodeQL Swift scan keeps building (B127)"
     }
   },
   "tasks": [
