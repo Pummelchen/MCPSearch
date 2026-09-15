@@ -265,6 +265,13 @@ public struct AnswerSynthesizer: Sendable {
             completion = try await complete(prompt: prompt, allowReasoning: false)
         }
 
+        // The answer arrived, but the caller may have gone away while it did. A cancelled caller
+        // must never be handed a synthesised answer: this is the same boundary the orchestrator
+        // draws after its fan-out and the fetcher draws before its reader fallback (ledger B04),
+        // closed here for the third path so `web_answer` cannot return success to a caller that
+        // has already cancelled (ledger B122).
+        try Task.checkCancellation()
+
         let raw = completion.text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !raw.isEmpty else {
             throw SearchError.synthesisFailed(
@@ -364,6 +371,18 @@ public struct AnswerSynthesizer: Sendable {
             )
         } catch let error as SearchError {
             throw error
+        } catch is CancellationError {
+            // A caller's cancellation is not a synthesis failure. It propagates as a
+            // `CancellationError` exactly as it does through the search and fetch paths (ledger
+            // B04), so the tool layer's `catch is CancellationError` arm for synthesis runs
+            // rather than being unreachable (ledger B122).
+            throw CancellationError()
+        } catch HTTPError.cancelled {
+            // A cancellation that arrives once the request is in flight reaches
+            // `URLSessionHTTPClient` as a `URLError.cancelled` and leaves it as
+            // `HTTPError.cancelled` rather than as a `CancellationError`. Both mean the caller
+            // went away, so both must be reported the same way (ledger B122).
+            throw CancellationError()
         } catch {
             throw SearchError.synthesisFailed(Self.describe(error))
         }

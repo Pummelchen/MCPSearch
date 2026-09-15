@@ -13,13 +13,14 @@ import XCTest
 /// B24 removed elsewhere, so each test below asserts the exact message and that the failure
 /// message the arm is meant to replace did not arrive.
 ///
-/// Three of the four arms are reachable and covered here. The fourth — the synthesis arm in
-/// `webAnswer` — is not: `AnswerSynthesizer.complete` catches every transport error and rethrows
-/// `SearchError.synthesisFailed`, so a cancelled synthesis never arrives at `ToolHandlers` as a
-/// `CancellationError`. B97 pins that mapping deliberately, so the arm is dead rather than wrong.
-/// Measured through this harness, cancelling during synthesis returns a *success* result carrying
-/// the search results and `Answer synthesis failed: The synthesis request failed.`, never the
-/// cancelled error; it is recorded against B103 rather than asserted here.
+/// All four arms are reachable and covered here. The fourth — the synthesis arm in `webAnswer` —
+/// was dead when B103 closed: `AnswerSynthesizer.complete` folded every transport error into
+/// `SearchError.synthesisFailed`, so a cancelled synthesis never arrived at `ToolHandlers` as a
+/// `CancellationError`, and B97 had pinned that mapping as intended behaviour. Ledger B122 resolved
+/// the contradiction in favour of propagation, consistent with search and fetch, and the test below
+/// is the measurement that proves the arm now runs: before that fix the same call returned a
+/// *success* result carrying the search results and `Answer synthesis failed: The synthesis request
+/// failed.`, never the cancelled error.
 final class ToolCancellationTests: XCTestCase {
 
     // MARK: - Harness
@@ -191,6 +192,67 @@ final class ToolCancellationTests: XCTestCase {
         XCTAssertFalse(
             text.contains("failed"),
             "a cancelled search must not be reported as a failure: \(text)"
+        )
+    }
+
+    // MARK: - web_answer, synthesis phase
+
+    /// The synthesis half of `web_answer` must answer a cancellation the way the search and fetch
+    /// halves do, rather than swallowing it into a synthesis failure (ledger B122).
+    ///
+    /// The search phase is served by a stub that answers immediately, so the request the
+    /// cancellation interrupts is the synthesis one. That is why the wait is on the synthesis stub
+    /// rather than on the search stub: it is the point at which the server is provably inside
+    /// `synthesize`.
+    func testACancelledWebAnswerSynthesisPhaseSaysCancelled() throws {
+        let search = try LoopbackServer(responses: [
+            .init(
+                status: 200,
+                body: """
+                    {"query":"why did unix fail","results":[
+                      {"url":"https://example.com/unix-decline","title":"Why Unix declined",
+                       "content":"Unix declined for a documented reason.","engine":"brave"}
+                    ],"answers":[],"corrections":[],"infoboxes":[],"suggestions":[],
+                    "unresponsive_engines":[]}
+                    """
+            )
+        ])
+        // The answering model never finishes, so the call is still in flight when the client
+        // cancels. A `.drip` response is what makes that state reachable without a real vendor.
+        let synthesis = try LoopbackServer(responses: [Self.stalled])
+        let server = try startInitializedServer(environment: [
+            "SEARXNG_BASE_URL": search.baseURL.absoluteString,
+            "DEEPSEEK_BASE_URL": synthesis.baseURL.absoluteString,
+            "DEEPSEEK_API_KEY": "synthetic-synthesis-key-for-cancellation-tests",
+            "SEARCH_LOG_LEVEL": "warning",
+        ])
+        defer { server.stop() }
+
+        try server.send([
+            "jsonrpc": "2.0",
+            "id": 13,
+            "method": "tools/call",
+            "params": [
+                "name": "web_answer",
+                "arguments": ["query": "why did unix fail", "mode": "fast"],
+            ],
+        ])
+        try waitUntilTheStubWasCalled(synthesis)
+        XCTAssertGreaterThan(
+            search.requestCount,
+            0,
+            "the search phase has to have answered before synthesis can be in flight"
+        )
+        try cancel(13, on: server)
+
+        let text = try errorText(try server.readResponse(id: 13))
+        XCTAssertEqual(text, "Answer synthesis cancelled.")
+        // The defect this arm exists to prevent: without it the cancellation falls to the
+        // synthesis-failure arm, which returns a *success* result carrying the documents and a
+        // warning that synthesis failed.
+        XCTAssertFalse(
+            text.contains("synthesis failed"),
+            "a cancelled synthesis must not be reported as a synthesis failure: \(text)"
         )
     }
 }

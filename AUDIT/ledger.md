@@ -16,15 +16,14 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 
 | Metric | Count |
 | --- | --- |
-| Tasks enumerated | 134 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover) |
+| Tasks enumerated | 134 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover, B116-B121 found while fixing and recording, B122-B124 found in the go-live session) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 133 |
+| DONE | 134 |
 | START (reproduced, expected behaviour written) | 0 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
-Severity of the whole set: **S0 3, S1 8, S2 34, S3 89** — the S0 set (A01, B01, B02) and the S1 set
-are all DONE; of the 34 S2 tasks 34 are DONE and 0 open; of the 89 S3 tasks 88 are DONE and 0 open.
+Severity of the whole set: **S0 3, S1 8, S2 34, S3 89** — 3/3 S0 are DONE; 8/8 S1 are DONE; 34/34 S2 are DONE; 89/89 S3 are DONE. Tasks not DONE: 0.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -168,7 +167,7 @@ waived in writing.
 | B119 | S3 | `scripts` (`monitor_tty_smoke.py`) | `scripts/monitor_tty_smoke.py` (the startup check) | The PTY harness polls the monitor only once, so a crash after the drain window but before the first frame is still reported as a timeout | test | DONE | node1 (arm64) | Phase C (found while verifying B106) |
 | B120 | S3 | `WebSearchCore` / `Fetch` (`DirectHTTPFetcher`) | `DirectHTTPFetcher.swift` (cross-scheme refusal) | Only the file-system transport codes are mapped, so a redirect to any other cross-scheme target still surfaces as an opaque transport reason | incomplete | DONE | node1 (arm64) | Phase C (residual B102 left) |
 | B121 | S3 | `WebSearchCore` / `Providers` (`HTTPStatusMapper`) | `HTTPStatusMapper.swift` (`unsupportedRequest`) | `HTTPError.invalidURL`'s detail is interpolated verbatim into the caller-facing message, so a URL-shaped detail would be echoed with any key in it | unsafe | DONE | node1 (arm64) | Phase C (surfaced by B96) |
-| B122 | S3 | `WebSearchCore` / `Search` (`AnswerSynthesizer`) | `AnswerSynthesizer.swift` (`complete`/`synthesize`) | Cancellation during answer synthesis is swallowed as a synthesis failure, so the tool layer's cancelled arm is unreachable | bug | BLOCKED | node1 (arm64) | Phase C (found while closing B103) |
+| B122 | S3 | `WebSearchCore` / `Search` (`AnswerSynthesizer`) | `AnswerSynthesizer.swift` (`complete`/`synthesize`) | Cancellation during answer synthesis is swallowed as a synthesis failure, so the tool layer's cancelled arm is unreachable | bug | DONE | node1 (arm64) | Phase C (found while closing B103) |
 
 ---
 
@@ -221,6 +220,57 @@ Full before/expected-correct records are in `ledger.json` (`raw_file` names this
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
 
+## B122 — a cancelled synthesis is now a cancellation, not a synthesis failure
+
+**Severity S3** · **category** bug · **status** DONE · **host** node1 (arm64, macOS 27.0, Swift 6.4)
+
+**The owner decision the audit parked is taken: propagate the cancellation**, the posture `B04`
+established for search and fetch. The alternative the ledger named — deleting `webAnswer`'s
+cancelled arm as dead code — was rejected: it is smaller, but it would leave the synthesis path as
+the only one of three that reports a caller's cancellation as a failure. It removes the symptom and
+keeps the inconsistency.
+
+**Premise confirmed, and it was a live defect rather than a dormant one.** `complete` folded every
+transport error into `SearchError.synthesisFailed`. A cancellation arrives in two shapes —
+`CancellationError` from `URLSessionHTTPClient.send`'s pre-flight `Task.checkCancellation()`, or
+`HTTPError.cancelled(label:)` when the request was already in flight — and neither could reach
+`ToolHandlers.webAnswer`. Measured end to end through a real stdio session against the pre-fix code:
+cancelling mid-synthesis returned a **success** result (`isError` false) carrying the documents and
+`Note: Answer synthesis failed: The synthesis request failed.`
+
+**The fix.** `complete` rethrows both cancellation shapes as `CancellationError`, ahead of the
+generic arm. `synthesize` adds `try Task.checkCancellation()` after the answer arrives, closing the
+race in which a response lands after the caller has gone — the same boundary `SearchOrchestrator`
+draws after its fan-out and `WebFetcher` draws before its reader fallback. `describe`'s two
+cancellation arms are deliberately kept: they remain the curated mapping for a cancellation that is
+not the calling task's, and `describe` is a pure helper whose arms are unit-tested directly, as its
+`URLError` arms already were (the client maps those to `HTTPError` before they can reach it).
+
+**Re-pinning B97, recorded as such.** B97 pinned the old mapping with
+`testCancellationDuringSynthesisIsReportedAsCancelled`, which asserted that a cancellation surfaced
+as a `SearchError` mentioning "cancelled". The check was corrected rather than the behaviour kept:
+it is replaced by `testCancellationDuringSynthesisPropagatesAsCancellation`, which asserts the exact
+error type and rejects any other — strictly stronger than the assertion it replaces, which accepted
+any `SearchError`. A second test pins the `HTTPError.cancelled` shape.
+
+**Falsification.** `AnswerSynthesizer.swift` was restored to its committed content (touched to
+defeat same-second build staleness) and both suites rebuilt: five assertions failed, including the
+tool-layer test measuring the pre-fix **success** result. The file was restored byte-identical
+(SHA-256 `f0575f2a447d53b7f41312267db1fc09c637b39a0f6ee588682c1d754c5eb1a9`; the pre-fix hash
+`0c756413edfc7bc313cda8cb8f43fbd5f363c26eeceedee1f5daaca0790117b6` matches the one B97 recorded for
+its own restore, which is what shows the mutation was the audited tree).
+
+**Ledger bookkeeping corrected in passing.** The `md` summary carried `BLOCKED | 0` while
+`ledger.json` held B122 as BLOCKED, so its counts summed to 133 of 134. The summary is generated
+from the JSON, so the drift is gone; the generator now rewrites the BLOCKED and PROGRESS rows too,
+which is why it could drift at all.
+
+Gate: 590 tests / 6 skipped / 0 failures; debug and release 0 warnings on Swift 6.4; coverage
+`Sources/` 91.8 % against the 80 % floor; swift-format 0; swiftlint 0; ruff clean; pyright strict 0;
+shellcheck 0; notices clean; harness tests pass; both smoke transports and the pseudo-terminal
+monitor smoke pass; semgrep 0; gitleaks full history 0; osv-scanner 0.
+Evidence: `AUDIT/evidence/B122-cancellation.txt`.
+
 ## B121 — `HTTPError.invalidURL`'s detail was echoed into the caller-facing message
 
 **Severity S3** · **category** unsafe · **status** DONE · **host** node1 (arm64)
@@ -263,6 +313,11 @@ Gate: 588 tests / 6 skipped / 0 failures; debug and release 0 warnings; swift-fo
 ## B103 — the tool layer's cancellation arms are now exercised, except the synthesis arm
 
 **Severity S3** · **category** test · **status** DONE · **host** node1 (arm64)
+
+> **Superseded in part by B122 (go-live session).** The synthesis arm recorded below as dead is now
+> reachable and covered: `AnswerSynthesizer` propagates a caller's cancellation, and
+> `ToolCancellationTests.testACancelledWebAnswerSynthesisPhaseSaysCancelled` measures it through a
+> real stdio session. The paragraphs below describe the state at the time B103 was closed.
 
 **Premise checked, and corrected.** The four caller-facing cancellation strings in
 `Sources/SwiftWebSearchMCP/ToolHandlers.swift` were asserted nowhere: B04's `CancellationTests.swift`

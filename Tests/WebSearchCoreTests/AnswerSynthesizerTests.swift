@@ -656,19 +656,52 @@ final class AnswerSynthesizerTests: XCTestCase {
         )
     }
 
-    /// A synthesis that is cancelled while the request is in flight must surface as a cancelled
-    /// request rather than as a generic failure (ledger B97).
-    func testCancellationDuringSynthesisIsReportedAsCancelled() async throws {
+    /// A synthesis cancelled by the caller propagates as a `CancellationError` rather than being
+    /// folded into `synthesisFailed`, so `ToolHandlers`' cancelled arm for the synthesis phase is
+    /// reachable instead of dead.
+    ///
+    /// **Re-pinned by ledger B122.** B97 originally pinned the opposite: that a cancellation during
+    /// synthesis surfaced as a `SearchError` whose description contained "cancelled". That was
+    /// accurate about the code and wrong about the contract — it made the tool layer's
+    /// `catch is CancellationError` arm unreachable and left the synthesis path inconsistent with
+    /// search and fetch, which B04 had already fixed. The expectation is inverted here deliberately,
+    /// with the check corrected rather than weakened: this test now asserts the exact error type and
+    /// rejects *any* other error, where the previous version accepted any `SearchError` mentioning
+    /// cancellation.
+    func testCancellationDuringSynthesisPropagatesAsCancellation() async throws {
         let client = MockHTTPClient()
         client.on("deepseek.synthesize") { _ in throw CancellationError() }
 
         do {
             _ = try await synthesizer(client).synthesize(query: "q", results: sampleResults)
             XCTFail("A cancelled request is not an answer")
-        } catch let error as SearchError {
-            XCTAssertTrue(
-                error.safeDescription.contains("cancelled"),
-                error.safeDescription
+        } catch is CancellationError {
+            // Expected: the caller's cancellation is what the caller sees.
+        } catch {
+            XCTFail(
+                "A cancellation must arrive as CancellationError, not \(type(of: error)): \(error)"
+            )
+        }
+    }
+
+    /// The synthesizer's own transport path can also carry a cancellation: `URLSessionHTTPClient`
+    /// reports a request cancelled in flight as `HTTPError.cancelled`, not as a
+    /// `CancellationError`, and both must reach the caller as a cancellation (ledger B122).
+    func testInFlightCancellationReportedAsHTTPErrorAlsoPropagates() async throws {
+        let client = MockHTTPClient()
+        client.on("deepseek.synthesize") { _ in
+            throw HTTPError.cancelled(label: "deepseek.synthesize")
+        }
+
+        do {
+            _ = try await synthesizer(client).synthesize(query: "q", results: sampleResults)
+            XCTFail("A cancelled request is not an answer")
+        } catch is CancellationError {
+            // Expected: the in-flight shape of a cancellation is still a cancellation.
+        } catch {
+            XCTFail(
+                "A cancelled transport must arrive as CancellationError, not "
+                    + "\(type(of: error)): \(error)"
             )
         }
     }
