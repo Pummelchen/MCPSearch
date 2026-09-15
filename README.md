@@ -6,6 +6,10 @@ server that gives local AI clients reliable public-web search and page fetching.
 [![CI](https://github.com/Pummelchen/MCPSearch/actions/workflows/ci.yml/badge.svg)](https://github.com/Pummelchen/MCPSearch/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Swift 6.4](https://img.shields.io/badge/Swift-6.4-orange.svg)
+[![Stars](https://img.shields.io/github/stars/Pummelchen/MCPSearch?style=flat-square&logo=github&label=Stars&color=e3b341)](https://github.com/Pummelchen/MCPSearch/stargazers)
+[![Views (14d)](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Pummelchen/MCPSearch/main/.github/traffic.json)](https://github.com/Pummelchen/MCPSearch)
+[![Last Commit](https://img.shields.io/github/last-commit/Pummelchen/MCPSearch?style=flat-square&logo=git&label=Last%20Commit&color=2ea44f)](https://github.com/Pummelchen/MCPSearch/commits/main)
+[![Contact](https://img.shields.io/badge/Contact-0xa0b1%40gmail.com-blue?style=flat-square&logo=gmail&logoColor=white)](mailto:0xa0b1@gmail.com)
 
 - **No mandatory paid infrastructure.** Every credential is optional; the server runs
   with zero API keys and reports exactly what is missing.
@@ -207,9 +211,13 @@ present to prove the suite is hermetic.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). Copyright (c) 2026 Pummelchen.
+MIT — see [LICENSE](LICENSE). Copyright (c) 2026 André Borchert.
 
 The binary links third-party packages with their own terms. Their licences, and the attribution
 notices that Apache-2.0 requires a distributed work to carry, are collected in
 [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md); a CI gate keeps that inventory in step with
 `Package.resolved`.
+
+## Contact
+
+Questions, bug reports and suggestions are always welcome. You can contact André Borchert by email at [0xa0b1@gmail.com](mailto:0xa0b1@gmail.com).
