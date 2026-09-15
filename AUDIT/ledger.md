@@ -270,10 +270,20 @@ removes the constraint. The note is left on `B127` rather than quietly rewriting
   byte-identical; debug and release builds with `-warnings-as-errors` exit 0; **590 tests /
   6 skipped / 0 failures**.
 * Both workflows parse as YAML and keep their action pins.
-* The scan itself can only be observed on a runner: the advanced workflow is exercised on the pull
-  request that carries it, **before** default setup is switched off, so there is no window in which
-  the repository has no CodeQL at all. The default-setup analysis is disabled only after the new
-  workflow has produced a green result.
+* The scan itself can only be observed on a runner, and the first attempt corrected the plan this
+  task was written with. The analysis **ran correctly** — the traced build took 6 minutes, 1,480,563
+  AST nodes were extracted with 0 unresolved, and the SARIF was produced and uploaded — and was then
+  rejected:
+
+  ```
+  CodeQL analyses from advanced configurations cannot be processed when the default setup is enabled
+  ```
+
+  So "verify the new workflow first, then switch off default setup" is **impossible**: GitHub refuses
+  to process advanced-configuration results while default setup is on, which is exactly the overlap a
+  careful rollout would want. The order has to be the other way round. After the switch the same
+  workflow ran green and GitHub recorded the analysis (`/language:swift`, `CodeQL`, 0 results,
+  `refs/heads/audit/2026-09-13`) with `Analysis upload status is complete.`
 * `code-scanning/alerts` was empty (0 open, 0 closed) before the switch, so nothing was lost by
   disabling default setup; existing alerts are retained by GitHub when the mode changes.
 
