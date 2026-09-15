@@ -28,12 +28,14 @@ concurrency:
 
 jobs:
   build-and-test:
-    # The package declares `swift-tools-version: 6.3`, so an older toolchain cannot
+    # The package declares `swift-tools-version: 6.4`, so an older toolchain cannot
     # even parse the manifest: `macos-14` ships Swift 5.10 and fails immediately.
-    # `macos-26` provides Xcode 26.x, which carries Swift 6.3.
+    # GitHub's macOS images are now selected by the Xcode major version rather than by the
+    # OS release, so `xcode-27` is the image that carries the mandated Swift 6.4 toolchain
+    # and its SDKs. It is arm64-only, which matches what this package already required.
     # The MCP Swift SDK declares macOS 13 as its minimum, and the transport tests use
     # Darwin sockets, so macOS is the supported target.
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 30
 
     steps:
@@ -62,7 +64,7 @@ jobs:
 
       # Fail early and clearly if the runner's toolchain is older than the manifest
       # requires, rather than emitting a confusing manifest parse error later.
-      - name: Verify Swift toolchain is at least 6.3
+      - name: Verify Swift toolchain is at least 6.4
         run: |
           set -euo pipefail
           swift --version
@@ -76,11 +78,11 @@ jobs:
           fi
           major="${version%%.*}"
           minor="${version#*.}"
-          if [ "$major" -lt 6 ] || { [ "$major" -eq 6 ] && [ "$minor" -lt 3 ]; }; then
-            echo "::error::This package requires swift-tools-version 6.3 or newer; found $version"
+          if [ "$major" -lt 6 ] || { [ "$major" -eq 6 ] && [ "$minor" -lt 4 ]; }; then
+            echo "::error::This package requires swift-tools-version 6.4 or newer; found $version"
             exit 1
           fi
-          echo "Swift $version satisfies swift-tools-version 6.3"
+          echo "Swift $version satisfies swift-tools-version 6.4"
 
           # The exact toolchain is whatever the runner image ships, and this workflow does **not**
           # pin it: the image rotates, and a hard `DEVELOPER_DIR=/Applications/Xcode_<n>.app` fails
@@ -225,7 +227,9 @@ jobs:
   # file in this repository (`.swift-format`, `.swiftlint.yml`, `ruff.toml`, `pyrightconfig.json`,
   # `.gitleaks.toml`) rather than by command-line flags, so the standard is reviewable in a diff.
   static-analysis:
-    runs-on: macos-26
+    # The same image as `build-and-test`: the two jobs must be judged by one toolchain, and
+    # `swift-format`/`swiftlint` are shipped by the image's Xcode release.
+    runs-on: xcode-27
     timeout-minutes: 20
 
     steps:

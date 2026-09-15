@@ -14,19 +14,44 @@ Everything recorded here must be re-installable from this file alone. The task l
 
 | Host | Role in this audit | Hardware | OS | Notes |
 | --- | --- | --- | --- | --- |
-| `MacBook-AB.local` (this Mac, `Mac15,3`) | development + Apple-platform builds/tests; also the machine being audited | 24 GB RAM, arm64 | macOS 26.6.2 (25G83) | repo lives in Dropbox (`~/Library/CloudStorage/Dropbox/Coding/MCPSearch`) — see §5 |
-| `node1` … `node4` | Mac fleet: independent Apple-platform verification (Phase E) | `Mac14,3` Mac mini M2, **8 GB RAM** | macOS 26.6.2 | reached as `nodeN@nodeN.local` (mDNS) or `nodeN@100.x` (Tailscale); **key auth, no password needed** |
+| `MacBook-AB.local` (`Mac15,3`) | development + Apple-platform builds/tests for Phases A–E (first session, 2026-09-13) | 24 GB RAM, arm64 | macOS 26.6.2 (25G83) at the time | repo lived in Dropbox (`~/Library/CloudStorage/Dropbox/Coding/MCPSearch`) — see §5 |
+| `node1` … `node4` | Mac fleet: development from the handover session onward, and independent Apple-platform verification (Phase E) | `Mac14,3` Mac mini M2, **8 GB RAM** | **macOS 27.0** (26A428), upgraded after the audit began — see §1.1 | reached as `nodeN@nodeN.local` (mDNS) or `nodeN@100.x` (Tailscale); **key auth, no password needed**. Reaching `node1` from `node1` itself is refused; test the fleet from another node |
 | Debian 13 (Trixie) Intel VPS (`91.99.176.243`) | not used | — | — | reserved for Linux/x86 work if needed; **not provisioned by this audit** and requires asking first |
 
 Per-host toolchain (recorded 2026-09-13):
 
 | Host | Swift | Xcode | Docker | Colima | Python |
 | --- | --- | --- | --- | --- | --- |
-| this Mac | 6.3.3 | 26.6 (`/Applications/Xcode.app`) | 29.8.0 | — (Docker Desktop) | 3.14.7 |
+| `MacBook-AB.local` | 6.3.3 | 26.6 (`/Applications/Xcode.app`) | 29.8.0 | — (Docker Desktop) | 3.14.7 |
 | node1–node4 | 6.3.3 | 26.6 | 29.8.0 | 0.10.3 | — (not needed) |
 
 All four nodes are identical, which is what makes any of them a valid independent
 verification host.
+
+### 1.1 Toolchain revision, 2026-09-15 (go-live session)
+
+**The fleet was upgraded out from under the audit.** Measured on all four nodes on 2026-09-15:
+
+| Host | Swift | Xcode | OS | Docker | Colima | Python |
+| --- | --- | --- | --- | --- | --- | --- |
+| node1–node4 | **6.4** (`swiftlang-6.4.0.34.1`) | **27.0** (27A266a, `/Applications/Xcode.app`) | **27.0** (26A428) | 29.8.0 | 0.10.3 | node1 3.14.7 |
+
+The brief for this session mandates Swift 6.4 (Xcode 27) with strict concurrency and
+warnings-as-errors, so the revision is adopted rather than rolled back: `Package.swift` declares
+`swift-tools-version: 6.4`, CI runs on the `xcode-27` image (GitHub's macOS images are now
+selected by Xcode major version, not by OS release) and the workflow's toolchain gate requires
+6.4 or newer. Ledger: `B123`. The image is in public preview, which is the only way to obtain
+Xcode 27 on a hosted runner; that is recorded as the accepted alternative in `B123`.
+
+Two consequences measured while adopting it:
+
+* SwiftPM 6.4 changed the build-product layout and the test-bundle naming — from
+  `arm64-apple-macosx/debug/SwiftWebSearchMCPPackageTests.xctest` to
+  `out/Products/Debug/<Target>Tests.xctest`, one bundle per test target. The coverage gate named
+  the old bundle literally; it now discovers them (`B124`).
+* Historical ledger rows keep the toolchain they were closed on (`macOS 26.6.2, Swift 6.3.3`).
+  Those are point-in-time records and are deliberately not rewritten; this table is the
+  current state.
 
 ---
 
@@ -34,7 +59,7 @@ verification host.
 
 | Language | Compiler/runtime | Formatter | Linter | Type checker | Static analysis | SAST | Dependency CVE | Secret scan |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
-| Swift (`swift-tools-version: 6.3`) | Swift 6.3.3, strict concurrency (language mode 6) | `swift-format` 603.0.0 | `swiftlint` 0.65.1 | compiler (Swift 6 type checker) | `swift build --sanitize=address` / `thread` | `semgrep` 1.176.0, CodeQL (GitHub default setup, Swift) | `osv-scanner` 2.5.1 on `Package.resolved` | `gitleaks` 8.30.1, full history |
+| Swift (`swift-tools-version: 6.4`) | Swift 6.4, strict concurrency (language mode 6) | `swift-format` 603.0.0 | `swiftlint` 0.65.1 | compiler (Swift 6 type checker) | `swift build --sanitize=address` / `thread` | `semgrep` 1.176.0, CodeQL (GitHub default setup, Swift) | `osv-scanner` 2.5.1 on `Package.resolved` | `gitleaks` 8.30.1, full history |
 | Python (`scripts/*.py`) | CPython 3.14.7 | `ruff format` (ruff 0.16.7) | `ruff check` | `pyright` 1.1.414 | `pyright` | `semgrep` 1.176.0 | none (stdlib only — see §3) | `gitleaks` |
 | Bash (`deploy/provision-node.sh`) | `/bin/bash` 3.2 (macOS) | — | `shellcheck` | — | — | `semgrep` | — | `gitleaks` |
 | YAML (`ci.yml`, `docker-compose.yml`, `settings.yml`) | — | — | `python3 -c yaml.safe_load` parse check | — | — | `semgrep` | — | `gitleaks` |
@@ -74,7 +99,7 @@ brew install swift-format osv-scanner pyright
 
 Already present before the audit (not installed by it): `swiftlint` 0.65.1, `gitleaks`
 8.30.1, `semgrep` 1.176.0, `ruff` 0.16.7, `shellcheck`, `jq` 1.8.2, `node` v26.8.2,
-Docker 29.8.0, Homebrew, Swift 6.3.3 / Xcode 26.6, CPython 3.14.7.
+Docker 29.8.0, Homebrew, Swift 6.3.3 / Xcode 26.6, CPython 3.14.7 (that host, at that time).
 
 ### Build artefacts lie: build the product into a fresh scratch path
 
@@ -155,7 +180,7 @@ TAVILY_API_KEY=tvly-ci-placeholder-not-a-real-key \
 requires **both** `SEARCH_LIVE_TESTS=1` and a usable key, so the placeholder guarantees the
 hermetic suite with no network and no credits. Live tests are run only deliberately.
 
-This is a machine quirk, not a repository requirement: CI on a clean `macos-26` runner uses
+This is a machine quirk, not a repository requirement: CI on a clean `xcode-27` runner uses
 plain `swift build` / `swift test` (see `AUDIT/baseline/`).
 
 ---

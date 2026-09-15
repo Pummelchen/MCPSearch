@@ -1,4 +1,4 @@
-// swift-tools-version: 6.3
+// swift-tools-version: 6.4
 // SwiftWebSearchMCP — a Swift-native web search MCP server.
 
 import PackageDescription

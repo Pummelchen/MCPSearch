@@ -16,14 +16,14 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 
 | Metric | Count |
 | --- | --- |
-| Tasks enumerated | 135 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover, B116-B121 found while fixing and recording, B122-B124 found in the go-live session) |
+| Tasks enumerated | 136 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover, B116-B121 found while fixing and recording, B122-B124 found in the go-live session) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
-| DONE | 135 |
+| DONE | 136 |
 | START (reproduced, expected behaviour written) | 0 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
-Severity of the whole set: **S0 3, S1 9, S2 34, S3 89** — 3/3 S0 are DONE; 9/9 S1 are DONE; 34/34 S2 are DONE; 89/89 S3 are DONE. Tasks not DONE: 0.
+Severity of the whole set: **S0 3, S1 9, S2 35, S3 89** — 3/3 S0 are DONE; 9/9 S1 are DONE; 35/35 S2 are DONE; 89/89 S3 are DONE. Tasks not DONE: 0.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -169,6 +169,7 @@ waived in writing.
 | B121 | S3 | `WebSearchCore` / `Providers` (`HTTPStatusMapper`) | `HTTPStatusMapper.swift` (`unsupportedRequest`) | `HTTPError.invalidURL`'s detail is interpolated verbatim into the caller-facing message, so a URL-shaped detail would be echoed with any key in it | unsafe | DONE | node1 (arm64) | Phase C (surfaced by B96) |
 | B122 | S3 | `WebSearchCore` / `Search` (`AnswerSynthesizer`) | `AnswerSynthesizer.swift` (`complete`/`synthesize`) | Cancellation during answer synthesis is swallowed as a synthesis failure, so the tool layer's cancelled arm is unreachable | bug | DONE | node1 (arm64) | Phase C (found while closing B103) |
 | B124 | **S1** | CI | `.github/workflows/ci.yml:145` (`XCTEST="$BIN/SwiftWebSearchMCPPackageTests.xctest/..."`) | The coverage-floor gate hard-codes SwiftPM's test-bundle path, which Swift 6.4 no longer produces, so the gate fails (or measures less) on the mandated toolchain | test | DONE | node1 (arm64, macOS 27.0, Swift 6.4) | go-live session: running the gate set under the mandated Swift 6.4 toolchain (found while enumerating B123) |
+| B123 | S2 | repository / CI | `Package.swift:1`, `.github/workflows/ci.yml:36`, `:65`, `:208` | The package declares and CI verifies Swift 6.3 while the mandated toolchain is Swift 6.4 (Xcode 27), and the fleet has moved to 6.4 | deps | DONE | node1 (arm64, macOS 27.0, Swift 6.4) | go-live session brief §1 (mandated toolchain) measured against the fleet |
 
 ---
 
@@ -220,6 +221,51 @@ They use the same record shape and are folded here rather than kept in a side no
 Full before/expected-correct records are in `ledger.json` (`raw_file` names this re-read). No raw
 pass file exists for these seven, because the re-read wrote its findings straight into the ledger;
 `raw_id` is `H1`-`H7` so the provenance is still traceable.
+
+## B123 — the declared and verified toolchain is now Swift 6.4 (Xcode 27)
+
+**Severity S2** · **category** deps · **status** DONE · **host** node1 (arm64, macOS 27.0, Swift 6.4)
+
+**Found by measuring the fleet against the session's standard.** The brief for this session
+mandates Swift 6.4 (Xcode 27) with strict concurrency and warnings-as-errors. The repository
+declared `swift-tools-version: 6.3`, the workflow ran on `macos-26` and gated on "at least 6.3",
+the README advertised Swift 6.3.3, and `environment.md` recorded 6.3.3 / Xcode 26.6 for all four
+nodes. Measured on 2026-09-15, every node runs **Swift 6.4 / Xcode 27.0 / macOS 27.0** — the fleet
+had been upgraded out from under the audit, so the record was wrong and the standard was
+unenforced. CI would have kept verifying 6.3 on the older image.
+
+**The fix.** `Package.swift` declares `swift-tools-version: 6.4`; both CI jobs run on the
+`xcode-27` image; the workflow's toolchain gate requires 6.4 or newer and says so in its name,
+error text and success line; the README badge and prose and `AUDIT/environment.md` (§1 and a new
+dated §1.1) record the revision. Nothing else in the build changed: the targets already used
+`swiftLanguageMode(.v6)` and the gate set already passed `-warnings-as-errors`.
+
+**Rejected alternative: keep `swift-tools-version: 6.3`.** It is strictly more permissive — the
+package would still build for a consumer on 6.3 — and the manifest floor is not what enforces the
+standard, since CI on `xcode-27` verifies 6.4 regardless. It was rejected because it would leave
+the repository claiming a toolchain it no longer supports or verifies, and the fleet has no 6.3
+host left. Understating the requirement is a documentation defect of the same kind this task
+exists to remove.
+
+**Accepted cost: the runner image is in public preview.** GitHub publishes `xcode-27` and
+`xcode-27-xlarge` as a public preview and the macOS images are now keyed by Xcode major version
+rather than OS release. A preview image can change or be withdrawn, which is a real risk for a
+go-live gate; the alternative — staying on `macos-26`/Swift 6.3 — fails the mandated standard, and
+pinning a specific `DEVELOPER_DIR` inside the image would reintroduce the failure mode B39
+removed. The workflow therefore still reports the exact compiler it ran with in the run summary.
+
+**Consequence found while adopting it, recorded as its own task.** SwiftPM 6.4 changed the product
+layout and the test-bundle naming, which broke the coverage gate's hard-coded path — `B124`,
+fixed first so the runner switch could not land on a broken gate.
+
+**Verification.** With `swift-tools-version: 6.4`: `swift package resolve` leaves `Package.resolved`
+byte-identical (no drift gate failure); `swift build --build-tests -Xswiftc -warnings-as-errors`
+succeeds with 0 warnings; the full suite passes (590 tests / 6 skipped / 0 failures). The fleet
+measurement above is the evidence that every node can still build it.
+
+Gate: see `B122`'s evidence run — the whole gate set executed on the same toolchain, after these
+changes, with 0 warnings in debug and release.
+Evidence: `AUDIT/environment.md` §1.1, and the session gate logs.
 
 ## B124 — the coverage gate no longer hard-codes a test-bundle name SwiftPM owns
 

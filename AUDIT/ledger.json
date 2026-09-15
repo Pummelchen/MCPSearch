@@ -3029,6 +3029,28 @@
       "raw_id": "",
       "raw_ids": [],
       "raw_file": ""
+    },
+    {
+      "id": "B123",
+      "severity": "S2",
+      "severity_note": "Verification/maintainability gap: the repository declared and CI verified Swift 6.3 while the mandated standard and the whole fleet are Swift 6.4 (Xcode 27).",
+      "project": "repository / CI",
+      "module": "`Package.swift`, `.github/workflows/ci.yml`, `AUDIT/environment.md`, `README.md`",
+      "file_line": "`Package.swift:1`, `.github/workflows/ci.yml:36`, `:65`, `:208`",
+      "title": "The package declares and CI verifies Swift 6.3 while the mandated toolchain is Swift 6.4 (Xcode 27), and the fleet has moved to 6.4",
+      "category": "deps",
+      "status": "DONE",
+      "host_used": "node1 (arm64, macOS 27.0, Swift 6.4)",
+      "discovered_by": "go-live session brief \u00a71 (mandated toolchain) measured against the fleet",
+      "evidence_before": "Package.swift declared `swift-tools-version: 6.3`; .github/workflows/ci.yml ran on `macos-26` and gated on 'at least 6.3'; README advertised Swift 6.3.3; AUDIT/environment.md recorded 6.3.3 / Xcode 26.6 / macOS 26.6.2 for node1-node4. Measured 2026-09-15 on every node: Swift 6.4 (swiftlang-6.4.0.34.1) / Xcode 27.0 (27A266a) / macOS 27.0 (26A428). The record was wrong and the mandated standard was unenforced, because CI would have kept verifying 6.3.",
+      "fix_summary": "Package.swift declares swift-tools-version: 6.4; both CI jobs run on the xcode-27 image; the toolchain gate requires 6.4 or newer (name, error text and success line updated); README badge and prose and AUDIT/environment.md (new dated section 1.1) record the revision. No build setting changed: the targets already used swiftLanguageMode(.v6) and -warnings-as-errors.",
+      "evidence_after": "swift package resolve exit 0 with Package.resolved byte-identical (lockfile drift gate clean); swift build --build-tests -Xswiftc -warnings-as-errors exit 0, 0 warnings; swift test exit 0, 590 tests / 6 skipped / 0 failures on swift-tools-version 6.4; all four nodes measured on Swift 6.4 / Xcode 27.0 / macOS 27.0 so every Phase E host can build it. Artifact: AUDIT/environment.md section 1.1.",
+      "commit_sha": "",
+      "notes": "Rejected alternative: keep `swift-tools-version: 6.3` for wider consumer compatibility. The manifest floor is not what enforces the standard (CI on xcode-27 does), but leaving it at 6.3 would have the repository claim a toolchain it neither supports nor verifies, and no 6.3 host remains in the fleet. Accepted cost: the xcode-27 runner image is a public preview; the alternative fails the mandated standard and pinning DEVELOPER_DIR would reintroduce B39's failure mode.",
+      "blocked_reason": "",
+      "raw_id": "",
+      "raw_ids": [],
+      "raw_file": ""
     }
   ]
 }

@@ -5,7 +5,7 @@ server that gives local AI clients reliable public-web search and page fetching.
 
 [![CI](https://github.com/Pummelchen/MCPSearch/actions/workflows/ci.yml/badge.svg)](https://github.com/Pummelchen/MCPSearch/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Swift 6.3.3](https://img.shields.io/badge/Swift-6.3.3-orange.svg)
+![Swift 6.4](https://img.shields.io/badge/Swift-6.4-orange.svg)
 
 - **No mandatory paid infrastructure.** Every credential is optional; the server runs
   with zero API keys and reports exactly what is missing.
@@ -17,7 +17,7 @@ server that gives local AI clients reliable public-web search and page fetching.
   is an error.
 - **Rank fusion, not score comparison.** Provider relevance scores are not on a shared
   scale, so results are fused with weighted Reciprocal Rank Fusion.
-- **Swift 6.3.3**, strict concurrency, no runtime dependency on Node or Python.
+- **Swift 6.4**, strict concurrency, no runtime dependency on Node or Python.
 - **Client-compatible by construction.** Tool schemas satisfy the strictest consumer's
   validation, and both stdio and Streamable HTTP are supported. No vendor client has been
   connected to this server and that round trip is not planned, so the claim is bounded to
@@ -201,7 +201,7 @@ environment or a git-ignored `config.env`). A key alone does not activate them, 
 `docs/` holds the API research the adapters are built on, with every claim labelled
 verified or unverified — see [docs/README.md](docs/README.md).
 
-CI runs on `macos-26` (Swift 6.3): build, test, release build, smoke tests over both
+CI runs on the `xcode-27` image (Swift 6.4): build, test, release build, smoke tests over both
 transports, the pseudo-terminal monitor test, and a second test run with credentials
 present to prove the suite is hermetic.
 
