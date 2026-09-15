@@ -54,6 +54,15 @@ Executed 40 tests, with 0 failures (0 unexpected) in 0.334s
 Sources/ line coverage: 10451/11394 = 91.7 % (floor 80 %, 57 files from 4 report(s))
 ```
 
+## The verified commit, and what came after it
+
+Phase E ran against `6c91ef1`. The commits that follow it on the branch are the record of this run
+itself (`AUDIT/evidence/`, `AUDIT/ledger.json`), and nothing else — `git diff --name-only 6c91ef1..HEAD`
+lists only files under `AUDIT/`, and `git diff 6c91ef1..HEAD -- Sources Tests Package.swift .github`
+is empty. The executed code, tests, manifest and workflow are therefore byte-identical to what was
+verified; the loop in which writing down a verification invalidates it is broken by proving the
+scope rather than by asserting it.
+
 ## Against the recorded baseline
 
 | Metric | Baseline @ `f3dd8d9` | Phase E @ `6c91ef1` |

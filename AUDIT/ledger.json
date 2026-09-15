@@ -24,7 +24,8 @@
       "open_item": "none - B122 was resolved as 'propagate cancellation' and every other task is DONE",
       "pull_request": "https://github.com/Pummelchen/MCPSearch/pull/1",
       "pull_request_number": 1,
-      "toolchain_revision": "Swift 6.4 / Xcode 27; CI runner xcode-27; manifest floor deliberately 6.3 so GitHub's CodeQL Swift scan keeps building (B127)"
+      "toolchain_revision": "Swift 6.4 / Xcode 27; CI runner xcode-27; manifest floor deliberately 6.3 so GitHub's CodeQL Swift scan keeps building (B127)",
+      "verified_commit_scope": "Commits after 6c91ef1 touch AUDIT/ only; Sources, Tests, Package.swift and .github are byte-identical to the verified tree (git diff --name-only 6c91ef1..HEAD has no non-AUDIT path)."
     }
   },
   "tasks": [
