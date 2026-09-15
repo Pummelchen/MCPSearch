@@ -16,14 +16,14 @@ Statuses: START → PROGRESS → TEST → AUDIT → DONE, plus BLOCKED. Gates ar
 
 | Metric | Count |
 | --- | --- |
-| Tasks enumerated | 136 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover, B116-B121 found while fixing and recording, B122-B124 found in the go-live session) |
+| Tasks enumerated | 137 (A01-A12 from Phase A/B, B01-B101 folded in Phase D, B102-B107 found while fixing, B108 found while recording CI, B109-B115 found while verifying the handover, B116-B121 found while fixing and recording, B122-B124 found in the go-live session) |
 | Raw findings folded | 121 across 5 passes, 17 duplicate reports merged; 7 further findings added while re-reading the tree at handover |
 | DONE | 136 |
-| START (reproduced, expected behaviour written) | 0 |
+| START (reproduced, expected behaviour written) | 1 |
 | PROGRESS | 0 |
 | BLOCKED | 0 |
 
-Severity of the whole set: **S0 3, S1 9, S2 35, S3 89** — 3/3 S0 are DONE; 9/9 S1 are DONE; 35/35 S2 are DONE; 89/89 S3 are DONE. Tasks not DONE: 0.
+Severity of the whole set: **S0 3, S1 10, S2 35, S3 89** — 3/3 S0 are DONE; 9/10 S1 are DONE; 35/35 S2 are DONE; 89/89 S3 are DONE. Tasks not DONE: 1.
 
 > **Correction (handover session).** The sentence above previously read "of the 75 S3 tasks 7 are
 > DONE and 68 open", which contradicted both the table above it and the `DONE 79` total: 79 DONE
@@ -170,6 +170,7 @@ waived in writing.
 | B122 | S3 | `WebSearchCore` / `Search` (`AnswerSynthesizer`) | `AnswerSynthesizer.swift` (`complete`/`synthesize`) | Cancellation during answer synthesis is swallowed as a synthesis failure, so the tool layer's cancelled arm is unreachable | bug | DONE | node1 (arm64) | Phase C (found while closing B103) |
 | B124 | **S1** | CI | `.github/workflows/ci.yml:145` (`XCTEST="$BIN/SwiftWebSearchMCPPackageTests.xctest/..."`) | The coverage-floor gate hard-codes SwiftPM's test-bundle path, which Swift 6.4 no longer produces, so the gate fails (or measures less) on the mandated toolchain | test | DONE | node1 (arm64, macOS 27.0, Swift 6.4) | go-live session: running the gate set under the mandated Swift 6.4 toolchain (found while enumerating B123) |
 | B123 | S2 | repository / CI | `Package.swift:1`, `.github/workflows/ci.yml:36`, `:65`, `:208` | The package declares and CI verifies Swift 6.3 while the mandated toolchain is Swift 6.4 (Xcode 27), and the fleet has moved to 6.4 | deps | DONE | node1 (arm64, macOS 27.0, Swift 6.4) | go-live session brief §1 (mandated toolchain) measured against the fleet |
+| B125 | **S1** | repository / delivery | `README.md` (Licence/Contact section), https://github.com/Pummelchen/MCPSearch/pull/1 | PR #1 cannot fast-forward: main advanced 8 commits and README.md conflicts, while the PR and the wiki still claim a clean one-click merge | incomplete | START | node1 (arm64, macOS 27.0, Swift 6.4) | go-live session: comparing main against the audit branch before Phase E |
 
 ---
 

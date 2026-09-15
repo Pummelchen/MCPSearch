@@ -3051,6 +3051,28 @@
       "raw_id": "",
       "raw_ids": [],
       "raw_file": ""
+    },
+    {
+      "id": "B125",
+      "severity": "S1",
+      "severity_note": "Delivery gap: three S0 and eight S1 fixes are verified on the audit branch but cannot reach main, because main advanced after PR #1 was opened and the PR body and the wiki still claim a fast-forward.",
+      "project": "repository / delivery",
+      "module": "`README.md`, PR #1, wiki `Project-Tracker`",
+      "file_line": "`README.md` (Licence/Contact section), https://github.com/Pummelchen/MCPSearch/pull/1",
+      "title": "PR #1 cannot fast-forward: main advanced 8 commits and README.md conflicts, while the PR and the wiki still claim a clean one-click merge",
+      "category": "incomplete",
+      "status": "START",
+      "host_used": "node1 (arm64, macOS 27.0, Swift 6.4)",
+      "discovered_by": "go-live session: comparing main against the audit branch before Phase E",
+      "evidence_before": "PR #1 was opened 2026-09-13 with `main` at f3dd8d9 and is described, in its own body and in the wiki Project-Tracker, as a fast-forward. main has since advanced 8 commits (a8bc62a, 6e92f44, 2c152d7, 6962896, bcbdccf, bf94514, ba20137, 25c4dc5) touching .github/traffic.json (new), LICENSE (copyright holder) and README.md (badges, Contact section). GitHub reports the PR as CONFLICTING/DIRTY; `git merge-tree` shows exactly one conflicting file, README.md, in the Licence/Contact section. main is therefore no longer an ancestor, so the merge is no longer a fast-forward and the documented 'one-click merge with no conflict' is wrong.",
+      "fix_summary": "",
+      "evidence_after": "",
+      "commit_sha": "",
+      "notes": "PLANNED GIT OPERATION (recorded before running it, per the brief).\n  command : git merge origin/main --no-ff -m 'audit(B125): merge main into the audit branch'\n  then    : resolve the README.md conflict (keep main's Licence/Contact section and the audit branch's THIRD-PARTY-NOTICES paragraph), git add README.md, git commit\nROLLBACK (no history rewrite, no force-push): git reset --hard <pre-merge sha> while the merge is local; if already pushed, revert it with `git revert -m 1 <merge sha>` on the audit branch. Nothing is deleted, no branch or tag is removed, and main is never written to directly. The merge commit brings main's 8 commits into the audit branch, which is the only way to make PR #1 mergeable without rewriting published history (rebase and force-push are forbidden).",
+      "blocked_reason": "",
+      "raw_id": "",
+      "raw_ids": [],
+      "raw_file": ""
     }
   ]
 }
