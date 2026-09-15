@@ -38,11 +38,14 @@ server that gives local AI clients reliable public-web search and page fetching.
 
 ## Quick start
 
+Download a prebuilt macOS binary for Apple silicon (M1 and later) from the
+[latest release](https://github.com/Pummelchen/MCPSearch/releases/latest), or build from source:
+
 ```bash
 swift build -c release
 ```
 
-Point your MCP client at the built server and give it at least one provider:
+Point your MCP client at the server and give it at least one provider:
 
 ```bash
 export TAVILY_API_KEY=tvly-...       # or
@@ -171,6 +174,8 @@ lives there.
 | [Testing](https://github.com/Pummelchen/MCPSearch/wiki/Testing) | Test suite and CI |
 | [Troubleshooting](https://github.com/Pummelchen/MCPSearch/wiki/Troubleshooting) | Symptom → cause → fix |
 | [Project Tracker](https://github.com/Pummelchen/MCPSearch/wiki/Project-Tracker) | Open issues, observations, decisions, known limitations |
+
+See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
 
 ## Development
 
