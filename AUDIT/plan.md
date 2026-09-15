@@ -89,7 +89,7 @@ are in the baseline suite. They are recorded in `ledger.md` as context, not as o
 
 ---
 
-## Phase C — fix → test → audit (in progress)
+## Phase C — fix → test → audit ✅ complete
 
 Work order: all **S0**, then S1, then S2, then S3. One task = one commit on
 `audit/2026-09-13`, message `audit(<id>): <title>`. Each task needs: a test that fails
@@ -112,7 +112,7 @@ S3 sets — `ledger.md` holds the full order and the current counts.
 
 Any finding discovered at any time gets a new ledger id and the same treatment.
 
-## Phase E — final verification (not started)
+## Phase E — final verification ✅ complete
 
 **CI status on this branch.** A `workflow_dispatch` run of the branch's workflow succeeded:
 [run 34735662690](https://github.com/Pummelchen/MCPSearch/actions/runs/34735662690) at `3dee92f`,

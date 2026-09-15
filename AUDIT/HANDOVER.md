@@ -7,14 +7,33 @@ authoritative; `AUDIT/ledger.json` carries every field. This page is orientation
 
 | | |
 | --- | --- |
-| Branch | `audit/2026-09-13` at **`3b5ded6`**, pushed to `origin` (never merged; `main` untouched at `f3dd8d9`) |
-| Relationship | `main` is a **strict ancestor** of this branch — `git rev-list --count origin/audit/2026-09-13..origin/main` is 0, so the eventual merge is a fast-forward |
-| Tasks | **133 DONE, 0 PROGRESS, 0 START, 1 BLOCKED** (134 enumerated; all open work is S3) |
-| Suite | **588 tests, 6 skipped, 0 failures** (486 baseline + 3 from B116) |
-| Builds | debug + release, 0 warnings under `-warnings-as-errors` |
-| Linters | `swift-format --strict` 0 · `swiftlint --strict` 0 · ruff clean · pyright strict 0 |
-| Phases | A, B and D complete; C in progress (all S0/S1/S2 closed); **E not started** |
-| CI | green at `3b5ded6` (run 34777123373) and every recorded HEAD before it |
+| Branch | `audit/2026-09-13`, pushed to `origin`. `main` was merged **into** the branch (`4b59dfa`, ledger B125) after it advanced 8 commits |
+| Relationship | `main` is an **ancestor** of this branch again, so PR #1 is a **fast-forward**; GitHub reports it `MERGEABLE` |
+| Tasks | **138 DONE, 0 PROGRESS, 0 START, 0 BLOCKED** (138 enumerated) |
+| Suite | **590 tests, 6 skipped, 0 failures** |
+| Builds | debug + release, 0 warnings under `-warnings-as-errors`, on **Swift 6.4 / Xcode 27** |
+| Linters | `swift-format --strict` 0 · `swiftlint --strict` 0 · ruff clean · pyright strict 0 · shellcheck 0 · semgrep 0 · gitleaks 0 · osv-scanner 0 |
+| Phases | **A, B, C, D and E complete**; the only remaining work is merging PR #1 |
+| CI | green on the branch; the workflow now runs on the `xcode-27` image (Swift 6.4) |
+| Blocked | none. `B122`, the parked cancellation-contract decision, was resolved as "propagate" |
+
+### The go-live session (2026-09-15)
+
+Five tasks were added and closed, and the record above is this session's state:
+
+* **B122** — the parked decision. A caller's cancellation during synthesis is now propagated as a
+  `CancellationError` (consistent with `B04` for search and fetch), so the tool layer's cancelled arm
+  is reachable; `B97`'s opposite expectation was re-pinned as part of the same change.
+* **B123** — the mandated toolchain. `Package.swift` declares `swift-tools-version: 6.4`, CI runs on
+  `xcode-27`, and the gate requires 6.4. The fleet had already been upgraded to Swift 6.4 / Xcode 27 /
+  macOS 27 out from under the audit; `environment.md` §1.1 records it.
+* **B124** — found by running the gates on the new toolchain: SwiftPM 6.4 emits one test bundle per
+  target under `out/Products`, so the coverage gate's hard-coded bundle path no longer resolved. It
+  now discovers the bundles and fails loudly if there are none.
+* **B125** — `main` was merged into the branch, resolving the single `README.md` conflict, so PR #1 is
+  a fast-forward again. The exact command and its rollback were committed *before* the operation.
+* **B126** — the README's suite count (371 → 590) and its CI description, which omitted every gate the
+  audit added.
 
 ## What the second session did
 
@@ -107,7 +126,8 @@ Two things worth carrying forward:
   bash -n deploy/provision-node.sh && shellcheck deploy/provision-node.sh
   python3 scripts/third_party_notices.py
   ```
-* **Toolchain on this host**: Swift 6.3.3 / Xcode 26.6, Python 3.14.7. The audit's six gate tools
+* **Toolchain on this host**: Swift 6.4 / Xcode 27, Python 3.14.7 (the fleet was upgraded on
+  2026-09-15; `environment.md` §1.1 has the measurement). The audit's six gate tools
   were installed here with Homebrew at exactly the recorded versions — `swift-format` 603.0.0,
   `swiftlint` 0.65.1, `pyright` 1.1.414, `semgrep` 1.176.0, `gitleaks` 8.30.1, `osv-scanner` 2.5.1
   — so the recorder's numbers are reproducible.
