@@ -9,7 +9,7 @@ import XCTest
 /// so a mis-mapping here becomes a wrong health category for a provider that did nothing wrong —
 /// or, worse, a request URL with a vendor key in its query string reaching a diagnostic. These
 /// tests are table-driven because the contract is a lookup: each case names the input and the exact
-/// error that must come out (ledger B96).
+/// error that must come out.
 ///
 /// This file also owns `testHTTPStatusMapperClassifiesCorrectly`, which used to sit in
 /// `ProviderContractTests`; that file is at SwiftLint's `file_length` ceiling, and a status mapper
@@ -30,8 +30,8 @@ final class HTTPStatusMapperTests: XCTestCase {
     /// The status-to-error contract lives in one table so each row can be seen next to its siblings.
     ///
     /// `422` and the default arm were the two the old test never reached: it covered
-    /// 401/403/429/400/503/200 only, so an unmapped status could have been silently accepted
-    /// (ledger B96). The `3xx` rows pin the default arm deliberately: `URLSession` follows a
+    /// 401/403/429/400/503/200 only, so an unmapped status could have been silently accepted.
+    /// The `3xx` rows pin the default arm deliberately: `URLSession` follows a
     /// redirect before a provider sees it, so if one ever does surface it must be an actionable
     /// error rather than a success.
     func testValidateMapsEveryStatusClass() {
@@ -161,7 +161,6 @@ final class HTTPStatusMapperTests: XCTestCase {
     ///
     /// The only direct `map` test passed a `URLError`, so these arms — how a real transport
     /// timeout, cancellation or oversized body is classified for a provider — were unverified
-    /// (ledger B96).
     func testMapClassifiesEveryHTTPErrorCase() {
         let cases: [(name: String, error: HTTPError, expected: SearchError)] = [
             (
@@ -192,7 +191,7 @@ final class HTTPStatusMapperTests: XCTestCase {
             (
                 "invalidURL",
                 // The detail is URL-shaped and credential-bearing on purpose: `map` must replace
-                // it with curated text rather than forward it to the caller (ledger B121).
+                // it with curated text rather than forward it to the caller.
                 .invalidURL("https://api.mojeek.com/search?api_key=tvly-not-real"),
                 .unsupportedRequest(.tavily, "the request URL could not be built")
             ),
@@ -258,7 +257,7 @@ final class HTTPStatusMapperTests: XCTestCase {
     ///
     /// `HTTPError.invalidURL` is included: its detail is free-form, so `map` curates the
     /// caller-facing text from the case instead of forwarding whatever the transport wrote. Before
-    /// that, a URL-shaped detail was echoed with any credential in it (ledger B121).
+    /// that, a URL-shaped detail was echoed with any credential in it.
     func testMappedDescriptionsNeverEchoARequestURL() {
         let secretURL = URL(string: "https://api.mojeek.com/search?api_key=tvly-not-real")!
         let errors: [(name: String, error: any Error)] = [

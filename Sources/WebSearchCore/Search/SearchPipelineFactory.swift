@@ -151,7 +151,7 @@ public enum SearchPipelineFactory {
 
         // Why a provider is inert is derived from the one enablement authority rather than
         // written per provider, so the status tool, the tool error text, the monitor and the
-        // startup inventory cannot disagree (ledger B57). Deriving it after registration also
+        // startup inventory cannot disagree. Deriving it after registration also
         // gives the scraper and Parallel entries a note, which they never had.
         for id in configuration.providerOrder
         where !ProviderEnablement.isSatisfied(id, in: configuration) {

@@ -2,14 +2,14 @@
 """Tests for the harnesses that no Swift test can reach.
 
 The Swift suite covers the server; the Python harnesses drive it, and two of them had no
-test anywhere. `soak.py`'s run verdicts are asserted by a CI step (ledger B44/B82), but
+test anywhere. `soak.py`'s run verdicts are asserted by a CI step, but
 nothing exercised its argument parsing, its dotenv parser or its credential-leak scan, and
 `searxng_health.py` had no test at all — it was reachable only by pointing it at a live
 instance. This module drives both, and additionally asserts the one contract that crosses
 the two languages: the provider environment scrub list in `mcp_smoke.py` must be the same
 list as `ServerTestSupport.providerEnvironmentVariables` in the Swift tests, because a
 drift leaves a developer's exported API key visible to the child process the smoke test
-believes it scrubbed (ledger B99).
+believes it scrubbed.
 
 The stub SearXNG server is a real loopback HTTP server on an ephemeral port, so the
 classification path (`probe` -> exit code) is exercised end to end rather than around.
@@ -190,8 +190,8 @@ class SearXNGHealthTests(unittest.TestCase):
         self.assertEqual(json.loads(output)["reason"], "unreachable")
 
     def test_a_non_http_url_is_refused_rather_than_opened(self) -> None:
-        # `urlopen` supports `file://`, so the scheme is asserted before anything is opened
-        # (ledger A08). The refusal is a usage error: exit 2, not a traceback.
+        # `urlopen` supports `file://`, so the scheme is asserted before anything is opened.
+        # The refusal is a usage error: exit 2, not a traceback.
         status, output = run_main(searxng_health, ["file:///etc/passwd", "--json"])
         self.assertEqual(status, 2, output)
         self.assertEqual(json.loads(output)["reason"], "invalid_url")
@@ -235,7 +235,7 @@ class SoakArgumentTests(unittest.TestCase):
 
     def test_a_non_positive_query_count_is_a_usage_error(self) -> None:
         # `QUERIES[:0]` starts nothing and `QUERIES[:-3]` silently runs 47 of 50, so both are
-        # refused before the run rather than run as a soak nobody asked for (ledger B82).
+        # refused before the run rather than run as a soak nobody asked for.
         for value in ("0", "-3"):
             finished = subprocess.run(
                 [sys.executable, str(SCRIPTS / "soak.py"), "--queries", value, "/nonexistent"],
@@ -311,7 +311,7 @@ class SoakArgumentTests(unittest.TestCase):
 
 
 class ScrubListContractTests(unittest.TestCase):
-    """The one contract that crosses the two languages (ledger B99)."""
+    """The one contract that crosses the two languages."""
 
     def test_the_python_and_swift_scrub_lists_are_the_same_set(self) -> None:
         smoke = load_script("mcp_smoke")

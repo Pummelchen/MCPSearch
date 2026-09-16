@@ -2,7 +2,7 @@ name: CI
 
 # Least privilege: every job here only reads the repository. Without this block the job token
 # keeps whatever the repository default is, which is broader than these jobs need — a compromised
-# or mistaken step could write to the repository with it (ledger B38).
+# or mistaken step could write to the repository with it.
 permissions:
   contents: read
 
@@ -65,7 +65,7 @@ jobs:
       # The manifest declares the same requirement, so this gate is not a second standard — it is a
       # readable failure. A manifest parse error surfaces as the opaque "package 'mcpsearch' is using
       # Swift tools version 6.4.0 but the installed version is 6.3.3", which is exactly how the
-      # 6.3/6.4 mismatch hid until CI ran (ledger B123, B127, B128). The step also publishes the
+      # 6.3/6.4 mismatch hid until CI ran. The step also publishes the
       # exact compiler into the run summary, so a green run names its toolchain.
       - name: Verify Swift toolchain is at least 6.4
         run: |
@@ -74,7 +74,7 @@ jobs:
           version="$(swift -version 2>&1 | sed -n 's/.*Swift version \([0-9][0-9]*\.[0-9][0-9]*\).*/\1/p' | head -1)"
           # An unparseable version used to make both numeric tests fail, which skipped the
           # error branch and let the step exit 0 — silently passing on exactly the output-format
-          # change the step exists to catch (ledger B22). Refuse to guess.
+          # change the step exists to catch. Refuse to guess.
           if [ -z "$version" ]; then
             echo "::error::could not parse 'Swift version X.Y' from 'swift -version'; refusing to guess"
             exit 1
@@ -91,7 +91,7 @@ jobs:
           # pin it: the image rotates, and a hard `DEVELOPER_DIR=/Applications/Xcode_<n>.app` fails
           # the build for a reason unrelated to the change under test. Reproducibility is therefore
           # not guaranteed here — the floor above is enforced, and the version that actually ran is
-          # published in the run summary so a green run names its compiler (ledger B39).
+          # published in the run summary so a green run names its compiler.
           {
             echo "### Swift toolchain"
             echo ""
@@ -116,8 +116,8 @@ jobs:
 
       # `Package.resolved` must match the manifests. A dependency added or re-ranged without
       # updating the lockfile means the build resolves a graph nobody reviewed, and the rewrite
-      # happens silently; resolving first and diffing the lockfile turns that into a failure
-      # (ledger B40). The cache above keys off this file, so drift also invalidates the build
+      # happens silently; resolving first and diffing the lockfile turns that into a failure.
+      #The cache above keys off this file, so drift also invalidates the build
       # products for everyone else.
       - name: Lockfile matches the manifests
         run: |
@@ -151,7 +151,7 @@ jobs:
           # The MCP server and the monitor only run as subprocesses, and each of them writes
           # its own profile (see `ServerTestSupport.childEnvironment`). Merging every profile
           # and exporting once per binary is what makes their code measurable at all — before
-          # this the server reported 0 % while being thoroughly exercised (ledger A04).
+          # this the server reported 0 % while being thoroughly exercised.
           xcrun llvm-profdata merge -sparse "$BIN"/codecov/*.profraw \
             -o "$BIN/codecov/merged.profdata"
           rm -f coverage-*.json
@@ -162,7 +162,7 @@ jobs:
           # hard-coded name therefore stops measuring the tests' own code the moment the
           # toolchain moves — and does it silently, because exporting only the executables still
           # produces a report. Discovering the bundles and refusing to run when there are none
-          # is what keeps the floor meaningful (ledger B124).
+          # is what keeps the floor meaningful.
           bundles=("$BIN"/*.xctest)
           if [ ${#bundles[@]} -eq 0 ]; then
             echo "::error::no *.xctest bundle under $BIN: the coverage gate would not measure the tests"
@@ -253,12 +253,12 @@ jobs:
           ruff --version
           semgrep --version
 
-      # swift-format owns formatting (audit task A02): 4-space indentation, 120 columns, and
+      # swift-format owns formatting: 4-space indentation, 120 columns, and
       # `--strict` so a warning is a failure.
       - name: Swift formatting
         run: swift-format lint --recursive --strict Sources Tests Package.swift
 
-      # SwiftLint owns the rules swift-format does not (audit task A03), with its thresholds
+      # SwiftLint owns the rules swift-format does not, with its thresholds
       # and its generated-code exclusion in `.swiftlint.yml`.
       - name: SwiftLint
         run: swiftlint lint --strict
@@ -272,7 +272,7 @@ jobs:
       # Apache-2.0 section 4(d) requires a distributed binary to carry the attribution notices of
       # the Apache-2.0 components it links, and this repository links two that ship a NOTICE.txt
       # (swift-nio and swift-log). The notices file is committed and checked against the lockfile
-      # in both directions, so adding a dependency cannot silently drop its attribution (B41).
+      # in both directions, so adding a dependency cannot silently drop its attribution.
       - name: Third-party notices match the lockfile
         run: python3 scripts/third_party_notices.py
 
@@ -285,7 +285,7 @@ jobs:
 
       # The soak harness must make its own `--providers` authoritative: an ambient
       # SEARCH_DISABLED_PROVIDERS must not keep a requested provider switched off, and requesting
-      # everything must clear the ambient list rather than leave it in place (ledger B23).
+      # everything must clear the ambient list rather than leave it in place.
       - name: Soak provider selection is authoritative
         run: |
           set -euo pipefail
@@ -312,7 +312,7 @@ jobs:
           PY
 
       # A requested provider that never contributed makes the soak describe a different run from
-      # the one in its header, which the harness now treats as a failure (ledger B44).
+      # the one in its header, which the harness now treats as a failure.
       - name: Soak run semantics
         run: |
           set -euo pipefail
@@ -345,7 +345,7 @@ jobs:
       # at all. This also asserts the one contract that crosses the two languages — the provider
       # environment scrub list in `scripts/mcp_smoke.py` must be set-equal to
       # `ServerTestSupport.providerEnvironmentVariables`, because a drift leaves a developer's
-      # exported API key visible to the child the smoke test believes it scrubbed (ledger B99).
+      # exported API key visible to the child the smoke test believes it scrubbed.
       # Its SearXNG cases run against a loopback stub, so it needs no credentials and no live
       # instance.
       - name: Python harness tests (searxng_health, soak, scrub list)
@@ -372,10 +372,10 @@ jobs:
           done
 
       # Full history, not just the working tree: `gitleaks dir` would also read the operator's
-      # git-ignored `config.env` and prove nothing about the repository (audit task A06).
+      # git-ignored `config.env` and prove nothing about the repository.
       - name: Secret scan (full history)
         run: gitleaks detect --source . --log-opts=--all --redact
 
-      # Scans Package.resolved against the OSV database: the dependency half of the audit.
+      # Scans Package.resolved against the OSV database: the dependency half of the scan.
       - name: Dependency vulnerabilities
         run: osv-scanner scan source -r .

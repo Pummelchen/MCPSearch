@@ -45,7 +45,7 @@ final class URLPolicyTests: XCTestCase {
             "ftp://example.com/file",
             "gopher://example.com/",
             // Deliberately insecure, and deliberately never opened: this list is the set of URLs
-            // the policy must *reject*, so the fixture has to contain them (ledger A09).
+            // the policy must *reject*, so the fixture has to contain them.
             // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
             "ws://example.com/socket",
         ] {
@@ -132,7 +132,7 @@ final class URLPolicyTests: XCTestCase {
     /// The protocol-assignment block is refused across the whole `192.0.0.0/16`.
     ///
     /// The comment used to name `/24` while the code tested two octets, which reads as a bug; the
-    /// range is kept deliberately and now says so (ledger B62), because it holds IETF assignments,
+    /// range is kept deliberately and now says so, because it holds IETF assignments,
     /// TEST-NET-1 and the 6to4 relay anycast block — none of which a page fetch should reach.
     func testRejectsTheEntireProtocolAssignmentSixteen() {
         let subject = policy()
@@ -284,7 +284,7 @@ final class URLPolicyTests: XCTestCase {
         XCTAssertFalse(subject.validateLexically(URL(string: "file:///etc/passwd")!).allowed)
     }
 
-    // MARK: Per-fetch resolution memo (ledger B88)
+    // MARK: Per-fetch resolution memo
 
     /// Resolves from a table and counts every lookup, so a test can assert memoisation as a
     /// contract rather than measuring wall-clock time.
@@ -395,7 +395,7 @@ final class URLPolicyTests: XCTestCase {
     }
 
     /// `case v6` is public and carries a byte array, so a caller can build one of any length;
-    /// every accessor must classify it instead of indexing past the end (ledger B84).
+    /// every accessor must classify it instead of indexing past the end.
     ///
     /// A trap here kills the whole test process rather than failing one assertion, which is
     /// exactly the crash this test exists to prevent.

@@ -117,8 +117,8 @@ final class FetchFallbackTests: XCTestCase {
             result.warnings.contains { $0.contains("Native extraction produced only") },
             "\(result.warnings)"
         )
-        // The URL left the machine, so the caller must be told which third party fetched it
-        // (ledger B87). `reader.invalid` stands in for `r.jina.ai` here.
+        // The URL left the machine, so the caller must be told which third party fetched it.
+        // `reader.invalid` stands in for `r.jina.ai` here.
         XCTAssertTrue(
             result.warnings.contains {
                 $0.contains("third-party") && $0.contains("reader.invalid")
@@ -135,7 +135,7 @@ final class FetchFallbackTests: XCTestCase {
     /// The fallback chain's last arm — the reader threw, but the native fetch produced *something*
     /// — had no test: the existing reader-failure tests all start from a direct fetch that
     /// returned nothing. A regression here would either drop a serviceable page or hide that the
-    /// reader was consulted at all (ledger B33).
+    /// reader was consulted at all.
     func testAReaderFailureReturnsTheThinNativeExtractionWithAWarning() async throws {
         let server = try htmlServer(thinHTML())
         let jinaHTTP = MockHTTPClient()
@@ -192,7 +192,7 @@ final class FetchFallbackTests: XCTestCase {
 
     /// The reader is consulted even when the direct fetch failed outright. That path returned
     /// the reader's text with no warning at all, so the caller was never told which third party
-    /// had fetched the URL (ledger B87).
+    /// had fetched the URL.
     func testAReaderSuccessAfterADirectFailureStillDisclosesTheThirdParty() async throws {
         let server = try LoopbackServer(responses: [.init(status: 503, body: "unavailable")])
         let jinaHTTP = MockHTTPClient()
@@ -226,7 +226,6 @@ final class FetchFallbackTests: XCTestCase {
     /// Latin-1 and handed to the model as tens of thousands of characters of `%PDF-1.7 … stream`
     /// gibberish labelled `raw_text`. There is no PDF extraction here, so the direct fetch must
     /// refuse it — and the reader fallback, which renders PDFs remotely, still serves it
-    /// (ledger B16).
     func testAPDFIsRefusedByTheDirectFetchButStillReadableByTheReader() async throws {
         // The first bytes of a real PDF, plus a NUL and a high byte: not decodable as text.
         var pdfBytes = Data("%PDF-1.7\n1 0 obj<</Type/Catalog>>stream\n".utf8)
@@ -285,7 +284,7 @@ final class FetchFallbackTests: XCTestCase {
 
     /// The reader is asked for the *target* URL appended verbatim. `appendingPathComponent`
     /// percent-encoded `?` and `#` into the path, so a URL with a query reached the reader as
-    /// `/page%3Fq=…` — a different resource, usually a 404 (ledger B15).
+    /// `/page%3Fq=…` — a different resource, usually a 404.
     func testTheReaderIsGivenTheTargetURLVerbatim() async throws {
         let server = try htmlServer(thinHTML())
         let jinaHTTP = MockHTTPClient()
@@ -325,7 +324,7 @@ final class FetchFallbackTests: XCTestCase {
 
     /// A server that dribbles bytes and never finishes must not hold `web_open` open. The
     /// per-request inactivity timeouts never fire on a drip, and there was no total deadline,
-    /// so the call could hang forever (ledger B14).
+    /// so the call could hang forever.
     func testAFetchThatNeverFinishesHitsTheTotalDeadline() async throws {
         let server = try LoopbackServer(responses: [
             LoopbackServer.Response(
@@ -539,7 +538,7 @@ final class FetchFallbackTests: XCTestCase {
     }
 
     /// The reader's JSON envelope carries the URL it handled, and `final_url` must follow it
-    /// rather than echoing the request (ledger B92).
+    /// rather than echoing the request.
     func testReaderJSONEnvelopeURLBecomesFinalURL() async throws {
         let http = MockHTTPClient()
         http.on("jina.reader") { request in
@@ -561,7 +560,7 @@ final class FetchFallbackTests: XCTestCase {
 
     /// A reported URL that is absent, relative or not `http(s)` must not become `final_url`.
     /// The field is third-party input rendered verbatim as the fetched URL, so the requested
-    /// URL is the only trustworthy fallback (ledger B92).
+    /// URL is the only trustworthy fallback.
     func testReaderFallsBackToTheRequestedURLWhenTheReportedURLIsUnusable() async throws {
         let unusable: [String?] = [
             nil, "", "example.com/page", "//example.com/page",

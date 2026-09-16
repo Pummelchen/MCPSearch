@@ -67,15 +67,14 @@ final class StdioServerTests: XCTestCase {
 
     /// The subprocess harness is shared with `ErrorReportingTests` and
     /// `SchemaCompatibilityTests`; see `ServerProcess` in `TestSupport.swift`. One copy means
-    /// the deadline below cannot be enforced in one harness and skipped in another (ledger
-    /// B70/B71).
+    /// the deadline below cannot be enforced in one harness and skipped in another.
 
     /// The harness deadline must be a real bound, even while the child is alive and silent.
     ///
     /// The read loop used to block in `FileHandle.availableData`, so the check
     /// `while Date() < deadline` could only run after a read returned: a server that never
     /// wrote hung the run instead of failing it, and the 15 s/20 s deadline these harnesses
-    /// advertise was never enforced (ledger B70). The child here is a shell that writes a
+    /// advertise was never enforced. The child here is a shell that writes a
     /// partial line and then holds the pipe open, so this can only pass if the deadline
     /// preempts a blocked read.
     func testHarnessDeadlinePreemptsABlockedRead() throws {
@@ -156,13 +155,13 @@ final class StdioServerTests: XCTestCase {
         return server
     }
 
-    // MARK: - Command line before configuration (ledger B113)
+    // MARK: - Command line before configuration
 
     /// `--help` must be answered from the command line alone.
     ///
     /// Configuration used to be loaded and validated before `argv` was parsed, so a mistyped
     /// `SEARCH_CONFIG_FILE` made `--help` exit 2 with "Refusing to start" and print no usage at
-    /// all (ledger B113).
+    /// all.
     func testHelpSucceedsEvenWhenTheConfigurationFileIsUnreadable() throws {
         let result = try runToCompletion(
             arguments: ["--help"],
@@ -182,7 +181,7 @@ final class StdioServerTests: XCTestCase {
     /// An invalid flag is reported before the configuration is validated or any client is built.
     ///
     /// The same fatal `SEARCH_CONFIG_FILE` is in the environment, so a process that loaded
-    /// configuration first would report only the config problem and never the typo (ledger B113).
+    /// configuration first would report only the config problem and never the typo.
     func testInvalidFlagIsReportedBeforeConfigurationIsValidated() throws {
         let result = try runToCompletion(
             arguments: ["--not-a-flag"],
@@ -384,7 +383,7 @@ final class StdioServerTests: XCTestCase {
 
     /// `web_open` can send the target URL to a third-party rendering service, so the
     /// model-visible description must say so before the call is made. It used to describe only
-    /// a vague "rendering service" and never said the URL left the machine (ledger B87).
+    /// a vague "rendering service" and never said the URL left the machine.
     func testWebOpenDescriptionDisclosesTheThirdPartyReader() throws {
         let server = try startInitializedServer(environment: [:])
         defer { server.stop() }
@@ -431,7 +430,7 @@ final class StdioServerTests: XCTestCase {
             "expected an actionable message, got: \(text)"
         )
         // The list is built from the one enablement authority, so it names every provider's
-        // variable rather than the two the hand-written message happened to know (ledger B57).
+        // variable rather than the two the hand-written message happened to know.
         for variable in [
             "BRAVE_SEARCH_API_KEY", "MOJEEK_API_KEY", "EXA_API_KEY", "SEARXNG_BASE_URL",
             "OPEN_WEB_SEARCH_URL", "SEARCH_ENABLE_SCRAPERS=true", "PARALLEL_MCP_URL",
@@ -449,7 +448,6 @@ final class StdioServerTests: XCTestCase {
     /// With the flag on and `PARALLEL_MCP_URL` emptied, the error used to advise
     /// `SEARCH_ENABLE_PARALLEL=true` — a setting the operator had already applied — while the
     /// server's own startup comment recorded that an emptied URL is what registers no adapter
-    /// (ledger B57).
     func testParallelWithoutAnEndpointIsToldToSetTheEndpointNotTheFlag() throws {
         let server = try startInitializedServer(environment: [
             "SEARCH_ENABLE_PARALLEL": "true",
@@ -616,7 +614,6 @@ final class StdioServerTests: XCTestCase {
     /// `web_open` returned a rejection in every other test in this file, so its success path —
     /// the handler's `Self.success`, `ToolOutputFormatter.openText` and `openStructured` — was
     /// never executed end to end. Making `webOpen` always fail used to leave the suite green
-    /// (ledger B08).
     func testWebOpenReturnsStructuredContentAndTextForARealPage() throws {
         let body = String(
             repeating: "Opening a page returns the readable text of that page. ",
@@ -963,7 +960,7 @@ final class StdioServerTests: XCTestCase {
         // Every row asserts the *specific* refusal it provokes. The two classes carry different
         // operator actions — a URL that is not absolute is the caller's typo, while a blocked
         // scheme, host or address is a security decision — so accepting any message containing
-        // "Refused" as a fallback made the whole `expected` column unenforceable (ledger B18).
+        // "Refused" as a fallback made the whole `expected` column unenforceable.
         let cases: [(id: Int, url: String, expected: String)] = [
             (10, "file:///etc/passwd", "public http/https"),
             (11, "http://localhost:8080/admin", "public http/https"),
@@ -1112,7 +1109,7 @@ final class StdioServerTests: XCTestCase {
     ///
     /// Only three malformed shapes were covered — a missing `query`, a `max_results` of the wrong
     /// type and an unknown tool — so the array, enum and required-string guards could each regress
-    /// into a generic failure, or into a protocol error, without the suite noticing (ledger B32).
+    /// into a generic failure, or into a protocol error, without the suite noticing.
     func testToolArgumentGuardsNameTheArgumentTheyReject() throws {
         let server = try startInitializedServer(environment: [:])
         defer { server.stop() }
@@ -1148,7 +1145,7 @@ final class StdioServerTests: XCTestCase {
     ///
     /// The two handlers ran byte-identical *copies* of the discovery block, so one could be
     /// changed and the other left behind without the schema parity lint noticing: that lint
-    /// compares the advertised constraints, not the handlers behind them (ledger B58). This
+    /// compares the advertised constraints, not the handlers behind them. This
     /// sends the same rejected value to both tools and requires the same error text back.
     func testTheTwoSearchToolsParseTheirSharedArgumentsIdentically() throws {
         let server = try startInitializedServer(environment: [:])
@@ -1199,7 +1196,7 @@ final class StdioServerTests: XCTestCase {
     ///
     /// `max_results` is capped at 20 and floored at 1, and `max_characters` is floored at 1 000.
     /// A clamp that disappeared would silently change what a caller can ask for — or let a model
-    /// ask for a fifty-megabyte page — and nothing tested any of them (ledger B32).
+    /// ask for a fifty-megabyte page — and nothing tested any of them.
     func testToolArgumentClampsAreEnforced() throws {
         let page =
             "<html><body><p>"
@@ -1305,7 +1302,7 @@ final class StdioServerTests: XCTestCase {
     /// The empty-configuration warning must name every variable that can register a provider.
     ///
     /// It used to name five of the eight, so an operator who had the scraper and open-web-search
-    /// paths available was told only about API keys (ledger B114).
+    /// paths available was told only about API keys.
     func testEmptyConfigurationWarningNamesEveryProviderVariable() throws {
         let server = try startInitializedServer(environment: [:])
         defer { server.stop() }

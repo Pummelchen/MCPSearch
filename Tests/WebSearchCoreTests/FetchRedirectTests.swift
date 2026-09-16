@@ -132,8 +132,8 @@ final class FetchRedirectTests: XCTestCase {
     /// `NoRedirectDelegate`, and reports a file-system transport code with no target URL attached.
     /// `DirectHTTPFetcher` therefore names the policy position for those codes instead of
     /// surfacing the opaque code, and the check that matters stays the same: no local content
-    /// comes back (ledger B102). Every other scheme is handed back to the loop and refused by
-    /// `URLPolicy` itself — see the test below (ledger B120).
+    /// comes back. Every other scheme is handed back to the loop and refused by
+    /// `URLPolicy` itself — see the test below.
     func testARedirectToAFileURLIsRefusedWithoutReadingTheFile() async throws {
         let readable = URL(fileURLWithPath: "/etc/hosts")
         XCTAssertTrue(
@@ -170,11 +170,11 @@ final class FetchRedirectTests: XCTestCase {
     /// `URLPolicy.validateLexically`. That is the scheme classification the finding asks for, and
     /// it needs no new code for a scheme nobody has seen yet.
     ///
-    /// The premise of ledger B120 was that these redirects surface as the opaque transport reason
+    /// The premise was that these redirects surface as the opaque transport reason
     /// `the transport rejected the request URL`. They do not: `URLSession` consults the redirect
     /// delegate for every scheme except `file:` and hands the 302 back, so the loop validates the
     /// target and denies it — measured, not assumed. Only `file:` is refused beneath this loop,
-    /// which is why that one case still maps transport codes (ledger B102).
+    /// which is why that one case still maps transport codes.
     func testARedirectToAnUnfetchableSchemeIsRefusedByTheHopPolicy() async throws {
         for target in ["ftp://example.com/file", "data:text/plain,hello"] {
             let server = try LoopbackServer(responses: [Self.redirect(to: target)])

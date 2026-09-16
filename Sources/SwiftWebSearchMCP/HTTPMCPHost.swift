@@ -29,13 +29,13 @@ import os
 ///   produces a `text/event-stream` payload it is relayed verbatim rather than re-framed.
 /// - **Bounded connections.** The listener holds at most `maximumConnections` child channels and
 ///   closes one that does not complete a request within the configured request budget. The bound
-///   is on receiving the request, so a streaming response is never treated as idle (ledger B90).
+///  is on receiving the request, so a streaming response is never treated as idle.
 /// - **One session per client, and as many clients as connect.** The SDK's stateful
 ///   transport is single-session and one-shot: it refuses a second `initialize` and, once
 ///   terminated, answers 404 forever. This host therefore keeps a registry of sessions,
 ///   creating a fresh `Server` + transport pair per `initialize` and routing every later
 ///   request by the `Mcp-Session-Id` the SDK issues — `DELETE` included, which releases the
-///   session (ledger B03).
+///  session.
 ///
 /// A separate port serves a plain liveness check at `/health`, so a container or proxy
 /// can probe the process without speaking MCP.
@@ -48,7 +48,7 @@ final class HTTPMCPHost: @unchecked Sendable {
 
     private let configuration: HTTPTransportConfiguration
     /// The `Host`/`Origin` allow-list the validation pipeline was built with, kept so the
-    /// startup log can name it: a 421 is otherwise a puzzle for an operator (ledger B21).
+    /// startup log can name it: a 421 is otherwise a puzzle for an operator.
     private let originPolicy: HTTPOriginPolicy
     private let makeServer: SessionFactory
     private let log: Log
@@ -58,7 +58,7 @@ final class HTTPMCPHost: @unchecked Sendable {
     ///
     /// The bound is on *receiving a request*, not on the exchange: it is disarmed the moment the
     /// request ends, so a response that legitimately streams (an SSE session stream) is never
-    /// mistaken for an idle connection (ledger B90).
+    /// mistaken for an idle connection.
     private let requestCompletionTimeout: Duration
     private var channel: Channel?
 
@@ -70,7 +70,6 @@ final class HTTPMCPHost: @unchecked Sendable {
     /// once the limit is reached, and `HTTPMCPHandler` closes one that does not complete its
     /// request in time. Sockets cannot be refused before `accept`, but a refused connection
     /// costs one descriptor for one event-loop turn instead of living until the peer gives up
-    /// (ledger B90).
     static let maximumConnections = 64
 
     /// Live child channels, so the accept path can refuse a connection beyond the bound.
@@ -112,7 +111,7 @@ final class HTTPMCPHost: @unchecked Sendable {
         // callers and stops a browser page from driving the server.
         // Derived from the configured bind address rather than hard-coded to loopback: the
         // documented remote deployment puts a TLS proxy in front of `--host`, and every request
-        // it forwarded carried the deployment's own address in `Host` (ledger B21).
+        // it forwarded carried the deployment's own address in `Host`.
         let policy = configuration.originPolicy
         self.originPolicy = policy
         self.validationPipeline = StandardValidationPipeline(validators: [
@@ -133,7 +132,7 @@ final class HTTPMCPHost: @unchecked Sendable {
     /// whatever the method — `POST` for messages, `GET` for the server-sent stream the SDK
     /// offers, `DELETE` to release the session. A request without a usable session may only be
     /// a POST carrying `initialize`; anything else is a client error rather than a silently
-    /// shared session (ledger B03).
+    /// shared session.
     func handle(
         request: MCP.HTTPRequest,
         method: HTTPMethod,
@@ -223,7 +222,7 @@ final class HTTPMCPHost: @unchecked Sendable {
     /// Count a new child channel and report how many are live now.
     ///
     /// Called from `HTTPMCPHandler.channelActive`; the matching release is in `channelInactive`,
-    /// which NIO fires for every channel that became active (ledger B90).
+    /// which NIO fires for every channel that became active.
     func registerConnection() -> Int {
         liveConnections.withLock { live in
             live += 1
@@ -350,7 +349,7 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
     ///
     /// Armed when the channel becomes active — before any header has been parsed, so a peer that
     /// trickles a request line is covered — and disarmed by `end`, which is what keeps a
-    /// long-lived SSE response from being treated as an idle connection (ledger B90).
+    /// long-lived SSE response from being treated as an idle connection.
     private var requestDeadline: Scheduled<Void>?
     /// Set once a response has been written for the request in flight.
     ///
@@ -420,7 +419,7 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
             // A small fixed reservation, owned by `HTTPRequestBodyPolicy`. Reserving the
             // declared `Content-Length` meant a head-only request held up to 1 MiB per
             // connection before any body arrived, because `ByteBuffer.reserveCapacity`
-            // reallocates immediately (ledger B79).
+            // reallocates immediately.
             let declaredLength = head.headers.first(name: "content-length").flatMap(Int.init)
             bodyBuffer.reserveCapacity(
                 HTTPRequestBodyPolicy.reservationCapacity(
@@ -445,7 +444,7 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
 
         case .end:
             // The request is complete. Whatever happens next is a response, and an SSE response
-            // is legitimately long-lived, so the idle bound stops applying here (ledger B90).
+            // is legitimately long-lived, so the idle bound stops applying here.
             requestDeadline?.cancel()
             requestDeadline = nil
             guard let head = requestHead else { return }
@@ -523,7 +522,7 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
     /// whatever its method — `POST` for messages, `GET` for the server-sent stream the SDK
     /// offers, `DELETE` to release the session. A request without one may only be a POST
     /// carrying `initialize`, which creates a session; anything else is a client error
-    /// rather than a silently shared session (ledger B03).
+    /// rather than a silently shared session.
     private func dispatch(
         head: HTTPRequestHead,
         body: Data?,

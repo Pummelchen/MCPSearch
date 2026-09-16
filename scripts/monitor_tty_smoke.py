@@ -126,7 +126,7 @@ class StubSearXNG:
 
     def __init__(self, *, hostile: bool = False) -> None:
         """Serve a SearXNG-shaped answer; `hostile` puts escape sequences in the fields an
-        instance controls, which is the payload ledger B25 is about."""
+        instance controls, which is the payload this guards against."""
         engine = HOSTILE_ENGINE if hostile else "brave"
         unresponsive = (
             [["duckduckgo", HOSTILE_REASON]]
@@ -209,7 +209,6 @@ class Session:
         }
         # Prove the scrub rather than assume it: the dictionary above is built from scratch, so no
         # provider variable can be present. Popping keys that were never there asserted nothing
-        # (ledger B45).
         leaked = set(environment) & set(SCRUBBED_VARIABLES)
         if leaked:
             raise Failure(f"the child environment still carries {sorted(leaked)}")
@@ -280,8 +279,8 @@ class Session:
 
         A child that dies while we wait is reported as a crash with its exit status, not as a
         frame that never arrived. Polling only once, immediately after the fixed startup drain,
-        left the conflation B106 removed in place for a monitor that starts and then dies before
-        it ever paints a frame (ledger B119).
+        left that conflation in place for a monitor that starts and then dies before
+        it ever paints a frame.
         """
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
@@ -370,7 +369,6 @@ def check_escape_injection(binary: str) -> None:
     Engine names and ``unresponsive_engines`` reasons are whatever the instance sent, and a
     terminal executes the bytes it is handed rather than displaying them. The frame may
     therefore contain no escape sequence other than the ones the renderer generates itself
-    (ledger B25).
     """
     stub = StubSearXNG(hostile=True)
     session = Session(binary, stub.url)
@@ -408,8 +406,7 @@ def run(binary: str) -> None:
         # 1. A full-screen display hides the cursor and clears the screen on start.
         #
         # A monitor that dies during startup must be reported as a crash with its exit status, not
-        # as a frame that never arrived: that is how B104's stale build was first misread as a
-        # timeout (ledger B106).
+        # as a frame that never arrived: a stale build once made exactly that look like a timeout.
         session.drain(3.0)
         require(
             session.process.poll() is None,
@@ -534,12 +531,11 @@ def check_ctrl_c_quits_cleanly(binary: str) -> None:
     set the terminal raised `SIGINT`, the process died on the spot, and `deinit` / the restore at
     the end of the run never executed — so the dashboard's own Ctrl-C branch was unreachable and the
     shell was left in raw mode. `ISIG` is now cleared, so the byte arrives and the branch runs
-    (ledger B10).
 
     An *externally* delivered `SIGINT`/`SIGTERM` is the case that bites in the field: supervisors,
     `kill` and terminal teardown all send it, and the process dies before any Swift cleanup runs.
     `SignalRestore` installs an async-signal-safe `sigaction(2)` handler that puts the terminal
-    back and shows the cursor (ledger B107).
+    back and shows the cursor.
     """
     stub = StubSearXNG()
     cases = (

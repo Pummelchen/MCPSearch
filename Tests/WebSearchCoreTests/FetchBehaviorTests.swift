@@ -35,7 +35,7 @@ final class FetchBehaviorTests: XCTestCase {
     ///
     /// The branch existed untested, so nothing pinned that a `text/plain` page is *not* run
     /// through the HTML extractor (which would return an empty or mangled document) and that the
-    /// title stays absent rather than being invented (ledger B30).
+    /// title stays absent rather than being invented.
     func testAPlainTextBodyIsReturnedAsRawText() async throws {
         // The body deliberately looks like markup: a plain-text page must reach the caller
         // byte-for-byte, so if this were routed through the HTML extractor the angle-bracket text
@@ -61,8 +61,8 @@ final class FetchBehaviorTests: XCTestCase {
     /// A non-textual body is refused rather than decoded into mojibake.
     ///
     /// The content-type gate is a security-adjacent control: the earlier fix removed `application/pdf`
-    /// from the allow-list because a PDF came back as Latin-1 garbage labelled `raw_text`
-    /// (ledger B16). An image must take the same path (ledger B30).
+    /// from the allow-list because a PDF came back as Latin-1 garbage labelled `raw_text`.
+    /// An image must take the same path.
     func testANonTextualContentTypeIsRefused() async throws {
         let server = try LoopbackServer(responses: [
             .init(status: 200, headers: ["Content-Type": "image/png"], body: "not really a png")
@@ -80,9 +80,9 @@ final class FetchBehaviorTests: XCTestCase {
 
     /// The byte cap is enforced during the transfer, so an oversized page is refused, not buffered.
     ///
-    /// `BoundedResponseBody.read` enforces `maxFetchedPageBytes` mid-stream (ledger B07), and the
+    /// `BoundedResponseBody.read` enforces `maxFetchedPageBytes` mid-stream, and the
     /// rejection surfaces as `.extractionFailed` — the same shape the post-hoc cap check used to
-    /// produce. Nothing exercised that mapping (ledger B30).
+    /// produce. Nothing exercised that mapping.
     func testAPageLargerThanTheConfiguredCapIsRefused() async throws {
         var configuration = Fixtures.configuration()
         configuration.maxFetchedPageBytes = 1_024
@@ -114,7 +114,7 @@ final class FetchBehaviorTests: XCTestCase {
     ///
     /// The mapping from `URLError.timedOut` to a URL-scoped failure is what keeps `web_open` from
     /// blaming Tavily for a slow origin — the same attribution rule as the 403 test above, and the
-    /// branch had no test (ledger B30).
+    /// branch had no test.
     func testATimeoutIsScopedToTheURL() async throws {
         var configuration = Fixtures.configuration()
         configuration.requestTimeout = .milliseconds(300)

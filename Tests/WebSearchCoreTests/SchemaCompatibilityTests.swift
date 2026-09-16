@@ -35,7 +35,7 @@ final class SchemaCompatibilityTests: XCTestCase {
     /// This file used to carry its own copy, which had drifted further than the others: its
     /// `Failure` enum was `case timeout, unexpectedExit` with no stderr payload, and the
     /// `Pipe()` it assigned to `standardError` was never read, so an early exit reported the
-    /// bare words `unexpectedExit` and no diagnostic at all (ledger B71).
+    /// bare words `unexpectedExit` and no diagnostic at all.
     private typealias Server = ServerProcess
 
     /// Fetch `tools/list` from a freshly started server.
@@ -95,7 +95,7 @@ final class SchemaCompatibilityTests: XCTestCase {
     /// there is one. `web_answer` advertises the same discovery arguments as
     /// `web_search`, so the two are compared property by property: a constraint can
     /// otherwise reach one tool and not the other, which is how `web_answer.provider`
-    /// lost its `enum` with every structural rule still green (ledger B110).
+    /// lost its `enum` with every structural rule still green.
     private func violations(
         in node: Any,
         path: String,
@@ -112,7 +112,7 @@ final class SchemaCompatibilityTests: XCTestCase {
             // the keywords that constrain a value are compared: prose may legitimately
             // differ because the two tools describe what they do with it, but a
             // constraint may not. `provider` is held to the whole property, because
-            // the closed set of ids is the contract a client discovers (ledger B110).
+            // the closed set of ids is the contract a client discovers.
             if let mirror, let properties = object["properties"] as? [String: Any],
                 let mirrored = mirror["properties"] as? [String: Any]
             {
@@ -164,7 +164,7 @@ final class SchemaCompatibilityTests: XCTestCase {
                 // An absent `required` must not be read as "the empty set": that made a
                 // zero-argument object indistinguishable from one that simply forgot the key.
                 // The contract is about the declared keyword, so every object schema must
-                // carry it, even when there is nothing to require (ledger B112).
+                // carry it, even when there is nothing to require.
                 if object["required"] == nil {
                     found.append("\(path): object schema without `required`")
                 }
@@ -188,7 +188,7 @@ final class SchemaCompatibilityTests: XCTestCase {
             // `enum` omits null advertises a value that no strict validator accepts: the
             // value satisfies `type` and violates `enum`. Because every property is also
             // `required`, a client that fills every slot must send null to mean "use the
-            // default", and such a client could not legally express it (ledger B111).
+            // default", and such a client could not legally express it.
             if let properties = object["properties"] as? [String: Any] {
                 for key in properties.keys.sorted() {
                     guard
@@ -343,7 +343,7 @@ final class SchemaCompatibilityTests: XCTestCase {
                 )
                 // `type` and `enum` are conjunctive, so a value that satisfies only one
                 // of them is not legal. An enum that names the choices without null
-                // rejects the very null this schema is built around (ledger B111).
+                // rejects the very null this schema is built around.
                 if let values = property["enum"] as? [Any] {
                     XCTAssertTrue(
                         values.contains { $0 is NSNull },
@@ -361,7 +361,7 @@ final class SchemaCompatibilityTests: XCTestCase {
     /// `type` and `enum` are conjunctive in JSON Schema, so an `enum` that lists the
     /// choices without null makes the advertised nullable union an invalid value. Since
     /// every property is also `required`, a client that must fill every slot could not
-    /// legally say "use the default" for `recency`, `provider` or `mode` (ledger B111).
+    /// legally say "use the default" for `recency`, `provider` or `mode`.
     /// The recursive keyword check in `violations` covers the whole advertised surface;
     /// this test states the input-schema contract for both search tools directly, so the
     /// failure names the argument a caller cannot express.
@@ -395,7 +395,7 @@ final class SchemaCompatibilityTests: XCTestCase {
         // Both search tools: the parity walk deliberately exempts `description`, so a copy
         // of the schema whose prose stopped documenting a default would pass it. The
         // assertion used to read `web_search` only, which left `web_answer`'s copy
-        // unguarded (ledger B58).
+        // unguarded.
         for name in ["web_search", "web_answer"] {
             let tool = try XCTUnwrap(
                 tools.first { $0["name"] as? String == name },
@@ -428,7 +428,7 @@ final class SchemaCompatibilityTests: XCTestCase {
     /// public contract down independently of that derivation: both tools must offer
     /// every id, and a value that no longer parses must not survive in either. A
     /// spelling-only assumption is what let `web_answer.provider` lose its `enum`
-    /// without any structural rule noticing (ledger B110).
+    /// without any structural rule noticing.
     func testProviderEnumListsTheAcceptedProviderIDs() throws {
         // `auto` is not a `ProviderID`: the parsers translate it to "let the
         // orchestrator choose" before a provider is resolved.

@@ -7,7 +7,7 @@ import XCTest
 ///
 /// Providers return schemeless and protocol-relative links, snippets with `<b>` highlight tags and
 /// HTML entities, and occasionally control characters that survived JSON decoding. Everything here
-/// is a documented behaviour of `ResultNormalizer` that no test touched (ledger B34); `make` was
+/// is a documented behaviour of `ResultNormalizer` that no test touched; `make` was
 /// covered indirectly by the fusion tests, these entry points were not.
 final class ResultNormalizerTests: XCTestCase {
 
@@ -109,7 +109,6 @@ final class ResultNormalizerTests: XCTestCase {
     /// The decoder replaced sequentially over its own output, so `&amp;lt;` decoded twice — the
     /// `&amp;` produced `&`, and the `&lt;` that created was then decoded to a live `<`. A snippet
     /// carrying escaped markup could therefore inject markup into whatever consumed the text
-    /// (ledger B63).
     func testDecodeCommonEntitiesDoesNotDecodeTwice() {
         XCTAssertEqual(ResultNormalizer.decodeCommonEntities("&amp;lt;b&amp;gt;"), "&lt;b&gt;")
         XCTAssertEqual(ResultNormalizer.decodeCommonEntities("&amp;amp;"), "&amp;")

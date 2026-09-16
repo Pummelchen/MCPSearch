@@ -141,7 +141,7 @@ final class HTMLExtractorTests: XCTestCase {
     /// The matcher tokenised class names by splitting on every non-alphanumeric character,
     /// hyphens included, so `class="side-bar"` became `["side", "bar"]` and could never equal the
     /// `side-bar` marker; the clause that looked for a hyphen after the marker was unreachable for
-    /// the same reason (ledger B61).
+    /// the same reason.
     func testHyphenatedBoilerplateMarkersAreRemoved() throws {
         let page = """
             <html><body>
@@ -168,8 +168,8 @@ final class HTMLExtractorTests: XCTestCase {
     /// another can never outscore it, and scoring it re-walked text already counted. Markup can
     /// force that: 500 nested `.entry-content` containers inside a `.content` div, each level
     /// carrying its own paragraph, is 1.8 MB of HTML, and the scoring pass used to build the text
-    /// of every one of them — about 450 MB of copying for a page whose real content is 1.8 MB
-    /// (ledger B28). Only maximal candidates are scored now, and their subtrees are disjoint.
+    /// of every one of them — about 450 MB of copying for a page whose real content is 1.8 MB.
+    /// Only maximal candidates are scored now, and their subtrees are disjoint.
     ///
     /// The document is parsed outside the timed region: this is about the scoring pass, and a
     /// timing assertion over the whole pipeline would mostly measure SwiftSoup's parser.
@@ -194,7 +194,7 @@ final class HTMLExtractorTests: XCTestCase {
         // 4 s: the quadratic implementation this guards against takes 7.2 s on this fixture, while
         // the linear one takes 0.28 s on an idle machine — a 1 s bound was mine, and it flaked once
         // at 1.16 s on a loaded runner. The bound has to separate 7.2 from 0.3, not measure the
-        // scheduler (ledger B28 follow-up).
+        // scheduler.
         XCTAssertLessThan(
             elapsed,
             .seconds(4),
@@ -328,7 +328,7 @@ final class ScraperTests: XCTestCase {
     /// The DuckDuckGo region hint is `region-language`, not the region twice.
     ///
     /// `kl=us-us` is not a value DDG defines; the language was available and discarded, so the hint
-    /// was wrong for every query that carried a region (ledger B60).
+    /// was wrong for every query that carried a region.
     func testDuckDuckGoLocaleHintIsRegionLanguage() {
         XCTAssertEqual(DuckDuckGoProvider.localeHint(for: LocaleHint("en-US")), "us-en")
         XCTAssertEqual(DuckDuckGoProvider.localeHint(for: LocaleHint("de-DE")), "de-de")

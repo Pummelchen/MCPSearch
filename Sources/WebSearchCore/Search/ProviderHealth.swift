@@ -138,7 +138,7 @@ public actor ProviderHealth {
                 // `.halfOpen` admits exactly one probe: `shouldAttempt` claims it for the first
                 // caller and refuses the rest. Discarding that refusal let every concurrent caller
                 // through, so a provider recovering from failures took the whole fan-out instead
-                // of one request (ledger B11). `.closed` always returns true, so this cannot
+                // of one request. `.closed` always returns true, so this cannot
                 // refuse a healthy provider.
                 let allowed = await breaker.shouldAttempt()
                 if !allowed {
@@ -183,7 +183,7 @@ public actor ProviderHealth {
     /// Give back a claimed half-open probe after a request that produced no outcome.
     ///
     /// Used when the caller was cancelled: the probe was claimed, the provider never answered, and
-    /// leaving the claim in place would strand the breaker (ledger B52).
+    /// leaving the claim in place would strand the breaker.
     public func releaseProbe(_ provider: ProviderID) async {
         await breakers[provider]?.releaseProbe()
     }

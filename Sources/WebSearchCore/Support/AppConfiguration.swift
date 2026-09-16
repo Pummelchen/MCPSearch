@@ -80,7 +80,7 @@ public struct AppConfiguration: Sendable, Hashable {
     ///
     /// A typo used to be indistinguishable from "not configured": the value was dropped, the
     /// default applied, and nothing anywhere said so — which is how an operator ends up with an
-    /// empty provider list and no explanation (ledger B09).
+    /// empty provider list and no explanation.
     public struct ConfigurationIssue: Sendable, Hashable {
         public enum Kind: Sendable, Hashable {
             /// `SEARCH_CONFIG_FILE` was set but the file is missing or unreadable.
@@ -282,7 +282,7 @@ extension AppConfiguration {
 
         // A config file that was asked for and is not there is a configuration error, not
         // "no config file": silently falling back to the environment is how a mistyped path
-        // turns into a server with no providers and no diagnostic (ledger B09).
+        // turns into a server with no providers and no diagnostic.
         var fileURL = configFileURL
         if fileURL == nil, let requested = environment[Key.configFile.rawValue],
             !requested.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -328,7 +328,7 @@ extension AppConfiguration {
         // needs nothing else configured: `PARALLEL_MCP_URL=`. `load` copies environment entries only
         // when they are non-empty (an empty variable is not a setting) and `parseDotEnv` drops empty
         // values, so the branch in `parse` that clears the built-in Parallel endpoint could never
-        // run (ledger B59). Carried for this key only, because it is the only key with a non-nil
+        // run. Carried for this key only, because it is the only key with a non-nil
         // default that an operator would want to remove.
         if let raw = environment[Key.parallelMCPURL.rawValue], raw.isEmpty {
             values[Key.parallelMCPURL.rawValue] = ""
@@ -382,7 +382,7 @@ extension AppConfiguration {
         ///
         /// `URL(string:)` is not a validator — it accepts `searx.example.com` as a *relative*
         /// URL and returns nil for other typos — so a schemeless endpoint used to be accepted
-        /// and then produced requests against a relative path (ledger B09).
+        /// and then produced requests against a relative path.
         func url(_ key: Key) -> URL? {
             guard let raw = string(key) else { return nil }
             guard let parsed = URL(string: raw), let scheme = parsed.scheme?.lowercased(),
@@ -496,7 +496,7 @@ extension AppConfiguration {
     /// Apply `SEARCH_LOG_LEVEL`, reporting a value that is not one of the known levels.
     ///
     /// Separate from `parse` so the diagnostic does not add a branch to a function that is
-    /// already at the complexity ratchet (ledger B09).
+    /// already at the complexity ratchet.
     private mutating func applyLogLevel(
         _ raw: String,
         reporting issue: (ConfigurationIssue) -> Void

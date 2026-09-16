@@ -10,7 +10,7 @@ import Foundation
 ///
 /// Only the Streamable HTTP origin policy needs them, and only for a wildcard bind
 /// (`--host 0.0.0.0`): the operator asked to answer on every interface, so no single address
-/// names the deployment and the allow-list has to name each one instead (ledger B21).
+/// names the deployment and the allow-list has to name each one instead.
 public enum LocalInterfaces {
 
     /// Every non-loopback IPv4 and IPv6 address of an interface that is up.

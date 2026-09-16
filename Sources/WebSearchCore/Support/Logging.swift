@@ -34,7 +34,7 @@ public struct Log: Sendable {
     /// Build a sink that frames each line and hands it to `queue`.
     ///
     /// Internal so a test can supply a queue whose writer it controls; the shipped sink is the
-    /// same code with the process-wide queue (ledger B91).
+    /// same code with the process-wide queue.
     static func makeStandardErrorSink(queue: StderrQueue) -> @Sendable (String) -> Void {
         { line in
             queue.submit(line + "\n")
@@ -46,7 +46,7 @@ public struct Log: Sendable {
     /// The sink used to perform the `write(2, …)` itself, on whatever task was logging. A stdio
     /// MCP host runs with stderr on a pipe, and a pipe whose reader stops draining fills up and
     /// blocks the writer — so a stopped log consumer stalled searches and fetches. The line is
-    /// framed here and queued; `StderrQueue` owns the descriptor and the blocking (ledger B91).
+    /// framed here and queued; `StderrQueue` owns the descriptor and the blocking.
     public static let standardErrorSink: @Sendable (String) -> Void = makeStandardErrorSink(
         queue: .shared
     )
@@ -97,7 +97,7 @@ public struct Log: Sendable {
     ///
     /// Because the key is per process, a correlation id is reproducible within a run but not
     /// across restarts — an accepted cost of the design, and the reason the doc below no longer
-    /// promises a stable value (ledger B85).
+    /// promises a stable value.
     private static let queryHashKey = SymmetricKey(size: .bits256)
 
     /// A keyed correlation id for a query, short enough to keep a log line readable.
@@ -108,7 +108,7 @@ public struct Log: Sendable {
     /// (`hash("swift concurrency")` was a one-line offline check). HMAC-SHA-256 under
     /// `queryHashKey`, truncated to 64 bits, makes a dictionary attack require the key, which
     /// lives only in this process's memory. The `q` + hex shape is unchanged, so existing log
-    /// consumers see the same field (ledger B85).
+    /// consumers see the same field.
     public static func hash(_ value: String) -> String {
         let mac = HMAC<SHA256>.authenticationCode(for: Data(value.utf8), using: queryHashKey)
         var truncated: UInt64 = 0
@@ -129,7 +129,7 @@ public struct Log: Sendable {
     ///
     /// The escape set used to be the three whitespace controls plus quote and backslash, which kept
     /// the line intact but let every other control character through: a query containing `ESC[2J`
-    /// or a C1 byte reached the operator's terminal and was executed there (ledger B51). Every `Cc`
+    /// or a C1 byte reached the operator's terminal and was executed there. Every `Cc`
     /// and `Cf` scalar is now escaped — `\u{1B}`, `\u{9B}` — so the value stays readable and cannot
     /// drive anything.
     static func escape(_ value: String) -> String {
@@ -162,7 +162,7 @@ public struct Log: Sendable {
 /// Flush the standard-error queue at process exit.
 ///
 /// `atexit` takes a C function pointer, so this cannot be a closure that captures the queue; it
-/// reaches the process-wide instance instead (ledger B91).
+/// reaches the process-wide instance instead.
 private func flushStandardErrorQueueAtExit() {
     StderrQueue.shared.flush()
 }
@@ -170,7 +170,7 @@ private func flushStandardErrorQueueAtExit() {
 /// A bounded, ordered hand-off between a logging call and fd 2.
 ///
 /// `Log.emit` used to call `write(2, …)` on the calling task's thread, so a stderr consumer that
-/// stopped draining blocked the search or fetch that happened to log (ledger B91). `submit` never
+/// stopped draining blocked the search or fetch that happened to log. `submit` never
 /// blocks: the caller hands over the line, one background thread writes whole lines in order, and
 /// a full queue drops the newest line rather than growing without bound or waiting on the consumer.
 ///
@@ -202,7 +202,7 @@ final class StderrQueue: @unchecked Sendable {
     private var dropped = 0
     private var started = false
     /// True while the writer thread holds a line it has taken but not finished writing, so
-    /// `flush` waits for the write and not merely for the queue to empty (ledger B91).
+    /// `flush` waits for the write and not merely for the queue to empty.
     private var writing = false
     private var finished = false
 
@@ -276,7 +276,7 @@ final class StderrQueue: @unchecked Sendable {
             let line = pending.removeFirst()
             writing = true
             // Report dropped lines once the backlog clears, before the line that follows the
-            // gap, so a reader can tell a gap from a quiet period (ledger B91).
+            // gap, so a reader can tell a gap from a quiet period.
             var note: String?
             if dropped > 0 {
                 note = "dropped \(dropped) log lines: the stderr consumer is not draining"
@@ -302,7 +302,7 @@ extension Log {
     ///
     /// This runs on the queue's writer thread, so blocking is contained there: a consumer that has
     /// stopped draining parks this thread, the queue fills, and `submit` drops instead of blocking
-    /// a search (ledger B91). `EINTR` is retried because the bytes were not transferred, and any
+    /// a search. `EINTR` is retried because the bytes were not transferred, and any
     /// other failure drops the rest of the line rather than spinning.
     static func writeToStandardError(_ text: String) {
         let bytes = Array(text.utf8)

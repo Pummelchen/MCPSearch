@@ -72,7 +72,7 @@ final class MonitorOptionsTests: XCTestCase {
     /// It sets an empty node list inside the parse loop, and the custom `--node` list was applied
     /// unconditionally after the loop, so `--node n1=… --no-nodes` still probed n1 while
     /// `--no-nodes --node n1=…` probably did too — the flags were order-independent in the usage
-    /// text and order-dependent in the code (ledger B74).
+    /// text and order-dependent in the code.
     func testNoNodesOverridesACustomNodeListInEitherOrder() throws {
         for arguments in [
             ["--node", "stub=http://127.0.0.1:8888", "--no-nodes"],
@@ -158,7 +158,7 @@ final class MonitorOptionsTests: XCTestCase {
     ///
     /// `--node --interval=5` used to create a node named `--interval` and swallow the interval
     /// flag, and `n1=relative/path` used to start and then report the node as unreachable instead
-    /// of failing at parse time (ledger B75).
+    /// of failing at parse time.
     func testFlagsAreNotValuesAndNodesNeedAbsoluteURLs() {
         for arguments in [
             ["--node", "--interval=5"],
@@ -241,7 +241,7 @@ final class MonitorOptionsTests: XCTestCase {
 
     /// `--interval` is converted to milliseconds with `Int(seconds * 1000)`, and the value comes
     /// straight from the command line. `inf` parsed, passed the `>= 1` check and trapped the
-    /// process before the first frame; `1e30` did the same (ledger B06, reported as L3-3).
+    /// process before the first frame; `1e30` did the same.
     func testHostileIntervalsAreRejectedInsteadOfTrapping() {
         let hostile = ["inf", "-inf", "infinity", "1e30", "nan", "0", "-5", "0.5", "99999999999999999999"]
         for raw in hostile {
@@ -267,7 +267,7 @@ final class MonitorOptionsTests: XCTestCase {
         XCTAssertEqual(try Options.parse(["--interval", "45"]).interval, .seconds(45))
     }
 
-    // MARK: - Exit status (ledger B46)
+    // MARK: - Exit status
 
     /// `--iterations` is documented as "useful for scripting", but the loop fell off the end
     /// of `main.swift` and the process exited 0 whatever the probes found, so a scripted run
@@ -340,7 +340,6 @@ final class MonitorOptionsTests: XCTestCase {
 
     /// A provider the operator disabled is expected too: `SEARCH_DISABLED_PROVIDERS` is a
     /// deliberate switch, so an all-disabled provider set is not a failed health check
-    /// (ledger B76 extends B46's contract to the reintroduced `unavailable` state).
     func testDisabledProvidersDoNotFailTheHealthCheck() throws {
         let options = try Options.parse(["--iterations", "1"])
         let disabled = model(

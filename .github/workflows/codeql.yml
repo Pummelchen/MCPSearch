@@ -3,10 +3,9 @@ name: CodeQL
 # Advanced setup, on purpose. The repository's manifest declares `swift-tools-version: 6.4`, and
 # GitHub's CodeQL *default setup* builds with the runner image's Swift 6.3.3 — which cannot parse a
 # 6.4 manifest at all, so it fails at autobuild before any analysis runs and the repository silently
-# loses its CodeQL gate (ledger B127). Default setup offers no way to choose a toolchain. This
+# loses its CodeQL gate. Default setup offers no way to choose a toolchain. This
 # workflow instead runs on the same `xcode-27` image the rest of CI uses and builds manually, so the
 # manifest can declare the toolchain the project is actually verified with and SAST still runs
-# (ledger B128).
 
 on:
   push:

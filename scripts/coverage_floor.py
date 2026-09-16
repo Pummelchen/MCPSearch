@@ -3,13 +3,13 @@
 
 SwiftPM instruments every target it builds, including the dependency checkouts under
 ``.build/checkouts/``, so an unfiltered total reads far lower than the code this repository owns:
-the audit baseline was 40 % unfiltered against 84.3 % for ``Sources/`` alone. Only paths under the
+the unfiltered baseline was 40 % against 84.3 % for ``Sources/`` alone. Only paths under the
 repository's own ``Sources/`` directory are counted, which is what makes the number meaningful and
 what makes a floor usable as a gate.
 
 Several reports are accepted because the same code is reached from different processes: the test
 bundle covers ``WebSearchCore``, while the MCP server and the monitor are only exercised as
-subprocesses and emit their own profiles (ledger A04). Each binary gets its own ``llvm-cov
+subprocesses and emit their own profiles. Each binary gets its own ``llvm-cov
 export``, and the counts are added up here — a file appears in exactly one of them, and a file
 that somehow appeared in two is counted once.
 
@@ -54,7 +54,7 @@ def main() -> int:
     if percent < floor:
         print(
             f"::error::Sources/ line coverage is {percent:.1f} %, below the {floor:.0f} % floor. "
-            "Lower the floor only with a reason recorded in AUDIT/ledger.md.",
+            "Lower the floor only with the reason recorded in the pull request that lowers it.",
             file=sys.stderr,
         )
         return 1

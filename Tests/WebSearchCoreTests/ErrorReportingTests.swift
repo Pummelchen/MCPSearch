@@ -19,8 +19,8 @@ final class ErrorReportingTests: XCTestCase {
     /// The one subprocess harness, shared with every other stdio test file.
     ///
     /// This file used to carry its own 85-line copy: same pipes, same newline framing, same
-    /// scrub list, and a read loop with the unenforceable deadline (ledger B70). The copies had
-    /// already drifted before being folded together (ledger B71).
+    /// scrub list, and a read loop with the unenforceable deadline. The copies had
+    /// already drifted before being folded together.
     private typealias Server = ServerProcess
 
     private func startServer(environment: [String: String] = [:]) throws -> Server {

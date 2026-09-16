@@ -8,7 +8,7 @@ import XCTest
 /// `AppConfiguration.Key` is the server's source of truth for these names, but `example.env`, the
 /// Python harnesses, `deploy/` and CI all spell them as plain strings. A rename therefore breaks a
 /// consumer silently: the server keeps running and simply stops seeing the setting. Nothing
-/// connected the two ends (ledger A12), so these tests do.
+/// connected the two ends, so these tests do.
 final class EnvironmentContractTests: XCTestCase {
 
     /// Variables that are deliberately not server settings.

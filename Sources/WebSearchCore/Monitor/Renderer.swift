@@ -8,7 +8,7 @@ import Foundation
 /// Everything a probe or an error body contributed — node names, engine names, error strings,
 /// warnings — is passed through `Terminal.sanitize` before it is styled or padded. Styling is
 /// applied afterwards, so the dashboard's own escape sequences survive. This is the single
-/// boundary that turns untrusted text into terminal output (ledger B25).
+/// boundary that turns untrusted text into terminal output.
 public struct Renderer: Sendable {
     public var useColour: Bool
     public var showEngines: Bool
@@ -54,7 +54,7 @@ public struct Renderer: Sendable {
     private func stateText(_ state: NodeStatus.State) -> String {
         // 10, to match the node table's header and the `used` estimate in `nodeSection`: at 8 the
         // header's latency/results/ok columns started two characters right of the data's, on every
-        // frame (ledger B67).
+        // frame.
         let label = Terminal.pad(state.label, to: 10)
         switch state {
         case .up: return Terminal.colour(label, .brightGreen, enabled: useColour)
@@ -187,7 +187,7 @@ public struct Renderer: Sendable {
         ]
         // Named only when there is one: a deliberately disabled provider is not a problem
         // to report on every frame, but its absence from the summary would make the
-        // OFF rows look like a miscount (ledger B76).
+        // OFF rows look like a miscount.
         if disabled > 0 { summaryParts.append("\(disabled) disabled") }
         let summary = summaryParts.joined(separator: Terminal.colour(" · ", .grey, enabled: useColour))
 
@@ -258,7 +258,6 @@ public struct Renderer: Sendable {
         } else if status.state == .unavailable {
             // The variable is not the fix here: the operator deliberately switched the
             // provider off, and the dashboard must not invite a probe it will refuse
-            // (ledger B76).
             note = Terminal.colour(
                 "disabled via SEARCH_DISABLED_PROVIDERS",
                 .grey,
@@ -295,7 +294,7 @@ public struct Renderer: Sendable {
             Terminal.colour(
                 // No extra indent here: the data rows carry their two spaces inside the name
                 // column, and adding them again put the whole header two columns right of the
-                // values it labels (ledger B67).
+                // values it labels.
                 Self.leadingColumn("  node", width: 16) + Terminal.pad("state", to: 10)
                     + Terminal.pad("latency", to: 9, alignment: .right)
                     + Terminal.pad("results", to: 9, alignment: .right)

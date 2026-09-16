@@ -43,7 +43,6 @@ public struct JinaReaderFetcher: Sendable {
         // The reader takes the target URL as the *rest of the path*, so it must be appended
         // verbatim. `appendingPathComponent` percent-encodes `?` and `#` into the path, which
         // asked the reader for a different resource — `/page%3Fq=1` instead of `/page?q=1`
-        // (ledger B15).
         var readerURL = baseURL.absoluteString
         if !readerURL.hasSuffix("/") { readerURL += "/" }
         guard let target = URL(string: readerURL + request.url.absoluteString) else {
@@ -125,7 +124,6 @@ public struct JinaReaderFetcher: Sendable {
         // has now left this machine and was fetched by a third party. `web_open` accepts
         // authorisation-bearing URLs and the model cannot be relied on to avoid them, so the
         // disclosure travels with every reader result rather than only the thin-native path
-        // (ledger B87).
         var warnings: [String] = [
             "Used Jina Reader (\(baseURL.host() ?? baseURL.absoluteString)), "
                 + "a third-party service that fetched this URL remotely."
@@ -142,7 +140,7 @@ public struct JinaReaderFetcher: Sendable {
 
         return FetchResult(
             // The reader reports the URL it handled; trust it only when it is an absolute
-            // http(s) URL, and otherwise fall back to what was asked for (ledger B92). This
+            // http(s) URL, and otherwise fall back to what was asked for. This
             // cannot invent a redirect the reader did not report — see the note on
             // `resolvedURL(from:)`.
             finalURL: reportedURL ?? request.url,
@@ -187,7 +185,7 @@ public struct JinaReaderFetcher: Sendable {
     /// The field is third-party input rendered verbatim as the result's `final_url`, so it is
     /// accepted only when it parses to an absolute `http`/`https` URL with a host. Anything
     /// else — absent, relative, `file:`, `javascript:` — returns nil so the caller falls back
-    /// to the requested URL rather than reporting a URL that was never fetched (ledger B92).
+    /// to the requested URL rather than reporting a URL that was never fetched.
     ///
     /// What the hosted reader actually puts here: `src/services/snapshot-formatter.ts` sets
     /// `url: nominalUrl?.toString() || snapshot.href?.trim()`, so `r.jina.ai` reports the

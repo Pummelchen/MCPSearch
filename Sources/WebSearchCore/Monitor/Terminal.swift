@@ -84,7 +84,7 @@ public enum Terminal {
     /// A terminal *executes* control characters rather than showing them — `ESC[2J` clears the
     /// screen, `ESC]52;…` writes the clipboard on terminals that allow it, CSI can move the
     /// cursor, hide it or spoof the window title — so text from a probed instance must never
-    /// reach the tty unfiltered (ledger B25).
+    /// reach the tty unfiltered.
     ///
     /// Both `Cc` (C0/C1 control) and `Cf` (format: bidirectional overrides, zero-width
     /// joiners, BOM) are replaced, because `Cf` scalars reorder or hide what the operator
@@ -146,7 +146,7 @@ public enum Terminal {
 
         // Walk to the last character that fits, then add an ellipsis. Escape sequences are copied
         // whole and for free: they occupy no columns, and slicing one in half leaves the terminal
-        // waiting for a sequence it never receives the end of (ledger B53). The previous walk
+        // waiting for a sequence it never receives the end of. The previous walk
         // counted every escape byte as width 1, so styled text was cut short *and* could end in a
         // bare `ESC`.
         var result = ""
@@ -233,15 +233,14 @@ public final class KeyReader: @unchecked Sendable {
         // Non-canonical, no echo: we want each key as it is pressed, invisibly. `ISIG` is cleared
         // as well, so Ctrl-C arrives as the byte `\u{03}` and the dashboard's own quit branch
         // handles it. With `ISIG` set the terminal raised `SIGINT` instead, the process died on
-        // the spot, and that branch was unreachable in a real terminal (ledger B10).
+        // the spot, and that branch was unreachable in a real terminal.
         raw.c_lflag &= ~tcflag_t(ICANON | ECHO | ISIG)
         // Do not wait for a full buffer or translate carriage returns.
         raw.c_cc.0 = 0  // VMIN: return immediately
         raw.c_cc.1 = 0  // VTIME: no inter-byte timeout
         guard tcsetattr(STDIN_FILENO, TCSAFLUSH, &raw) == 0 else { return nil }
         // The terminal is ours now, so make sure a supervisor's SIGINT/SIGTERM gives it back:
-        // `deinit` and the normal exit path cannot run when the process is signalled (ledger
-        // B107).
+        // `deinit` and the normal exit path cannot run when the process is signalled.
         SignalRestore.install(restoring: original)
     }
 

@@ -58,7 +58,7 @@ public struct ProviderRegistry: Sendable {
             guard let provider = providers[id] else {
                 // The adapter is absent because an input this provider needs was never
                 // supplied, so name that input. "no adapter registered" described the
-                // symptom and left the operator to guess the variable (ledger B57).
+                // symptom and left the operator to guess the variable.
                 reasons[id] = ProviderEnablement.instruction(for: id, in: configuration)
                 continue
             }

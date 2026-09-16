@@ -7,7 +7,6 @@ import Foundation
 /// here rather than in the executable so it can be tested directly; the version it replaces was
 /// `host == "127.0.0.1" || host == "::1" || host == "localhost" || host.hasPrefix("127.")`, which
 /// accepted `http://127.attacker.example` — a DNS name somebody else can register, not an address
-/// (ledger B42).
 public enum LoopbackOrigin {
 
     /// Whether `origin` is a loopback origin.

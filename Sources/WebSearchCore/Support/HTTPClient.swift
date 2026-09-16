@@ -230,7 +230,7 @@ public final class URLSessionHTTPClient: HTTPClient, @unchecked Sendable {
     /// `timeoutIntervalForResource` is a *total* cap, not an inactivity one, so deriving it from
     /// the ordinary request timeout meant it silently cut off every longer override: the 45 s
     /// synthesis budget died at 30 s, and `SEARCH_SYNTHESIS_TIMEOUT_MS` above 30 000 had no
-    /// effect at all (ledger B13). The inactivity timeout still bounds a stalled transfer; this
+    /// effect at all. The inactivity timeout still bounds a stalled transfer; this
     /// one only has to clear the largest budget the caller can ask for.
     ///
     /// Exposed as a pure function so the relationship is testable without waiting 30 seconds.
@@ -319,7 +319,7 @@ public final class URLSessionHTTPClient: HTTPClient, @unchecked Sendable {
         do {
             // The cap is enforced while the body arrives. `data(for:)` buffers the whole
             // response first, which let one endless body exhaust memory before any check
-            // could run (ledger B07).
+            // could run.
             (data, response) = try await BoundedResponseBody.read(
                 session,
                 urlRequest,

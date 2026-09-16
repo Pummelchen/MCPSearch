@@ -3,7 +3,7 @@ import XCTest
 
 @testable import WebSearchCore
 
-/// Cancellation is a caller decision and must reach the caller unchanged (ledger B04).
+/// Cancellation is a caller decision and must reach the caller unchanged.
 ///
 /// Two behaviours were wrong before these tests existed:
 ///

@@ -92,7 +92,7 @@ class BindRace(Failure):
     ``free_loopback_port`` reports a port that was free when it was chosen, not one that is
     reserved, so another process can bind it before the child does and the child then exits
     with ``EADDRINUSE``. That is a retryable startup accident rather than a smoke-test
-    failure: ``start_http_server`` re-picks a port for it (ledger B117).
+    failure: ``start_http_server`` re-picks a port for it.
     """
 
 
@@ -122,7 +122,6 @@ class Server:
         }
         # Prove the scrub rather than assume it: the dictionary above is built from scratch, so no
         # provider variable can be present. Popping keys that were never there asserted nothing
-        # (ledger B45).
         leaked = set(environment) & set(SCRUBBED_VARIABLES)
         assert not leaked, f"the child environment still carries {sorted(leaked)}"
 
@@ -363,7 +362,7 @@ def http_exchange(
 
     # De-chunk the raw bytes, before decoding: a chunk header carries a *byte* count, so
     # framing a decoded ``str`` lets any multi-byte character in the body shift every later
-    # boundary and truncate or corrupt the recovered stream (ledger B81).
+    # boundary and truncate or corrupt the recovered stream.
     if headers.get("transfer-encoding", "").lower() == "chunked":
         pieces: list[bytes] = []
         remaining = raw_body
@@ -405,11 +404,11 @@ def child_stderr(process: subprocess.Popen[str]) -> str:
 # The server reports a failed bind through ``HTTPHostError.bindFailed`` as
 # ``Could not bind <host>:<port> — <reason>``, so that phrase on stderr is the lost-race
 # signature. A startup failure of any other kind is surfaced on the first attempt rather than
-# retried, so a real defect is never masked (ledger B117).
+# retried, so a real defect is never masked.
 BIND_FAILURE_MARKER = "Could not bind"
 
 # Attempts at starting the HTTP child before giving up. One lost race is plausible; three in a
-# row means the port is not what is wrong, and the last diagnostic is reported (ledger B117).
+# row means the port is not what is wrong, and the last diagnostic is reported.
 HTTP_START_ATTEMPTS = 3
 
 
@@ -418,12 +417,12 @@ def wait_for_health(port: int, process: subprocess.Popen[str], timeout: float = 
 
     The child is polled on every pass: a server that has already exited will never bind,
     so the loop can say so at once with the child's own stderr instead of waiting out the
-    timeout and blaming the port (ledger B83). An exit whose stderr carries the server's
-    bind-failure diagnostic raises ``BindRace`` so the caller can retry (ledger B117).
+    timeout and blaming the port. An exit whose stderr carries the server's
+    bind-failure diagnostic raises ``BindRace`` so the caller can retry.
     """
     # The URL is built from a port number, so the scheme and host are asserted rather than
     # assumed: `urlopen` would happily follow a `file://` URL, and a probe that can be pointed
-    # anywhere is exactly what the audit flagged (ledger A08).
+    # anywhere is a probe that reaches things it should not.
     health_url = f"http://127.0.0.1:{port}/health"
     parsed = urllib.parse.urlparse(health_url)
     if parsed.scheme != "http" or parsed.hostname != "127.0.0.1":
@@ -438,7 +437,7 @@ def wait_for_health(port: int, process: subprocess.Popen[str], timeout: float = 
                 f"{exit_code} before the transport came up; stderr:\n{stderr}"
             )
             # Classify before reporting: the same exit is either a lost bind race the caller
-            # can retry away, or a real startup failure it must not retry (ledger B117).
+            # can retry away, or a real startup failure it must not retry.
             if BIND_FAILURE_MARKER in stderr:
                 raise BindRace(message)
             raise Failure(message)
@@ -457,8 +456,8 @@ def free_loopback_port() -> int:
 
     The port is free *when it is chosen*, not reserved: the probe socket is closed before
     the child is started, so another process can take the port in that window. That is why
-    ``start_http_server`` retries with a fresh port rather than trusting this one (ledger
-    B117). A fixed port would make two concurrent smoke runs collide, which matters because
+    ``start_http_server`` retries with a fresh port rather than trusting this one. A fixed port
+    would make two concurrent smoke runs collide, which matters because
     this script is cheap enough to run in parallel.
     """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as probe:
@@ -474,7 +473,7 @@ def start_http_server(binary: str) -> tuple[int, subprocess.Popen[str]]:
     was chosen, a lost race is retried on a fresh port instead of being reported as a smoke
     failure. Anything that is not a bind failure — a bad flag, an unreadable config file, a
     live child that never becomes healthy — propagates on the first attempt, so retrying
-    cannot mask a real defect (ledger B117).
+    cannot mask a real defect.
     """
     environment = {
         "PATH": os.environ.get("PATH", "/usr/bin:/bin"),

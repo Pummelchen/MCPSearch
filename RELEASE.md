@@ -228,10 +228,11 @@ Leave previous releases' notes and performance tables alone.
   not supported` and could never report a finding. Re-enable only with an
   entitlement that serves the requested model:
   `PATCH /repos/{owner}/{repo}/code-scanning/ai-scan` with `{"pr_scan":"enabled"}`.
-  The decision is recorded in `AUDIT/HANDOVER.md` as ISSUE-21.
-- **Audit material** lives under `AUDIT/`; `AUDIT/HANDOVER.md` lists what is open
-  — notably ISSUE-20, rotating the GitHub PAT in cleartext in the local wiki
-  clones' `.git/config`.
+- **The pre-production audit material has been retired.** It was processed into the code and the
+  changelog and then removed, so the next audit starts from the code rather than from a previous
+  audit's ledger, findings and baseline logs. The one item it left open — rotating the GitHub PAT
+  in cleartext in the local wiki clones' `.git/config` — is tracked as issue #16, because it is a
+  credential on a machine and no repository change can close it.
 - **Next release** is machinery-complete: bump `VERSION`, run
   `tools/sync-version.sh`, add the `CHANGELOG.md` section and
   `docs/release-notes-vX.Y.Z.md`, land it, tag, then `tools/release.sh --publish`.

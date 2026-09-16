@@ -100,7 +100,7 @@ public actor RateLimiter {
                 // Rounded up, like the token branch below: a truncated estimate can be up to a
                 // millisecond short, so a caller that sleeps exactly what it was told can wake a
                 // hair before the threshold and be denied again. A remainder that rounds to zero
-                // is "available now", not a zero-length wait (ledger B116).
+                // is "available now", not a zero-length wait.
                 let milliseconds = Int((remaining * 1000).rounded(.up))
                 if milliseconds > 0 { return .milliseconds(milliseconds) }
             }

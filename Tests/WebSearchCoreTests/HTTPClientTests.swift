@@ -19,7 +19,7 @@ final class LoopbackServer: @unchecked Sendable {
         ///
         /// `Content-Length` still declares the whole `body`, so a client that waits for the
         /// complete body waits until it gives up — which is what a hostile, endless page looks
-        /// like. Used to prove a byte cap is enforced *during* the transfer (ledger B07).
+        /// like. Used to prove a byte cap is enforced *during* the transfer.
         var drip: Drip?
 
         struct Drip: Sendable {
@@ -234,7 +234,7 @@ final class HTTPClientTests: XCTestCase {
     /// The session's resource timeout is a *total* cap, so it has to clear the largest
     /// per-request budget the client can be asked to honour. It used to be
     /// `max(2 × requestTimeout, 30)`, which silently cut the 45 s synthesis budget off at 30 s
-    /// and made `SEARCH_SYNTHESIS_TIMEOUT_MS` above 30 000 inert (ledger B13).
+    /// and made `SEARCH_SYNTHESIS_TIMEOUT_MS` above 30 000 inert.
     func testTheResourceTimeoutClearsEveryPerRequestBudget() {
         let shipped = AppConfiguration()
         XCTAssertGreaterThan(
@@ -338,7 +338,7 @@ final class HTTPClientTests: XCTestCase {
     /// `HTTPPolicy.maxRetryAfter` (5 s as shipped) is the cap on the delay the client is willing
     /// to honour, so a 429 carrying `Retry-After: 3600` cannot park a tool call for an hour. No
     /// test covered it: the only header test sends "1", where `min(1 s, 5 s) == 1 s` and the cap
-    /// never applies (ledger B29). The send is raced against a bound just above the cap because
+    /// never applies. The send is raced against a bound just above the cap because
     /// an unclamped delay would otherwise hold this test — and CI — for the hour the header asks
     /// for.
     func testAHostileRetryAfterIsClampedToThePolicyMaximum() async throws {
@@ -432,7 +432,7 @@ final class HTTPClientTests: XCTestCase {
         case .failure(let error):
             // Pinning the category, not the existence of an error: `(error as? HTTPError) != nil`
             // is true for every failure this client can produce, so the old assertion could not
-            // fail and said nothing about cancellation (ledger B24).
+            // fail and said nothing about cancellation.
             //
             // Two shapes are legitimate. The transport maps a cancelled URLSession task to
             // `.cancelled`, and the retry loop's own `Task.checkCancellation()` throws a raw

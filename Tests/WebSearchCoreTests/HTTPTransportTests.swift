@@ -12,7 +12,7 @@ import XCTest
 /// normalising them away.
 ///
 /// Internal rather than file-private so `HTTPMCPHostLifecycleTests` drives the same client
-/// instead of growing a second copy of it (ledger B101).
+/// instead of growing a second copy of it.
 struct RawHTTP {
     struct Response {
         let status: Int
@@ -74,7 +74,7 @@ struct RawHTTP {
         guard connected == 0 else { throw Failure.connect(String(cString: strerror(errno))) }
 
         // The Host header is a parameter because it is exactly what the DNS-rebinding validator
-        // decides on; a test cannot exercise that decision without choosing it (ledger B21).
+        // decides on; a test cannot exercise that decision without choosing it.
         let hostHeader = host ?? "127.0.0.1:\(port)"
         var request = "\(method) \(path) HTTP/1.1\r\nHost: \(hostHeader)\r\nConnection: close\r\n"
         var effective = headers
@@ -121,7 +121,7 @@ struct RawHTTP {
     // MARK: Descriptor-level helpers, for the connection-bound tests
     //
     // `request` writes a whole exchange, which is exactly what a test of a *partial* or
-    // *absent* request must not do. These hand the caller the descriptor instead (ledger B90).
+    // *absent* request must not do. These hand the caller the descriptor instead.
 
     /// Open a loopback connection and hand the descriptor to the caller.
     static func connect(port: UInt16) throws -> Int32 {
@@ -279,10 +279,9 @@ final class HTTPTransportTests: XCTestCase {
     ///
     /// The port is free *when it is chosen*, not reserved: the probe socket closes before the child
     /// binds, so anything on the machine can take it in that window. That is why `startServer`
-    /// retries with a fresh port rather than assuming the kernel held this one (ledger B20).
+    /// retries with a fresh port rather than assuming the kernel held this one.
     ///
     /// Internal for `HTTPMCPHostLifecycleTests`, which needs the same "a free port, briefly" helper
-    /// (ledger B101).
     static func freeLoopbackPort() throws -> UInt16 {
         let fd = socket(AF_INET, SOCK_STREAM, 0)
         guard fd >= 0 else { throw RawHTTP.Failure.socket("could not create a probe socket") }
@@ -563,7 +562,7 @@ final class HTTPTransportTests: XCTestCase {
         )
 
         // A name that merely starts with `127.` is not this machine, even though the hand-rolled
-        // check used to accept it (ledger B42).
+        // check used to accept it.
         let prefixed = try RawHTTP.request(
             port: port,
             method: "POST",
@@ -598,7 +597,6 @@ final class HTTPTransportTests: XCTestCase {
     /// `--host` plus TLS-proxy deployment answered every request with `421 Misdirected Request`
     /// before MCP handling ran. The allow-list is derived from the configuration now, and stays
     /// exact-match, so a browser page that resolves an attacker name to this machine still fails
-    /// (ledger B21).
     func testConfiguredPublicHostIsServedWhileAForeignHostIsRefused() throws {
         try startServer(extraArguments: ["--http-allowed-host", "search.example.com"])
 
@@ -659,7 +657,7 @@ final class HTTPTransportTests: XCTestCase {
 
         // No session and not an `initialize`: the server must say which of the two is wrong.
         // It used to answer 405 with `Allow: POST`, which described the single-transport
-        // design rather than the protocol (ledger B03).
+        // design rather than the protocol.
         let sessionless = try RawHTTP.request(
             port: port,
             method: "POST",
@@ -685,7 +683,7 @@ final class HTTPTransportTests: XCTestCase {
 
     /// The transport used to be one per process, so a second client could never initialize
     /// (the SDK answers `400 Session already initialized`) for the life of the process. Two
-    /// independent clients must now both work, with different session ids (ledger B03).
+    /// independent clients must now both work, with different session ids.
     func testTwoClientsEachGetTheirOwnSession() throws {
         try startServer()
         let (first, _) = try initializeSession()
@@ -712,7 +710,7 @@ final class HTTPTransportTests: XCTestCase {
     }
 
     /// `DELETE` must reach the transport and release the session, so the same process can
-    /// serve a client that reconnects with a new one (ledger B03).
+    /// serve a client that reconnects with a new one.
     func testDeletingASessionReleasesItAndAllowsReconnecting() throws {
         try startServer()
         let (session, _) = try initializeSession()
@@ -747,7 +745,7 @@ final class HTTPTransportTests: XCTestCase {
         XCTAssertEqual(served.status, 200)
     }
 
-    // MARK: - Connection bounds (ledger B90)
+    // MARK: - Connection bounds
 
     /// A connection that never sends a request is closed after the request budget, and the
     /// listener is unharmed. `SEARCH_REQUEST_TIMEOUT_MS` is the inbound budget as well as the
@@ -784,7 +782,7 @@ final class HTTPTransportTests: XCTestCase {
 
     /// A standalone SSE stream is a *completed* request with a long-lived response, not an idle
     /// connection: the deadline is disarmed when the request ends, so the stream outlives the
-    /// request budget several times over (ledger B90).
+    /// request budget several times over.
     func testAStandaloneSSEStreamOutlivesTheRequestBudget() throws {
         try startServer(extraEnvironment: ["SEARCH_REQUEST_TIMEOUT_MS": "400"])
         let (session, _) = try initializeSession()

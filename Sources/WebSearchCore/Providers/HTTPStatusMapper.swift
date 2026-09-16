@@ -59,7 +59,7 @@ public enum HTTPStatusMapper {
                 // The detail is free-form and may be URL-shaped, so it must never reach the
                 // caller: a key that travels in a query string would be echoed in full. Like
                 // the `URLError` arm below, the message is curated from the case rather than
-                // interpolated from whatever the transport happened to write (ledger B121).
+                // interpolated from whatever the transport happened to write.
                 return .unsupportedRequest(provider, "the request URL could not be built")
             }
         }

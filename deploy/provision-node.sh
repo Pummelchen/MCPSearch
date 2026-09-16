@@ -18,7 +18,7 @@ fail() { echo "$LOG_PREFIX ERROR: $*" >&2; exit 1; }
 #
 # Every other mutation in this script carries a `|| fail`, and this one did not: if `sed` failed,
 # the container started with the literal, tracked, publicly known placeholder as its signing key
-# and the canary still answered JSON, so the run reported success (ledger B17). Extracted as a
+# and the canary still answered JSON, so the run reported success. Extracted as a
 # function so the guard can be exercised without provisioning a node.
 install_secret_key() {
     local settings_file="$1"
@@ -27,7 +27,7 @@ install_secret_key() {
     # 0644, and the substitution below copies the same secret the 0600 key file holds into it.
     # BSD `sed -i` preserves the original file's mode rather than applying the umask (measured:
     # a 0600 input stays 0600, a 0644 input stays 0644), so the mode is corrected here after the
-    # substitution and then asserted, rather than assumed from the umask (ledger B49).
+    # substitution and then asserted, rather than assumed from the umask.
     sed -i '' "s|__SECRET_KEY__|${key}|" "${settings_file}" \
         || fail "could not install the SearXNG secret key into ${settings_file}"
     chmod 600 "${settings_file}" \
@@ -55,7 +55,6 @@ SEARXNG_IMAGE="${SEARXNG_IMAGE:-searxng/searxng@sha256:e084201aa606fafce2151c8dc
 # The transferred image tarball, if the operator has one to hand: pass its path explicitly
 # (SEARXNG_IMAGE_TAR=/path/to/searxng-image.tar). There is deliberately no default under a
 # shared directory: a fixed /tmp/searxng-image.tar could be planted by any local user
-# (ledger B86).
 SEARXNG_IMAGE_TAR="${SEARXNG_IMAGE_TAR:-}"
 
 # Used below. Failing here is clearer than failing half way through provisioning.
@@ -70,7 +69,7 @@ done
 # /tmp. A plain `>` follows a symlink planted there, so a local user could make this run
 # — an account that also has cached sudo — truncate or clobber any file the provisioning
 # account can write, and could substitute a transferred image tarball for one of their
-# choosing (ledger B86). One unpredictable directory, created 0700, holds every artefact
+# choosing. One unpredictable directory, created 0700, holds every artefact
 # of this run instead, so no other local user can name a path inside it.
 #
 # Extracted as a function so the guard can be exercised without provisioning a node.
@@ -85,7 +84,7 @@ PROVISION_TMP="$(make_provision_tmp)" \
     || fail "could not create a private temporary directory for the provisioning logs"
 
 # Remove the directory however the script ends — `fail` exits, so the EXIT trap covers the
-# failure path as well as the success one (ledger B86). On a failed run the log `fail` just
+# failure path as well as the success one. On a failed run the log `fail` just
 # pointed at is the diagnostic and the directory is about to go, so its tail is shown
 # first; bounded so a chatty install cannot bury the real error. The removal itself is
 # reported rather than fatal: this runs while the script is already exiting, so `fail`
@@ -141,8 +140,7 @@ if ! command -v brew >/dev/null 2>&1; then
     # Downloaded to a file and checked against a pinned digest instead of being piped into a
     # shell. A pipe runs whatever arrived — a truncated download, a proxy's error page — and
     # nothing ties the bytes to a reviewed script. The digest below is the whole of that tie,
-    # so when upstream changes this stops with instructions rather than running something new
-    # (audit task A07).
+    # so when upstream changes this stops with instructions rather than running something new.
     HOMEBREW_INSTALLER_URL="https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh"
     HOMEBREW_INSTALLER_SHA256="25548e1da7930c1563dbbe2cb05834a4131c4da09234540b6fdac812fda3c287"
     installer="$(mktemp -t homebrew-install)"
@@ -322,9 +320,9 @@ outgoing:
 SETTINGS
 
 # The heredoc is quoted, so the key is substituted afterwards rather than expanded inline. The
-# substitution is checked and verified, never assumed (ledger B17). The mode is set before the
+# substitution is checked and verified, never assumed. The mode is set before the
 # key is written, not only after: `chmod` here means the secret is never briefly readable, and
-# because `sed -i` preserves the mode it survives the substitution (ledger B49).
+# because `sed -i` preserves the mode it survives the substitution.
 chmod 600 "${INSTALL_DIR}/searxng/settings.yml" \
     || fail "could not restrict the mode of the SearXNG settings file"
 install_secret_key "${INSTALL_DIR}/searxng/settings.yml" "${SECRET_KEY}"
@@ -333,7 +331,7 @@ install_secret_key "${INSTALL_DIR}/searxng/settings.yml" "${SECRET_KEY}"
 # what landed is the pinned image, before the canary ever sees it.
 #
 # The source path is the operator's explicit choice; staging it means the path `docker
-# load` opens is one no other local user can name or rewrite (ledger B86). `docker load`
+# load` opens is one no other local user can name or rewrite. `docker load`
 # itself trusts the tarball, and the guard below only proves the pinned *reference* is
 # absent — not that the tarball carries it. The container is always *run* by the
 # digest-pinned reference, so a tampered tarball cannot simply execute as the pinned image;
@@ -358,7 +356,7 @@ load_pinned_image() {
 # Prefer a locally-loaded image (transferred over the LAN) so each node does not
 # re-download ~200 MB from the internet. The tarball's source is an explicit input
 # (SEARXNG_IMAGE_TAR) rather than the fixed /tmp/searxng-image.tar the script used to look
-# for (ledger B86).
+# for.
 if docker image inspect "${SEARXNG_IMAGE}" >/dev/null 2>&1; then
     say "searxng image already present"
 elif [ -n "${SEARXNG_IMAGE_TAR}" ]; then
@@ -399,7 +397,7 @@ say "canary answered JSON; replacing the running instance"
 # ${SEARXNG_PORT}, and a container can start and still never answer JSON on that port.
 # Removing the running container first, as this script did, made every one of those failures
 # final — the node keeps no compose file, tag or image for the old container, so there was
-# nothing to restore and the only recovery was to edit the script and re-run it (ledger B50).
+# nothing to restore and the only recovery was to edit the script and re-run it.
 #
 # The old container is therefore renamed aside and *stopped* — which frees the port but keeps
 # its configuration — and the replacement is run and proven under the production name and
@@ -412,13 +410,12 @@ PREVIOUS_CONTAINER_NAME="mcps-searxng-previous"
 # provisioning run — which has nothing to restore — takes the same failure paths as before.
 SWAP_PREVIOUS_NAME=""
 # The digest the previous container ran, kept for the READY output so a rollback after this
-# run is one command rather than an archaeology exercise (ledger B50).
+# run is one command rather than an archaeology exercise.
 PREVIOUS_IMAGE=""
 
 # Put the previous container back under its canonical name and start it. A no-op when no
 # container is aside, so callers need not track that themselves. It reports rather than
 # fails: it runs on the way to the real error, and `fail` here would hide that error
-# (ledger B50).
 restore_previous_instance() {
     [ -n "${SWAP_PREVIOUS_NAME}" ] || return 0
     docker rm -f mcps-searxng >/dev/null 2>&1
@@ -431,7 +428,7 @@ restore_previous_instance() {
 }
 
 # Every failure inside the swap goes through here: the node is left as it was found, then the
-# run stops with the message the failure would have produced before (ledger B50).
+# run stops with the message the failure would have produced before.
 swap_fail() {
     restore_previous_instance
     fail "$*"
@@ -441,7 +438,7 @@ replace_running_instance() {
     if docker container inspect mcps-searxng >/dev/null 2>&1; then
         PREVIOUS_IMAGE="$(docker inspect --format '{{.Config.Image}}' mcps-searxng 2>/dev/null)"
         # Renamed aside, never removed: this container is the only record of how the node was
-        # serving, and it is what a rollback restores (ledger B50).
+        # serving, and it is what a rollback restores.
         docker rm -f "${PREVIOUS_CONTAINER_NAME}" >/dev/null 2>&1
         docker rename mcps-searxng "${PREVIOUS_CONTAINER_NAME}" \
             || fail "could not rename the running container aside; it is still serving on port ${SEARXNG_PORT}"
@@ -492,7 +489,7 @@ fi
 # because the Homebrew section above already applied this node's `shellenv`, so it finds the
 # formula from whichever prefix the node actually uses — /opt/homebrew/bin on Apple Silicon,
 # /usr/local/bin on Intel. The old lookup tried only the Intel prefix, so an Apple Silicon
-# node with the formula installed fell through to the LAN address (ledger B48). The app
+# node with the formula installed fell through to the LAN address. The app
 # bundle is not on PATH and its binary is named `Tailscale`, unlike the formula's `tailscale`,
 # so those known paths are tried after `command -v`.
 tailscale_cli() {
@@ -535,7 +532,6 @@ else
 fi
 # The previous container has been removed by now, so its digest is not on the node in any
 # form the operator can discover; printing it here is what makes a rollback one command
-# (ledger B50).
 if [ -n "${PREVIOUS_IMAGE}" ] && [ "${PREVIOUS_IMAGE}" != "${SEARXNG_IMAGE}" ]; then
     say "previous image digest (rollback): ${PREVIOUS_IMAGE}"
 fi

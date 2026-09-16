@@ -158,7 +158,7 @@ public struct DuckDuckGoProvider: SearchProvider {
     /// DDG's `kl` value for a locale hint: `region-language` (`us-en`, `de-de`).
     ///
     /// The hint is best-effort and undocumented, but both parts are needed: sending the region in
-    /// both positions produced `us-us`, which is not a `kl` value at all (ledger B60). A locale
+    /// both positions produced `us-us`, which is not a `kl` value at all. A locale
     /// without a region has no hint to send, so none is.
     static func localeHint(for locale: LocaleHint?) -> String? {
         guard let locale, let region = locale.region, !region.isEmpty, !locale.language.isEmpty

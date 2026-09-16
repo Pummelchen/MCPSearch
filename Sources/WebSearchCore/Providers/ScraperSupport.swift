@@ -20,7 +20,7 @@ enum ScraperSupport {
     ///
     /// There were three cases; `noResults` was never produced by anything and nothing consumed it,
     /// so an empty page has always been reported as `.unknownMarkup` — the comment promising a
-    /// separate "empty result page" signal described a distinction that did not exist (ledger B56).
+    /// separate "empty result page" signal described a distinction that did not exist.
     enum BlockKind: String, Sendable {
         /// A bot-challenge / anomaly page was served instead of results.
         case botChallenge = "bot_challenge"

@@ -123,8 +123,8 @@ public struct ProviderStatus: Sendable, Identifiable {
         case notConfigured
         /// The operator switched this provider off, so the monitor does not probe it.
         ///
-        /// B78 deleted this case because nothing produced it; B76 owns the producer and
-        /// reintroduces it here with its semantics — a provider listed in
+        /// This case was once deleted because nothing produced it. The producer exists again,
+        /// with its original semantics — a provider listed in
         /// `SEARCH_DISABLED_PROVIDERS` is shown as switched off rather than as ready to
         /// probe, which is what a dashboard agreeing with server eligibility means.
         case unavailable
@@ -177,7 +177,6 @@ public struct ProviderStatus: Sendable, Identifiable {
     ///
     /// `NO KEY` and `OFF` are both expected states rather than failures, so a health check
     /// that counts providers must not treat a deliberately disabled one as a problem
-    /// (ledger B76, used by the monitor's exit status from ledger B46).
     public var isInService: Bool { state != .notConfigured && state != .unavailable }
 
     public static func pending(

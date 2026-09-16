@@ -33,7 +33,7 @@ def probe(base_url: str, query: str, timeout: float = 25.0):
     """Return (http_status, payload_or_text)."""
     url = f"{base_url.rstrip('/')}/search?{urllib.parse.urlencode({'q': query, 'format': 'json'})}"
     # `base_url` comes from the command line, and `urlopen` supports `file://`: assert the
-    # scheme and host before opening anything (ledger A08).
+    # scheme and host before opening anything.
     parsed = urllib.parse.urlparse(url)
     if parsed.scheme not in ("http", "https") or not parsed.hostname:
         raise ValueError(f"refusing to probe a non-HTTP URL: {base_url!r}")

@@ -90,7 +90,7 @@ public enum ResultNormalizer {
             // `https://mailto:someone@example.com`: the provider's scheme became userinfo and the
             // link pointed at an unrelated host. `URLPolicy` refuses credentials before any fetch,
             // so rejecting them here keeps this function's "absolute, web-only" contract honest
-            // instead of handing a caller a URL that can only be refused later (ledger B34).
+            // instead of handing a caller a URL that can only be refused later.
             url.user == nil, url.password == nil
         else { return nil }
 
@@ -162,7 +162,7 @@ public enum ResultNormalizer {
         // One pass over the input, and the replacement is appended rather than re-scanned. The
         // previous version replaced sequentially over its own output, so `&amp;lt;` decoded twice:
         // `&amp;` became `&` and the `&lt;` that created was then decoded to a live `<`, letting a
-        // snippet's escaped markup become real markup for whatever consumed the text (ledger B63).
+        // snippet's escaped markup become real markup for whatever consumed the text.
         var output = ""
         output.reserveCapacity(input.count)
         var index = input.startIndex

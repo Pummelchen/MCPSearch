@@ -500,7 +500,7 @@ final class SearchOrchestratorTests: XCTestCase {
         }
         // No sleep here: `recordFailure` awaits the breaker before it returns
         // (`ProviderHealth.recordFailure`), which `FusionAndReliabilityTests` asserts directly.
-        // A 60 ms sleep used to stand in for a detached task that no longer exists (ledger B35);
+        // A 60 ms sleep used to stand in for a detached task that no longer exists;
         // a reader who trusted that comment would reintroduce the race it described.
 
         let brave = MockSearchProvider.returning(.brave, results: [("B", "https://b.example.com/1", nil)])
@@ -524,7 +524,7 @@ final class SearchOrchestratorTests: XCTestCase {
     /// The claim is taken inside `authorize` and was released only by `recordSuccess` /
     /// `recordFailure`. The cancellation path records no health outcome, correctly — a caller that
     /// goes away says nothing about the provider — so the claim leaked, the breaker stayed
-    /// half-open with a claim nobody held, and the provider was never tried again (ledger B52).
+    /// half-open with a claim nobody held, and the provider was never tried again.
     func testACancelledRequestReleasesTheHalfOpenProbe() async throws {
         let clock = TestClock()
         let health = ProviderHealth(clock: clock)
@@ -596,7 +596,7 @@ final class SearchOrchestratorTests: XCTestCase {
         // The contract is what the caller sees: the hang is reported as a timeout and the
         // responsive provider's results still come back. The wall-clock bound below only catches
         // a sentinel that never fires at all (the stub hangs for 60 s), so it is deliberately
-        // loose — a tight bound measures the CI runner's scheduler, not this code (ledger B35).
+        // loose — a tight bound measures the CI runner's scheduler, not this code.
         XCTAssertEqual(response.results.count, 1, "the responsive provider's results survive")
         XCTAssertTrue(response.providersFailed.contains { $0.category == .timeout })
         XCTAssertLessThan(
@@ -609,7 +609,7 @@ final class SearchOrchestratorTests: XCTestCase {
     /// A provider that already reported a *failure* must not be charged a second, synthetic
     /// deadline failure. Before this test the failed provider appeared twice in
     /// `providers_failed`, the count was inflated, and its real error was overwritten by a
-    /// deadline it did not cause (ledger B12).
+    /// deadline it did not cause.
     func testABudgetExpiryChargesOnlyTheProvidersThatDidNotReport() async throws {
         var configuration = Fixtures.configuration()
         configuration.balancedTimeout = .milliseconds(300)
@@ -663,7 +663,7 @@ final class SearchOrchestratorTests: XCTestCase {
 
     /// A provider's own "answer" is vendor text this tool never fetched; the warning channel must
     /// say so rather than presenting it as a neutral note, and must not let a provider flood the
-    /// caller's context (ledger B27).
+    /// caller's context.
     func testAProviderAnswerIsMarkedUntrustedAndClipped() async throws {
         let inner = MockSearchProvider.returning(
             .tavily,
@@ -828,7 +828,7 @@ final class SearchOrchestratorTests: XCTestCase {
         XCTAssertEqual(capturing.callCount, 1)
         // 3 requested results must reach the provider as a budget of 6 — that surplus is the
         // entire contract this test is named for, so asserting only that the call succeeded
-        // proved nothing (ledger B19).
+        // proved nothing.
         let request = try XCTUnwrap(capturing.requests.first)
         XCTAssertEqual(request.maxResults, 3)
         XCTAssertEqual(request.providerResultBudget, 6)
@@ -863,8 +863,8 @@ final class SearchOrchestratorTests: XCTestCase {
     ///
     /// This used `fast`, which selects exactly one provider, so `brave` was never called:
     /// `XCTAssertEqual(brave?.failures, 0)` held whether or not `ProviderHealth.recordFailure`
-    /// incremented anything, and the failure path through `status()` was never observed at all
-    /// (ledger B94). `balanced` selects both `tavily` and `brave`, and the search still succeeds
+    /// incremented anything, and the failure path through `status()` was never observed at all.
+    /// `balanced` selects both `tavily` and `brave`, and the search still succeeds
     /// because one provider answered.
     func testStatusCountsSuccessesAndFailures() async throws {
         let good = MockSearchProvider.returning(.tavily, results: [("T", "https://t.example.com/1", nil)])

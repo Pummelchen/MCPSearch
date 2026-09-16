@@ -47,7 +47,7 @@ public actor ParallelMCPProvider: SearchProvider {
     /// still sees `sessionID == nil` and runs a second `initialize` +
     /// `notifications/initialized` + `tools/list`. The free tier meters by `session_id`, and
     /// the two in-flight calls can end up using whichever `MCP-Session-Id` the server
-    /// assigned last (ledger B54). Caching the task makes the handshake happen once.
+    /// assigned last. Caching the task makes the handshake happen once.
     private var handshake: Task<Void, Error>?
     private var resolvedToolName: String?
     private var resolvedToolSupportsMaxResults = false
@@ -172,7 +172,7 @@ public actor ParallelMCPProvider: SearchProvider {
     /// Perform the MCP initialize handshake once, and discover the search tool name.
     ///
     /// The handshake runs inside a task cached on the actor, so concurrent first use joins
-    /// the one handshake instead of starting another (ledger B54). A failed handshake is not
+    /// the one handshake instead of starting another. A failed handshake is not
     /// cached, so the next caller retries it exactly as the un-cached implementation did.
     private func ensureInitialized() async throws {
         if sessionID != nil { return }

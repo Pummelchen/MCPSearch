@@ -60,7 +60,7 @@ final class TerminalLayoutTests: XCTestCase {
     ///
     /// The per-character walk treated the escape bytes as width-1 text, so styled lines were cut
     /// short and could end in a bare `ESC` — the start of a sequence the terminal never receives
-    /// the end of (ledger B53).
+    /// the end of.
     func testTruncateKeepsEscapeSequencesWhole() {
         let styled = "\u{1B}[31mabcdef\u{1B}[0m"
         let truncated = Terminal.truncate(styled, to: 5)
@@ -84,7 +84,7 @@ final class TerminalLayoutTests: XCTestCase {
     ///
     /// A terminal executes these bytes: `ESC[2J` clears the screen, `ESC]52;c;…` writes the
     /// clipboard on terminals that allow it. The probe data that reaches the renderer comes
-    /// from a SearXNG instance, so it is not text this program authored (ledger B25).
+    /// from a SearXNG instance, so it is not text this program authored.
     func testSanitizeReplacesControlCharactersWithAVisiblePlaceholder() {
         let hostile = "brave\u{1B}]52;c;cGF3bmVk\u{07}google\u{9B}31m\n"
         let safe = Terminal.sanitize(hostile)
@@ -140,7 +140,7 @@ final class RendererTests: XCTestCase {
     /// The setup hint the real authority would give this provider.
     ///
     /// The fixture used to hard-code `"TAVILY_API_KEY"` for every provider, so a test could
-    /// "check" a Brave row against Tavily's variable (ledger B95). Reading the same
+    /// "check" a Brave row against Tavily's variable. Reading the same
     /// `ProviderProbe.setupHint` the monitor reads is what makes a hint assertion about the real
     /// mapping instead of about a string the test wrote itself.
     private func setupHint(for id: ProviderID) -> String {
@@ -395,7 +395,7 @@ final class RendererTests: XCTestCase {
     /// against `TAVILY_API_KEY`, and a renderer that ignored `ProviderStatus.setupHint` and
     /// printed a constant would have passed. The expectation now comes from the same
     /// `ProviderProbe.setupHint` the monitor calls, and the assertion that Brave's own hint
-    /// differs from Tavily's is what stops the constant from satisfying it (ledger B95).
+    /// differs from Tavily's is what stops the constant from satisfying it.
     func testUnconfiguredProviderShowsItsSetupHint() {
         let braveHint = setupHint(for: .brave)
         XCTAssertEqual(braveHint, "BRAVE_SEARCH_API_KEY", "the authority must name Brave's variable")
@@ -427,7 +427,7 @@ final class RendererTests: XCTestCase {
     ///
     /// It used to render as an idle provider with "ready — press p to probe", so the operator
     /// was told to press a key that would spend a credit on a provider the server refuses to
-    /// use (ledger B76).
+    /// use.
     func testDisabledProviderIsShownAsOffRatherThanReady() {
         let disabled = ProviderStatus.pending(
             provider: .tavily,
@@ -492,7 +492,7 @@ final class RendererTests: XCTestCase {
     ///
     /// The header padded the state column to 10 while every data row padded it to 8, so the
     /// header's latency/results/ok labels sat two characters right of the values they described on
-    /// every frame (ledger B67).
+    /// every frame.
     func testNodeTableHeaderAlignsWithItsData() {
         let lines = Renderer(useColour: false).render(
             model(
@@ -528,7 +528,7 @@ final class RendererTests: XCTestCase {
     /// rendered straight into the frame. A terminal executes what it is handed, so an instance
     /// could clear the screen, move the cursor, or write the clipboard through OSC 52 using
     /// nothing but an engine name. The frame may therefore contain no escape sequence other than
-    /// the colouring the renderer itself generates (ledger B25).
+    /// the colouring the renderer itself generates.
     func testHostileInstanceTextCannotDriveTheTerminal() {
         var injecting = node("node1", state: .up)
         injecting.engines = ["brave\u{1B}]52;c;cGF3bmVk\u{07}", "google cse"]
@@ -662,7 +662,7 @@ final class MonitorModelTests: XCTestCase {
 
     /// A provider the operator disabled is unavailable, not ready and not "no key": the two
     /// reasons a provider is inert are distinct, and only one of them is a credential
-    /// problem (ledger B76, reintroducing the state B78 removed).
+    /// problem.
     func testPendingProviderDistinguishesDisabledFromUnconfigured() {
         let ready = ProviderStatus.pending(
             provider: .tavily,

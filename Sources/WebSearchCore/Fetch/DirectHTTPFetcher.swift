@@ -58,7 +58,7 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
         var redirectNotes: [String] = []
         // One DNS memo per fetch. The hop pre-check below and the re-check at the top of the
         // loop are two policy decisions, but they are one lookup, and the next fetch starts
-        // with an empty memo (ledger B88).
+        // with an empty memo.
         let resolutions = DNSAnswerCache()
 
         while true {
@@ -95,7 +95,7 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
                 }
                 // Re-validate before continuing; the loop re-checks at the top too, but
                 // failing fast gives a clearer decision point. Both calls are one DNS lookup
-                // for this host, because they share the fetch's memo (ledger B88).
+                // for this host, because they share the fetch's memo.
                 let hopDecision = await policy.validate(nextURL, cache: resolutions)
                 guard hopDecision.allowed else {
                     throw SearchError.blockedURL(nextURL)
@@ -186,7 +186,6 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
         do {
             // Capped during the transfer, not after it: a page the model asked to open can
             // stream for as long as it likes, and `data(for:)` would buffer all of it first
-            // (ledger B07).
             (data, response) = try await BoundedResponseBody.read(
                 session,
                 urlRequest,
@@ -203,16 +202,15 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
                 // The caller cancelled. Reporting this as a fetch failure would let the layer
                 // above read it as "the direct fetch did not work" and start a *second*
                 // outbound request — the Jina fallback — for a caller that has gone away
-                // (ledger B04).
                 throw CancellationError()
             case .fileDoesNotExist, .fileIsDirectory, .noPermissionsToReadFile:
                 // `file:` is the only scheme `URLSession` handles itself, so it is the only
                 // cross-scheme redirect that does not reach the manual loop: the transport refuses
                 // it internally, never calls `willPerformHTTPRedirection`, and reports one of these
                 // file-system codes with the *original* URL attached rather than the target. Every
-                // other scheme is handed back and denied by the per-hop policy call (ledger B120).
+                // other scheme is handed back and denied by the per-hop policy call.
                 // Name the policy position instead of leaking the opaque code, and never report
-                // local content. The limitation is documented on `URLPolicy` (ledger B102).
+                // local content. The limitation is documented on `URLPolicy`.
                 throw SearchError.fetchFailed(
                     request.url,
                     reason: "the server redirected to a local file, which is not fetched"

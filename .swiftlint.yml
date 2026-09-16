@@ -1,9 +1,9 @@
 # SwiftLint configuration — MCPSearch
 #
-# Audit task A03. Without this file, `swiftlint` reported 504 findings on this repository, and the
+# Without this file, `swiftlint` reported 504 findings on this repository, and the
 # number was meaningless: 27 of them were in generated code under `.build/` (SwiftPM's
 # `runner.swift` and `resource_bundle_accessor.swift`), and most of the rest were style questions
-# `swift-format` already owns through `.swift-format` (task A02). Genuine findings — a `try!`, ten
+# `swift-format` already owns through `.swift-format`. Genuine findings — a `try!`, ten
 # silent `Data` → `String` decodings, three `for`-`if` pairs, two orphaned doc comments — were
 # buried under that noise.
 #
@@ -16,8 +16,7 @@
 #    line is how a linter loses its authority.
 #
 # Everything else stays enabled, and every finding it produced in our own code was *fixed* rather
-# than configured away: see AUDIT/evidence/A03-swiftlint.txt for the list and the before/after
-# counts.
+# than configured away.
 
 included:
   - Sources
@@ -35,15 +34,15 @@ disabled_rules:
   - vertical_whitespace
 
   # Not applicable here.
-  - todo  # work is tracked in AUDIT/ledger.md, not in comments; the three `todo` hits that
+  - todo  # work is tracked in issues, not in comments; the three `todo` hits that
           # prompted this line were in SwiftPM-generated `.build` code, not in this repository
 
 # Opt-in rules are deliberately not enabled by this task. Each one is a policy choice with its own
 # findings across a 15 000-line tree, and adopting them belongs in its own task with its own fixes
 # rather than smuggled into a configuration change.
 
-# Accepted envelope, measured at the commit that introduced this file (task A03). The audit brief
-# forbids closing a task by narrowing it, so these numbers are stated rather than hidden: the gate
+# Accepted envelope, measured at the commit that introduced this file. These numbers are stated
+# rather than hidden: the gate
 # fails on anything *worse* than the tree as it stands, and the worst current offender for each rule
 # is named so a reviewer can see exactly what is tolerated.
 #
@@ -53,9 +52,9 @@ disabled_rules:
 #   cyclomatic_complexity    26        Sources/WebSearchCore/Support/AppConfiguration.swift:275
 #   nesting (type level)      4        Sources/WebSearchCore/Providers/BraveProvider.swift:245
 #
-# `ProviderContractTests` remains the worst offender but is no longer at the ceiling: ledger B96
-# moved its one status-mapping test into `HTTPStatusMapperTests`, taking the file to 1421 lines.
-# The envelope above is left at the recorded A03 measurement rather than narrowed to match, because
+# `ProviderContractTests` remains the worst offender but is no longer at the ceiling: its one
+# status-mapping test moved into `HTTPStatusMapperTests`, taking the file to 1421 lines. The
+# envelope above is left at the measurement recorded when it was introduced rather than narrowed, because
 # the point of the envelope is to be the number the file must not exceed.
 #
 # Every other finding the default rules produced in our own code was fixed rather than configured

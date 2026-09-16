@@ -1,6 +1,6 @@
 # Ruff configuration — MCPSearch
 #
-# Audit task A11. Until this file existed the Python scripts were linted by whatever Ruff's
+# Until this file existed the Python scripts were linted by whatever Ruff's
 # *default* rule set happened to be in the installed version, which is not a standard a
 # repository can rely on: with Ruff 0.16.7 the implicit default reports BLE001/S110/UP041/FURB/RUF
 # findings, while an older Ruff reported none of them. Selecting explicitly makes the check

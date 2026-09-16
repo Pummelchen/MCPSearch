@@ -8,10 +8,10 @@ import XCTest
 /// `WebSearchCoreTests` module cannot import — a unit test of `searchText`/`statusText` is not
 /// expressible here. These tests therefore reach the formatter the way a client does, over a real
 /// stdio MCP session against a loopback provider stub, which is the same route
-/// `StdioServerTests` and `SchemaCompatibilityTests` take (ledger B100).
+/// `StdioServerTests` and `SchemaCompatibilityTests` take.
 ///
 /// A separate file because `StdioServerTests.swift` sits close to SwiftLint's 1458-line
-/// `file_length` ceiling; this is the split pattern B96 and B54 used.
+/// `file_length` ceiling; this is the split pattern used elsewhere in this suite.
 final class ToolOutputFormatterTests: XCTestCase {
 
     // MARK: - Harness
@@ -58,7 +58,7 @@ final class ToolOutputFormatterTests: XCTestCase {
     /// constructs a response with no results, `SearchResponse` has exactly one construction site,
     /// and `SearchCache.store` refuses a response without usable results — so a cached empty one
     /// cannot exist either. This test pins the reachable behaviour so a change that made the
-    /// empty rendering reachable would be noticed (ledger B100).
+    /// empty rendering reachable would be noticed.
     func testAnAllEmptySearchIsAToolErrorNotAnEmptyRendering() throws {
         let stub = try LoopbackServer(responses: [
             .init(status: 200, body: Self.searchBody(resultsJSON: ""))
@@ -89,7 +89,7 @@ final class ToolOutputFormatterTests: XCTestCase {
     }
 
     /// A long snippet is clipped to `maximumSnippet` and marked with an ellipsis, so one verbose
-    /// page cannot dominate the text an agent reads (ledger B100).
+    /// page cannot dominate the text an agent reads.
     func testLongSnippetIsClippedWithAnEllipsis() throws {
         let sentence = String(repeating: "x", count: 500)
         let stub = try LoopbackServer(responses: [
@@ -137,7 +137,7 @@ final class ToolOutputFormatterTests: XCTestCase {
     }
 
     /// A partial failure keeps its results and names the provider that did not answer, so a
-    /// degraded search is not presented as a complete one (ledger B100).
+    /// degraded search is not presented as a complete one.
     func testAFailedProviderIsListedInTheText() throws {
         // `open_web_search` has `isConfigured == true` unconditionally and its endpoint is
         // operator-supplied, so its failure can be made deterministic by pointing it at a port
@@ -191,7 +191,7 @@ final class ToolOutputFormatterTests: XCTestCase {
     /// The diagnostic line carries the request counters, a non-closed circuit and the last error.
     ///
     /// The existing status test asserted only the structured payload, so `statusText`'s
-    /// counters/circuit/error branches had never run (ledger B100).
+    /// counters/circuit/error branches had never run.
     func testStatusTextCarriesCountersAndTheLastError() throws {
         // A 500 makes the provider fail without a second provider to mask it, so the state the
         // status call reads has a real failure on it.

@@ -7,7 +7,7 @@ import XCTest
 ///
 /// The server has no authentication, so this check is what stops a browser page on another site
 /// from driving it. It used to accept any host starting with `127.`, which is a *name* anybody can
-/// register (ledger B42).
+/// register.
 final class LoopbackOriginTests: XCTestCase {
 
     func testLoopbackLiteralsAndLocalhostAreAccepted() {

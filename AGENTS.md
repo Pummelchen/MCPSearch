@@ -43,8 +43,7 @@ Intel slice).
   `coverage_floor.py`, `soak.py`, `harness_tests.py`, `third_party_notices.py`.
 - `deploy/` — a digest-pinned SearXNG compose file and `provision-node.sh`.
 - `docs/` — four research notes whose claims are labelled VERIFIED / UNVERIFIED /
-  NOT FOUND, plus the per-release `release-notes-vX.Y.Z.md`. `AUDIT/` — the audit
-  ledger and evidence.
+  NOT FOUND, plus the per-release `release-notes-vX.Y.Z.md`.
 
 ## Build, test, run
 
@@ -128,8 +127,6 @@ misreported its own version over MCP.
 - Scrapers are opt-in (`SEARCH_ENABLE_SCRAPERS=true`). DuckDuckGo throttles to
   roughly one query per 10 s, and Startpage is currently unusable (Anubis
   proof-of-work).
-- Branch state: the `audit/issue-21-ai-scan` branch is **merged** — do not treat it
-  as current.
 
 ## Releasing
 
