@@ -232,7 +232,9 @@ install_searxng_docker() {
     local secret
     secret="$(cat "$secret_file" 2>/dev/null)"
 
-    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$CONTAINER_NAME"; then
+    # Not `grep -q`: grep exits at the first match, SIGPIPEs the producer, and `pipefail` turns the
+# pipeline into 141 — so a match reads as a failure.
+    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -x "$CONTAINER_NAME" >/dev/null; then
         say "removing the previous ${CONTAINER_NAME} container"
         run docker rm -f "$CONTAINER_NAME" >/dev/null || return 1
     fi

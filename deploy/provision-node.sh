@@ -282,7 +282,10 @@ fi
 
 # The installer verified a real query before this point, so this is a state report rather than a
 # second check. It reads the launchd job because the job is what survives a reboot.
-if launchctl list 2>/dev/null | grep -q 'local\.mcps\.searxng'; then
+# Deliberately not `grep -q`: grep exits at the first match, SIGPIPEs the producer, and `pipefail` turns the
+# pipeline into 141 — so a match reads as a failure.
+# Reading all the input keeps the producer alive and the status honest.
+if launchctl list 2>/dev/null | grep 'local\.mcps\.searxng' >/dev/null; then
     say "launchd: loaded (restarts on crash and at login)"
 else
     say "WARNING launchd job local.mcps.searxng is not loaded; the instance will not survive a reboot"

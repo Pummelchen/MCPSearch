@@ -112,7 +112,9 @@ else
 fi
 
 owner="${REPO_SLUG%%/*}"
-if gh auth status 2>&1 | grep -q "account $owner"; then
+# Not `grep -q`: grep exits at the first match, SIGPIPEs the producer, and `pipefail` turns the
+# pipeline into 141 — so a match reads as a failure.
+if gh auth status 2>&1 | grep "account $owner" >/dev/null; then
     pass "gh auth is the repository owner ($owner)"
 else
     fail "gh auth is not $owner of $REPO_SLUG"
@@ -411,12 +413,16 @@ else
     cat "$DIST/assets.txt" >&2
 fi
 published_notes="$(gh release view "$TAG" --repo "$REPO_SLUG" --json body --jq .body)"
-if printf '%s' "$published_notes" | grep -q "$digest"; then
+# Not `grep -q`: grep exits at the first match, SIGPIPEs the producer, and `pipefail` turns the
+# pipeline into 141 — so a match reads as a failure.
+if printf '%s' "$published_notes" | grep "$digest" >/dev/null; then
     pass "published notes quote the real digest"
 else
     fail "published notes do not quote $digest"
 fi
-if printf '%s' "$published_notes" | grep -q 'PENDING'; then
+# Not `grep -q`: grep exits at the first match, SIGPIPEs the producer, and `pipefail` turns the
+# pipeline into 141 — so a match reads as a failure.
+if printf '%s' "$published_notes" | grep 'PENDING' >/dev/null; then
     fail "published notes still contain a PENDING placeholder"
 else
     pass "no placeholder left in the notes"
