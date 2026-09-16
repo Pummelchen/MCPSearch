@@ -198,7 +198,7 @@ See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
 
 ```bash
 swift build                    # debug
-swift test                     # 591 tests, no network required
+swift test                     # 593 tests, no network required
 SEARCH_LIVE_TESTS=1 swift test --filter LiveProviderTests   # opt-in; calls real providers, also needs a key
 python3 scripts/mcp_smoke.py   # end-to-end stdio handshake
 python3 scripts/mcp_smoke.py --http   # end-to-end Streamable HTTP session
