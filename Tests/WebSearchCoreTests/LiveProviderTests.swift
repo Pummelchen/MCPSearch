@@ -208,9 +208,11 @@ final class LiveProviderTests: XCTestCase {
         XCTAssertFalse(LiveProviderTests.isUsableKey("short"))
         XCTAssertFalse(LiveProviderTests.isUsableKey(""))
 
-        // A realistic Tavily key shape is accepted.
+        // A realistic Tavily key shape is accepted. Every value below is synthetic —
+        // never paste real key material into a fixture: this file is public, and a
+        // prefix is still key material.
         XCTAssertTrue(
-            LiveProviderTests.isUsableKey("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")
+            LiveProviderTests.isUsableKey("tvly-dev-0123456789abcdefghijklmnopqrstuvwxyz")
         )
         XCTAssertTrue(
             LiveProviderTests.isUsableKey("tvly-abcdefghijklmnopqrstuvwxyz0123456789")
@@ -228,7 +230,7 @@ final class LiveProviderTests: XCTestCase {
         configuration.providerOrder = [.tavily]
         let http = URLSessionHTTPClient(configuration: configuration)
         let provider = TavilyProvider(
-            apiKey: "tvly-dev-invalid-key-for-classification-test",
+            apiKey: "tvly-dev-0123456789abcdefghijklmnopqrstuvwxyz",
             http: http,
             configuration: configuration
         )
