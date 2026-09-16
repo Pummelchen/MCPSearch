@@ -159,11 +159,13 @@ Leave previous releases' notes and performance tables alone.
   rule an agent cannot find is a rule that will be broken, so a rule about this
   repository belongs in this file or in `AGENTS.md` — not in a shell-script comment,
   and not in another repository.
-- **Work happens in this repository only.** Never commit, push, open a pull request
-  against, or otherwise modify another repository. A change that appears to belong
-  elsewhere is reported to the owner with the exact edit and the reason, not applied.
-  Touching another repository requires an instruction that names it, and "the fix
-  lives there" is not one.
+- **Work happens in this repository only** — and this repository includes its own
+  wiki (`MCPSearch.wiki.git`), which is part of the documentation surface, so keeping
+  its pages in sync with a release is in scope. **Other repositories are out of
+  scope**, with one exception: filing an issue or a pull request against another
+  Pummelchen repository is allowed when the instruction says to. A change that
+  belongs elsewhere but was not asked for is reported to the owner with the exact
+  edit and the reason, not applied.
 - **`AGENTS.md` is the one instruction file, and every harness must reach it.** This
   account works with Codex, Claude Code, DeepSeek Harness, OpenCode, Qwen Code,
   Qoder and Zed. Six read `AGENTS.md` directly; **Claude Code does not** — its
@@ -184,22 +186,35 @@ Leave previous releases' notes and performance tables alone.
 
 # Part 2 — This repository
 
-## MCPSearch — Swift, semantic version, 1 release
+## MCPSearch — Swift, semantic version, 2 releases
 
-- **Identity** `vX.Y.Z`, and it is **declared in three unconnected places**: the
-  authoritative-looking `static let serverVersion = "1.0.0"` in
-  `Sources/SwiftWebSearchMCP/MCPServer.swift`, a second literal in the
-  `clientInfo` dictionary in
-  `Sources/WebSearchCore/Providers/ParallelMCPProvider.swift`, and the
-  `CHANGELOG.md` heading. There is **no `VERSION` file and no check tying them
-  together**, so bumping the version is manual and a half-done bump ships a server
-  that misreports itself over MCP. Introducing the `VERSION` file plus an agreement
-  check is the obvious next step here.
-- **Artifacts** `mcps-X.Y.Z-macos-arm64.tar.gz` + `SHA256SUMS`, with the install
-  instructions carried in the release notes. `v1.0.0` (2026-09-15) is the first.
-- **There is no release script.** `v1.0.0` was cut by hand — no `tools/release.sh`
-  exists — so the packaging, digest and notes sequence in Part 1 has to be walked
-  manually and is not yet reproducible from one command.
+- **Identity** `vX.Y.Z`, **single-sourced and enforced since `v1.0.1`**. `VERSION` at
+  the repository root is authoritative and holds a bare `X.Y.Z`.
+  `Sources/WebSearchCore/Support/BuildVersion.swift` is **generated** from it by
+  `tools/sync-version.sh` and is the only version literal in `Sources/`;
+  `MCPServer.swift` reports it, the Parallel provider sends it as
+  `clientInfo.version`, and the default `SEARCH_USER_AGENT` is built from it. A bump
+  is one edit (`VERSION`) plus one command (`tools/sync-version.sh`).
+  `tools/check-version.sh` fails when the generated mirror does not reproduce
+  byte-for-byte, when `CHANGELOG.md` has no `## [X.Y.Z]` heading, or when a version
+  literal appears anywhere else in `Sources/`. Before `v1.0.1` the version was
+  declared in three unconnected places with nothing tying them together, so a
+  half-done bump shipped a server that misreported itself over MCP.
+- **Artifacts** `mcps-X.Y.Z-macos-arm64.tar.gz`, published beside
+  `mcps-X.Y.Z-macos-arm64.tar.gz.sha256` and `SHA256SUMS`, both carrying the same
+  digest — this section names `SHA256SUMS` and Part 1 §1.7 names `<archive>.sha256`,
+  so both ship. The archive carries both executables, `LICENSE`,
+  `THIRD-PARTY-NOTICES.md` and `README-binaries.txt`; the install instructions live in
+  the release notes. `v1.0.0` (2026-09-15) and `v1.0.1` (2026-09-16) are released.
+- **`tools/release.sh` cuts a release.** Dry run by default, publishing only with
+  `--publish`. It checks the §1.4 preconditions (including that HEAD is the tag and
+  that no competing build is running), runs the §1.5 gates in order, builds with a
+  fresh scratch path and scans the log for compiler warnings, asserts `lipo -archs`
+  is exactly `arm64` on every binary, packages, checksums, renders the notes with the
+  digest of the build it just made, publishes with `--repo` pinned, and then verifies
+  what it published. Every check is reported `PASS`, `FAIL` or `NOT CHECKED`, and it
+  refuses to publish on anything but a clean run. `v1.0.0` was cut by hand; `v1.0.1`
+  is the first release produced by the script.
 - **`main` is unprotected** and carries no rulesets: nothing gates a merge today,
   so the checks below are advisory until that changes.
 - **Code scanning uses CodeQL advanced setup** (`.github/workflows/codeql.yml`,
@@ -217,5 +232,9 @@ Leave previous releases' notes and performance tables alone.
 - **Audit material** lives under `AUDIT/`; `AUDIT/HANDOVER.md` lists what is open
   — notably ISSUE-20, rotating the GitHub PAT in cleartext in the local wiki
   clones' `.git/config`.
-- **Next release needs**, in order: a `VERSION` file, a release script, and the
-  three version literals reduced to one.
+- **Next release** is machinery-complete: bump `VERSION`, run
+  `tools/sync-version.sh`, add the `CHANGELOG.md` section and
+  `docs/release-notes-vX.Y.Z.md`, land it, tag, then `tools/release.sh --publish`.
+- **Known limit in the release script**: it checks for a competing build once, at the
+  start, so a build that begins *during* a release is not detected. These are 8 GB
+  Macs; one heavy build at a time is the working rule.

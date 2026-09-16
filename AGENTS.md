@@ -18,33 +18,39 @@ credential is optional, and the server starts and explains what is missing. Thre
 products share one package — `SwiftWebSearchMCP` (the MCP server, over stdio or
 Streamable HTTP), `mcps-mon` (a live terminal dashboard), and `WebSearchCore` (the
 library). **All search, fetch and reliability logic lives in `WebSearchCore`, which
-contains no MCP code**, so it is testable without a transport. Released `1.0.0`
-(2026-09-15) with prebuilt arm64 binaries and `SHA256SUMS`; there is no Node or
+contains no MCP code**, so it is testable without a transport. Released `1.0.1`
+(2026-09-16) with prebuilt arm64 binaries and `SHA256SUMS`; there is no Node or
 Python runtime. Swift 6.4 / Xcode 27, Apple Silicon only (M1–M6, native `arm64`, no
 Intel slice).
 
 ## Layout
 
-- `Sources/SwiftWebSearchMCP/` — the MCP surface: `MCPServer.swift` (holds the
-  version), `HTTPMCPHost.swift`, `ToolHandlers.swift`, `ToolSchemas.swift`,
-  `main.swift`.
+- `Sources/SwiftWebSearchMCP/` — the MCP surface: `MCPServer.swift` (holds
+  `serverVersion`, which reads `BuildVersion`), `HTTPMCPHost.swift`, `ToolHandlers.swift`,
+  `ToolSchemas.swift`, `main.swift`.
 - `Sources/WebSearchCore/` — `Providers/` (nine `SearchProvider` adapters plus
   scraper support), `Search/` (orchestrator, weighted RRF fusion, cache, circuit
   breaker), `Fetch/` (`URLPolicy` SSRF layer, `HTMLExtractor`, `JinaReaderFetcher`),
-  `Support/` (`HTTPClient`, config, loopback/Origin policy), `Monitor/`.
-- `Tests/WebSearchCoreTests/` (550) and `Tests/MCPSMonitorTests/` (40) — fixtures
+  `Support/` (`HTTPClient`, config, loopback/Origin policy, the generated
+  `BuildVersion.swift`), `Monitor/`.
+- `Tests/WebSearchCoreTests/` (551) and `Tests/MCPSMonitorTests/` (40) — fixtures
   are inline Swift literals, not a resource bundle.
+- `VERSION` — the authoritative version at the repository root. See Identity.
+- `tools/` — the release machinery: `sync-version.sh` (writes the mirrors from
+  `VERSION`), `check-version.sh` (the version-agreement gate CI runs), and
+  `release.sh` (the whole release, dry run by default).
 - `scripts/` — the CI harnesses: `mcp_smoke.py`, `monitor_tty_smoke.py`,
   `coverage_floor.py`, `soak.py`, `harness_tests.py`, `third_party_notices.py`.
 - `deploy/` — a digest-pinned SearXNG compose file and `provision-node.sh`.
 - `docs/` — four research notes whose claims are labelled VERIFIED / UNVERIFIED /
-  NOT FOUND. `AUDIT/` — the audit ledger and evidence.
+  NOT FOUND, plus the per-release `release-notes-vX.Y.Z.md`. `AUDIT/` — the audit
+  ledger and evidence.
 
 ## Build, test, run
 
 ```bash
 swift build                     # release: swift build -c release
-swift test                      # 590 tests, 6 skipped
+swift test                      # 591 tests, 6 skipped
 SEARCH_LIVE_TESTS=1 swift test --filter LiveProviderTests   # opt-in, needs a key
 
 swift run mcps-mon              # --probe adds provider latency
@@ -58,13 +64,27 @@ enforced by `python3 scripts/coverage_floor.py Sources/ 80`.
 
 ## Identity
 
-The version is `static let serverVersion` in
-`Sources/SwiftWebSearchMCP/MCPServer.swift`, reported in the MCP `initialize`
-result. **A second, untied literal sits in
-`Sources/WebSearchCore/Providers/ParallelMCPProvider.swift` (`clientInfo.version`)**,
-and `CHANGELOG.md` carries a third. There is no `VERSION` file and no check tying
-them together, so a bump is manual and a half-done bump ships a server that
-misreports its own version.
+**`VERSION` at the repository root is authoritative.** It holds a bare `X.Y.Z`.
+`Sources/WebSearchCore/Support/BuildVersion.swift` is **generated** from it and is
+the only version literal in `Sources/`; `MCPServer.swift` reports it in the MCP
+`initialize` result, the Parallel provider sends it as `clientInfo.version`, and the
+default `SEARCH_USER_AGENT` is built from it. Editing `BuildVersion.swift` by hand is
+a mistake — `tools/check-version.sh` regenerates the expected content and fails when
+the file differs, when `CHANGELOG.md` has no `## [X.Y.Z]` heading for the version, or
+when a version literal appears anywhere else in `Sources/`.
+
+A bump is therefore **two steps, not one**:
+
+```bash
+printf '1.0.2\n' > VERSION      # 1. the one authoritative edit
+tools/sync-version.sh           # 2. rewrites BuildVersion.swift
+tools/check-version.sh          #    verify (CI runs this too)
+```
+
+Add the `## [X.Y.Z]` changelog section and a `docs/release-notes-vX.Y.Z.md` in the
+same change. Before this arrangement the version lived in three unconnected places
+with nothing tying them together, so a half-done bump shipped a server that
+misreported its own version over MCP.
 
 ## Gates
 
@@ -73,13 +93,16 @@ misreports its own version.
 - `swift package resolve` then `git diff --exit-code Package.resolved` — lockfile
   drift fails the job. Dependencies are pinned with `exact:`.
 - Debug and release builds with `-warnings-as-errors`; then `scripts/mcp_smoke.py`
-  (stdio and `--http`) and `scripts/monitor_tty_smoke.py` (pseudo-terminal).
+  (stdio and `--http`) and `scripts/monitor_tty_smoke.py` (pseudo-terminal). The
+  smoke test also **asserts the server reports the version in `VERSION`** — it used
+  to print the reported version without checking it, so any version passed.
 - A second `swift test` run with **placeholder credentials**, to prove the suite is
   hermetic.
+- **Version mirrors agree with `VERSION`** — `bash tools/check-version.sh`.
 - Static job: `swift-format lint --recursive --strict`, `swiftlint lint --strict`,
-  `ruff check`/`format --check` on `scripts`, `pyright`, `shellcheck`,
-  `gitleaks detect --log-opts=--all`, `osv-scanner`, `semgrep --error`, and
-  `scripts/harness_tests.py`.
+  `ruff check`/`format --check` on `scripts`, `pyright`, `shellcheck` (over
+  `deploy/provision-node.sh` **and `tools/*.sh`**), `gitleaks detect --log-opts=--all`,
+  `osv-scanner`, `semgrep --error`, and `scripts/harness_tests.py`.
 - There are **no git hooks and no pre-commit config** — run the commands yourself.
 
 ## Traps
@@ -111,8 +134,27 @@ misreports its own version.
 ## Releasing
 
 **Read [`RELEASE.md`](RELEASE.md) before cutting a release.** It is this repository's
-own release standard — edited here, not deployed from anywhere — and it carries both
-the general rules and this repository's own section. Do not improvise a release.
+own release standard — edited here, not published from anywhere else — and it carries
+both the general rules and this repository's own section. Do not improvise a release.
+
+Cutting one is a single command once the version is bumped and landed:
+
+```bash
+tools/check-version.sh                 # identity agrees (CI runs it too)
+#  bump VERSION, run tools/sync-version.sh, add the changelog section and
+#  docs/release-notes-vX.Y.Z.md, land it on main
+git tag -a vX.Y.Z -m "MCPSearch X.Y.Z" && git push origin vX.Y.Z
+git checkout vX.Y.Z                    # §1.4: HEAD must be the tag
+tools/release.sh                       # dry run — gates the build, publishes nothing
+tools/release.sh --publish             # only on a clean dry run
+```
+
+`tools/release.sh` walks the standard for you: preconditions, the gates above, a
+clean scratch `arm64` build with the log scanned for compiler warnings, the
+`lipo -archs` assertion, packaging with `README-binaries.txt`, checksums, release
+notes with the real digest substituted at publish time, and `gh release create` with
+the repository pinned. It reports every check as `PASS`, `FAIL` or `NOT CHECKED`,
+and refuses to publish on anything but a clean run.
 
 The non-negotiables:
 
