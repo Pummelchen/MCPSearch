@@ -12,8 +12,9 @@ Drives the built executable through a real MCP handshake and asserts that:
   3. every line written to stdout is valid JSON-RPC (a stray ``print`` anywhere in the
      server would corrupt the MCP stream, so this is checked on every reply);
   4. diagnostics are written to stderr, never stdout;
-  5. ``web_search`` with no provider configured fails as a *tool* error with an
-     actionable message rather than crashing the process.
+  5. ``web_search`` with every credential-free provider switched off and nothing else
+     configured fails as a *tool* error with an actionable message rather than crashing
+     the process.
 
 It also covers the optional Streamable HTTP transport: with ``--http`` the server is
 started on a loopback port, the full stateful session is exercised (session id, SSE
@@ -119,10 +120,24 @@ class Server:
         environment = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "SEARCH_LOG_LEVEL": "debug",
+            # Scrubbing is no longer enough. Providers that need no credential — the scrapers and
+            # Parallel — are on by default, so a child started with a bare environment still has a
+            # working search path, and `check_unconfigured_search_is_a_tool_error` below then
+            # asserted the opposite of the truth: it observed a successful search and failed, on
+            # CI and locally. They are switched off explicitly here. The same correction is in
+            # `Tests/WebSearchCoreTests/TestSupport.swift`; both were needed, and only the Swift
+            # one was made at the time.
+            "SEARCH_ENABLE_SCRAPERS": "false",
+            "SEARCH_ENABLE_PARALLEL": "false",
         }
         # Prove the scrub rather than assume it: the dictionary above is built from scratch, so no
-        # provider variable can be present. Popping keys that were never there asserted nothing
-        leaked = set(environment) & set(SCRUBBED_VARIABLES)
+        # provider variable can be present. Popping keys that were never there asserted nothing.
+        # The two enable flags are deliberately present — set to `false`, which is what makes this
+        # environment free of providers — so they are excluded here rather than dropped from
+        # `SCRUBBED_VARIABLES`, whose exact parity with the Swift harnesses `harness_tests.py`
+        # enforces.
+        deliberate = {"SEARCH_ENABLE_SCRAPERS", "SEARCH_ENABLE_PARALLEL"}
+        leaked = set(environment) & (set(SCRUBBED_VARIABLES) - deliberate)
         assert not leaked, f"the child environment still carries {sorted(leaked)}"
 
         self.process = subprocess.Popen(

@@ -4,6 +4,69 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.2.0] — 2026-09-17
+
+Feature release. **Every provider is on by default**, and installing with a verified local SearXNG
+is now one command. Upgrading needs no configuration change, but the defaults did change: the
+credential-free routes — DuckDuckGo, Startpage and Parallel — were opt-in and now take part in every
+search, so a host with no API keys returns results instead of failing with "no provider configured".
+Full notes: [`docs/release-notes-v1.2.0.md`](docs/release-notes-v1.2.0.md).
+
+### Added
+
+- **`deploy/install.sh`** — installs MCPSearch and treats a working **local SearXNG as mandatory**. It
+  adopts a running instance, installs one when there is none (the digest-pinned container if a Docker
+  daemon answers, otherwise native under `launchd`), proves it answers a real query through the JSON
+  API, then installs the binary, writes `config.env` and verifies a real `web_search`. Any failed gate
+  exits non-zero. Options: `--method`, `--port`, `--bind`, `--from-release`, `--verify-only`,
+  `--dry-run`, `--searxng-only`.
+- **`deploy/provision-node.sh` provisions a cluster node natively.** It is thin by design — sudo,
+  Homebrew, `git`, a Python the native build accepts, then `install.sh --method native
+  --searxng-only` — so the install has one implementation and provisioning cannot drift from what is
+  deployed.
+- **`--searxng-only`** for the installer, so a node needs neither a Swift toolchain nor a published
+  release while still passing the mandatory-SearXNG gate.
+- **`--bind`** for the installer, so an instance can serve the tailnet without being exposed by
+  accident; the default remains loopback.
+
+### Changed
+
+- **Every provider is enabled by default**, including the ones that need no credential. A provider
+  without a credential reports `not_configured` and the others still serve the query.
+  `SEARCH_ENABLE_SCRAPERS` and `SEARCH_ENABLE_PARALLEL` remain, as off switches.
+- **Cluster SearXNG runs natively under `launchd`** rather than in a Colima container. Same listener,
+  no VM in the path, and no login-keychain dependency at install time.
+- **The installer no longer overwrites `config.env`.** It owns `SEARXNG_BASE_URL` and preserves
+  everything else, seeding from the repository's own `config.env` on a first install, so an operator's
+  keys survive a re-run.
+- **The monitor derives its node list from the host.** The local machine was listed twice — a loopback
+  entry *and* its own Tailscale entry — so four machines reported as five.
+- The failure reason for a certificate-trust error now names network interception, because a DNS
+  block page presenting a foreign certificate reads like a TLS defect in this code.
+
+### Fixed
+
+- **`scripts/mcp_smoke.py` asserted a state that no longer existed.** With every provider on by
+  default, its "no provider configured" check searched successfully and failed; the credential-free
+  providers are now switched off explicitly for that check, mirroring the Swift harness.
+- **`grep -q` under `set -o pipefail` reported a match as a failure.** `grep` exits at the first match,
+  SIGPIPEs the producer, and the pipeline returns 141 — so "is the job loaded" said no while it was
+  loaded, and two release-note assertions inverted the same way.
+- **`tools/release.sh`'s shellcheck gate could not fail.** Its `for` loop reported the status of its
+  last iteration, so a defect in an earlier file was masked; it also linted one file where CI lints
+  three.
+- **The monitor reported one machine's failing engine as a fleet-level problem**, because the
+  duplicate node doubled it past the threshold.
+- **The installer demanded install-sized disk headroom for `--verify-only`**, which builds nothing.
+- The monitor's default-node test pinned the duplicate as intended, and the default-node list had no
+  coverage of the local-machine rule.
+
+### Security
+
+- **A test fixture held the first 47 characters of a live Tavily key** in a public repository. It is
+  replaced with synthetic material and `LiveProviderTests` now rejects placeholder keys. The value
+  remains in history: **rotate that key.**
+
 ## [1.0.1] — 2026-09-16
 
 Maintenance release. **The server, fetch and answer code is unchanged from 1.0.0** — the only

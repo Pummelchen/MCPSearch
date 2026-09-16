@@ -11,5 +11,5 @@
 /// Reported in the MCP `initialize` result and sent as the Parallel provider's `clientInfo.version`,
 /// so a user can say which build they are running from the artifact alone (RELEASE.md §1.3).
 public enum BuildVersion {
-    public static let value = "1.0.1"
+    public static let value = "1.2.0"
 }
