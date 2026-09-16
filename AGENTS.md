@@ -167,9 +167,11 @@ misreported its own version over MCP.
   there fails the *certificate* check, so it reads like a defect in this code. Queries to 1.1.1.1
   or 8.8.8.8 seem to agree only because they never arrive — `dig @1.1.1.1 CH TXT id.server`
   answers `noc-dev` (the ISP) over UDP but `cgk01` (Cloudflare, Jakarta) over TCP. TCP/53 and DoH
-  return the real address, and this is **fixed at the tailnet level**: a global nameserver of
-  `https://cloudflare-dns.com/dns-query` with `useWithExitNode: true` and `overrideLocalDNS:
-  true`. Four things bit on the way; know them before touching tailnet DNS:
+  return the real address, and this is **fixed at the tailnet level**: global nameservers of
+  `https://cloudflare-dns.com/dns-query` plus Cloudflare (`1.1.1.1`) and Google (`8.8.8.8`), all
+  with `useWithExitNode: true`, and `overrideLocalDNS: true`. Tailscale upgrades public global
+  nameservers to DoH, which is what keeps the plain addresses clear of the redirect. Four things
+  bit on the way; know them before touching tailnet DNS:
   - **`POST /dns/preferences` replaces the object.** Sending only `overrideLocalDNS` silently
     turned **MagicDNS off**. Always send `magicDNS` alongside it.
   - **`GET /dns/preferences` does not report `overrideLocalDNS`**, so a write that worked looks
