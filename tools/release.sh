@@ -144,7 +144,17 @@ else
     run_gate "swift-format" swift-format lint --recursive --strict Sources Tests Package.swift
     run_gate "swiftlint" swiftlint lint --strict
     run_gate "ruff" bash -c 'ruff check scripts && ruff format --check scripts'
-    run_gate "shellcheck" bash -c 'bash -n deploy/provision-node.sh && shellcheck -S warning deploy/provision-node.sh'
+    # The file list and the `set -e` both matter, and both were wrong before. The list named only
+    # provision-node.sh, so the installer users actually run — and this script itself — were linted
+    # by CI and by nothing in the release gate. And without `set -e` a `for` loop reports the status
+    # of its *last* iteration, so a failure in install.sh was masked by a later tools/*.sh passing:
+    # the widened gate passed while install.sh was deliberately broken. CI's own step is safe
+    # because it runs under `set -euo pipefail`; this now matches it exactly.
+    run_gate "shellcheck" bash -c 'set -euo pipefail
+        for script in deploy/provision-node.sh deploy/install.sh tools/*.sh; do
+            bash -n "$script"
+            shellcheck -S warning "$script"
+        done'
     run_gate "third-party notices" python3 scripts/third_party_notices.py
     run_gate "python harness tests" python3 scripts/harness_tests.py
     if command -v pyright >/dev/null 2>&1; then
