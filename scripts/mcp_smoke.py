@@ -3,7 +3,9 @@
 
 Drives the built executable through a real MCP handshake and asserts that:
 
-  1. ``initialize`` succeeds and reports the expected server identity;
+  1. ``initialize`` succeeds and reports the expected server identity, and reports the
+     version in the repository's ``VERSION`` file — the artifact must state the version it
+     was built from (RELEASE.md §1.3);
   2. ``tools/list`` advertises every documented tool with a usable object schema —
      see ``REQUIRED_TOOLS`` for why this is a presence check rather than an exact
      inventory;
@@ -35,7 +37,13 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+from pathlib import Path
 from typing import Any, cast
+
+# The repository's authoritative version, used to assert that the *artifact* reports the version it
+# was built from (RELEASE.md §1.3: identity must be observable from the program's own answer). Read
+# from `VERSION` rather than hardcoded so a bump cannot leave a stale literal here.
+VERSION_FILE = Path(__file__).resolve().parents[1] / "VERSION"
 
 # Provider and synthesis variables are cleared so the run is hermetic: an exported API
 # key must not change the outcome of this test.
@@ -185,6 +193,14 @@ class Server:
         return self.process.wait(timeout=30)
 
 
+def expected_version() -> str:
+    """The version in the repository's ``VERSION`` file, which the artifact must report."""
+    try:
+        return VERSION_FILE.read_text(encoding="utf-8").strip()
+    except OSError as error:
+        raise Failure(f"cannot read {VERSION_FILE}: {error}") from error
+
+
 def check_initialize(server: Server) -> None:
     response = server.request(
         "initialize",
@@ -203,7 +219,15 @@ def check_initialize(server: Server) -> None:
         raise Failure(f"unexpected server name: {info}")
     if not result_obj.get("protocolVersion"):
         raise Failure("initialize did not negotiate a protocol version")
-    print(f"  initialize ok (server={info.get('name')} {info.get('version')})")
+    # The binary must report the version it was built from (RELEASE.md §1.3). Nothing asserted
+    # this before — the check printed the reported version and moved on, so any version at all
+    # would have passed.
+    expected = expected_version()
+    if info.get("version") != expected:
+        raise Failure(
+            f"server reported version {info.get('version')!r}, expected {expected!r} from VERSION"
+        )
+    print(f"  initialize ok (server={info.get('name')} {info.get('version')} = VERSION)")
 
     server.notify("notifications/initialized")
 

@@ -33,8 +33,9 @@ change. Full notes: [`docs/release-notes-v1.0.1.md`](docs/release-notes-v1.0.1.m
 - **The default `SEARCH_USER_AGENT` carries the real version.** It was the literal
   `SwiftWebSearchMCP/1.0`, which already disagreed with the reported version; it is now
   `SwiftWebSearchMCP/1.0.1`.
-- `initialize` returns `serverInfo.version` from the single source, and the release script asserts the
-  built binary reports it.
+- `initialize` returns `serverInfo.version` from the single source, and `scripts/mcp_smoke.py`
+  asserts the built binary reports it — it used to print the reported version without checking it,
+  so any version would have passed.
 
 ### Fixed
 

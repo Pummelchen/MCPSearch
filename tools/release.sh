@@ -172,9 +172,33 @@ else
     step "full test suite"
     suite_log="$GATE_LOG_DIR/tests.log"
     if swift test >"$suite_log" 2>&1; then
-        count="$(grep -E "Executed [0-9]+ tests" "$suite_log" | tail -1 | sed -n 's/.*Executed \([0-9]*\) tests.*/\1/p')"
-        total="$(grep -E "Executed [0-9]+ tests" "$suite_log" | sed -n 's/.*Executed \([0-9]*\) tests.*/\1/p' | paste -sd+ - | bc)"
-        pass "test suite: $total tests executed (last group $count), 0 failures"
+        # Sum only the per-bundle totals. XCTest prints an "Executed N tests" line for every suite
+        # *and* for each .xctest bundle, so adding up every line double-counts — this reported 1771
+        # for what is a 591-test run. The bundle totals are the lines following "Test Suite
+        # '<name>.xctest' passed"; the 'All tests' line after each duplicates that bundle's own.
+        counts="$(python3 - "$suite_log" <<'PY'
+import pathlib
+import re
+import sys
+
+total = skipped = bundles = 0
+expect = False
+for line in pathlib.Path(sys.argv[1]).read_text(errors="replace").splitlines():
+    if re.match(r"Test Suite '.*\.xctest' (passed|failed)", line.strip()):
+        expect = True
+        continue
+    if expect:
+        match = re.search(r"Executed (\d+) tests?(?:, with (\d+) tests? skipped)?", line)
+        if match:
+            total += int(match.group(1))
+            skipped += int(match.group(2) or 0)
+            bundles += 1
+        expect = False
+print(total, bundles, skipped)
+PY
+)"
+        read -r total bundles skipped <<<"$counts"
+        pass "test suite: $total tests across $bundles bundles, $skipped skipped, 0 failures"
     else
         fail "test suite — see $suite_log"
         tail -20 "$suite_log" | sed 's/^/      /' >&2
@@ -231,23 +255,15 @@ for product in SwiftWebSearchMCP mcps-mon; do
 done
 
 step "parity against the packaged binaries"
+# `mcp_smoke.py` drives a real initialize handshake and asserts the server reports the version in
+# VERSION (RELEASE.md §1.3: identity is observable from the program's own answer). That assertion
+# lives in the harness rather than here, so CI checks it on every pull request too — an ad-hoc
+# version check in this script was the only thing checking it before, and it was broken: piping the
+# request in and closing stdin made the server shut down before it replied, so the reply was empty.
 if [ "$SKIP_GATES" -eq 0 ]; then
     run_gate "mcp_smoke (stdio, release)" python3 scripts/mcp_smoke.py "$BIN_DIR/SwiftWebSearchMCP"
     run_gate "mcp_smoke (http, release)" python3 scripts/mcp_smoke.py --http "$BIN_DIR/SwiftWebSearchMCP"
     run_gate "monitor tty smoke (release)" python3 scripts/monitor_tty_smoke.py "$BIN_DIR/mcps-mon"
-fi
-
-step "assert the artifact states its own version (RELEASE.md §1.3)"
-# "Identity is observable: a user must be able to say what they are running from the artifact alone."
-# `scripts/mcp_smoke.py` prints the server's version but does not assert it, so nothing tied the
-# binary to VERSION. This asks the built server directly over a real initialize handshake.
-product=SwiftWebSearchMCP
-init_request='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18","capabilities":{},"clientInfo":{"name":"release-check","version":"0"}}}'
-init_reply="$(printf '%s\n' "$init_request" | "$BIN_DIR/$product" 2>/dev/null | head -1)"
-if printf '%s' "$init_reply" | grep -q "\"version\":\"$VERSION\""; then
-    pass "$product reports version $VERSION in its initialize result"
-else
-    fail "$product did not report version $VERSION; initialize reply was: ${init_reply:0:200}"
 fi
 
 step "package (RELEASE.md §1.6)"
