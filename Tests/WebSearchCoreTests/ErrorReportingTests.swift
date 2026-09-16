@@ -256,5 +256,21 @@ final class ErrorReportingTests: XCTestCase {
             HTTPError.reason(for: URLError.Code(rawValue: -12_345)),
             "the transport reported error -12345"
         )
+
+        // A certificate-trust failure is the signature of a network-level block page — an
+        // intercepting resolver answers with a host whose certificate does not match — and the
+        // message has to say so. The bare "the server certificate is not trusted" reading sent
+        // an operator hunting for a TLS defect in this code while an upstream resolver was
+        // answering `duckduckgo.com` with a block page.
+        for code in [URLError.Code.serverCertificateUntrusted, .serverCertificateHasUnknownRoot] {
+            XCTAssertTrue(
+                HTTPError.reason(for: code).contains("intercepted"),
+                "\(code) must name network interception: \(HTTPError.reason(for: code))"
+            )
+        }
+        // A genuine expiry is not interception, and must not be described as such.
+        XCTAssertFalse(
+            HTTPError.reason(for: .serverCertificateHasBadDate).contains("intercepted")
+        )
     }
 }

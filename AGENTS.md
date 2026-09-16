@@ -125,8 +125,15 @@ misreported its own version over MCP.
   a plain run cannot spend credits — live tests need `SEARCH_LIVE_TESTS=1` **and** a
   usable `TAVILY_API_KEY`.
 - Scrapers are opt-in (`SEARCH_ENABLE_SCRAPERS=true`). DuckDuckGo throttles to
-  roughly one query per 10 s, and Startpage is currently unusable (Anubis
-  proof-of-work).
+  roughly one query per 10 s, and Startpage is unusable (Anubis proof-of-work).
+- **DuckDuckGo may be unusable where you run it, and the failure does not look like
+  a network problem.** On a DNS-blocking network `duckduckgo.com` resolves to a block
+  page, so the connection lands elsewhere and the *certificate* check fails — that is
+  interception, not a defect here. Every plain resolver returns the same block-page
+  address, so changing resolvers does not help. Even at the real address DuckDuckGo
+  serves an interactive CAPTCHA to some egress IPs, on every endpoint and with either
+  user agent. Scrapers fail over rather than failing a search, so the stable
+  configuration is another provider (Tavily, SearXNG) with scrapers left off.
 
 ## Releasing
 

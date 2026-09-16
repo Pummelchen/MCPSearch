@@ -391,9 +391,13 @@ extension HTTPError {
         case .networkConnectionLost: "the network connection was lost"
         case .notConnectedToInternet: "no network connection is available"
         case .secureConnectionFailed: "the TLS handshake failed"
-        case .serverCertificateUntrusted: "the server certificate is not trusted"
+        case .serverCertificateUntrusted:
+            "the server certificate is not trusted, which usually means the name is "
+                + "intercepted or blocked on this network, not a defect at the target"
         case .serverCertificateHasBadDate: "the server certificate is expired or not yet valid"
-        case .serverCertificateHasUnknownRoot: "the server certificate has an unknown root"
+        case .serverCertificateHasUnknownRoot:
+            "the server certificate has an unknown root, which usually means the name is "
+                + "intercepted on this network"
         case .serverCertificateNotYetValid: "the server certificate is not yet valid"
         case .clientCertificateRejected: "the client certificate was rejected"
         case .clientCertificateRequired: "the server required a client certificate"
