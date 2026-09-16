@@ -61,6 +61,12 @@ public struct NodeStatus: Sendable, Identifiable {
     public var name: String
     /// Where the instance lives, for display.
     public var endpoint: String
+    /// True for the instance on the machine running the monitor.
+    ///
+    /// Carried through from `NodeProbe.Target` because the local instance answers a different
+    /// question from a remote node: if it is down, the server *on this host* has no local
+    /// provider. The field existed but stopped at `Target`, where nothing read it.
+    public var isLocal: Bool
     public var state: State
     public var latencyMilliseconds: Int?
     public var resultCount: Int
@@ -77,10 +83,15 @@ public struct NodeStatus: Sendable, Identifiable {
         checks == 0 ? 0 : Double(checks - failures) / Double(checks)
     }
 
-    public static func pending(name: String, endpoint: String) -> NodeStatus {
+    public static func pending(
+        name: String,
+        endpoint: String,
+        isLocal: Bool = false
+    ) -> NodeStatus {
         NodeStatus(
             name: name,
             endpoint: endpoint,
+            isLocal: isLocal,
             state: .checking,
             latencyMilliseconds: nil,
             resultCount: 0,

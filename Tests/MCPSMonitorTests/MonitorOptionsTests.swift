@@ -40,26 +40,61 @@ final class MonitorOptionsTests: XCTestCase {
         let options = try Options.parse([])
         XCTAssertFalse(options.probeProviders, "probing spends credits, so it is opt-in")
         XCTAssertEqual(options.interval, .seconds(10))
-        XCTAssertEqual(options.nodes.map(\.name).first, "this-mac")
-        XCTAssertEqual(options.nodes.count, 5, "this machine plus four nodes")
+        XCTAssertEqual(
+            options.nodes.filter(\.isLocal).count, 1,
+            "exactly one local instance: \(options.nodes.map(\.name))"
+        )
+        let names = options.nodes.map(\.name)
+        XCTAssertEqual(
+            Set(names).count, names.count,
+            "no machine may be listed twice: \(names)"
+        )
     }
 
-    /// The defaults are this deployment's Tailscale addresses, pinned exactly.
+    /// The local machine is collapsed onto its loopback entry rather than listed twice.
+    ///
+    /// This is the assertion that was wrong. The list carried a loopback `this-mac` *and* the
+    /// local machine's own Tailscale entry, so a four-machine fleet reported five nodes — and
+    /// because the engine warning threshold is a fraction of the node count, one node's failing
+    /// engine was doubled into "unavailable on 2 node(s)", a fleet-level warning for a single
+    /// machine. `localHostname` is injected so this does not depend on the test host.
+    func testDefaultNodesCollapseTheLocalMachineOntoItsLoopbackEntry() {
+        let onNode1 = Options.defaultNodes(localHostname: "node1")
+        XCTAssertEqual(onNode1.map(\.name), ["node1", "node2", "node3", "node4"])
+        XCTAssertEqual(onNode1[0].baseURL.absoluteString, "http://127.0.0.1:8888")
+        XCTAssertTrue(onNode1[0].isLocal)
+        XCTAssertFalse(
+            onNode1.dropFirst().contains(where: \.isLocal),
+            "only the loopback entry is local"
+        )
+
+        // Any other machine keeps all four cluster nodes and adds itself.
+        let onLaptop = Options.defaultNodes(localHostname: "macbook-ab")
+        XCTAssertEqual(
+            onLaptop.map(\.name), ["macbook-ab", "node1", "node2", "node3", "node4"]
+        )
+        XCTAssertTrue(onLaptop[0].isLocal)
+    }
+
+    /// The cluster addresses are this deployment's, pinned exactly.
     ///
     /// The previous assertion only checked `contains(":8888")`, so a stale or mistyped node
-    /// address would have gone unnoticed while the dashboard quietly reported a missing
-    /// node. These are the addresses the wiki documents; change both together.
-    func testDefaultNodesAreTheDocumentedAddresses() throws {
-        let options = try Options.parse([])
+    /// address would have gone unnoticed while the dashboard quietly reported a missing node.
+    /// These are the addresses the wiki documents; change both together.
+    func testClusterNodesAreTheDocumentedAddresses() {
         XCTAssertEqual(
-            options.nodes.map { "\($0.name)=\($0.baseURL.absoluteString)" },
+            Options.clusterNodes.map { "\($0.name)=\($0.baseURL.absoluteString)" },
             [
-                "this-mac=http://127.0.0.1:8888",
                 "node1=http://100.66.125.48:8888",
                 "node2=http://100.97.158.87:8888",
                 "node3=http://100.114.69.128:8888",
                 "node4=http://100.80.144.76:8888",
             ]
+        )
+        XCTAssertFalse(
+            Options.clusterNodes.contains { $0.name == "macbook-ab" },
+            "macbook-ab binds loopback only, so no other machine can probe it — it is the local "
+                + "node when the monitor runs there, not a remote one"
         )
     }
 

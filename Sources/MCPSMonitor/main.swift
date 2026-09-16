@@ -93,7 +93,9 @@ struct Options: Sendable {
 
         OPTIONS
           --node <name=url>      Add a SearXNG node (repeatable). Defaults to this
-                                 machine plus the cluster nodes if reachable.
+                                 machine's own instance plus the cluster nodes. The
+                                 local machine is not listed twice when it is also
+                                 a cluster node.
           --no-nodes             Skip node probing entirely.
           --interval <seconds>   Refresh interval, 1 to 86400. Default 10.
           --probe                Also probe providers with a real search. This spends
@@ -130,43 +132,62 @@ struct Options: Sendable {
           mcps-mon --node n1=http://100.66.125.48:8888
         """
 
-    /// The cluster as it stands, used when no --node is supplied.
+    /// The cluster's SearXNG nodes, by Tailscale address.
     ///
-    /// Addresses are Tailscale, so they work from anywhere the tailnet reaches, not only
-    /// on the local network.
-    static var defaultNodes: [NodeProbe.Target] {
-        [
+    /// Addresses are Tailscale, so they work from anywhere the tailnet reaches, not only on the
+    /// local network.
+    ///
+    /// `macbook-ab` is deliberately absent. It binds loopback only — it is a laptop, and a search
+    /// instance should not follow it onto whatever network it joins next — so no other machine can
+    /// probe it. It appears as *this* machine's local node when the monitor runs there.
+    static let clusterNodes: [NodeProbe.Target] = [
+        NodeProbe.Target(
+            name: "node1", baseURL: URL(string: "http://100.66.125.48:8888")!, isLocal: false
+        ),
+        NodeProbe.Target(
+            name: "node2", baseURL: URL(string: "http://100.97.158.87:8888")!, isLocal: false
+        ),
+        NodeProbe.Target(
+            name: "node3", baseURL: URL(string: "http://100.114.69.128:8888")!, isLocal: false
+        ),
+        NodeProbe.Target(
+            name: "node4", baseURL: URL(string: "http://100.80.144.76:8888")!, isLocal: false
+        ),
+    ]
+
+    /// This machine's short hostname, lowercased to match the cluster names.
+    static var localHostname: String {
+        let short = ProcessInfo.processInfo.hostName.split(separator: ".").first.map(String.init)
+        return (short ?? "this-mac").lowercased()
+    }
+
+    /// The fleet as it stands, used when no --node is supplied.
+    ///
+    /// The local instance is probed over loopback and named after the host, and the matching
+    /// remote entry is then dropped, because it is the *same* instance. This list used to carry
+    /// both — a loopback `this-mac` and the local machine's own Tailscale entry — which made a
+    /// four-machine fleet report five nodes, and turned one node's failing engine into
+    /// "unavailable on 2 node(s)": a fleet-level warning for a single machine.
+    ///
+    /// `localHostname` is a parameter so the rule can be asserted without depending on whichever
+    /// host the tests happen to run on.
+    static func defaultNodes(localHostname: String = Options.localHostname) -> [NodeProbe.Target] {
+        var nodes = [
             NodeProbe.Target(
-                name: "this-mac",
+                name: localHostname,
                 baseURL: URL(string: "http://127.0.0.1:8888")!,
                 isLocal: true
-            ),
-            NodeProbe.Target(
-                name: "node1",
-                baseURL: URL(string: "http://100.66.125.48:8888")!,
-                isLocal: false
-            ),
-            NodeProbe.Target(
-                name: "node2",
-                baseURL: URL(string: "http://100.97.158.87:8888")!,
-                isLocal: false
-            ),
-            NodeProbe.Target(
-                name: "node3",
-                baseURL: URL(string: "http://100.114.69.128:8888")!,
-                isLocal: false
-            ),
-            NodeProbe.Target(
-                name: "node4",
-                baseURL: URL(string: "http://100.80.144.76:8888")!,
-                isLocal: false
-            ),
+            )
         ]
+        nodes += clusterNodes.filter {
+            $0.name.caseInsensitiveCompare(localHostname) != .orderedSame
+        }
+        return nodes
     }
 
     static func parse(_ arguments: [String]) throws -> Options {
         var options = Options(
-            nodes: defaultNodes,
+            nodes: defaultNodes(),
             interval: Duration.seconds(10),
             probeProviders: false,
             useColour: Terminal.isInteractive,
@@ -405,7 +426,11 @@ actor Monitor {
             startedAt: Date(),
             refreshedAt: Date(),
             cycleDuration: .zero,
-            nodes: options.nodes.map { NodeStatus.pending(name: $0.name, endpoint: $0.baseURL.absoluteString) },
+            nodes: options.nodes.map {
+                NodeStatus.pending(
+                    name: $0.name, endpoint: $0.baseURL.absoluteString, isLocal: $0.isLocal
+                )
+            },
             providers: providers,
             warnings: []
         )
@@ -521,7 +546,16 @@ actor Monitor {
     private func buildWarnings(_ model: MonitorModel) -> [String] {
         var warnings: [String] = []
 
-        let downNodes = model.nodes.filter { $0.state == .down }
+        // This machine's own instance first, and separately: if it is down then the server
+        // running here has lost its local provider, which is a different problem from a remote
+        // node being unreachable, and the more urgent one to read.
+        if let local = model.nodes.first(where: \.isLocal), local.state == .down {
+            warnings.append(
+                "this machine's SearXNG (\(local.name)) is down — the local server has no local provider"
+            )
+        }
+
+        let downNodes = model.nodes.filter { $0.state == .down && !$0.isLocal }
         if !downNodes.isEmpty {
             warnings.append(
                 "\(downNodes.count) node(s) unreachable: "

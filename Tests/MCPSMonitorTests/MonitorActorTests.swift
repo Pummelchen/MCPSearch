@@ -51,11 +51,13 @@ final class MonitorActorTests: XCTestCase {
         )
     }
 
-    private func target(_ name: String, _ port: Int) -> NodeProbe.Target {
+    /// `isLocal` defaults to the port-1111 convention these tests already used; pass it
+    /// explicitly when the local-versus-remote distinction is what is under test.
+    private func target(_ name: String, _ port: Int, isLocal: Bool? = nil) -> NodeProbe.Target {
         NodeProbe.Target(
             name: name,
             baseURL: URL(string: "http://127.0.0.1:\(port)")!,
-            isLocal: port == 1111
+            isLocal: isLocal ?? (port == 1111)
         )
     }
 
@@ -266,6 +268,39 @@ final class MonitorActorTests: XCTestCase {
         XCTAssertFalse(
             model.warnings.contains { $0.contains("unavailable on") },
             "one node is not a pattern: \(model.warnings)"
+        )
+    }
+
+    /// This machine's own instance is called out on its own.
+    ///
+    /// It is not the same problem as a remote node being unreachable: if the local instance is
+    /// down, the server *on this host* has lost its local provider. Reporting it only as one more
+    /// entry in "node(s) unreachable" buries the one that matters most.
+    func testALocalNodeDownIsCalledOutOnItsOwn() async {
+        let nodes = [target("node1", 1111), target("node2", 2222)]
+        let client = StubHTTPClient(handlers: [
+            endpoint(2222): payload(up: true, unavailable: "")
+        ])
+        let monitor = Monitor(
+            options: options(nodes: nodes, probeProviders: false),
+            configuration: configuration(),
+            http: FailingEndpointClient(failing: endpoint(1111), underlying: client),
+            log: .disabled
+        )
+
+        let model = await monitor.refresh(forceProbeProviders: false)
+
+        XCTAssertEqual(
+            model.nodes.first { $0.isLocal }?.state, NodeStatus.State.down,
+            "the local node is the one this test failed"
+        )
+        XCTAssertTrue(
+            model.warnings.contains { $0.contains("this machine's SearXNG (node1) is down") },
+            "the local instance gets its own warning: \(model.warnings)"
+        )
+        XCTAssertFalse(
+            model.warnings.contains { $0.contains("node(s) unreachable") },
+            "the local node must not also be counted among the remote ones: \(model.warnings)"
         )
     }
 
