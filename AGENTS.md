@@ -166,10 +166,22 @@ misreported its own version over MCP.
   serves nothing; connecting there fails the *certificate* check, so it reads as a defect in
   this code. Queries to 1.1.1.1 or 8.8.8.8 appear to agree only because they never arrive:
   `dig @1.1.1.1 CH TXT id.server` answers `noc-dev` (the ISP) over UDP but `cgk01`
-  (Cloudflare, Jakarta) over TCP. **TCP/53 and DoH return the real address**, so this is
-  fixable without leaving the LAN — set a DoH **global nameserver in the Tailscale admin
-  console**, because MagicDNS is the system resolver on every machine and currently forwards
-  to the DHCP-provided ISP resolvers. **(2)** DuckDuckGo also serves an interactive CAPTCHA
+  (Cloudflare, Jakarta) over TCP. **TCP/53 and DoH return the real address**, so this is fixable
+  without leaving the LAN, and it is now fixed at the tailnet level: a global nameserver of
+  `https://cloudflare-dns.com/dns-query`, with `useWithExitNode: true` and `overrideLocalDNS:
+  true`. Three things bit on the way, all worth knowing before touching tailnet DNS again:
+  - **`POST /dns/preferences` replaces the object.** Sending only `overrideLocalDNS` silently
+    turned **MagicDNS off**. Always send `magicDNS` alongside it.
+  - **`GET /dns/preferences` does not report `overrideLocalDNS`**, so a write that worked looks
+    like it failed. Read back `/dns/configuration`, which reports the whole thing.
+  - **`/dns/nameservers` takes flat strings and rejects `useWithExitNode`**; the combined
+    `/dns/configuration` endpoint is the one that accepts `{address, useWithExitNode}`. Without
+    it, a device on an exit node ignores the tailnet nameserver entirely.
+  - **macOS manual DNS beats MagicDNS.** Per-service DNS servers win over Tailscale's resolver
+    even with `overrideLocalDNS` — including a service literally named "Tailscale". One machine
+    kept the block page until `networksetup -setdnsservers <service> Empty` ran for every
+    service. The signature is `scutil --dns` showing the ISP resolvers while
+    `dig @100.100.100.100 duckduckgo.com` already returns the real address. **(2)** DuckDuckGo also serves an interactive CAPTCHA
   from time to time — *"select all squares containing a duck"* as HTTP 202 — and **it is
   transient**: after a burst of probing every endpoint and user agent returned it, and a single
   polite request later returned 12 real results. Do not conclude from one challenge that the
