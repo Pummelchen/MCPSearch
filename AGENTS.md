@@ -149,14 +149,19 @@ misreported its own version over MCP.
   usable `TAVILY_API_KEY`.
 - Scrapers are opt-in (`SEARCH_ENABLE_SCRAPERS=true`). DuckDuckGo throttles to
   roughly one query per 10 s, and Startpage is unusable (Anubis proof-of-work).
-- **DuckDuckGo may be unusable where you run it, and the failure does not look like
-  a network problem.** On a DNS-blocking network `duckduckgo.com` resolves to a block
-  page, so the connection lands elsewhere and the *certificate* check fails — that is
-  interception, not a defect here. Every plain resolver returns the same block-page
-  address, so changing resolvers does not help. Even at the real address DuckDuckGo
-  serves an interactive CAPTCHA to some egress IPs, on every endpoint and with either
-  user agent. Scrapers fail over rather than failing a search, so the stable
-  configuration is another provider (Tavily, SearXNG) with scrapers left off.
+- **DuckDuckGo may be unusable where you run it, and the failure looks like a TLS bug.**
+  Two independent faults, worth telling apart. **(1)** Here the ISP redirects **UDP/53** to
+  its own resolver, which answers `duckduckgo.com` with `rpz.biznet.` and an address that
+  serves nothing; connecting there fails the *certificate* check, so it reads as a defect in
+  this code. Queries to 1.1.1.1 or 8.8.8.8 appear to agree only because they never arrive:
+  `dig @1.1.1.1 CH TXT id.server` answers `noc-dev` (the ISP) over UDP but `cgk01`
+  (Cloudflare, Jakarta) over TCP. **TCP/53 and DoH return the real address**, so this is
+  fixable without leaving the LAN — set a DoH **global nameserver in the Tailscale admin
+  console**, because MagicDNS is the system resolver on every machine and currently forwards
+  to the DHCP-provided ISP resolvers. **(2)** Even at the real address DuckDuckGo serves an
+  interactive CAPTCHA to some egress IPs, on every endpoint and with either user agent.
+  Scrapers fail over rather than failing a search, so the stable configuration is another
+  provider (Tavily, SearXNG) with scrapers left off.
 
 ## Releasing
 
