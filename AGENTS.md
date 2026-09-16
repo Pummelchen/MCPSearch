@@ -177,11 +177,12 @@ misreported its own version over MCP.
   - **`/dns/nameservers` takes flat strings and rejects `useWithExitNode`**; the combined
     `/dns/configuration` endpoint takes `{address, useWithExitNode}`. Without that flag, a device
     on an exit node ignores the tailnet nameserver entirely.
-  - **macOS per-service DNS beats MagicDNS**, even with `overrideLocalDNS`, including on a
-    service named "Tailscale". One machine kept the block page until
-    `networksetup -setdnsservers <service> Empty` ran for every service. Signature:
-    `scutil --dns` shows the ISP resolvers while `dig @100.100.100.100 duckduckgo.com` already
-    returns the real address.
+  - **macOS per-service DNS coexists with MagicDNS; it does not override it.** Setting the
+    public resolvers on every network service leaves `100.100.100.100` as `scutil --dns`
+    resolver #1, and DuckDuckGo keeps resolving, on all five machines. An earlier version of
+    this note claimed per-service DNS beat MagicDNS — **that was a misattribution**. The machine
+    that looked broken was on an exit node and its new DNS configuration had not been applied
+    yet; clearing its per-service DNS coincided with the fix rather than causing it.
 
   **(b) The CAPTCHA is transient.** DuckDuckGo serves an interactive challenge — *"select all
   squares containing a duck"* as HTTP 202 — from time to time. A burst of probing produced it on
