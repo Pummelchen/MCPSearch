@@ -21,6 +21,8 @@
 # Options:
 #   --prefix DIR        install root              (default ~/Library/Application Support/MCPSearch)
 #   --port N            SearXNG port to use/install (default 8888)
+#   --bind ADDRESS      interface SearXNG listens on (default 127.0.0.1). Use 0.0.0.0 to
+#                       serve other machines, which is what the cluster nodes did before.
 #   --searxng-url URL   use this instance instead of installing one
 #   --method auto|docker|native                    (default auto)
 #   --from-release      download the released arm64 binary instead of building from source
@@ -38,6 +40,8 @@ set -uo pipefail
 
 PREFIX="${HOME}/Library/Application Support/MCPSearch"
 PORT=8888
+BIND="127.0.0.1"
+BIND_EXPLICIT=0
 SEARXNG_URL=""
 METHOD="auto"
 FROM_RELEASE=0
@@ -74,6 +78,7 @@ while [ $# -gt 0 ]; do
     case "$1" in
         --prefix) PREFIX="${2:?--prefix needs a value}"; shift 2 ;;
         --port) PORT="${2:?--port needs a value}"; shift 2 ;;
+        --bind) BIND="${2:?--bind needs a value}"; BIND_EXPLICIT=1; shift 2 ;;
         --searxng-url) SEARXNG_URL="${2:?--searxng-url needs a value}"; shift 2 ;;
         --method) METHOD="${2:?--method needs a value}"; shift 2 ;;
         --from-release) FROM_RELEASE=1; shift ;;
@@ -276,17 +281,39 @@ install_searxng_native() {
             # receives it as SEARXNG_SECRET and an environment variable wins. A launchd job has no
             # such environment, so the key is written here — generated per install, never tracked —
             # and the bind narrows to loopback, which the container gets from its port mapping.
-            python3 - "${REPO_ROOT}/deploy/searxng/settings.yml" "${SEARXNG_DIR}/etc/settings.yml" "$PORT" "$secret" <<'PY' || return 1
+            python3 - "${REPO_ROOT}/deploy/searxng/settings.yml" "${SEARXNG_DIR}/etc/settings.yml" "$PORT" "$secret" "$BIND" <<'PY' || return 1
 import pathlib, sys
-src, dst, port, secret = sys.argv[1:5]
+src, dst, port, secret, bind = sys.argv[1:6]
 text = pathlib.Path(src).read_text(encoding="utf-8")
 text = text.replace("  port: 8080", f"  port: {port}")
-text = text.replace('  bind_address: "0.0.0.0"', '  bind_address: "127.0.0.1"')
+text = text.replace('  bind_address: "0.0.0.0"', f'  bind_address: "{bind}"')
 text = text.replace("server:\n", f'server:\n  secret_key: "{secret}"\n', 1)
 pathlib.Path(dst).write_text(text, encoding="utf-8")
 PY
             chmod 600 "${SEARXNG_DIR}/etc/settings.yml"
         fi
+    fi
+
+    # Converge the listener on every run. The file above is only written once, so without this a
+    # re-run with a different --port would leave the old one in place and the verification would
+    # then probe a port nothing had ever bound.
+    if [ "$DRY_RUN" -eq 0 ]; then
+        python3 - "${SEARXNG_DIR}/etc/settings.yml" "$PORT" "$BIND" <<'PY' || return 1
+import pathlib, sys
+path, port, bind = pathlib.Path(sys.argv[1]), sys.argv[2], sys.argv[3]
+lines = path.read_text(encoding="utf-8").splitlines(keepends=True)
+seen_port = seen_bind = False
+for index, line in enumerate(lines):
+    if not seen_port and line.lstrip().startswith("port:"):
+        lines[index] = f"  port: {port}\n"
+        seen_port = True
+    elif not seen_bind and line.lstrip().startswith("bind_address:"):
+        lines[index] = f'  bind_address: "{bind}"\n'
+        seen_bind = True
+    if seen_port and seen_bind:
+        break
+path.write_text("".join(lines), encoding="utf-8")
+PY
     fi
 
     # Guard on the import, not on the venv existing. An interrupted run leaves a valid virtualenv
@@ -327,7 +354,11 @@ PLIST
         launchctl unload "$plist" >/dev/null 2>&1
         launchctl load "$plist" >/dev/null 2>&1 || return 1
     fi
-    say "started SearXNG natively on 127.0.0.1:${PORT} (launchd, KeepAlive)"
+    say "started SearXNG natively on ${BIND}:${PORT} (launchd, KeepAlive, label local.mcps.searxng)"
+    if [ "$BIND" != "127.0.0.1" ]; then
+        say "note: ${BIND} serves other machines too. The launchd label is fixed, so one native"
+        say "      SearXNG per machine is what this supports — a second prefix replaces the first."
+    fi
 }
 
 step "SearXNG"
@@ -340,6 +371,13 @@ else
     existing="$(searxng_answers "$BASE" || true)"
     if [ -n "$existing" ]; then
         pass "a working SearXNG is already listening on ${BASE} (${existing} results)"
+        # An instance that is already serving is left alone, which also means its listener is
+        # left alone — it may be a container, or another install with its own settings. Saying so
+        # matters because --bind would otherwise look like it had been applied.
+        if [ "$BIND_EXPLICIT" -eq 1 ]; then
+            warn "--bind ${BIND} was not applied: this instance was already running and is adopted as-is"
+            say "      To move it: stop that instance, then re-run this installer."
+        fi
     elif [ "$VERIFY_ONLY" -eq 1 ]; then
         fail "no working SearXNG on ${BASE} (--verify-only changes nothing)"
     else
@@ -481,7 +519,7 @@ else
     outcome="$(python3 - "$BIN" "$CFG" <<'PY' 2>/dev/null || true
 import json, os, subprocess, sys, threading
 binpath, cfg = sys.argv[1], sys.argv[2]
-env = {k: v for k, v in os.environ.items() if not k.startswith("SEARCH_") and "API_KEY" not in k}
+env = {k: v for k, v in os.environ.items() if not k.startswith("SEARCH_") and not k.endswith("_KEY")}
 env["SEARCH_CONFIG_FILE"] = cfg
 proc = subprocess.Popen([binpath], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                         stderr=subprocess.DEVNULL, text=True, bufsize=1, env=env)
