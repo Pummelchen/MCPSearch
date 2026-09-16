@@ -494,14 +494,32 @@ step "configuration"
 CFG="${ETC_DIR}/config.env"
 if [ "$DRY_RUN" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
     umask 077
+    # Own only the line this installer is responsible for. It used to rewrite the whole file,
+    # which silently dropped every API key an operator had put there — and keys are the one thing
+    # that must not go missing quietly. An existing file is the base; failing that, the repository
+    # root's own config.env, which is where the README tells people to keep keys.
+    base=""
+    if [ -f "$CFG" ]; then base="$CFG"; elif [ -f "${REPO_ROOT}/config.env" ]; then base="${REPO_ROOT}/config.env"; fi
+    staged="$(umask 077 && mktemp)" || die "could not stage ${CFG}"
+    if [ -n "$base" ]; then
+        grep -v '^[[:space:]]*SEARXNG_BASE_URL=' "$base" > "$staged" || true
+    else
+        {
+            printf '# Written by deploy/install.sh. Read by SwiftWebSearchMCP via SEARCH_CONFIG_FILE.\n'
+            printf '# Environment variables override this file.\n\n'
+        } > "$staged"
+    fi
     {
-        printf '# Written by deploy/install.sh. Read by SwiftWebSearchMCP via SEARCH_CONFIG_FILE.\n'
-        printf '# Environment variables override this file.\n\n'
         printf '# The local SearXNG this install requires. No key, no account, no per-query cost.\n'
         printf 'SEARXNG_BASE_URL=%s\n' "$BASE"
-    } > "$CFG" || die "could not write ${CFG}"
+    } >> "$staged"
+    mv "$staged" "$CFG" || die "could not write ${CFG}"
     chmod 600 "$CFG"
-    pass "wrote ${CFG} (mode 600, SEARXNG_BASE_URL=${BASE})"
+    if [ -n "$base" ] && [ "$base" != "$CFG" ]; then
+        pass "wrote ${CFG} (mode 600, SEARXNG_BASE_URL=${BASE}) seeded from ${base}; existing keys preserved"
+    else
+        pass "wrote ${CFG} (mode 600, SEARXNG_BASE_URL=${BASE}); any other lines preserved"
+    fi
 else
     say "DRY   would write ${CFG} with SEARXNG_BASE_URL=${BASE}"
 fi
