@@ -35,7 +35,13 @@ public struct ProviderProbe: Sendable {
         SearchPipelineFactory.make(configuration: configuration, http: http, log: log).registry
     }
 
-    /// Providers in display order: usable first, then unconfigured ones.
+    /// Providers in display order.
+    ///
+    /// Deliberately the configured order, unchanged: `SEARCH_PROVIDER_ORDER` is a preference
+    /// the operator set, and a dashboard that quietly reordered it would disagree with the
+    /// server about which provider is tried first. An earlier comment here claimed "usable
+    /// first, then unconfigured ones" — nothing ever sorted, and the display interleaves them
+    /// where the order puts them.
     public func probeTargets() -> [ProviderID] {
         configuration.providerOrder
     }

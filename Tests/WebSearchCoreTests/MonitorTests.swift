@@ -121,10 +121,15 @@ final class RendererTests: XCTestCase {
         )
     }
 
-    private func node(_ name: String, state: NodeStatus.State) -> NodeStatus {
+    private func node(
+        _ name: String,
+        state: NodeStatus.State,
+        isLocal: Bool = false
+    ) -> NodeStatus {
         NodeStatus(
             name: name,
             endpoint: "http://\(name):8888",
+            isLocal: isLocal,
             state: state,
             latencyMilliseconds: 900,
             resultCount: 25,
