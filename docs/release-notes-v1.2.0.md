@@ -89,16 +89,36 @@ broken.
 and a syntax error in the last file in the loop — and confirmed to pass on clean input. CI's own step
 was already safe: it runs under `set -euo pipefail`.
 
-## The smoke test asserted a state that no longer existed
+## Both smoke harnesses asserted a state that no longer existed
 
 `scripts/mcp_smoke.py` required `web_search` to fail with "no provider configured" when started with a
 scrubbed environment. With every provider on by default, that environment still has a working search
-path, so the check observed a *successful* search and failed. The credential-free providers are now
-switched off explicitly for that check — the same correction the Swift harness carries. Scrubbing was
-enough only while every provider needed a credential.
+path, so the check observed a *successful* search and failed — this is why CI was red on `3257b0b`.
+The credential-free providers are now switched off explicitly for that check.
 
-**Check:** the failure was reproduced locally before the fix, byte-for-byte the same message CI
-reported, and both halves — stdio and Streamable HTTP — pass afterwards.
+`scripts/monitor_tty_smoke.py` carried the same assumption with a different symptom, and the release
+gate found it: the dashboard **probes the configured providers on its first frame**, so with a bare
+environment that frame waited on a live DuckDuckGo request. Measured against one binary, first frame:
+
+| credential-free providers | time to first frame |
+| --- | --- |
+| off | 0.03 s |
+| on (the new default) | 2.02 s |
+
+The harness polls at 0.4 s, saw no frame, and failed. It also made a smoke test depend on the network
+and on a search engine's mood, which is what its own scrub list exists to prevent. Those providers are
+now switched off explicitly there too.
+
+The wait loop was fragile in its own right: a predicate that reads a frame *raises* when no frame has
+completed yet, and letting that escape defeated the point of waiting. It now treats that as "not yet"
+and keeps polling, so a slow start is waited out while a monitor that never paints still fails on the
+timeout, with the reason attached.
+
+**Check:** the `mcp_smoke` failure was reproduced locally before the fix, byte-for-byte the message CI
+reported, and both halves — stdio and Streamable HTTP — pass after it. The monitor failure was
+reproduced against the release binary, attributed by timing the same binary with the flags on and off,
+and fixed; it then passes, the pre-existing `v1.0.1` binary still passes, and the harness still fails
+against a binary that is not the monitor.
 
 ## Security: key material in a public test fixture
 

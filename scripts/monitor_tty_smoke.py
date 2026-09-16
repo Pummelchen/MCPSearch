@@ -206,10 +206,23 @@ class Session:
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "SEARXNG_BASE_URL": base_url,
             "SEARCH_LOG_LEVEL": "warning",
+            # Scrubbing is no longer enough. Providers that need no credential are on by default,
+            # and this dashboard probes the configured providers on its first frame — so with a
+            # bare environment that frame waited on a live DuckDuckGo request. Measured: first
+            # frame at 0.03s with these off, 2.02s with them on, while this harness polls at 0.4s,
+            # so it saw no frame and the release gate failed. It also made a smoke test depend on
+            # the network and on a search engine's mood, which is what the scrub list above exists
+            # to prevent. They are switched off explicitly here.
+            "SEARCH_ENABLE_SCRAPERS": "false",
+            "SEARCH_ENABLE_PARALLEL": "false",
         }
         # Prove the scrub rather than assume it: the dictionary above is built from scratch, so no
-        # provider variable can be present. Popping keys that were never there asserted nothing
-        leaked = set(environment) & set(SCRUBBED_VARIABLES)
+        # provider variable can be present. Popping keys that were never there asserted nothing.
+        # The two flags are deliberately present — set to `false`, which is what keeps this child
+        # off the network — so they are excluded here rather than dropped from
+        # `SCRUBBED_VARIABLES`.
+        deliberate = {"SEARCH_ENABLE_SCRAPERS", "SEARCH_ENABLE_PARALLEL"}
+        leaked = set(environment) & (set(SCRUBBED_VARIABLES) - deliberate)
         if leaked:
             raise Failure(f"the child environment still carries {sorted(leaked)}")
 
@@ -283,6 +296,7 @@ class Session:
         it ever paints a frame.
         """
         deadline = time.monotonic() + timeout
+        last_error: Failure | None = None
         while time.monotonic() < deadline:
             self.drain(0.4)
             exit_code = self.process.poll()
@@ -291,8 +305,20 @@ class Session:
                     f"the monitor exited with {exit_code} while waiting for {description}: "
                     f"{ANSI.sub('', self.transcript)[-300:]!r}"
                 )
-            if predicate(self):
+            # A predicate that reads a frame raises when no frame has completed yet, and letting
+            # that escape defeats the point of waiting: the first poll is at 0.4s, while a monitor
+            # whose first frame probes a provider needs longer than that. Treat it as "not yet"
+            # and keep polling, so a slow start is waited out while a monitor that never paints
+            # still fails on the timeout below, with the reason attached.
+            try:
+                satisfied = predicate(self)
+            except Failure as error:
+                last_error = error
+                satisfied = False
+            if satisfied:
                 return
+        if last_error is not None:
+            raise Failure(f"timed out waiting for {description}: {last_error}")
         raise Failure(f"timed out waiting for {description}")
 
     def close(self) -> None:
