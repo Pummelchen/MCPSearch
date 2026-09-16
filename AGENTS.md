@@ -59,7 +59,12 @@ deploy/install.sh --from-release    # install the published arm64 binary
 deploy/install.sh --method native   # no container runtime
 deploy/install.sh --verify-only     # change nothing, re-check
 deploy/install.sh --dry-run         # print what would happen
+deploy/install.sh --bind 0.0.0.0 --port 8888   # serve other machines (default is loopback)
 ```
+
+`--bind` defaults to `127.0.0.1`, and an instance that is **already running is adopted as-is** —
+`--bind`/`--port` are then reported as not applied rather than silently ignored, because the
+running instance may be a container or another install. Stop it first to move it.
 
 Two traps it exists to absorb, both hit for real: Docker Desktop's credential store needs the
 login keychain, which a non-interactive session cannot unlock, so even a public image pull fails
@@ -147,8 +152,14 @@ misreported its own version over MCP.
 - Keys belong in the git-ignored `config.env`. `swift test` is hermetic by design, so
   a plain run cannot spend credits — live tests need `SEARCH_LIVE_TESTS=1` **and** a
   usable `TAVILY_API_KEY`.
-- Scrapers are opt-in (`SEARCH_ENABLE_SCRAPERS=true`). DuckDuckGo throttles to
-  roughly one query per 10 s, and Startpage is unusable (Anubis proof-of-work).
+- **Every provider is on by default**, including the ones needing no credential: the scrapers
+  and Parallel. A provider with no credential reports `not_configured` and the rest still serve
+  the query, so an unconfigured install searches rather than refusing. `SEARCH_ENABLE_SCRAPERS`
+  and `SEARCH_ENABLE_PARALLEL` can still turn the credential-free ones off, which is how the
+  stdio test harness keeps the suite offline: providers that need no key are a live network
+  dependency, and scrubbing credentials alone stopped being enough.
+- DuckDuckGo throttles to roughly one query per 10 s, and Startpage is usually unusable
+  (Anubis proof-of-work) — enabled regardless, since trying costs one request.
 - **DuckDuckGo may be unusable where you run it, and the failure looks like a TLS bug.**
   Two independent faults, worth telling apart. **(1)** Here the ISP redirects **UDP/53** to
   its own resolver, which answers `duckduckgo.com` with `rpz.biznet.` and an address that
@@ -158,10 +169,12 @@ misreported its own version over MCP.
   (Cloudflare, Jakarta) over TCP. **TCP/53 and DoH return the real address**, so this is
   fixable without leaving the LAN — set a DoH **global nameserver in the Tailscale admin
   console**, because MagicDNS is the system resolver on every machine and currently forwards
-  to the DHCP-provided ISP resolvers. **(2)** Even at the real address DuckDuckGo serves an
-  interactive CAPTCHA to some egress IPs, on every endpoint and with either user agent.
-  Scrapers fail over rather than failing a search, so the stable configuration is another
-  provider (Tavily, SearXNG) with scrapers left off.
+  to the DHCP-provided ISP resolvers. **(2)** DuckDuckGo also serves an interactive CAPTCHA
+  from time to time — *"select all squares containing a duck"* as HTTP 202 — and **it is
+  transient**: after a burst of probing every endpoint and user agent returned it, and a single
+  polite request later returned 12 real results. Do not conclude from one challenge that the
+  provider is dead, and do not probe it hard to find out. Scrapers fail over rather than failing
+  a search, so a challenge costs a request, not a result.
 
 ## Releasing
 

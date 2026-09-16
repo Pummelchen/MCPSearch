@@ -51,7 +51,16 @@ public struct AppConfiguration: Sendable, Hashable {
     public var fastTimeout: Duration
     public var balancedTimeout: Duration
     public var thoroughTimeout: Duration
+    /// Whether the HTML scrapers (DuckDuckGo, Startpage) take part.
+    ///
+    /// **On by default**, like every other provider. This installation runs every provider it
+    /// defines and lets each one report its own condition — missing credential, unreachable,
+    /// challenged — rather than pre-selecting a curated subset. A provider that cannot serve a
+    /// query fails over instead of failing the search, so having one on costs a request and
+    /// never costs a result. Turn it off with `SEARCH_ENABLE_SCRAPERS=false`.
     public var enableScrapers: Bool
+    /// Whether the Parallel Search MCP provider takes part. On by default, for the same reason
+    /// as `enableScrapers`; `SEARCH_ENABLE_PARALLEL=false` turns it off.
     public var enableParallel: Bool
     public var enableJinaReaderFallback: Bool
     public var cacheTTL: Duration
@@ -129,8 +138,8 @@ public struct AppConfiguration: Sendable, Hashable {
         fastTimeout: Duration = .milliseconds(12_000),
         balancedTimeout: Duration = .milliseconds(15_000),
         thoroughTimeout: Duration = .milliseconds(20_000),
-        enableScrapers: Bool = false,
-        enableParallel: Bool = false,
+        enableScrapers: Bool = true,
+        enableParallel: Bool = true,
         enableJinaReaderFallback: Bool = true,
         cacheTTL: Duration = .seconds(120),
         requestTimeout: Duration = .seconds(10),

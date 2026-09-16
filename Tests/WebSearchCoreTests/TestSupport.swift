@@ -193,6 +193,12 @@ final class ServerProcess {
         for key in ServerTestSupport.providerEnvironmentVariables {
             merged.removeValue(forKey: key)
         }
+        // Scrubbing the credentials is not enough any more. Providers that need no credential —
+        // the scrapers, and SearXNG at whatever the ambient environment points at — are **on by
+        // default**, so a test that names no environment still has a live search path, and the
+        // suite silently acquires a network dependency. A test that wants one asks for it.
+        merged[AppConfiguration.Key.enableScrapers.rawValue] = "false"
+        merged[AppConfiguration.Key.enableParallel.rawValue] = "false"
         for (key, value) in environment { merged[key] = value }
         process.environment = ServerTestSupport.childEnvironment(base: merged)
 

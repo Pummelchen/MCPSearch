@@ -15,8 +15,9 @@ server that gives local AI clients reliable public-web search and page fetching.
   with zero API keys and reports exactly what is missing.
 - **Grounded, not generated.** The optional answer layer may only use results that real
   providers already fetched, so it abstains rather than inventing facts or URLs.
-- **API-first.** Supported JSON APIs and self-hosted SearXNG are preferred. HTML
-  scrapers exist but are opt-in and rate limited.
+- **Every provider on.** All nine routes are enabled by default, including the ones that
+  need no key. A provider without a credential reports `not_configured` and the others still
+  answer; HTML scrapers are rate limited and never fail a search on their own.
 - **One vendor outage never fails a search.** Providers fail over; only total failure
   is an error.
 - **Rank fusion, not score comparison.** Provider relevance scores are not on a shared
@@ -60,7 +61,8 @@ Or do it by hand — download a prebuilt macOS binary for Apple silicon (M1 and 
 swift build -c release
 ```
 
-Point your MCP client at the server and give it at least one provider:
+It runs with **no credentials at all**: DuckDuckGo needs none, and a local SearXNG needs none.
+Add keys to switch on more providers — this is optional, and every provider is already on:
 
 ```bash
 export TAVILY_API_KEY=tvly-...       # or
@@ -149,21 +151,21 @@ export DEEPSEEK_API_KEY=sk-...   # optional; adds web_answer
 
 ## Providers
 
-No account is required to run this. Five of the routes below need no vendor key at all: two
-of them still need an endpoint you point them at (a SearXNG instance, or an Open Web Search
-aggregator), two are opt-in scrapers, and Parallel needs only its flag.
+No account is required to run this. **Every route below is enabled by default.** Five need no
+vendor key at all: two still need an endpoint you point them at (a SearXNG instance, or an Open
+Web Search aggregator), two are scrapers that need nothing, and Parallel needs only its flag.
 
 | Route | Needs | Notes |
 | --- | --- | --- |
 | **Self-hosted SearXNG** | Docker, plus `SEARXNG_BASE_URL` | Aggregates Google and Brave with no vendor key. See [Self-Hosting](https://github.com/Pummelchen/MCPSearch/wiki/Self-Hosting). |
-| **Parallel Search MCP** | `SEARCH_ENABLE_PARALLEL=true` | Free anonymous tier, measured at exactly 20 calls per window. |
-| **DuckDuckGo** | `SEARCH_ENABLE_SCRAPERS=true` | Free scraper. Throttles to about one query per 10s. |
+| **Parallel Search MCP** | nothing (on by default) | Free anonymous tier, measured at exactly 20 calls per window. `SEARCH_ENABLE_PARALLEL=false` turns it off. |
+| **DuckDuckGo** | nothing (on by default) | Free scraper. Throttles to about one query per 10s. `SEARCH_ENABLE_SCRAPERS=false` turns it off. |
 | Tavily | `TAVILY_API_KEY` | Good on keyword queries; weaker on interpretive ones. 1 credit per search. |
 | Brave Search | `BRAVE_SEARCH_API_KEY` | Broad independent index. |
 | Mojeek | `MOJEEK_API_KEY` | Independent index, for diversity. Paid API. |
 | Exa | `EXA_API_KEY` | Neural retrieval and highlights. |
 | Open Web Search | `OPEN_WEB_SEARCH_URL` | No vendor key: an aggregation endpoint you supply. Contract unverified. |
-| Startpage | `SEARCH_ENABLE_SCRAPERS=true` | Currently unusable: the site serves an Anubis proof-of-work challenge. |
+| Startpage | nothing (on by default) | Usually unusable: the site serves an Anubis proof-of-work challenge. Enabled anyway, because it costs nothing to try and the day it answers is the day we find out. |
 
 Run at least two providers. A single provider is brittle in practice: measured on this
 deployment, DuckDuckGo alone failed 41 of 50 queries once its throttle was reached,

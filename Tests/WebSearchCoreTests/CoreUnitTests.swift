@@ -132,7 +132,11 @@ final class ConfigurationTests: XCTestCase {
         XCTAssertNil(configuration.braveAPIKey)
         XCTAssertNil(configuration.searxngBaseURL)
         XCTAssertEqual(configuration.defaultMaxResults, 8)
-        XCTAssertFalse(configuration.enableScrapers)
+        // Every provider this server defines is on by default, including the ones that need no
+        // credential. A provider that cannot serve a query fails over rather than failing the
+        // search, so being on costs a request and never a result.
+        XCTAssertTrue(configuration.enableScrapers)
+        XCTAssertTrue(configuration.enableParallel)
         XCTAssertEqual(configuration.fastTimeout, .milliseconds(12_000))
         XCTAssertEqual(configuration.balancedTimeout, .milliseconds(15_000))
         XCTAssertEqual(configuration.thoroughTimeout, .milliseconds(20_000))
@@ -466,7 +470,8 @@ final class ConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.requestTimeout, AppConfiguration().requestTimeout)
         XCTAssertEqual(configuration.logLevel, AppConfiguration().logLevel)
         XCTAssertNil(configuration.searxngBaseURL)
-        XCTAssertFalse(configuration.enableScrapers)
+        // The variable was unparseable, so the default applies — and the default is on.
+        XCTAssertTrue(configuration.enableScrapers)
     }
 
     /// A value that is fine must not produce a complaint, and a schemeless URL must be the only
