@@ -70,3 +70,10 @@ Apple silicon only (`arm64`, M1–M6), macOS 13 or newer. Not code-signed and no
 ## Checks that did not run
 
 NOT_CHECKED_PENDING
+
+Two jobs on the pull request that landed this release — `build-and-test` and `Analyze (swift)`
+(CodeQL) — **never obtained a runner**. GitHub left both runs in `queued` status for over seventy
+minutes with no runner assigned, which is the macOS runner-capacity problem the audit tracks as
+ISSUE-13. They are reported here as **not checked**, not as passing. The `static-analysis` job, which
+contains the new version-agreement gate, did run and passed on the same head; the release gates
+themselves were run locally on the tagged commit and are recorded above.
