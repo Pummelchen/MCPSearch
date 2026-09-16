@@ -276,6 +276,13 @@ jobs:
       - name: Third-party notices match the lockfile
         run: python3 scripts/third_party_notices.py
 
+      # The version is single-sourced (RELEASE.md §1.3): `VERSION` at the repository root is
+      # authoritative, `BuildVersion.swift` is generated from it, and every other appearance is a
+      # mirror. This fails when a mirror disagrees — including a brand-new hardcoded literal in
+      # Sources/, which is the exact defect that let the version live in three unconnected places.
+      - name: Version mirrors agree with VERSION
+        run: bash tools/check-version.sh
+
       # The soak harness must make its own `--providers` authoritative: an ambient
       # SEARCH_DISABLED_PROVIDERS must not keep a requested provider switched off, and requesting
       # everything must clear the ambient list rather than leave it in place (ledger B23).
@@ -351,8 +358,18 @@ jobs:
 
       # `-S warning`: the two SC2015/SC2016 notes that remain are deliberate shell idioms
       # (`eval` of a generated shellenv line, and `A && B || C`), so they are informational.
+      #
+      # `tools/` is covered too: the release machinery is shell, it runs on a maintainer's machine
+      # with write access, and one of its scripts removes a staging directory — an unchecked
+      # `rm -rf "${STAGE}/${VERSION}"` on an empty variable is exactly what SC2115 is for.
       - name: Shell scripts
-        run: shellcheck -S warning deploy/provision-node.sh
+        run: |
+          set -euo pipefail
+          shellcheck -S warning deploy/provision-node.sh
+          for script in tools/*.sh; do
+            bash -n "$script"
+            shellcheck -S warning "$script"
+          done
 
       # Full history, not just the working tree: `gitleaks dir` would also read the operator's
       # git-ignored `config.env` and prove nothing about the repository (audit task A06).

@@ -4,6 +4,43 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.0.1] — 2026-09-16
+
+Maintenance release. **The server, fetch and answer code is unchanged from 1.0.0** — the only
+tracked changes are the release machinery, the identity handling and documentation. The binaries are
+rebuilt, so the version they report is the one they were built from. Upgrading needs no configuration
+change. Full notes: [`docs/release-notes-v1.0.1.md`](docs/release-notes-v1.0.1.md).
+
+### Added
+
+- **`tools/release.sh`** — walks `RELEASE.md`: preconditions, gates, a clean scratch `arm64`-only
+  build with the log scanned for warnings, the `lipo -archs` assertion, packaging, checksums and
+  release notes with the real digest substituted at publish time. Dry run by default; publishes only
+  with `--publish`.
+- **`tools/check-version.sh`** — the version-agreement gate, run in CI. Fails when `VERSION` is
+  malformed, when the generated Swift mirror disagrees with it, when `CHANGELOG.md` has no heading
+  for the version, or when a version literal appears elsewhere in `Sources/`.
+- **`VERSION`** at the repository root — the single authoritative identity.
+- **`AGENTS.md`** (with the committed `CLAUDE.md` bridge) and **`RELEASE.md`** — the repository's own
+  orientation and the release standard.
+
+### Changed
+
+- **The version is single-sourced.** `VERSION` is authoritative and
+  `Sources/WebSearchCore/Support/BuildVersion.swift` is generated from it by `tools/sync-version.sh`;
+  `MCPServer.swift` and the Parallel provider's `clientInfo` both read it, so a bump can no longer
+  half-happen and ship a server that misreports its own version over MCP.
+- **The default `SEARCH_USER_AGENT` carries the real version.** It was the literal
+  `SwiftWebSearchMCP/1.0`, which already disagreed with the reported version; it is now
+  `SwiftWebSearchMCP/1.0.1`.
+- `initialize` returns `serverInfo.version` from the single source, and the release script asserts the
+  built binary reports it.
+
+### Fixed
+
+- A version literal could be added to `Sources/` without anything noticing; `tools/check-version.sh`
+  now fails on any version literal outside the generated mirror.
+
 ## [1.0.0] — 2026-09-15
 
 First release. A Swift-native MCP server that gives an AI client real public-web search and page
@@ -137,4 +174,5 @@ is built and verified on the `xcode-27` runner image, which is arm64-only.
 - Google Custom Search JSON and Bing Search are deliberately unsupported (closed to new customers and
   retired respectively).
 
+[1.0.1]: https://github.com/Pummelchen/MCPSearch/releases/tag/v1.0.1
 [1.0.0]: https://github.com/Pummelchen/MCPSearch/releases/tag/v1.0.0
