@@ -35,9 +35,10 @@ string against `BuildVersion.value`, so re-hardcoding either side fails a test.
 `initialize` now returns `serverInfo.version` from the single source, so `1.0.1` on the archive and
 `1.0.1` over the wire cannot disagree.
 
-**Check:** the release script completes a real MCP `initialize` handshake against the built binary
-and requires the reply to contain the repository's version. `scripts/mcp_smoke.py` prints the
-reported version but does not assert it, so that assertion was added where the artifact is built.
+**Check:** `scripts/mcp_smoke.py` drives a real `initialize` handshake against the built binary and
+requires `serverInfo.version` to equal the repository's `VERSION`. It previously printed the
+reported version without asserting it, so any version at all would have passed. The assertion now
+runs in CI on every pull request as well as at release time.
 
 ## The release is reproducible from one command
 
