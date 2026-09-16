@@ -158,7 +158,11 @@ command -v curl >/dev/null || die "curl is required"
 ensure_docker_env
 
 free_kb="$(df -k "$HOME" | tail -1 | awk '{print $4}')"
-if [ "$free_kb" -gt 3145728 ]; then
+# The headroom is for a source build and a Python virtualenv. Verification and dry runs do
+# neither, and refusing to *check* an install because a disk is full helps nobody.
+if [ "$VERIFY_ONLY" -eq 1 ] || [ "$DRY_RUN" -eq 1 ]; then
+    say "disk: $((free_kb / 1024)) MiB free in \$HOME (not required for this mode)"
+elif [ "$free_kb" -gt 3145728 ]; then
     pass "macOS on arm64, $((free_kb / 1024 / 1024)) GiB free in \$HOME"
 else
     die "need about 3 GiB free in \$HOME; found $((free_kb / 1024)) MiB"
