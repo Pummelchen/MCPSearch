@@ -173,7 +173,7 @@ lives there.
 | [Security](https://github.com/Pummelchen/MCPSearch/wiki/Security) | The SSRF boundary in `web_open` |
 | [Testing](https://github.com/Pummelchen/MCPSearch/wiki/Testing) | Test suite and CI |
 | [Troubleshooting](https://github.com/Pummelchen/MCPSearch/wiki/Troubleshooting) | Symptom → cause → fix |
-| [Project Tracker](https://github.com/Pummelchen/MCPSearch/wiki/Project-Tracker) | Open issues, observations, decisions, known limitations |
+| [Project Tracker](https://github.com/Pummelchen/MCPSearch/wiki/Project-Tracker) | Open work, and the limitations accepted rather than fixed |
 
 See [CHANGELOG.md](CHANGELOG.md) for what changed in each release.
 
