@@ -205,7 +205,7 @@ Leave previous releases' notes and performance tables alone.
   digest — this section names `SHA256SUMS` and Part 1 §1.7 names `<archive>.sha256`,
   so both ship. The archive carries both executables, `LICENSE`,
   `THIRD-PARTY-NOTICES.md` and `README-binaries.txt`; the install instructions live in
-  the release notes. `v1.0.0` (2026-09-15) and `v1.0.1` (2026-09-16) are released.
+  the release notes. `v1.0.0` (2026-09-15), `v1.0.1` (2026-09-16) and `v1.2.0` (2026-09-17) are released.
 - **`tools/release.sh` cuts a release.** Dry run by default, publishing only with
   `--publish`. It checks the §1.4 preconditions (including that HEAD is the tag and
   that no competing build is running), runs the §1.5 gates in order, builds with a
