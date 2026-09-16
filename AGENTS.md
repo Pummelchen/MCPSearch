@@ -41,8 +41,9 @@ Intel slice).
   `release.sh` (the whole release, dry run by default).
 - `scripts/` — the CI harnesses: `mcp_smoke.py`, `monitor_tty_smoke.py`,
   `coverage_floor.py`, `soak.py`, `harness_tests.py`, `third_party_notices.py`.
-- `deploy/` — the installer (`install.sh`), a digest-pinned SearXNG compose file, and
-  `provision-node.sh` for cluster nodes.
+- `deploy/` — `install.sh` (the installer, and the single implementation of a SearXNG install),
+  `provision-node.sh` (a thin native node provisioner that delegates to it), and a digest-pinned
+  SearXNG compose file kept as the container alternative.
 - `docs/` — four research notes whose claims are labelled VERIFIED / UNVERIFIED /
   NOT FOUND, plus the per-release `release-notes-vX.Y.Z.md`.
 

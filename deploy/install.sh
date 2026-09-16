@@ -28,6 +28,9 @@
 #   --from-release      download the released arm64 binary instead of building from source
 #   --dry-run           report what would happen and change nothing
 #   --verify-only       change nothing; verify an existing install and exit
+#   --searxng-only      install and verify SearXNG, then stop. This is what provisioning a
+#                       cluster node needs: it requires neither a Swift toolchain nor a
+#                       published release, and the mandatory-SearXNG gate still applies.
 #   -h, --help          this text
 #
 # Exit status is 0 only when every gate passed.
@@ -47,6 +50,7 @@ METHOD="auto"
 FROM_RELEASE=0
 DRY_RUN=0
 VERIFY_ONLY=0
+SEARXNG_ONLY=0
 
 # Pinned exactly, like deploy/docker-compose.yml and deploy/provision-node.sh. SearXNG changes
 # engine definitions frequently, and that decides which engines contribute to a result.
@@ -84,6 +88,7 @@ while [ $# -gt 0 ]; do
         --from-release) FROM_RELEASE=1; shift ;;
         --dry-run) DRY_RUN=1; shift ;;
         --verify-only) VERIFY_ONLY=1; shift ;;
+        --searxng-only) SEARXNG_ONLY=1; shift ;;
         -h | --help) sed -n '2,30p' "$0"; exit 0 ;;
         *) die "unknown option: $1 (try --help)" ;;
     esac
@@ -227,7 +232,9 @@ install_searxng_docker() {
     local secret
     secret="$(cat "$secret_file" 2>/dev/null)"
 
-    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -qx "$CONTAINER_NAME"; then
+    # Not `grep -q`: grep exits at the first match, SIGPIPEs the producer, and `pipefail` turns the
+# pipeline into 141 — so a match reads as a failure.
+    if docker ps -a --format '{{.Names}}' 2>/dev/null | grep -x "$CONTAINER_NAME" >/dev/null; then
         say "removing the previous ${CONTAINER_NAME} container"
         run docker rm -f "$CONTAINER_NAME" >/dev/null || return 1
     fi
@@ -436,6 +443,12 @@ fi
 if [ "$FAILURES" -ne 0 ]; then
     printf '\n%d check(s) FAILED — SearXNG is mandatory, so stopping before installing MCPSearch.\n' "$FAILURES" >&2
     exit 1
+fi
+
+if [ "$SEARXNG_ONLY" -eq 1 ]; then
+    printf '\nSearXNG is installed and verified at %s\n' "$BASE"
+    printf 'Stopping here because --searxng-only was given; no MCPSearch binary was installed.\n'
+    exit 0
 fi
 
 # ---------------------------------------------------------------------------
