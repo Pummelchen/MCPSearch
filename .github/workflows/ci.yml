@@ -365,8 +365,9 @@ jobs:
       - name: Shell scripts
         run: |
           set -euo pipefail
-          shellcheck -S warning deploy/provision-node.sh
-          for script in tools/*.sh; do
+          # deploy/install.sh is the installer users run, and it is shell that edits a user's
+          # machine: syntax and shellcheck are the cheapest gates it can have here.
+          for script in deploy/provision-node.sh deploy/install.sh tools/*.sh; do
             bash -n "$script"
             shellcheck -S warning "$script"
           done

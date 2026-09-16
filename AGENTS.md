@@ -41,9 +41,31 @@ Intel slice).
   `release.sh` (the whole release, dry run by default).
 - `scripts/` — the CI harnesses: `mcp_smoke.py`, `monitor_tty_smoke.py`,
   `coverage_floor.py`, `soak.py`, `harness_tests.py`, `third_party_notices.py`.
-- `deploy/` — a digest-pinned SearXNG compose file and `provision-node.sh`.
+- `deploy/` — the installer (`install.sh`), a digest-pinned SearXNG compose file, and
+  `provision-node.sh` for cluster nodes.
 - `docs/` — four research notes whose claims are labelled VERIFIED / UNVERIFIED /
   NOT FOUND, plus the per-release `release-notes-vX.Y.Z.md`.
+
+## Install
+
+`deploy/install.sh` installs MCPSearch and **requires a working local SearXNG**, because every
+vendor provider is optional and metered while SearXNG needs no account and no key. It installs
+one when there is none — container if a Docker daemon answers, otherwise native under `launchd`
+— then proves it answers a real query before proceeding, and verifies the server itself with a
+real `web_search` at the end. Any failed gate exits non-zero.
+
+```bash
+deploy/install.sh --from-release    # install the published arm64 binary
+deploy/install.sh --method native   # no container runtime
+deploy/install.sh --verify-only     # change nothing, re-check
+deploy/install.sh --dry-run         # print what would happen
+```
+
+Two traps it exists to absorb, both hit for real: Docker Desktop's credential store needs the
+login keychain, which a non-interactive session cannot unlock, so even a public image pull fails
+with a credentials error — use `--method native` there; and `/healthz` answering 200 proves
+nothing, because a SearXNG without `search.formats: [json]` answers it and returns 403 to the API
+the server actually uses. The installer checks the JSON API, not the health endpoint.
 
 ## Build, test, run
 
@@ -100,7 +122,8 @@ misreported its own version over MCP.
 - **Version mirrors agree with `VERSION`** — `bash tools/check-version.sh`.
 - Static job: `swift-format lint --recursive --strict`, `swiftlint lint --strict`,
   `ruff check`/`format --check` on `scripts`, `pyright`, `shellcheck` (over
-  `deploy/provision-node.sh` **and `tools/*.sh`**), `gitleaks detect --log-opts=--all`,
+  `deploy/provision-node.sh`, `deploy/install.sh` **and `tools/*.sh`**),
+  `gitleaks detect --log-opts=--all`,
   `osv-scanner`, `semgrep --error`, and `scripts/harness_tests.py`.
 - There are **no git hooks and no pre-commit config** — run the commands yourself.
 

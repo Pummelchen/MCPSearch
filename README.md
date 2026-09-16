@@ -38,7 +38,22 @@ server that gives local AI clients reliable public-web search and page fetching.
 
 ## Quick start
 
-Download a prebuilt macOS binary for Apple silicon (M1 and later) from the
+**Install it, with a local SearXNG, in one command:**
+
+```bash
+deploy/install.sh              # builds from source
+deploy/install.sh --from-release   # or installs the published arm64 binary
+```
+
+The installer treats a working local [SearXNG](https://docs.searxng.org) as **mandatory**: it
+installs one if there is none (container if a Docker daemon answers, otherwise natively under
+`launchd`), then proves it answers a real query before it will install anything. That matters
+because every vendor provider is optional and metered, so a local SearXNG is the only search
+that can be guaranteed to work on the machine running the server — with no account and no key.
+If that proof fails the installer exits non-zero rather than leaving you a server that cannot
+search. `deploy/install.sh --verify-only` re-checks an existing install and changes nothing.
+
+Or do it by hand — download a prebuilt macOS binary for Apple silicon (M1 and later) from the
 [latest release](https://github.com/Pummelchen/MCPSearch/releases/latest), or build from source:
 
 ```bash
