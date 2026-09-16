@@ -160,33 +160,35 @@ misreported its own version over MCP.
   dependency, and scrubbing credentials alone stopped being enough.
 - DuckDuckGo throttles to roughly one query per 10 s, and Startpage is usually unusable
   (Anubis proof-of-work) — enabled regardless, since trying costs one request.
-- **DuckDuckGo may be unusable where you run it, and the failure looks like a TLS bug.**
-  Two independent faults, worth telling apart. **(1)** Here the ISP redirects **UDP/53** to
-  its own resolver, which answers `duckduckgo.com` with `rpz.biznet.` and an address that
-  serves nothing; connecting there fails the *certificate* check, so it reads as a defect in
-  this code. Queries to 1.1.1.1 or 8.8.8.8 appear to agree only because they never arrive:
-  `dig @1.1.1.1 CH TXT id.server` answers `noc-dev` (the ISP) over UDP but `cgk01`
-  (Cloudflare, Jakarta) over TCP. **TCP/53 and DoH return the real address**, so this is fixable
-  without leaving the LAN, and it is now fixed at the tailnet level: a global nameserver of
-  `https://cloudflare-dns.com/dns-query`, with `useWithExitNode: true` and `overrideLocalDNS:
-  true`. Three things bit on the way, all worth knowing before touching tailnet DNS again:
+- **DuckDuckGo can fail in two unrelated ways, and one of them looks like a TLS bug.**
+
+  **(a) The DNS redirect.** This network's ISP redirects **UDP/53** to its own resolver, which
+  answers `duckduckgo.com` with `rpz.biznet.` and an address that serves nothing; connecting
+  there fails the *certificate* check, so it reads like a defect in this code. Queries to 1.1.1.1
+  or 8.8.8.8 seem to agree only because they never arrive — `dig @1.1.1.1 CH TXT id.server`
+  answers `noc-dev` (the ISP) over UDP but `cgk01` (Cloudflare, Jakarta) over TCP. TCP/53 and DoH
+  return the real address, and this is **fixed at the tailnet level**: a global nameserver of
+  `https://cloudflare-dns.com/dns-query` with `useWithExitNode: true` and `overrideLocalDNS:
+  true`. Four things bit on the way; know them before touching tailnet DNS:
   - **`POST /dns/preferences` replaces the object.** Sending only `overrideLocalDNS` silently
     turned **MagicDNS off**. Always send `magicDNS` alongside it.
   - **`GET /dns/preferences` does not report `overrideLocalDNS`**, so a write that worked looks
     like it failed. Read back `/dns/configuration`, which reports the whole thing.
   - **`/dns/nameservers` takes flat strings and rejects `useWithExitNode`**; the combined
-    `/dns/configuration` endpoint is the one that accepts `{address, useWithExitNode}`. Without
-    it, a device on an exit node ignores the tailnet nameserver entirely.
-  - **macOS manual DNS beats MagicDNS.** Per-service DNS servers win over Tailscale's resolver
-    even with `overrideLocalDNS` — including a service literally named "Tailscale". One machine
-    kept the block page until `networksetup -setdnsservers <service> Empty` ran for every
-    service. The signature is `scutil --dns` showing the ISP resolvers while
-    `dig @100.100.100.100 duckduckgo.com` already returns the real address. **(2)** DuckDuckGo also serves an interactive CAPTCHA
-  from time to time — *"select all squares containing a duck"* as HTTP 202 — and **it is
-  transient**: after a burst of probing every endpoint and user agent returned it, and a single
-  polite request later returned 12 real results. Do not conclude from one challenge that the
-  provider is dead, and do not probe it hard to find out. Scrapers fail over rather than failing
-  a search, so a challenge costs a request, not a result.
+    `/dns/configuration` endpoint takes `{address, useWithExitNode}`. Without that flag, a device
+    on an exit node ignores the tailnet nameserver entirely.
+  - **macOS per-service DNS beats MagicDNS**, even with `overrideLocalDNS`, including on a
+    service named "Tailscale". One machine kept the block page until
+    `networksetup -setdnsservers <service> Empty` ran for every service. Signature:
+    `scutil --dns` shows the ISP resolvers while `dig @100.100.100.100 duckduckgo.com` already
+    returns the real address.
+
+  **(b) The CAPTCHA is transient.** DuckDuckGo serves an interactive challenge — *"select all
+  squares containing a duck"* as HTTP 202 — from time to time. A burst of probing produced it on
+  every endpoint and both user agents; a single polite request afterwards returned 12 real
+  results. Treat it as back-pressure to rate-limit around, never as proof the engine is dead, and
+  do not probe hard to find out. Scrapers fail over, so a challenge costs a request, not a
+  result.
 
 ## Releasing
 
