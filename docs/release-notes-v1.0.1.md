@@ -72,9 +72,13 @@ Apple silicon only (`arm64`, M1–M6), macOS 13 or newer. Not code-signed and no
 
 NOT_CHECKED_PENDING
 
-Two jobs on the pull request that landed this release — `build-and-test` and `Analyze (swift)`
-(CodeQL) — **never obtained a runner**. GitHub left both runs in `queued` status for over seventy
-minutes with no runner assigned, which is the macOS runner-capacity problem the audit tracks as
-ISSUE-13. They are reported here as **not checked**, not as passing. The `static-analysis` job, which
-contains the new version-agreement gate, did run and passed on the same head; the release gates
-themselves were run locally on the tagged commit and are recorded above.
+**No CI job ran on the commits this release is built from.** On the pull requests that landed it,
+`build-and-test` and `Analyze (swift)` (CodeQL) never obtained a runner: GitHub left the runs
+`queued` with no runner assigned, and a re-queued run after the final commit did not start either.
+This is the macOS runner-capacity problem the audit tracks as ISSUE-13. Both are reported here as
+**not checked**, not as passing.
+
+One CI result does exist: `static-analysis` — the job that carries the new version-agreement gate —
+completed successfully on the first of those pull requests (`03019416`), so that gate has been
+exercised in CI. The release gates themselves were run locally on the tagged commit and are recorded
+above.
