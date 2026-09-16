@@ -215,7 +215,7 @@ public struct BraveProvider: SearchProvider {
     // MARK: - Wire types
 
     /// Brave's response `type` and the error body's `id`/`status`/`detail`/`type` are
-    /// not read by any code path, so they are not decoded (ledger B66).
+    /// not read by any code path, so they are not decoded.
     struct BraveResponse: Decodable {
         let query: Query?
         let web: Web?

@@ -1391,7 +1391,7 @@ final class ProviderContractTests: XCTestCase {
     //
     // `testHTTPStatusMapperClassifiesCorrectly` moved to `HTTPStatusMapperTests`, which owns the
     // whole status/transport contract. This file is at SwiftLint's `file_length` ceiling, and the
-    // move is a straight relocation: the body was not changed (ledger B96).
+    // move is a straight relocation: the body was not changed.
 
     func testRetryableStatusSetIsDeliberatelyNarrow() {
         // 400/401/403 must never be retried: retrying wastes quota and cannot succeed.

@@ -3,7 +3,7 @@ import XCTest
 
 @testable import WebSearchCore
 
-/// Regression tests for ledger item A01: untrusted markup must never terminate the process.
+/// Regression tests: untrusted markup must never terminate the process.
 ///
 /// Before the guard existed, `DuckDuckGoProvider.search` died with SIGBUS at 5 000 nested
 /// elements and `HTMLExtractor.extract` at 20 000. Both parse attacker-controlled markup on a
@@ -85,7 +85,7 @@ final class MarkupDepthTests: XCTestCase {
     /// happened to pass `containsMarkup`. A browser treats everything after an unclosed
     /// `<script>` as script text, so the thousands of `<div>`s inside it are not elements and
     /// must not count — even though the same text without the opening tag is rejected by the
-    /// very next assertion (ledger B93).
+    /// very next assertion.
     func testUnterminatedRawTextSwallowsTheRestOfTheDocument() {
         let unterminated = "<script>" + Self.nested(20_000)
         XCTAssertGreaterThanOrEqual(
@@ -106,7 +106,7 @@ final class MarkupDepthTests: XCTestCase {
     func testUnterminatedRawTextIsSkippedRatherThanScanned() {
         // Exactly the limit in real elements, then an unclosed raw-text element whose content
         // would be rejected on its own. The result is `false` only if the scanner skipped to the
-        // end of the input instead of scanning that content (ledger B93).
+        // end of the input instead of scanning that content.
         let html = Self.nested(MarkupDepth.maximumNesting) + "<style>" + Self.nested(20_000)
         XCTAssertFalse(
             MarkupDepth.exceedsLimit(html),
@@ -122,8 +122,8 @@ final class MarkupDepthTests: XCTestCase {
     /// `Array(html.utf8)[...]` when it cannot (`MarkupDepth.swift:34-40`). The fallback is a
     /// different code path over a different `RandomAccessCollection`, and `scan` is internal, so
     /// it is pinned directly by handing it a `ArraySlice` — the same type the fallback builds.
-    /// This mirrors the B93 expectation that the fallback be exercised without depending on a
-    /// string layout the compiler may change (ledger B93).
+    /// The fallback is exercised directly, without depending on a
+    /// string layout the compiler may change.
     func testScanOverANonContiguousByteViewAgreesWithTheContiguousPath() {
         let deepMarkup = Self.nested(MarkupDepth.maximumNesting + 1)
         let shallowMarkup = Self.nested(MarkupDepth.maximumNesting)
@@ -155,7 +155,7 @@ final class MarkupDepthTests: XCTestCase {
     /// The four existing `markupDepthExceeded` assertions all compare the case value itself. The
     /// category, the provider scope and `safeDescription` — what `web_search_status` and the tool
     /// error actually render — were unpinned, so a case with no category or a message that
-    /// dropped the limit would have gone unnoticed (ledger B93).
+    /// dropped the limit would have gone unnoticed.
     func testMarkupDepthExceededProjectsOntoTheSharedTaxonomy() {
         let error = SearchError.markupDepthExceeded(512)
         XCTAssertEqual(error.category, .malformedResponse)
@@ -177,7 +177,7 @@ final class MarkupDepthTests: XCTestCase {
     /// Every other `markupDepthExceeded` test calls `HTMLExtractor` directly or asserts the
     /// thrown case. Nothing pinned what a model actually receives, which is the reason the guard
     /// exists: the pre-fix failure mode was process death that took every connected client with
-    /// it (ledger A01/B93).
+    /// it.
     func testWebOpenOnADeeplyNestedPageIsAToolError() throws {
         let page = try LoopbackServer(responses: [
             .init(

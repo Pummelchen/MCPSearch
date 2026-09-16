@@ -46,7 +46,7 @@ public actor SearchOrchestrator {
         let selection = try registry.select(for: request, requested: requestedProvider)
         guard case .selected(let selectedIDs) = selection, !selectedIDs.isEmpty else {
             // Every variable that can register a provider, from the one enablement authority
-            // rather than a hand-written pair that named two of the eight (ledger B57).
+            // rather than a hand-written pair that named two of the eight.
             let variables = ProviderEnablement.allInputs.map(\.assignment).joined(separator: ", ")
             throw SearchError.invalidRequest(
                 "no search provider is configured; set any of \(variables)"
@@ -70,7 +70,7 @@ public actor SearchOrchestrator {
         // `Task.isCancelled` on the calling task therefore means the caller cancelled, whether
         // that happened before the call or while it was running, and both are propagated as
         // `CancellationError`. Only the pre-call case was handled before, so a cancellation that
-        // arrived mid-flight was swallowed into partial results (ledger B04).
+        // arrived mid-flight was swallowed into partial results.
         try Task.checkCancellation()
         let budget = configuration.timeout(for: request.mode)
 
@@ -383,7 +383,6 @@ public actor SearchOrchestrator {
     /// each is attributed — and labelled as untrusted, because a provider's answer is vendor text
     /// that this tool never fetched or verified. Warnings travel into the *caller's* context,
     /// where an injected instruction would read as ours, so the text is clipped as well
-    /// (ledger B27).
     static func collectWarnings(from responses: [ProviderSearchResponse]) -> [String] {
         var warnings: [String] = []
         for response in responses {
@@ -405,7 +404,6 @@ public actor SearchOrchestrator {
     /// responses alone charged a provider that had already failed a second, synthetic deadline
     /// failure: the failure list carried the provider twice, "N provider(s) failed" was
     /// inflated, and `lastError` was overwritten with a deadline that provider did not cause
-    /// (ledger B12).
     private func recordBudgetExceeded(
         ids: [ProviderID],
         alreadyReported: Set<ProviderID>,
@@ -460,7 +458,7 @@ public actor SearchOrchestrator {
         // `localWait` reports an already-cleared throttle as nil, and the throttle can clear in
         // the microseconds between `authorize` and this second read: the denial is then stale and
         // the request it refused is allowed. Retrying `authorize` here is what keeps that boundary
-        // race from turning a search that had a usable provider into an empty one (ledger B116).
+        // race from turning a search that had a usable provider into an empty one.
         guard let wait = await health.localWait(for: id) else {
             return await health.authorize(id)
         }
@@ -547,7 +545,7 @@ public actor SearchOrchestrator {
             // the claim is given back rather than recorded as a provider failure: a caller that
             // goes away says nothing about the provider. Without this a cancelled request left the
             // breaker half-open with a claim nobody releases, and the provider was never tried
-            // again (ledger B52).
+            // again.
             await health.releaseProbe(id)
             result.failures.append(
                 ProviderFailure(

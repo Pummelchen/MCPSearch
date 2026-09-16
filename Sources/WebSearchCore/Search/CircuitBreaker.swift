@@ -117,7 +117,7 @@ public actor CircuitBreaker {
     /// A caller that goes away is not a provider failure — the same reasoning that keeps the
     /// whole-search deadline off the breaker — but the probe it claimed must be returned, or the
     /// breaker stays half-open with a claim nobody will ever release and the provider is never
-    /// tried again (ledger B52).
+    /// tried again.
     public func releaseProbe() {
         guard state == .halfOpen else { return }
         probeInFlight = false

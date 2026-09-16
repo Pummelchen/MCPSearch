@@ -75,7 +75,7 @@ NOT_CHECKED_PENDING
 **No CI job ran on the commits this release is built from.** On the pull requests that landed it,
 `build-and-test` and `Analyze (swift)` (CodeQL) never obtained a runner: GitHub left the runs
 `queued` with no runner assigned, and a re-queued run after the final commit did not start either.
-This is the macOS runner-capacity problem the audit tracks as ISSUE-13. Both are reported here as
+This is the known macOS runner-capacity problem. Both are reported here as
 **not checked**, not as passing.
 
 One CI result does exist: `static-analysis` — the job that carries the new version-agreement gate —

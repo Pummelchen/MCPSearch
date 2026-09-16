@@ -59,7 +59,7 @@ public actor SearchCache {
     /// ever lowered by a store and recomputed by a sweep, so it can be stale-early (the entry it
     /// named was read, swept or evicted) but never stale-late. Stale-early costs one scan that
     /// finds nothing; stale-late would leave an expired entry visible, so the invariant is the
-    /// whole argument for the lazy sweep (ledger B89).
+    /// whole argument for the lazy sweep.
     private var nextExpiry: Date?
 
     public init(capacity: Int = 256, clock: any Clock = SystemClock()) {
@@ -70,7 +70,7 @@ public actor SearchCache {
     public func get(_ key: Key) -> SearchResponse? {
         // No sweep here. The requested key is judged directly and an expired entry is removed on
         // the spot, so a read is O(1) in the size of the cache instead of rebuilding the whole
-        // dictionary and re-hashing every live entry (ledger B89). Entries that expired without
+        // dictionary and re-hashing every live entry. Entries that expired without
         // being read are removed by the next sweep, which `stats()` and `store` still run when
         // one is due.
         guard let entry = storage[key.digest] else {
@@ -123,7 +123,7 @@ public actor SearchCache {
     /// Remove every entry whose deadline has passed — but only when one can have.
     ///
     /// `get`, `store` and `stats` used to call this unconditionally, so every search allocated a
-    /// new dictionary and re-hashed every live entry even when nothing had expired (ledger B89).
+    /// new dictionary and re-hashed every live entry even when nothing had expired.
     /// Removal is in place now, and the `nextExpiry` guard means the scan only runs when at least
     /// one entry is actually due. The observable result is unchanged: `get` reports the same
     /// hits and misses, and `stats().entries` still counts live entries only, because an expired

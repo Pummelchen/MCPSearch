@@ -3,7 +3,7 @@ import XCTest
 
 @testable import WebSearchCore
 
-/// The local-throttle boundary, made deterministic (ledger B116).
+/// The local-throttle boundary, made deterministic.
 final class LocalThrottleRaceTests: XCTestCase {
 
     /// A single-provider search whose throttle clears between the orchestrator's two reads must

@@ -106,7 +106,7 @@ final class NodeProbeTests: XCTestCase {
     ///
     /// The decode threw a `DecodingError`, which is neither a `SearchError` nor a transport
     /// error, so it fell into the generic catch and was reported as `unreachable` — the same
-    /// misdiagnosis the 403 branch above exists to avoid (ledger B64).
+    /// misdiagnosis the 403 branch above exists to avoid.
     func testMalformedBodyIsDegradedNotUnreachable() async {
         let http = MockHTTPClient()
         http.respondJSON("this is not json")
@@ -119,7 +119,7 @@ final class NodeProbeTests: XCTestCase {
     }
 
     /// Valid JSON of the wrong shape fails the same way as malformed JSON, so an API error
-    /// body served with a 200 is never shown as a network fault (ledger B64).
+    /// body served with a 200 is never shown as a network fault.
     func testNonSearXNGJSONIsDegradedNotUnreachable() async {
         let http = MockHTTPClient()
         http.respondJSON(#"{"error":"too many requests"}"#)
@@ -232,7 +232,7 @@ final class ProviderProbeTests: XCTestCase {
     ///
     /// `SEARCH_DISABLED_PROVIDERS` is the server's own eligibility rule, so a monitor that
     /// ignored it both labelled a disabled provider ready and sent it a real search — a
-    /// credit spent on a provider the server would never use (ledger B76).
+    /// credit spent on a provider the server would never use.
     func testProbeableTargetsExcludeDisabledAndUnconfiguredProviders() {
         let configured = MockSearchProvider.returning(.tavily, results: [])
         let keyless = MockSearchProvider(id: .brave, configured: false) { _ in
@@ -278,7 +278,7 @@ final class ProviderProbeTests: XCTestCase {
     }
 
     /// The monitor's hint names the variables the *server* would tell the operator to set,
-    /// because both read `ProviderEnablement` (ledger B57).
+    /// because both read `ProviderEnablement`.
     ///
     /// `parallel` needs both a flag and an endpoint, so the hint is configuration-dependent:
     /// the version this replaces always said `SEARCH_ENABLE_PARALLEL=true`, including in the

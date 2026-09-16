@@ -17,7 +17,7 @@ struct ToolHandlers: Sendable {
     ///
     /// The two tools ran byte-identical copies of the parsing block, so nothing stopped one
     /// from being fixed and the other left behind while the schema parity lint — which only
-    /// compares the *advertised* constraints — stayed green (ledger B58). `SearchRequest` is
+    /// compares the *advertised* constraints — stayed green. `SearchRequest` is
     /// built from this value so neither tool can assemble a different request from the same
     /// arguments.
     struct DiscoveryArguments: Sendable {
@@ -57,7 +57,7 @@ struct ToolHandlers: Sendable {
             let query = try args.requiredString("query")
             // Clamp rather than reject: a client asking for 50 results still gets a
             // useful answer, capped at the documented maximum. The bound is 20 in both
-            // tools and in both schemas (ledger B58).
+            // tools and in both schemas.
             let maxResults = min(
                 max(1, try args.int("max_results") ?? pipeline.configuration.defaultMaxResults),
                 20
@@ -218,7 +218,7 @@ struct ToolHandlers: Sendable {
     /// when no prose summary could be produced.
     func webAnswer(_ arguments: [String: Value]?) async -> CallTool.Result {
         // The same parser `web_search` uses, so the two tools cannot accept different
-        // arguments while advertising the same ones (ledger B58).
+        // arguments while advertising the same ones.
         let discovery: DiscoveryArguments
         switch parseDiscoveryArguments(arguments) {
         case .success(let parsed): discovery = parsed
@@ -397,7 +397,7 @@ struct ToolHandlers: Sendable {
         }
     }
 
-    /// What the operator should change, from the one enablement authority (ledger B57).
+    /// What the operator should change, from the one enablement authority.
     ///
     /// The authority names only the inputs this configuration is missing, which is what makes
     /// the `parallel` advice correct: that provider needs both `SEARCH_ENABLE_PARALLEL=true` and

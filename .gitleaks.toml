@@ -1,6 +1,6 @@
 # gitleaks configuration — MCPSearch
 #
-# This file exists for exactly one reason, recorded in the audit ledger as task A06:
+# This file exists for exactly one reason:
 #
 #   Commit 41d56935 introduced five occurrences of a *synthetic* key literal
 #   (`sk-test-key-…`) in two test files, so that tests could exercise the "a usable key is
@@ -11,16 +11,16 @@
 #   tests that would spend real provider credit are gated behind `SEARCH_LIVE_TESTS` plus a
 #   usable key. The working tree no longer contains the literal at all — it is now
 #   `Fixtures.syntheticDeepSeekKey`, a run of zeroes — but it cannot be removed from *history*
-#   without rewriting history, which the audit brief forbids.
+#   without rewriting history, which this project does not do to fix a scanner finding.
 #
-# The audit brief permits a scanner finding to be "waived in writing"; this is that waiver, and
+# A scanner finding may be waived in writing; this is that waiver, and
 # it is deliberately narrow:
 #
 #   * `condition = "AND"` means a finding is waived only when the path is one of the two test
 #     files *and* the matched value is that exact synthetic literal;
 #   * `[extend] useDefault = true` keeps the entire default ruleset, so this file cannot make
-#     the scanner blind to anything else. The negative control for that lives in the ledger's
-#     A06 evidence: a scanner-shaped value placed outside these paths is still reported.
+#     the scanner blind to anything else: a scanner-shaped value placed outside these paths is
+#     still reported, which is the negative control for this waiver.
 #
 # Revisit if these files are ever rewritten: the allowlist should be deleted, not kept.
 
@@ -28,7 +28,7 @@
 useDefault = true
 
 [[allowlists]]
-description = "Synthetic non-credential key literals in two test files (ledger A06, commit 41d56935)"
+description = "Synthetic non-credential key literals in two test files"
 condition = "AND"
 paths = [
   '''Tests/WebSearchCoreTests/StdioServerTests\.swift''',

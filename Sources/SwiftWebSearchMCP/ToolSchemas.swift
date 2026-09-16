@@ -26,7 +26,7 @@ import WebSearchCore
 /// - **An `enum` on a nullable property must list null too.** `type` and `enum` are
 ///   conjunctive in JSON Schema, so a value must satisfy both: an `enum` that names the
 ///   choices without null makes the null this required-list convention depends on an
-///   invalid value. The schema lint enforces the pairing (ledger B111).
+///  invalid value. The schema lint enforces the pairing.
 /// - **No `format` keyword.** OpenAI rejects anything outside a nine-value allowlist
 ///   (`date-time`, `time`, `date`, `duration`, `email`, `hostname`, `ipv4`, `ipv6`,
 ///   `uuid`); `format: "uri"` is a hard error, so URL shape is described in prose and
@@ -41,7 +41,7 @@ import WebSearchCore
 /// - **A tool that mirrors another tool's arguments declares the same constraints, not
 ///   copies of them.** `web_answer` runs the same discovery pass as `web_search`, so the
 ///   shared properties come from one definition and the schema lint compares them; a
-///   hand-maintained copy had already lost `provider`'s `enum` (ledger B110).
+///  hand-maintained copy had already lost `provider`'s `enum`.
 /// - The root is always a closed object, never a union.
 public enum ToolSchemas {
     public static let searchToolName = "web_search"
@@ -54,7 +54,7 @@ public enum ToolSchemas {
     /// `web_answer` runs the same discovery pass as `web_search`, and the two tools
     /// must not teach a client two different sets of legal ids. An earlier hand-written
     /// copy on `web_answer` silently lost its `enum`, so a strict `tools/list` consumer
-    /// could not discover the accepted ids for that tool at all (ledger B110). Deriving
+    /// could not discover the accepted ids for that tool at all. Deriving
     /// the list from `ProviderID.allCases` also removes the second failure mode a shared
     /// literal would keep: a provider added to the core enum but forgotten here would be
     /// rejected by this file's own advertised contract.
@@ -62,7 +62,7 @@ public enum ToolSchemas {
     /// `auto` is not a `ProviderID`; it is the sentinel both argument parsers translate
     /// into "let the orchestrator choose". `null` belongs to the list because the
     /// property is a nullable union and the schema's own lint requires an `enum` to
-    /// admit every value its `type` admits (ledger B111).
+    /// admit every value its `type` admits.
     private static var providerDiscoverySchema: Value {
         .object([
             "description": .string(
@@ -101,7 +101,7 @@ public enum ToolSchemas {
                     "type": ["string", "null"],
                     // `enum` and `type` are conjunctive in JSON Schema, so a null the
                     // union advertises must appear here too: this property is required,
-                    // and null is how a strict client asks for the default (ledger B111).
+                    // and null is how a strict client asks for the default.
                     "enum": ["any", "day", "week", "month", "year", Value.null],
                     "description": "Publication time window; default \"any\"",
                 ],
@@ -126,7 +126,7 @@ public enum ToolSchemas {
                     "type": ["string", "null"],
                     // `enum` and `type` are conjunctive in JSON Schema, so a null the
                     // union advertises must appear here too: this property is required,
-                    // and null is how a strict client asks for the default (ledger B111).
+                    // and null is how a strict client asks for the default.
                     "enum": ["fast", "balanced", "thorough", Value.null],
                     "description": Value.string(
                         "fast uses one provider; balanced fuses two; thorough fuses three "
@@ -284,7 +284,7 @@ public enum ToolSchemas {
                     "type": ["string", "null"],
                     // `enum` and `type` are conjunctive in JSON Schema, so a null the
                     // union advertises must appear here too: this property is required,
-                    // and null is how a strict client asks for the default (ledger B111).
+                    // and null is how a strict client asks for the default.
                     "enum": ["any", "day", "week", "month", "year", Value.null],
                     "description": "Publication time window; default \"any\"",
                 ],
@@ -308,7 +308,7 @@ public enum ToolSchemas {
                     "type": ["string", "null"],
                     // `enum` and `type` are conjunctive in JSON Schema, so a null the
                     // union advertises must appear here too: this property is required,
-                    // and null is how a strict client asks for the default (ledger B111).
+                    // and null is how a strict client asks for the default.
                     "enum": ["fast", "balanced", "thorough", Value.null],
                     "description": "Search depth before answering; default \"balanced\"",
                 ],
@@ -387,7 +387,7 @@ public enum ToolSchemas {
             // A zero-argument tool still declares `properties` and `required`: an object
             // schema with no `properties` key at all is rejected by strict validation, and
             // the schema lint requires every object to carry an explicit `required` list
-            // rather than reading an absent one as empty (ledger B112).
+            // rather than reading an absent one as empty.
             "properties": Value.object([:]),
             "required": [],
             "additionalProperties": false,

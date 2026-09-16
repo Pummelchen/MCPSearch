@@ -44,7 +44,7 @@ public struct ProviderProbe: Sendable {
     ///
     /// Deliberately not "may the monitor use it": `SEARCH_DISABLED_PROVIDERS` is a separate
     /// question (`isEnabled`), and conflating the two made the dashboard label a provider the
-    /// server refuses to use as ready (ledger B76).
+    /// server refuses to use as ready.
     public func isConfigured(_ id: ProviderID) -> Bool {
         registry.isConfigured(id)
     }
@@ -58,7 +58,7 @@ public struct ProviderProbe: Sendable {
     ///
     /// This is the monitor's copy of the server's eligibility rule, so a disabled provider is
     /// neither labelled ready nor sent a real search that spends a credit the server would
-    /// never have spent (ledger B76).
+    /// never have spent.
     public func mayProbe(_ id: ProviderID) -> Bool {
         isEnabled(id) && isConfigured(id)
     }
@@ -73,7 +73,7 @@ public struct ProviderProbe: Sendable {
     }
 
     /// The variables that would make an inactive provider run, from the one enablement
-    /// authority (ledger B57).
+    /// authority.
     ///
     /// Configuration-dependent on purpose: `parallel` needs the flag *and* an endpoint, and the
     /// hint names whichever this configuration is missing rather than always the flag.
@@ -88,7 +88,6 @@ public struct ProviderProbe: Sendable {
     public func probe(_ id: ProviderID, query: String) async -> ProbeOutcome {
         // Checked here as well as in `probeableTargets`, because `probe` is public and a
         // direct call must not spend a request on a provider the server refuses to use
-        // (ledger B76).
         guard isEnabled(id) else {
             return .failure(error: "disabled via SEARCH_DISABLED_PROVIDERS", category: .notConfigured)
         }

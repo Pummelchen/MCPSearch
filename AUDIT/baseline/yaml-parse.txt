@@ -1,3 +1,0 @@
-.github/workflows/ci.yml: parses
-deploy/docker-compose.yml: parses
-deploy/searxng/settings.yml: parses

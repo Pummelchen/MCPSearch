@@ -8,10 +8,10 @@
 // This line has been 6.4, 6.3 and now 6.4 again. The round trip is worth recording because it is not
 // visible from here: GitHub's CodeQL *default setup* builds with the runner image's Swift 6.3.3 and
 // cannot parse a 6.4 manifest, so raising the floor silently removed the repository's CodeQL SAST
-// gate (ledger B127). The answer was not to keep the floor low but to stop depending on default
+// gate. The answer was not to keep the floor low but to stop depending on default
 // setup — `.github/workflows/codeql.yml` now runs CodeQL in advanced mode on the same `xcode-27`
 // image with a manual `swift build`, so the manifest declares the toolchain the project actually
-// uses and SAST still runs (ledger B128).
+// uses and SAST still runs.
 
 import PackageDescription
 
@@ -41,7 +41,7 @@ let package = Package(
         // on swift-nio, so this adds no new download to the graph; it is declared
         // directly because the HTTP server that fronts the SDK's transport needs it.
         //
-        // Pinned exactly, like the other two direct dependencies (ledger A05). A production
+        // Pinned exactly, like the other two direct dependencies. A production
         // server must ship the dependency graph that was tested: `Package.resolved` already
         // fixes the version for a checked-out build, but a `from:` range lets a fresh resolve
         // or `swift package update` move the HTTP transport to an untested release without any

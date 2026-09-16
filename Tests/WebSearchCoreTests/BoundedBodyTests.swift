@@ -8,7 +8,7 @@ import XCTest
 /// `URLSession.data(for:)` accumulates the complete body first, so the old post-hoc check bounded
 /// what the process kept, not what it allocated: a page that streams without end — one
 /// `web_open` call against a hostile URL, or one misbehaving upstream — drove peak memory past
-/// the cap and could take the server down (ledger B07).
+/// the cap and could take the server down.
 ///
 /// The discriminating tests declare a `Content-Length` far larger than the bytes the server ever
 /// sends, then hold the connection open. A reader that waits for the declared length ends in a

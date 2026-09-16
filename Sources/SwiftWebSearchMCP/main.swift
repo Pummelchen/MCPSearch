@@ -17,7 +17,7 @@ import WebSearchCore
 // The command line is parsed before any configuration is loaded. The reverse order meant that a
 // mistyped `SEARCH_CONFIG_FILE` refused to start even for `--help`, and a flag that was about to
 // be rejected still emitted the startup log and built the HTTP client and the whole provider
-// pipeline first (ledger B113).
+// pipeline first.
 let options: ServerOptions
 do {
     options = try ServerOptions.parse(Array(CommandLine.arguments.dropFirst()))
@@ -39,7 +39,7 @@ let configuration = AppConfiguration.load()
 let log = Log(level: configuration.logLevel, logQueries: configuration.logQueries)
 
 // Report every configured value that could not be used. Silently falling back to a default is
-// how a typo turns into "no providers are configured" with no explanation (ledger B09).
+// how a typo turns into "no providers are configured" with no explanation.
 for issue in configuration.issues {
     // The tool's own logger takes string metadata; the detail never contains a credential.
     let metadata = ["key": issue.key, "detail": issue.detail]
@@ -71,9 +71,9 @@ log.info(
 //
 // The requirements and their satisfaction both come from `ProviderEnablement`, the one
 // authority the status tool, the tool error text and the monitor also read, so a provider
-// cannot be named here and forgotten there (ledger B57). The inventory and the
+// cannot be named here and forgotten there. The inventory and the
 // empty-configuration warning read the same authority, so the warning cannot name only the
-// variables that existed when it was written (ledger B114).
+// variables that existed when it was written.
 //
 // Jina is absent on purpose: its key only raises the page-extraction rate limit, and it is
 // not a search provider. Parallel needs the flag *and* an endpoint, because an emptied
@@ -141,7 +141,7 @@ case .http(let httpConfiguration):
     // One Server and one transport per session. The SDK's stateful transport is single-session
     // and one-shot — it refuses a second `initialize` and answers 404 forever after a
     // termination — so a shared instance meant exactly one HTTP client per process, for the
-    // life of the process (ledger B03). The streamable transport owns the session header,
+    // life of the process. The streamable transport owns the session header,
     // Accept negotiation and SSE framing; the host routes by session id.
     let makeSessionServer: HTTPMCPHost.SessionFactory = { transport in
         let sessionServer = await MCPServerFactory.make(handlers: handlers, log: log)
@@ -156,7 +156,6 @@ case .http(let httpConfiguration):
             // The same budget the fetch itself gets. It also bounds how long an inbound
             // connection may stay open without completing its request, so a peer that opens
             // connections and never finishes a request cannot hold them indefinitely
-            // (ledger B90).
             requestCompletionTimeout: configuration.requestTimeout,
             log: log
         )

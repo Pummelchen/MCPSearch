@@ -4,10 +4,10 @@
 .DS_Store
 .swiftpm/
 
-# Coverage and sanitizer output. The documented runs (`swift test --enable-code-coverage`, the
-# ASan/TSan runs in AUDIT/environment.md) write `default.profraw` into the repository root and
+# Coverage and sanitizer output. A coverage run (`swift test --enable-code-coverage`) and an
+# ASan/TSan run write `default.profraw` into the repository root and
 # `.profdata`/`.json` export files beside it, so they are ignored here rather than cleaned up by
-# hand every time (ledger B36).
+# hand every time.
 *.profraw
 *.profdata
 coverage*.json

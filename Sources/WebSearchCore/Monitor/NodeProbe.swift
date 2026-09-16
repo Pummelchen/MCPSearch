@@ -137,7 +137,7 @@ public struct NodeProbe: Sendable {
             // is not a SearXNG payload (an HTML error page served with a JSON content type, or
             // a proxy's own JSON) used to fall through to the generic catch below and be shown
             // as "unreachable", which sends an operator after a network fault that does not
-            // exist — the same misdiagnosis the 403 branch above avoids (ledger B64). The
+            // exist — the same misdiagnosis the 403 branch above avoids. The
             // elapsed time is recomputed here because a catch clause does not see the `do`
             // block's locals, and this path answered.
             let elapsed = Int((DispatchTime.now().uptimeNanoseconds - started) / 1_000_000)

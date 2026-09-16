@@ -24,12 +24,11 @@ import Foundation
 /// scheme `URLSession` handles itself — is refused by `URLSession` *beneath* this policy, without
 /// consulting the fetch delegate, so no `Decision` is produced for it. The refusal is still a policy
 /// position — non-http(s) destinations are never fetched — and `DirectHTTPFetcher` reports it as a
-/// fetch failure whose reason says so, rather than as an opaque transport code (ledger B102).
+/// fetch failure whose reason says so, rather than as an opaque transport code.
 ///
 /// Every *other* scheme is handed back to the fetcher's loop, which validates the redirect target
 /// here: `validateLexically` applies `allowedSchemes`, so an `ftp:`, `data:` or not-yet-invented
 /// scheme is denied by the same per-hop call as a private address and needs no new code
-/// (ledger B120).
 public struct URLPolicy: Sendable {
     public struct Decision: Sendable, Hashable {
         public let allowed: Bool
@@ -68,7 +67,7 @@ public struct URLPolicy: Sendable {
     ///
     /// Answers are not remembered here. `DirectHTTPFetcher` hands `validate(_:cache:)` one
     /// short-lived cache per fetch, so a redirect chain does not ask twice for a host it has
-    /// already checked while a later request still resolves afresh (ledger B88).
+    /// already checked while a later request still resolves afresh.
     private let resolver: any DNSResolver
 
     public init(
@@ -155,7 +154,7 @@ public struct URLPolicy: Sendable {
     ///   an accepted limitation rather than left implicit.
     public func validate(_ url: URL) async -> Decision {
         // No cache: a caller outside a fetch loop gets a fresh answer every time, which is
-        // the behaviour `DirectHTTPFetcher` relies on across requests (ledger B88).
+        // the behaviour `DirectHTTPFetcher` relies on across requests.
         await validate(url, cache: nil)
     }
 
@@ -163,8 +162,8 @@ public struct URLPolicy: Sendable {
     ///
     /// The cache stores the *address list*, never the decision: every call still classifies
     /// each address, so a host that answered with private space is denied on every validation
-    /// that uses the cache, and a host the cache has not seen is resolved before it is judged
-    /// (ledger B88). `DirectHTTPFetcher` creates one cache per fetch and discards it, so the
+    /// that uses the cache, and a host the cache has not seen is resolved before it is judged.
+    /// `DirectHTTPFetcher` creates one cache per fetch and discards it, so the
     /// re-resolution that bounds DNS rebinding survives between requests.
     func validate(_ url: URL, cache: DNSAnswerCache?) async -> Decision {
         let lexical = validateLexically(url)
@@ -284,7 +283,7 @@ public struct URLPolicy: Sendable {
 /// one of any length. `init?(_:)` only ever produces 16 bytes and every in-tree producer goes
 /// through it, but the case is public, so each accessor checks the length before indexing.
 /// A malformed value is classified as "not in this range" (and rendered as malformed) rather
-/// than trapping (ledger B84).
+/// than trapping.
 public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
     case v4(UInt32)
     case v6([UInt8])
@@ -316,7 +315,7 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
             return bytes.map(String.init).joined(separator: ".")
         case .v6(let bytes):
             // A public case carrying a byte array can hold any length, so the fixed-width
-            // unpacking below must be guarded (ledger B84). There is no presentation form for
+            // unpacking below must be guarded. There is no presentation form for
             // a value that is not a 16-byte address, so say so instead of trapping.
             guard bytes.count == 16 else { return "invalid IPv6 (\(bytes.count) bytes)" }
             let groups = stride(from: 0, to: 16, by: 2).map { index in
@@ -349,7 +348,7 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
     /// client address is stored inverted).
     public var embeddedIPv4: IPAddress? {
         guard case .v6(let bytes) = self else { return nil }
-        // Only a 16-byte address has the fixed offsets this unwrapping reads (ledger B84).
+        // Only a 16-byte address has the fixed offsets this unwrapping reads.
         guard bytes.count == 16 else { return nil }
 
         func address(at offset: Int) -> IPAddress {
@@ -491,7 +490,7 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
             // comment here used to name. The range holds protocol assignments, TEST-NET-1
             // (192.0.2.0/24) and the 6to4 relay anycast block, none of which a web page fetch
             // should ever reach; refusing the surrounding /16 as well errs towards refusal, which
-            // is the right direction for this check (ledger B62).
+            // is the right direction for this check.
             if a == 192, b == 0 { return true }
             if a == 198, (18...19).contains(b) { return true }  // benchmarking
             return false
@@ -510,7 +509,7 @@ public enum IPAddress: Sendable, Hashable, CustomStringConvertible {
 /// validated a redirect target once for the hop and again at the top of the loop, so a
 /// two-hop chain paid for the same lookup three times. Handing this object to
 /// `validate(_:cache:)` turns the repeat calls into memo hits without changing what is
-/// decided, because the address list is cached and the classification is not (ledger B88).
+/// decided, because the address list is cached and the classification is not.
 ///
 /// Scope is the whole point. One instance is created per `DirectHTTPFetcher.fetch` and
 /// dropped when it returns, so the next request resolves again. A cache that outlived the

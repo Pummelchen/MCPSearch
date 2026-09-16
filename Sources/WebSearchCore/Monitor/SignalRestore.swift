@@ -12,7 +12,7 @@ import Foundation
 /// quit path restores it, but a supervisor's `kill`, a terminal teardown, `docker stop` or a
 /// Ctrl-C that reaches the process as a *signal* (rather than as the byte `ISIG` normally turns
 /// into) kills the process before any Swift cleanup runs: the shell is left in raw mode with the
-/// cursor hidden, which is the state a user cannot fix except by `reset` (ledger B10, B107).
+/// cursor hidden, which is the state a user cannot fix except by `reset`.
 ///
 /// The handler therefore does only what POSIX allows inside a signal handler — `tcsetattr(2)`,
 /// `write(2)` and `_exit(2)` are all async-signal-safe — and nothing else: no allocation, no

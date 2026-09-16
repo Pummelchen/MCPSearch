@@ -3,7 +3,7 @@ import XCTest
 
 @testable import WebSearchCore
 
-/// The Parallel MCP handshake, made deterministic (ledger B54).
+/// The Parallel MCP handshake, made deterministic.
 ///
 /// `ParallelMCPProvider` is an actor, and actors are re-entrant across `await`, so the
 /// "have I initialised yet" window only exists at a suspension point. These tests hold the
@@ -83,7 +83,7 @@ final class ParallelHandshakeTests: XCTestCase {
 ///
 /// The provider is an actor, so its handshake window only opens when a suspension point is
 /// reached; parking the `initialize` response keeps that window open for as long as the test
-/// needs, instead of hoping a real transport's latency exposes it (ledger B54). Later
+/// needs, instead of hoping a real transport's latency exposes it. Later
 /// `initialize` requests are answered immediately, which is what makes a second handshake
 /// observable.
 private actor GatedInitializeHTTPClient: HTTPClient {

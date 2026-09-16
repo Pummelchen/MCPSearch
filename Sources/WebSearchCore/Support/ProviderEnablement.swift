@@ -7,8 +7,8 @@ import Foundation
 /// registry's ineligible reasons, and the server's startup inventory. They had already drifted
 /// for `parallel`, which needs **two** inputs: the tool told the operator to set
 /// `SEARCH_ENABLE_PARALLEL=true` in exactly the state where that flag was already on and the
-/// missing input was the endpoint, while the server's own startup comment recorded the opposite
-/// (ledger B57). Every consumer now reads this type, so a change to one provider's requirements
+/// missing input was the endpoint, while the server's own startup comment recorded the opposite.
+/// Every consumer now reads this type, so a change to one provider's requirements
 /// cannot reach one surface and miss another.
 public enum ProviderEnablement {
 

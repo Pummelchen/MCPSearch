@@ -155,7 +155,7 @@ public enum RankFusion {
                 // adapter could not say where this particular result came from. ORing the
                 // two asked "did *any* page of this response resell an owned index?", which
                 // discounted every sibling of one resold page and defeated the per-result
-                // refinement the comment above describes (ledger B109).
+                // refinement the comment above describes.
                 let duplicatedOwnedIndex: Bool
                 if result.upstreamEngines == nil {
                     duplicatedOwnedIndex = responseResellsOwnedIndex
@@ -291,7 +291,7 @@ public enum RankFusion {
     /// This must agree with `resoldFamily`, including its `isIndependentIndex` guard: a
     /// response that only resold a non-independent family (Google, DuckDuckGo) is not
     /// duplicating an owned index, and whether that is noticed must not depend on which
-    /// level the adapter happened to report engines at (ledger B109).
+    /// level the adapter happened to report engines at.
     static func resellsIndexAlreadyOwned(
         response: ProviderSearchResponse,
         ownedFamilies: Set<SourceFamily>

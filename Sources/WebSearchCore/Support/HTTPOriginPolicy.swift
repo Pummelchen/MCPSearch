@@ -7,7 +7,7 @@ import Foundation
 /// every deployment beyond it: `--host <lan-or-tailscale-address>`, documented as the remote
 /// path with a TLS-terminating proxy in front, sends its own address in `Host`, and the
 /// loopback-only list answered those requests with `421 Misdirected Request` before MCP handling
-/// ever ran (ledger B21).
+/// ever ran.
 ///
 /// The allow-list is derived from the configured bind address and port instead. It stays an
 /// exact-match list — a name an attacker's page resolves to this machine is still refused — so

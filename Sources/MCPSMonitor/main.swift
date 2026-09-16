@@ -56,7 +56,7 @@ struct Options: Sendable {
     ///
     /// `--iterations` is documented as "useful for scripting", but the refresh loop fell off
     /// the end of `main.swift` and the process always exited 0, so a scripted run against a
-    /// completely dead fleet was indistinguishable from a healthy one (ledger B46). The
+    /// completely dead fleet was indistinguishable from a healthy one. The
     /// contract is deliberately a liveness check, not a per-node report:
     ///
     /// * `0` — the fleet answered: at least one probed node returned results and, if any
@@ -78,7 +78,7 @@ struct Options: Sendable {
 
         // An unconfigured provider is an expected state (`NO KEY`), not a failure, and a
         // monitor with no keyed provider at all is not a failed health check. A provider the
-        // operator switched off is expected too, so it does not count either (ledger B76).
+        // operator switched off is expected too, so it does not count either.
         let configured = model.providers.filter(\.isInService)
         let noProviderWorked = !configured.isEmpty && model.healthyProviders == 0
 
@@ -177,7 +177,7 @@ struct Options: Sendable {
         var customNodes: [NodeProbe.Target] = []
         /// `--no-nodes` says "do not probe", so it must win over a `--node` list rather than
         /// depending on which came last. The two flags are order-independent in the usage text;
-        /// before this, `--node n1=… --no-nodes` still probed n1 (ledger B74).
+        /// before this, `--node n1=… --no-nodes` still probed n1.
         var nodesDisabled = false
         var index = 0
 
@@ -188,7 +188,7 @@ struct Options: Sendable {
             }
             guard index + 1 < arguments.count else { throw OptionError.missingValue(flag) }
             // A flag is not a value: `--node --interval=5` used to create a node literally named
-            // `--interval` and swallow the interval flag (ledger B75).
+            // `--interval` and swallow the interval flag.
             guard !arguments[index + 1].hasPrefix("--") else {
                 throw OptionError.missingValue(flag)
             }
@@ -217,7 +217,7 @@ struct Options: Sendable {
                 let urlText = String(raw[raw.index(after: separator)...])
                 // `URL(string:)` accepts a relative reference, so `n1=foo` used to start and then
                 // show `n1 DOWN … unreachable` instead of failing here; a node needs an absolute
-                // URL, which means a scheme and a host (ledger B75).
+                // URL, which means a scheme and a host.
                 guard let url = URL(string: urlText), url.scheme != nil, url.host() != nil else {
                     throw OptionError.invalidValue(
                         flag: "--node", value: raw, expected: "name=absolute-url"
@@ -360,7 +360,7 @@ actor Monitor {
     /// to spend, so every refresh would return an unchanged model. This seam takes the
     /// transport and the configuration instead, so a test can script both. It is the same
     /// construction — a real `NodeProbe` and `ProviderProbe` over the supplied client — not
-    /// a shortened test path (ledger B98).
+    /// a shortened test path.
     init(
         options: Options,
         configuration: AppConfiguration,
@@ -391,7 +391,7 @@ actor Monitor {
         // from the registry, not from the provider merely being listed: a provider with
         // no credentials must read as such rather than as ready to probe, and one the
         // operator disabled via SEARCH_DISABLED_PROVIDERS must read as switched off
-        // rather than as ready (ledger B76).
+        // rather than as ready.
         let providers = configuration.providerOrder
             .map { id in
                 ProviderStatus.pending(
@@ -690,6 +690,6 @@ if let model = lastModel {
 }
 
 // The loop used to fall off the end of the file, so the process exited 0 no matter what the
-// probes found and `--iterations` could not be used as a health check (ledger B46). The
+// probes found and `--iterations` could not be used as a health check. The
 // status is derived here, after the summary, so a script always gets the prose first.
 exit(options.exitCode(for: lastModel))

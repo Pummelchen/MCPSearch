@@ -21,8 +21,8 @@ public enum HTTPRequestBodyPolicy {
     /// The declared length is deliberately **ignored**. `ByteBuffer.reserveCapacity` reallocates
     /// immediately, so sizing the buffer from an untrusted `Content-Length` let a client send a
     /// request head and nothing else and make the process hold up to `maximumBodyBytes` per
-    /// connection — a megabyte per connection up to B90's 64-connection bound — before a single
-    /// body byte arrived (ledger B79). The buffer grows as body parts actually arrive and
+    /// connection — a megabyte per connection up to the 64-connection bound — before a single
+    /// body byte arrived. The buffer grows as body parts actually arrive and
     /// `maximumBodyBytes` rejects the request when the body exceeds it, so one page is all that
     /// has to be reserved up front.
     ///

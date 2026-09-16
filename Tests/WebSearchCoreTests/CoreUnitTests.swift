@@ -332,7 +332,6 @@ final class ConfigurationTests: XCTestCase {
     ///
     /// The previous version of this test merged a dictionary by hand and then called `parse`, so
     /// `load` — the function the server actually calls — was never executed with a file at all
-    /// (ledger B31).
     func testEnvironmentOverridesConfigFile() throws {
         let file = try writeTemporaryConfig(
             """
@@ -356,7 +355,7 @@ final class ConfigurationTests: XCTestCase {
     ///
     /// The clearing branch in `parse` tests for a present-but-empty value, and `load` drops empty
     /// environment values, so it could never run: the documented-looking way to remove the default
-    /// silently kept it (ledger B59).
+    /// silently kept it.
     func testAnEmptyParallelMCPURLRemovesTheDefault() {
         XCTAssertNotNil(
             AppConfiguration.load(environment: [:], configFileURL: nil).parallelMCPURL,
@@ -385,10 +384,10 @@ final class ConfigurationTests: XCTestCase {
         XCTAssertTrue(configuration.issues.isEmpty, "\(configuration.issues)")
     }
 
-    /// A config file that was asked for and is missing is an issue, not "no config file" (B09).
+    /// A config file that was asked for and is missing is an issue, not "no config file".
     ///
     /// Nothing exercised the `load` path that produces it; the existing issue tests build the
-    /// configuration from a dictionary (ledger B31).
+    /// configuration from a dictionary.
     func testMissingConfigFileIsReportedAsAnIssue() {
         let missing = FileManager.default.temporaryDirectory
             .appendingPathComponent("missing-\(UUID().uuidString).env")
@@ -440,7 +439,7 @@ final class ConfigurationTests: XCTestCase {
     }
     /// A typo used to be indistinguishable from "not configured": the value was dropped and the
     /// default applied with no diagnostic, which is how an operator ends up with no providers and
-    /// no explanation (ledger B09).
+    /// no explanation.
     func testUnusableConfiguredValuesAreReported() throws {
         var environment = [
             "SEARCH_REQUEST_TIMEOUT_MS": "lots",
@@ -507,7 +506,7 @@ final class ConfigurationTests: XCTestCase {
 
 }
 
-/// The one authority for "which variable enables me" (ledger B57).
+/// The one authority for "which variable enables me".
 final class ProviderEnablementTests: XCTestCase {
 
     /// Every provider states at least one requirement, and every requirement is an environment
@@ -667,7 +666,6 @@ final class DurationTests: XCTestCase {
     /// The old version measured the real clock immediately after starting it and asserted the
     /// result was non-negative — a division of an unsigned delta, which no implementation of that
     /// signature can violate. The name promised nanosecond handling that was never exercised
-    /// (ledger B69).
     func testElapsedMillisecondsConvertsANanosecondDelta() {
         let clock = TestClock()
         let start = clock.uptimeNanoseconds()
@@ -698,7 +696,7 @@ final class DurationTests: XCTestCase {
     }
 
     /// `Retry-After` comes from an upstream response, so it is untrusted input. A value large
-    /// enough to overflow `Int` used to trap the process in `Int(seconds * 1000)` (ledger B06):
+    /// enough to overflow `Int` used to trap the process in `Int(seconds * 1000)`:
     /// `Retry-After: 1e30` from any provider, or from a rate-limited Jina response, killed every
     /// connected client. Finite values are clamped, non-finite ones are treated as absent so the
     /// caller falls back to its own backoff.
@@ -748,7 +746,7 @@ final class LoggingTests: XCTestCase {
     /// The old value was recomputable by anyone: a log reader could hash a candidate query with
     /// the same public algorithm and confirm it, so the "non-reversible" doc claim was false.
     /// These are the exact FNV-1a outputs the defective function produced, computed independently
-    /// of the Swift code; a keyed digest must not reproduce them (ledger B85).
+    /// of the Swift code; a keyed digest must not reproduce them.
     func testHashIsNotTheUnkeyedFNV1aDigest() {
         let knownFNV1a = [
             "swift concurrency": "q13a54df77317abdf",
@@ -771,7 +769,7 @@ final class LoggingTests: XCTestCase {
     /// A value must not be able to drive the terminal through a diagnostic.
     ///
     /// Keeping the line intact is not enough: `ESC[2J` and the C1 range were passed through, so a
-    /// query could clear the screen or move the cursor of whoever was reading stderr (ledger B51).
+    /// query could clear the screen or move the cursor of whoever was reading stderr.
     func testEscapeMakesControlCharactersInert() {
         let hostile = "q\u{1B}[2J\u{07}\u{9B}31m\u{200B}"
         let escaped = Log.escape(hostile)
@@ -810,7 +808,7 @@ final class LoggingTests: XCTestCase {
         XCTAssertEqual(count, 0)
     }
 
-    // MARK: Standard-error queue (ledger B91)
+    // MARK: Standard-error queue
 
     /// The default sink frames each event and hands it to the queue; it must not write to fd 2
     /// itself, because that write is what blocked the logging task.

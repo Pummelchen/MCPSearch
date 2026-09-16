@@ -395,7 +395,7 @@ final class RankFusionTests: XCTestCase {
     /// A response can name an owned index at the response level while its individual results
     /// carry their own attribution, and only one of them resold that index. ORing the two levels
     /// discounted every sibling of the one resold page, so two results with different provenance
-    /// got the same weight. The per-result attribution must win (ledger B109).
+    /// got the same weight. The per-result attribution must win.
     func testAggregatorDiscountIsPerResultEvenWhenTheResponseNamesAnOwnedIndex() {
         func aggregatorResult(url: String, rank: Int, engines: [String]?) -> SearchResult {
             SearchResult(
@@ -464,7 +464,6 @@ final class RankFusionTests: XCTestCase {
     ///
     /// Adapters that report engines only for the whole response have no finer signal to offer,
     /// so the fallback must remain; otherwise their aggregator vote would never be discounted
-    /// (ledger B109).
     func testAggregatorDiscountFallsBackToResponseLevelWithoutPerResultEngines() {
         let brave = ProviderSearchResponse(
             provider: .brave,
@@ -526,7 +525,7 @@ final class RankFusionTests: XCTestCase {
     /// Startpage and DuckDuckGo are themselves resellers, so a SearXNG response that only used
     /// Google has not duplicated an index the way a second Brave would. The per-result path has
     /// always required `isIndependentIndex`; the response-level fallback must agree, or the
-    /// answer depends on which level the adapter happened to report engines at (ledger B109).
+    /// answer depends on which level the adapter happened to report engines at.
     func testResponseLevelDiscountIgnoresNonIndependentFamilies() {
         let startpage = ProviderSearchResponse(
             provider: .startpage,
@@ -597,7 +596,7 @@ final class RankFusionTests: XCTestCase {
         )
 
         // A response-level hit on a family that is not an independent index is not a
-        // duplicated owned index, matching the per-result test (ledger B109).
+        // duplicated owned index, matching the per-result test.
         let nonIndependent = response(
             .searxng,
             [("S", "https://s.example.com/1")],
@@ -1044,7 +1043,7 @@ final class SearchCacheTests: XCTestCase {
     ///
     /// `stats().entries` counted only live entries before the sweep became lazy, and it still
     /// does: an entry whose deadline has passed makes the sweep due, so the count is taken after
-    /// it is removed (ledger B89).
+    /// it is removed.
     func testStatsCountOnlyLiveEntries() async {
         let clock = TestClock()
         let cache = SearchCache(clock: clock)

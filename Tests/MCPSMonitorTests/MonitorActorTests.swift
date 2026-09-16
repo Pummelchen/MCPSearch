@@ -11,7 +11,7 @@ import XCTest
 /// nothing) and every result is the same "unreachable". These tests take the seam
 /// `Monitor.init(options:configuration:http:log:)` instead, so the transport is scripted and the
 /// assertion is about the actor's own logic: the probe gate, the counter folding and the warning
-/// aggregation (ledger B98).
+/// aggregation.
 final class MonitorActorTests: XCTestCase {
 
     // MARK: - Fixtures
@@ -85,8 +85,7 @@ final class MonitorActorTests: XCTestCase {
 
     /// The dashboard populates on the first refresh, and a later unattended refresh must not
     /// spend a provider credit. Node health is still checked, because that is free — only the
-    /// provider probe is gated (ledger B98, and the contract `Options.shouldProbeProviders`
-    /// states).
+    /// provider probe is gated, which is what the contract `Options.shouldProbeProviders` states.
     func testTheFirstRefreshProbesProvidersAndALaterOneDoesNot() async {
         let monitor = Monitor(
             options: options(nodes: [target("this-mac", 1111)], probeProviders: false),
@@ -111,7 +110,7 @@ final class MonitorActorTests: XCTestCase {
     }
 
     /// The gate itself, observed through the actor: a forced probe is the operator asking for
-    /// one, and it runs the provider again (ledger B98).
+    /// one, and it runs the provider again.
     func testAForcedProbeRunsTheProviderAgain() async {
         let monitor = Monitor(
             options: options(nodes: [], probeProviders: false),
@@ -147,7 +146,7 @@ final class MonitorActorTests: XCTestCase {
     // MARK: - Counter folding
 
     /// A node result folds into the running `checks`/`failures` counters, and the state the
-    /// dashboard shows is the latest probe's (ledger B98).
+    /// dashboard shows is the latest probe's.
     func testNodeResultsFoldIntoTheCounters() async {
         let nodes = [target("this-mac", 1111), target("node1", 2222)]
         let client = StubHTTPClient(handlers: [
@@ -178,7 +177,7 @@ final class MonitorActorTests: XCTestCase {
     }
 
     /// The counters accumulate across refreshes rather than being replaced, and a provider
-    /// that answered stays healthy on the pass that does not re-probe it (ledger B98).
+    /// that answered stays healthy on the pass that does not re-probe it.
     func testCountersAccumulateAcrossRefreshes() async {
         let nodes = [target("this-mac", 1111)]
         let client = StubHTTPClient(handlers: [
@@ -207,7 +206,7 @@ final class MonitorActorTests: XCTestCase {
 
     /// The three operator warnings are aggregated from the model, not from one node's view:
     /// a down node, an engine failing on at least half the fleet, and providers with no
-    /// credentials (ledger B98).
+    /// credentials.
     func testWarningsAggregateAcrossNodesAndProviders() async {
         let unavailable = #"["duckduckgo","CAPTCHA"]"#
         let nodes = [target("this-mac", 1111), target("node1", 2222), target("node2", 3333)]
@@ -273,7 +272,7 @@ final class MonitorActorTests: XCTestCase {
     // MARK: - Cycle wait
 
     /// The sleep is sliced so a key press is noticed promptly; `requestRefresh` cuts it short
-    /// instead of the loop waiting out the whole interval (ledger B98).
+    /// instead of the loop waiting out the whole interval.
     func testRequestRefreshEndsTheWaitEarly() async {
         let monitor = Monitor(
             options: options(nodes: [], probeProviders: false),

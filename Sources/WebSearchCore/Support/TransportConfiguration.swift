@@ -24,7 +24,7 @@ public struct HTTPTransportConfiguration: Sendable, Equatable {
     /// Extra host names this deployment answers to, from `--http-allowed-host`.
     ///
     /// A TLS-terminating proxy forwards the public name it was reached on, which need not be
-    /// the address the server binds, so the operator declares it here (ledger B21).
+    /// the address the server binds, so the operator declares it here.
     public var additionalAllowedHosts: [String] = []
 
     public static let defaultHost = "127.0.0.1"
@@ -61,7 +61,7 @@ public struct ServerOptions: Sendable {
     /// accepted without being documented, or documented without being accepted. The usage string
     /// used to be maintained by hand and had already fallen behind the parser — it did not mention
     /// `--help`, the `--transport` value aliases or the `--flag=value` spelling — while the test
-    /// that claimed to check it asserted a hand-written list of four names (ledger B114).
+    /// that claimed to check it asserted a hand-written list of four names.
     enum Flag: CaseIterable {
         case help
         case transport
@@ -170,7 +170,7 @@ public struct ServerOptions: Sendable {
     /// The spellings `--transport` accepts.
     ///
     /// `parse` resolves the value through this table and `usage` lists it from the table, so a new
-    /// alias cannot be accepted without being documented (ledger B114).
+    /// alias cannot be accepted without being documented.
     enum TransportName: String, CaseIterable {
         case stdio
         case http
@@ -182,7 +182,7 @@ public struct ServerOptions: Sendable {
         /// Both `usage` and the `--transport` rejection message render from this, so the
         /// documented set and the set the error names cannot drift apart. The error used to
         /// hardcode "stdio or http" while `usage` listed all four, which made the more natural
-        /// `--transport streamable-http` look unsupported (ledger B118).
+        /// `--transport streamable-http` look unsupported.
         static var acceptedValues: String {
             allCases.map(\.rawValue).joined(separator: ", ")
         }
@@ -193,7 +193,7 @@ public struct ServerOptions: Sendable {
     /// The help text.
     ///
     /// Rendered from `Flag` and `TransportName` — the same tables `parse` dispatches on — so the
-    /// documented CLI and the accepted CLI cannot drift (ledger B114).
+    /// documented CLI and the accepted CLI cannot drift.
     public static let usage: String = renderUsage()
 
     private static func renderUsage() -> String {
@@ -275,8 +275,7 @@ public struct ServerOptions: Sendable {
                 throw OptionError.missingValue(flag.canonicalName)
             }
             // A flag is not a value: `--host --http-path` used to take "--http-path" as the host
-            // and fail later at bind time. The `--flag=value` form above is unaffected (ledger
-            // B75).
+            // and fail later at bind time. The `--flag=value` form above is unaffected.
             guard !arguments[index + 1].hasPrefix("--") else {
                 throw OptionError.missingValue(flag.canonicalName)
             }
@@ -301,7 +300,7 @@ public struct ServerOptions: Sendable {
                         flag: "--transport",
                         value: raw,
                         // Rendered from the same table `usage` lists, so the error never
-                        // advertises a smaller set than `--help` documents (ledger B118).
+                        // advertises a smaller set than `--help` documents.
                         expected: TransportName.acceptedValues
                     )
                 }

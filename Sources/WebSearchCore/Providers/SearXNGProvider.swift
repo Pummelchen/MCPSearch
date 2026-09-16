@@ -174,7 +174,7 @@ public struct SearXNGProvider: SearchProvider {
     /// Current SearXNG master returns exactly these keys. `number_of_results` is
     /// deliberately absent: it is not produced by current releases. The response's
     /// echoed `query` and its `corrections`/`suggestions` lists are not read by any
-    /// code path, so they are not decoded either (ledger B66).
+    /// code path, so they are not decoded either.
     struct SearXNGResponse: Decodable {
         let results: [Item]
         let answers: [String]?

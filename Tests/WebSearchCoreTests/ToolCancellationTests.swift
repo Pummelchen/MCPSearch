@@ -1,26 +1,25 @@
 import Foundation
 import XCTest
 
-/// The `ToolHandlers` cancellation arms, driven through a real MCP session (ledger B103).
+/// The `ToolHandlers` cancellation arms, driven through a real MCP session.
 ///
-/// B04 made a caller's cancellation propagate as a `CancellationError` instead of a provider
-/// failure, and the tool layer answers each such arm with a fixed "cancelled" message. Nothing
-/// drove those arms: reaching one needs a request that is still in flight when the client sends
+/// A caller's cancellation propagates as a `CancellationError` instead of a provider failure, and
+/// the tool layer answers each such arm with a fixed "cancelled" message. Nothing drove those arms:
+/// reaching one needs a request that is still in flight when the client sends
 /// `notifications/cancelled`, and the other harnesses never send it. The messages were therefore
 /// asserted nowhere.
 ///
-/// A test that merely cancelled and accepted *any* error would be the vacuous-assertion defect
-/// B24 removed elsewhere, so each test below asserts the exact message and that the failure
-/// message the arm is meant to replace did not arrive.
+/// A test that merely cancelled and accepted *any* error would be a vacuous assertion, so each test
+/// below asserts the exact message and that the failure message the arm is meant to replace did not
+/// arrive.
 ///
 /// All four arms are reachable and covered here. The fourth — the synthesis arm in `webAnswer` —
-/// was dead when B103 closed: `AnswerSynthesizer.complete` folded every transport error into
+/// used to be dead: `AnswerSynthesizer.complete` folded every transport error into
 /// `SearchError.synthesisFailed`, so a cancelled synthesis never arrived at `ToolHandlers` as a
-/// `CancellationError`, and B97 had pinned that mapping as intended behaviour. Ledger B122 resolved
-/// the contradiction in favour of propagation, consistent with search and fetch, and the test below
-/// is the measurement that proves the arm now runs: before that fix the same call returned a
-/// *success* result carrying the search results and `Answer synthesis failed: The synthesis request
-/// failed.`, never the cancelled error.
+/// `CancellationError`. Synthesis now propagates cancellation the way search and fetch do, and the
+/// test below is the measurement that proves the arm runs: before that change the same call
+/// returned a *success* result carrying the search results and `Answer synthesis failed: The
+/// synthesis request failed.`, never the cancelled error.
 final class ToolCancellationTests: XCTestCase {
 
     // MARK: - Harness
@@ -198,7 +197,7 @@ final class ToolCancellationTests: XCTestCase {
     // MARK: - web_answer, synthesis phase
 
     /// The synthesis half of `web_answer` must answer a cancellation the way the search and fetch
-    /// halves do, rather than swallowing it into a synthesis failure (ledger B122).
+    /// halves do, rather than swallowing it into a synthesis failure.
     ///
     /// The search phase is served by a stub that answers immediately, so the request the
     /// cancellation interrupts is the synthesis one. That is why the wait is on the synthesis stub

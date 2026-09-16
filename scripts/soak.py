@@ -172,7 +172,7 @@ class Server:
         except json.JSONDecodeError as error:
             # A line that is not JSON is a corrupted protocol stream, not end of stream:
             # returning None here let `request` discard the offending line and report a
-            # closed stdout instead (ledger B80).
+            # closed stdout instead.
             raise RuntimeError(
                 f"stdout is not valid JSON (protocol stream corrupted): {error}; "
                 f"offending line: {line!r}"
@@ -221,7 +221,7 @@ def run_verdict(
 
     A soak that errored on every query, or where a requested provider never contributed, says
     something other than what its header claims. The second half of that sentence used to be only
-    a comment (ledger B44). Kept separate from `main` so the CI guard can drive every case without
+    a comment. Kept separate from `main` so the CI guard can drive every case without
     running a soak.
     """
     if queries and errors == queries:
@@ -246,7 +246,7 @@ def build_environment(providers: set[str]) -> dict[str, str]:
     # *assigned* from the request, never merged with the ambient one: merging kept a requested
     # provider disabled when the environment already named it, and with every provider requested
     # the old `if disabled:` guard left the ambient list untouched — both contradicting the run
-    # header, which is what `--providers` is supposed to describe (ledger B23).
+    # header, which is what `--providers` is supposed to describe.
     disabled = sorted(set(ALL_PROVIDERS) - providers)
     environment["SEARCH_DISABLED_PROVIDERS"] = ",".join(disabled)
 
@@ -344,7 +344,7 @@ def main() -> int:
     # `QUERIES[: args.queries]` with a negative count silently takes queries from the end,
     # so `--queries -3` ran 48 of 51 while the header presented that as the request; a zero
     # count starts nothing. Reject both before the run rather than run a different soak than
-    # the one asked for (ledger B82).
+    # the one asked for.
     if args.queries <= 0:
         parser.error("--queries must be positive")
 
@@ -409,7 +409,7 @@ def main() -> int:
         failures_by_provider: Counter[str] = Counter()
         failures_by_category: Counter[str] = Counter()
         # Per provider as well as overall: printing the global counter on every provider's line
-        # attributed every category in the run to every provider that failed at all (ledger B73).
+        # attributed every category in the run to every provider that failed at all.
         categories_by_provider: defaultdict[str, Counter[str]] = defaultdict(Counter)
         usage_by_provider: Counter[str] = Counter()
         errors = 0
@@ -519,7 +519,7 @@ def main() -> int:
             return 1
 
         # A soak that produced errors everywhere, or where a requested provider never
-        # contributed, is a failure of the run rather than a result to interpret (ledger B44).
+        # contributed, is a failure of the run rather than a result to interpret.
         verdict = run_verdict(len(queries), errors, providers, usage_by_provider)
         if verdict:
             print(f"\nSOAK FAILED: {verdict}")

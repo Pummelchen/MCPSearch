@@ -139,7 +139,6 @@ final class TransportConfigurationTests: XCTestCase {
     ///
     /// The error used to say "stdio or http" while `usage` listed all four `TransportName`
     /// cases, so the more natural `--transport streamable-http` looked unsupported
-    /// (ledger B118).
     func testInvalidTransportIsRejected() {
         let expected = "stdio, http, streamable-http, streamable_http"
         assertRejects(
@@ -151,7 +150,7 @@ final class TransportConfigurationTests: XCTestCase {
             )
         )
         // Both the error and the usage line are rendered from `TransportName.acceptedValues`,
-        // so the same phrase must appear in `--help` (ledger B118).
+        // so the same phrase must appear in `--help`.
         XCTAssertTrue(
             ServerOptions.usage.contains("Transport to serve on: \(expected)."),
             ServerOptions.usage
@@ -174,7 +173,6 @@ final class TransportConfigurationTests: XCTestCase {
     /// A flag is not a value for the HTTP options either.
     ///
     /// `--host --http-path /x` used to take "--http-path" as the host and fail later at bind time
-    /// (ledger B75).
     func testAnHTTPOptionDoesNotTakeTheNextFlagAsItsValue() {
         assertRejects(["--host", "--http-path", "/x"], expecting: .missingValue("--host"))
         assertRejects(["--port", "--host", "127.0.0.1"], expecting: .missingValue("--port"))
@@ -217,7 +215,7 @@ final class TransportConfigurationTests: XCTestCase {
     /// matches whole tokens rather than substrings. The previous version asserted four hard-coded
     /// names, so it passed no matter how the parser grew; a substring check would be little
     /// better, because `-h` is a substring of `--http-allowed-host` and so would pass without the
-    /// alias ever being documented (ledger B114).
+    /// alias ever being documented.
     func testUsageDocumentsEveryFlagTheParserAccepts() {
         let tokens = usageTokens()
         for flag in ServerOptions.Flag.allCases {
@@ -295,7 +293,6 @@ final class TransportConfigurationTests: XCTestCase {
     /// A specific bind address is the deployment's own address and must be accepted.
     ///
     /// Hard-coding loopback answered the documented remote setup with `421 Misdirected Request`
-    /// (ledger B21).
     func testNonLoopbackBindAcceptsItsOwnAddressAndStillRefusesOthers() {
         let policy = HTTPTransportConfiguration(host: "192.168.1.5", port: 9000)
             .originPolicy(localAddresses: [])
@@ -351,7 +348,7 @@ final class TransportConfigurationTests: XCTestCase {
     /// The whitespace-separated words of the usage text, with trailing `,`/`.` stripped.
     ///
     /// Tokens rather than substrings: `-h` occurs inside `--http-allowed-host`, so a raw
-    /// containment check would bless an undocumented short alias (ledger B114).
+    /// containment check would bless an undocumented short alias.
     private func usageTokens() -> Set<String> {
         Set(
             ServerOptions.usage
@@ -364,7 +361,7 @@ final class TransportConfigurationTests: XCTestCase {
     ///
     /// The switch is deliberately exhaustive without a `default`: adding a flag to
     /// `ServerOptions.Flag` fails to compile here until the test supplies a value for it, which is
-    /// what keeps the table-driven checks above honest (ledger B114).
+    /// what keeps the table-driven checks above honest.
     private func sampleValue(for flag: ServerOptions.Flag) -> String? {
         switch flag {
         case .help: nil
@@ -400,8 +397,8 @@ final class HTTPRequestBodyPolicyTests: XCTestCase {
     ///
     /// `ByteBuffer.reserveCapacity` reallocates immediately, so a client that sent only a
     /// request head with `Content-Length: 1048576` made the process hold a megabyte per
-    /// connection before a single body byte arrived — with B90's 64-connection bound, 64 MiB
-    /// of allocation from a peer that sent no body at all (ledger B79).
+    /// connection before a single body byte arrived — with the 64-connection bound, 64 MiB
+    /// of allocation from a peer that sent no body at all.
     func testReservationIgnoresTheDeclaredContentLength() {
         for declared in [nil, 0, 1, 4096, HTTPRequestBodyPolicy.maximumBodyBytes, Int.max] {
             XCTAssertEqual(

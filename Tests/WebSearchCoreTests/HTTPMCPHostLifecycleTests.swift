@@ -7,7 +7,7 @@ import XCTest
 ///
 /// The host lives in the `SwiftWebSearchMCP` executable target, which this test target cannot
 /// import — the `RawHTTP` client and the free-port helper are shared with `HTTPTransportTests`
-/// rather than copied. Everything here is loopback only (ledger B101).
+/// rather than copied. Everything here is loopback only.
 final class HTTPMCPHostLifecycleTests: XCTestCase {
     private var process: Process?
     private var stderrPipe = Pipe()
@@ -180,7 +180,7 @@ final class HTTPMCPHostLifecycleTests: XCTestCase {
     /// `localhost` and `[::1]` are loopback origins and must be served, not refused.
     ///
     /// The cross-origin test asserted only a foreign origin and `127.0.0.1`, so the other two arms
-    /// of the allow-list had never run (ledger B101). The loopback form is also what a proxy that
+    /// of the allow-list had never run. The loopback form is also what a proxy that
     /// rewrites the authority can produce.
     func testLocalhostAndIPv6LoopbackOriginsAreServed() throws {
         let port = try HTTPTransportTests.freeLoopbackPort()

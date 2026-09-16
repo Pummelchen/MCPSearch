@@ -52,7 +52,7 @@ public enum HTMLExtractor {
         // Split on anything that is not a letter, a digit or a hyphen: the marker list contains
         // hyphenated names (`side-bar`, `skip-link`, `site-header`), and splitting hyphens away as
         // well made those markers unmatchable and left the "marker then a hyphen" clause
-        // unreachable, because a token can never contain the hyphen it tested for (ledger B61).
+        // unreachable, because a token can never contain the hyphen it tested for.
         let tokens =
             identifier
             .split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "-") })
@@ -160,7 +160,7 @@ public enum HTMLExtractor {
         // nested in another can never outscore it — scoring it would re-walk text that has
         // already been counted. A page that nests its containers, which crafted markup can force,
         // therefore cost quadratic work: on 2 000 nested `<div>`s the scoring pass walked four
-        // million nodes and built a string for each (ledger B28). The maximal candidates are
+        // million nodes and built a string for each. The maximal candidates are
         // found in one depth-first pass and their subtrees are disjoint, so scoring is linear in
         // the document. The selector-major order and the strict `>` comparison are unchanged, so
         // which root wins is unchanged too — except where a nested candidate tied with its

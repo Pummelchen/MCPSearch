@@ -45,7 +45,7 @@ public actor WebFetcher {
         ///
         /// The per-request inactivity timeouts bound a *stalled* socket, but a server that
         /// dribbles one byte at a time is never inactive: without a total deadline it held the
-        /// tool call — and the client waiting on it — open indefinitely (ledger B14).
+        /// tool call — and the client waiting on it — open indefinitely.
         public var totalTimeout: Duration
 
         public init(maxRedirects: Int = 5, totalTimeout: Duration = .seconds(30)) {
@@ -56,7 +56,7 @@ public actor WebFetcher {
             // therefore arrived as tens of thousands of characters of `%PDF-1.7 … stream …`
             // gibberish labelled `raw_text`. There is no PDF extraction in this package, so the
             // honest answer is to refuse it — `extractionFailed` — and let the reader fallback
-            // (which renders PDFs remotely) serve it when one is configured (ledger B16).
+            // (which renders PDFs remotely) serve it when one is configured.
             self.allowedContentTypePrefixes = [
                 "text/", "application/json", "application/xml", "application/xhtml",
                 "application/rss+xml", "application/atom+xml", "application/x-yaml",
@@ -85,7 +85,7 @@ public actor WebFetcher {
     public func open(_ request: FetchRequest) async throws -> FetchResult {
         // One deadline over the whole operation: the direct fetch, the extraction, and any
         // reader fallback. Whichever finishes first wins, and the loser is cancelled — so a
-        // page that never finishes can no longer hold the call open (ledger B14).
+        // page that never finishes can no longer hold the call open.
         try await withThrowingTaskGroup(of: FetchResult.self) { group in
             group.addTask { try await self.performOpen(request) }
             group.addTask {
@@ -142,7 +142,7 @@ public actor WebFetcher {
         // without embedding a headless browser here.
         //
         // A cancelled caller never reaches the fallback: the second outbound request would be
-        // work for nobody, and the cancellation is what the caller should see (ledger B04).
+        // work for nobody, and the cancellation is what the caller should see.
         try Task.checkCancellation()
         guard let jina else {
             guard let result = directResult else {

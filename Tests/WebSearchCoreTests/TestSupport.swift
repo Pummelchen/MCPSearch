@@ -37,7 +37,7 @@ enum ServerTestSupport {
     /// process a profile path through `LLVM_PROFILE_FILE`. A child that inherits that setting
     /// writes its counters into the same file and corrupts both, so for as long as the
     /// subprocesses ran with the inherited value the MCP surface measured **0 %** while being
-    /// thoroughly exercised (ledger A04). Each child now gets its own file, and the coverage
+    /// thoroughly exercised. Each child now gets its own file, and the coverage
     /// step merges every profile in the directory.
     ///
     /// `%c` puts the profiling runtime in continuous mode, which is what makes this work for a
@@ -111,7 +111,7 @@ enum ServerTestError: Error, CustomStringConvertible {
 ///
 /// A separate box rather than fields on the harness because the readability handler that fills
 /// it is `@Sendable` and must not reach back into the non-`Sendable` harness. The lock is the
-/// only point of contact between the reader queue and the test thread (ledger B71).
+/// only point of contact between the reader queue and the test thread.
 private final class StderrCapture: @unchecked Sendable {
     private let lock = NSLock()
     private var buffer = Data()
@@ -151,14 +151,14 @@ private final class StderrCapture: @unchecked Sendable {
 /// `StdioServerTests`, `ErrorReportingTests` and `SchemaCompatibilityTests`, and had already
 /// drifted: the `SchemaCompatibilityTests` copy declared a `failure` that dropped the stderr
 /// payload, and its `process.standardError = Pipe()` was never read, so an early exit reported
-/// the bare words `unexpectedExit` with no diagnostic (ledger B71). The shared environment
+/// the bare words `unexpectedExit` with no diagnostic. The shared environment
 /// scrub list had been factored out; the framing, the deadline and the stderr capture had not.
 ///
 /// The deadline is enforced at the read, not merely checked between reads. The loop this
 /// replaces was `while Date() < deadline { … availableData }`, and `availableData` blocks
 /// until data arrives or the pipe reaches EOF, so a wedged server that still held the write
-/// end hung the suite indefinitely while the 15 s/20 s "timeout" it advertised never fired
-/// (ledger B70). Each read now `poll`s the descriptor first, so the bound is real.
+/// end hung the suite indefinitely while the 15 s/20 s "timeout" it advertised never fired.
+/// Each read now `poll`s the descriptor first, so the bound is real.
 final class ServerProcess {
     let process = Process()
     /// The write end is held as a stored property because `Process.standardInput` owns the
@@ -199,7 +199,7 @@ final class ServerProcess {
         // Every call site used to leave stderr unread until something had already gone wrong,
         // which is exactly when its diagnostics are needed. Draining it as it is produced also
         // means a child that writes more to stderr than the pipe can hold cannot wedge on the
-        // write (ledger B71).
+        // write.
         stderrCapture = StderrCapture(pipe: stderrPipe)
     }
 
@@ -424,7 +424,7 @@ final class MockHTTPClient: HTTPClient, @unchecked Sendable {
         XCTAssertFalse(
             requests.isEmpty,
             "assertNoCredentialLeak needs at least one recorded request: with none it passed "
-                + "without checking anything (ledger B72)",
+                + "without checking anything",
             file: file,
             line: line
         )
@@ -439,8 +439,7 @@ final class MockHTTPClient: HTTPClient, @unchecked Sendable {
             // A key may legitimately travel in a query string (Mojeek does this), which is why it
             // must never be echoed. This helper checks what the mock can see — the headers and body
             // it recorded; log lines and error descriptions are asserted by the tests that exercise
-            // those paths. The comment here used to claim this helper covered them too (ledger
-            // B72).
+            // those paths. The comment here used to claim this helper covered them too.
             if let body = request.body, let text = String(data: body, encoding: .utf8) {
                 XCTAssertFalse(
                     text.contains(secret),
@@ -464,7 +463,7 @@ final class MockSearchProvider: SearchProvider, @unchecked Sendable {
     private let lock = NSLock()
     private var _callCount = 0
     /// Every request the provider was called with, in order, so a test can assert the
-    /// contract the orchestrator is supposed to hand it (ledger B19).
+    /// contract the orchestrator is supposed to hand it.
     private var _requests: [SearchRequest] = []
     private var outcome: @Sendable (SearchRequest) async throws -> ProviderSearchResponse
 
@@ -554,8 +553,7 @@ final class MockSearchProvider: SearchProvider, @unchecked Sendable {
 /// is "the clock advanced between two reads of it". The orchestrator reads the clock once to
 /// decide a provider is throttled and again to estimate the remaining wait, so a clock that
 /// creeps on every read deterministically puts those two reads on opposite sides of a
-/// `minimumInterval` boundary — the boundary that was intermittent on a real clock (ledger
-/// B116).
+/// `minimumInterval` boundary — the boundary that was intermittent on a real clock.
 final class CreepingClock: Clock, @unchecked Sendable {
     private let lock = NSLock()
     private var current: Date
@@ -594,7 +592,7 @@ enum Fixtures {
     /// characters long and contains none of its marker words (`placeholder`, `fake`, `example`,
     /// …), so a test that needs "a usable key is configured" must supply something key-shaped.
     /// The body is a run of zeroes, which keeps the full-history secret scan clean: the literal
-    /// this replaced (`sk-test-key-…`) was flagged five times by `gitleaks` (ledger A06), and a
+    /// this replaced (`sk-test-key-…`) was flagged five times by `gitleaks`, and a
     /// synthetic value that trips a scanner only teaches people to ignore the scanner.
     static let syntheticDeepSeekKey = "sk-000000000000000000000000"
 
