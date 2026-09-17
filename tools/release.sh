@@ -348,10 +348,20 @@ else
     else
         fail "$NOTES_SRC must end with a checksum block carrying SHA256_PENDING / ARCHIVE_BYTES / NOT_CHECKED"
     fi
+    # Scoped on purpose. This line is substituted under the heading "Checks that did not run", and
+    # the notes may also carry something that did *not* run for another reason — CI, in this
+    # repository's case. A bare "none" there read as "nothing at all was unchecked", which is the
+    # distinction §1.2.7 exists to protect.
+    #
+    # The label and the list are separated by a literal newline in the string rather than `\n`:
+    # inside double quotes bash does not interpret that escape, so it would reach the notes as the
+    # two characters `\n`. Measured both ways.
+    not_checked_label="**Release gates (RELEASE.md §1.5):**"
     if [ "${#notchecked[@]}" -eq 0 ]; then
-        not_checked_text="none — every check in RELEASE.md §1.5 ran."
+        not_checked_text="${not_checked_label} none skipped — every one ran."
     else
-        not_checked_text="$(printf -- '- %s\n' "${notchecked[@]}")"
+        not_checked_text="${not_checked_label} skipped:
+$(printf -- '- %s\n' "${notchecked[@]}")"
     fi
     # python3 rather than sed: the not-checked list can be several lines and BSD sed rejects a
     # newline in a replacement string.
