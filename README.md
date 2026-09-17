@@ -203,6 +203,7 @@ SEARCH_LIVE_TESTS=1 swift test --filter LiveProviderTests   # opt-in; calls real
 python3 scripts/mcp_smoke.py   # end-to-end stdio handshake
 python3 scripts/mcp_smoke.py --http   # end-to-end Streamable HTTP session
 python3 scripts/monitor_tty_smoke.py  # drives the dashboard through a pseudo-terminal
+python3 scripts/dual_client_contract.py  # one stub, both executables, compared
 tools/check-version.sh         # VERSION, the generated mirror and the changelog agree
 ```
 
