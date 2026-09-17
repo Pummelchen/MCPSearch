@@ -209,6 +209,15 @@ jobs:
           BIN="$(swift build -c release --show-bin-path)/mcps-mon"
           python3 scripts/monitor_tty_smoke.py "$BIN"
 
+      # One instance, two readers. The server and the dashboard parse the same SearXNG response
+      # with two independent parsers, and they have disagreed before: the dashboard's
+      # unavailable-engine column was empty against every live instance because `NodeProbe` did
+      # not map `unresponsive_engines` while `SearXNGProvider` did. No Swift test can see that —
+      # each side's tests pass on their own, because the disagreement only exists between them —
+      # so both executables are pointed at one stub and each is asked what it sees.
+      - name: Two-executable contract (one stub, both readers)
+        run: python3 scripts/dual_client_contract.py "$(swift build -c release --show-bin-path)"
+
       # Prove the hermeticity claim rather than assuming it: the default suite must
       # still pass when provider credentials are present in the environment.
       #
