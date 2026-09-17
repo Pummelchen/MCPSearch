@@ -26,15 +26,13 @@ import io
 import json
 import os
 import re
+import socket
 import subprocess
 import sys
 import tempfile
-import threading
 import types
 import unittest
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import ClassVar
 from unittest import mock
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
@@ -52,54 +50,11 @@ def load_script(name: str) -> types.ModuleType:
     return module
 
 
-# `searxng_health` is used by the stub below as well as by its own tests.
 searxng_health = load_script("searxng_health")
-
-
-class _StubHandler(BaseHTTPRequestHandler):
-    """Answers `/search` the way a SearXNG instance would, or with a scripted status.
-
-    Class attributes are set per server instance (`_status`, `_payload`) and read on the
-    request thread, which is why each test builds its own server rather than sharing one.
-    """
-
-    status = 200
-    payload: str = "{}"
-    requests: ClassVar[list[str]] = []
-
-    def do_GET(self) -> None:
-        type(self).requests.append(self.path)
-        body = self.payload.encode("utf-8")
-        self.send_response(self.status)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def log_message(self, format: str, *args: object) -> None:
-        """Silence the stub: its access log would drown the test output."""
-
-
-class StubSearXNG:
-    """A loopback SearXNG stub on an ephemeral port."""
-
-    def __init__(self, status: int = 200, payload: str = "{}") -> None:
-        _StubHandler.status = status
-        _StubHandler.payload = payload
-        _StubHandler.requests = []
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), _StubHandler)
-        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
-        self.thread.start()
-
-    @property
-    def base_url(self) -> str:
-        host, port = self.server.server_address[:2]
-        return f"http://{host}:{port}"
-
-    def close(self) -> None:
-        self.server.shutdown()
-        self.server.server_close()
-        self.thread.join(timeout=5)
+# One stub, shared with `dual_client_contract.py`: that harness needs the same scripted
+# instance to point both executables at, and a test module is the wrong place for a server
+# to live.
+StubSearXNG = load_script("searxng_stub").StubSearXNG
 
 
 def run_main(module: types.ModuleType, argv: list[str]) -> tuple[int, str]:
@@ -182,9 +137,9 @@ class SearXNGHealthTests(unittest.TestCase):
 
     def test_closed_port_is_unreachable_and_exit_two(self) -> None:
         # Bind and release a port so the address is certainly not listening.
-        probe_server = ThreadingHTTPServer(("127.0.0.1", 0), _StubHandler)
-        host, port = probe_server.server_address[:2]
-        probe_server.server_close()
+        with socket.socket() as probe:
+            probe.bind(("127.0.0.1", 0))
+            host, port = probe.getsockname()
         status, output = run_main(searxng_health, [f"http://{host}:{port}", "--json"])
         self.assertEqual(status, 2, output)
         self.assertEqual(json.loads(output)["reason"], "unreachable")
@@ -348,10 +303,34 @@ class ScrubListContractTests(unittest.TestCase):
         self.assertTrue(smoke.SCRUBBED_VARIABLES, "the Python scrub list is empty")
 
 
+class DualClientContractTests(unittest.TestCase):
+    """The runtime contract, seen from outside: it must not pass or crash vacuously.
+
+    What it *asserts* is exercised by whether it can fail — it runs against real binaries in CI
+    and in the release gate, where a regression surfaces as a failure. What is checked here is the
+    shape of its own failure when the build it needs is not there.
+    """
+
+    def test_a_missing_binary_directory_is_reported_not_crashed(self) -> None:
+        finished = subprocess.run(
+            [sys.executable, str(SCRIPTS / "dual_client_contract.py"), "/nonexistent/bin"],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(finished.returncode, 1)
+        self.assertIn("no binary at", finished.stderr)
+
+
 def main() -> int:
     suite = unittest.TestSuite()
     loader = unittest.TestLoader()
-    for case in (SearXNGHealthTests, SoakArgumentTests, ScrubListContractTests):
+    for case in (
+        SearXNGHealthTests,
+        SoakArgumentTests,
+        ScrubListContractTests,
+        DualClientContractTests,
+    ):
         suite.addTests(loader.loadTestsFromTestCase(case))
     result = unittest.TextTestRunner(verbosity=2).run(suite)
     if result.wasSuccessful():

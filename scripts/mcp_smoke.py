@@ -116,7 +116,7 @@ def locate_binary() -> str:
 class Server:
     """A running server with newline-delimited JSON-RPC framing."""
 
-    def __init__(self, binary: str) -> None:
+    def __init__(self, binary: str, extra_environment: dict[str, str] | None = None) -> None:
         environment = {
             "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
             "SEARCH_LOG_LEVEL": "debug",
@@ -130,13 +130,19 @@ class Server:
             "SEARCH_ENABLE_SCRAPERS": "false",
             "SEARCH_ENABLE_PARALLEL": "false",
         }
+        # `dual_client_contract.py` points this child at a stub instance. An entry passed here is
+        # deliberate by construction — the assertion below is about what leaks in from the ambient
+        # environment, and an argument cannot leak — so the caller's keys join the deliberate set
+        # rather than being merged in afterwards past the check.
+        extra = dict(extra_environment or {})
+        environment.update(extra)
         # Prove the scrub rather than assume it: the dictionary above is built from scratch, so no
         # provider variable can be present. Popping keys that were never there asserted nothing.
         # The two enable flags are deliberately present — set to `false`, which is what makes this
         # environment free of providers — so they are excluded here rather than dropped from
         # `SCRUBBED_VARIABLES`, whose exact parity with the Swift harnesses `harness_tests.py`
         # enforces.
-        deliberate = {"SEARCH_ENABLE_SCRAPERS", "SEARCH_ENABLE_PARALLEL"}
+        deliberate = {"SEARCH_ENABLE_SCRAPERS", "SEARCH_ENABLE_PARALLEL"} | set(extra)
         leaked = set(environment) & (set(SCRUBBED_VARIABLES) - deliberate)
         assert not leaked, f"the child environment still carries {sorted(leaked)}"
 

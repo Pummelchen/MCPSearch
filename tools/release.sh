@@ -276,6 +276,10 @@ if [ "$SKIP_GATES" -eq 0 ]; then
     run_gate "mcp_smoke (stdio, release)" python3 scripts/mcp_smoke.py "$BIN_DIR/SwiftWebSearchMCP"
     run_gate "mcp_smoke (http, release)" python3 scripts/mcp_smoke.py --http "$BIN_DIR/SwiftWebSearchMCP"
     run_gate "monitor tty smoke (release)" python3 scripts/monitor_tty_smoke.py "$BIN_DIR/mcps-mon"
+    # The other half of the contract `harness_tests.py` owns statically: both executables are
+    # pointed at one stub and each is asked what it sees, because the two parse the same SearXNG
+    # response with two independent parsers and nothing else compares them.
+    run_gate "dual client contract (release)" python3 scripts/dual_client_contract.py "$BIN_DIR"
 fi
 
 step "package (RELEASE.md §1.6)"

@@ -40,7 +40,9 @@ Intel slice).
   `VERSION`), `check-version.sh` (the version-agreement gate CI runs), and
   `release.sh` (the whole release, dry run by default).
 - `scripts/` — the CI harnesses: `mcp_smoke.py`, `monitor_tty_smoke.py`,
-  `coverage_floor.py`, `soak.py`, `harness_tests.py`, `third_party_notices.py`.
+  `dual_client_contract.py` (one stub, both executables, compared),
+  `coverage_floor.py`, `soak.py`, `harness_tests.py`, `third_party_notices.py`, and
+  `searxng_stub.py`, the loopback instance the last two of those serve.
 - `deploy/` — `install.sh` (the installer, and the single implementation of a SearXNG install),
   `provision-node.sh` (a thin native node provisioner that delegates to it), and a digest-pinned
   SearXNG compose file kept as the container alternative.
@@ -120,9 +122,12 @@ misreported its own version over MCP.
 - `swift package resolve` then `git diff --exit-code Package.resolved` — lockfile
   drift fails the job. Dependencies are pinned with `exact:`.
 - Debug and release builds with `-warnings-as-errors`; then `scripts/mcp_smoke.py`
-  (stdio and `--http`) and `scripts/monitor_tty_smoke.py` (pseudo-terminal). The
-  smoke test also **asserts the server reports the version in `VERSION`** — it used
-  to print the reported version without checking it, so any version passed.
+  (stdio and `--http`), `scripts/monitor_tty_smoke.py` (pseudo-terminal) and
+  `scripts/dual_client_contract.py`. The smoke test also **asserts the server reports
+  the version in `VERSION`** — it used to print the reported version without checking
+  it, so any version passed. The contract test is the one check that reads **both**
+  executables at once: the server and the dashboard parse the same SearXNG response
+  with two independent parsers, and each side's own tests pass while they disagree.
 - A second `swift test` run with **placeholder credentials**, to prove the suite is
   hermetic.
 - **Version mirrors agree with `VERSION`** — `bash tools/check-version.sh`.
