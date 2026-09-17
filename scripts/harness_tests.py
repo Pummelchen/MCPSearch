@@ -265,6 +265,50 @@ class SoakArgumentTests(unittest.TestCase):
             self.assertNotIn("MOJEEK_API_KEY", values)
 
 
+class SoakSemanticsTests(unittest.TestCase):
+    """`soak.py`'s own provider selection and verdicts.
+
+    These were two heredocs inside `ci.yml`, asserting the harness's behaviour in the job that
+    happened to have the file to hand. That made them invisible to `tools/release.sh`, which runs
+    this module and does not read CI's steps — so the release gate checked less than CI did. They
+    are tests of a harness, which is what this module is for, and moving them here means both run
+    them.
+    """
+
+    def test_provider_selection_is_authoritative(self) -> None:
+        # An ambient SEARCH_DISABLED_PROVIDERS must not keep a requested provider switched off,
+        # and requesting everything must clear the ambient list rather than leave it in place.
+        soak = load_script("soak")
+        # Patched rather than assigned: this runs in the test process, unlike the heredoc it
+        # replaces, so the ambient environment has to be put back afterwards.
+        with mock.patch.dict(os.environ, {"SEARCH_DISABLED_PROVIDERS": "tavily"}):
+            environment = soak.build_environment({"tavily", "brave"})
+            disabled = environment["SEARCH_DISABLED_PROVIDERS"].split(",")
+            self.assertNotIn("tavily", disabled)
+            self.assertIn("mojeek", disabled)
+
+            every = soak.build_environment(set(soak.ALL_PROVIDERS))
+            self.assertEqual(every["SEARCH_DISABLED_PROVIDERS"], "")
+
+            only_brave = soak.build_environment({"brave"})
+            self.assertIn("tavily", only_brave["SEARCH_DISABLED_PROVIDERS"].split(","))
+
+    def test_run_verdicts_are_enforced(self) -> None:
+        # A requested provider that never contributed makes the soak describe a different run from
+        # the one in its header, which the harness treats as a failure.
+        soak = load_script("soak")
+        self.assertEqual(soak.silent_providers({"tavily", "brave"}, {"tavily": 5, "brave": 3}), [])
+        self.assertEqual(soak.silent_providers({"tavily", "brave"}, {"tavily": 5}), ["brave"])
+        self.assertEqual(soak.silent_providers({"tavily", "brave"}, {}), ["brave", "tavily"])
+
+        clean = {"tavily": 5, "brave": 3}
+        self.assertIsNone(soak.run_verdict(5, 0, {"tavily", "brave"}, clean))
+        self.assertEqual(soak.run_verdict(5, 5, {"tavily", "brave"}, clean), "every query errored")
+        silent = soak.run_verdict(5, 0, {"tavily", "brave"}, {"tavily": 5})
+        self.assertIsNotNone(silent)
+        self.assertIn("brave", silent or "")
+
+
 class ScrubListContractTests(unittest.TestCase):
     """The one contract that crosses the two languages."""
 
@@ -329,6 +373,7 @@ def main() -> int:
         SearXNGHealthTests,
         SoakArgumentTests,
         ScrubListContractTests,
+        SoakSemanticsTests,
         DualClientContractTests,
     ):
         suite.addTests(loader.loadTestsFromTestCase(case))
