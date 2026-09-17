@@ -154,4 +154,11 @@ passed.
 That is a local reproduction and a local pass, not a CI run. A green CI run on the tagged commit
 remains outstanding and should be obtained before this release is treated as verified by CI.
 
+**Since publication, that run has happened.** CI passed on `210a51d` — `build-and-test` and
+`static-analysis` both green, and CodeQL green — and that commit differs from `v1.2.0` only in
+documentation and `tools/release.sh`: nothing under `Sources/`, `Tests/`, `scripts/` or
+`Package.swift` changed between the tag and it. The release code is therefore covered by a green
+run, although the tag's own runs were cancelled by the workflow's concurrency policy under the
+runner backlog the tracker already records.
+
 NOT_CHECKED_PENDING
