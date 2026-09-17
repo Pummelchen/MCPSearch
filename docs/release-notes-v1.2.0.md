@@ -143,8 +143,6 @@ Apple silicon only (`arm64`, M1–M6), macOS 13 or newer. Not code-signed and no
 
 ## Checks that did not run
 
-NOT_CHECKED_PENDING
-
 **No CI result is claimed for the commit this release is built from.** The instruction was not to wait
 for GitHub checks, so none was awaited. The most recent completed CI run on `main` — on `3257b0b` —
 was **red**, and its cause is fixed here: `build-and-test` failed in the end-to-end smoke test with
@@ -155,3 +153,5 @@ passed.
 
 That is a local reproduction and a local pass, not a CI run. A green CI run on the tagged commit
 remains outstanding and should be obtained before this release is treated as verified by CI.
+
+NOT_CHECKED_PENDING
