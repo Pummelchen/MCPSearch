@@ -288,7 +288,77 @@ it, and this audit's own standard says the final commit is the one Phase E verif
 - the measurement that motivated them: **34 of 37 real pages exact, 3 over, 0 under**, against 18
   under-counts before the fix.
 
-What they do **not** have is a run on a machine other than the one they were written on. The obligation
-that follows is named rather than left to be discovered: **Phase E must be run again on `main` as it now
-stands before this work is treated as verified**, and until it is, the ledger's closure of `A0011` rests
-on the primary host alone.
+What they did not have at the moment of publication was a run on a machine other than the one they
+were written on. The obligation that followed was named rather than left to be discovered — **Phase E
+run again on `main` as it now stands** — and it has since been discharged: that is run 4, below.
+
+---
+
+# Phase E — run 4, on the commit that carries the A0011 fix
+
+Run 3 verified `bcc29bc`. Two commits landed after it — the A0011 fix for the two bypass-direction
+defects that measuring against real pages exposed, and its ledger entry — and they reached `main`
+before this run, which the section above records. This run discharges that obligation.
+
+| | |
+|---|---|
+| Commit verified | `2454781f6de60e58e4ea9a6df393da1107d3bc22` |
+| Branch | `audit/2026-09-18`, with `main` fast-forwarded to the same commit |
+| Clone | fresh, from the bundle, `git status --porcelain` empty |
+| Independent host | `MacBook-AB.local`, macOS 27.0, Swift 6.4 (`swiftlang-6.4.0.34.1`), `arm64` |
+
+`HEAD` was compared before any gate ran, because a bundle that resolved to the wrong commit would make
+every row below meaningless:
+
+```
+primary     2454781f6de60e58e4ea9a6df393da1107d3bc22
+independent 2454781f6de60e58e4ea9a6df393da1107d3bc22
+```
+
+## Every gate
+
+| Gate | Result |
+|---|---|
+| `swift build --build-tests -Xswiftc -warnings-as-errors` | PASS — exit 0, **0 warnings** |
+| `swift test` | PASS — **582 tests, 7 skipped, 0 failures** |
+| `swift-format lint --recursive --strict` | PASS |
+| `swiftlint lint --strict` | PASS |
+| `tools/check-version.sh` | PASS |
+| `ruff check` / `ruff format --check scripts` | PASS |
+| `pyright scripts` | PASS |
+| `scripts/harness_tests.py` | PASS |
+| `gitleaks detect --log-opts=--all`, both passes | PASS — no leaks |
+| `osv-scanner scan source -r .` | PASS — no issues |
+| `semgrep --error` | PASS |
+| `bash -n` + `shellcheck -S warning` (deploy, tools) | PASS |
+| the real-page measurement, `MARKUP_DEPTH_CORPUS` | PASS — 34 exact, 3 over, **0 under** |
+| `scripts/mcp_smoke.py <bin>` (stdio) | PASS |
+| `scripts/mcp_smoke.py --http <bin>` | PASS |
+| `scripts/dual_client_contract.py <bin-dir>` | PASS |
+| `scripts/monitor_tty_smoke.py <bin>` | PASS |
+
+**19 gates, 0 failures.** The suite count agrees with the primary host.
+
+## The measurement this run existed for
+
+```
+A0011 corpus: 37 pages, 34 exact, 3 over, 0 under
+```
+
+Identical to the primary host. That is the number the first closure could not produce: the model read
+*shallower* than the parser on 18 of these pages before the fix, and reads shallower on none of them
+after it. The three over-counts are +14, +2 and +1 — the safe direction, against a limit of 512.
+
+**The corpus was copied to this host, not fetched by it.** The input is therefore byte-identical and
+this is not an independent sample of the web; the run verifies the model against the *same* pages on a
+different machine, not against different pages. That limitation belongs to this row and is stated
+rather than implied — fetching a second corpus would be a different, and better, check.
+
+The suite's 7th skip is the opt-in corpus test itself, which then ran explicitly with the corpus set.
+The skip is the default-suite behaviour working as designed, not a check that was passed over.
+
+## No invocation errors, and why
+
+Run 3 recorded three argument conventions — `shellcheck` needs `-S warning`; the smoke and monitor
+harnesses take the **binary**; the contract harness takes the **directory**. This run used them and
+needed no correction, which is the point of writing them down rather than remembering them.
