@@ -289,7 +289,9 @@ final class HTTPClientTests: XCTestCase {
         print(
             "      A0017: collected=\(recorder.hasCollected) addresses=\(recorder.addresses)"
         )
-        XCTAssertEqual(String(decoding: received, as: UTF8.self), "hello")
+        // Compared as bytes: `String(decoding:as:)` is what `optional_data_string_conversion` flags,
+        // and the assertion is about the body having arrived rather than about a conversion.
+        XCTAssertEqual(received, Array("hello".utf8))
         XCTAssertTrue(
             recorder.hasCollected,
             "the metrics callback had not fired by the time the body was fully read"
