@@ -431,6 +431,12 @@ def main() -> int:
     print()
 
     server = Server(binary, build_environment(providers))
+    # Text the *server* supplied that this report prints. The leak scan read only stderr, but
+    # the report prints `last_error`, which `ProviderHealth` fills from a failure message — and
+    # the HTTP client here documents that a URL in a diagnostic is a credential in a
+    # diagnostic, because Mojeek authenticates with `api_key=` in the query string. A
+    # credential could reach the report and never be checked (ledger A0020).
+    server_diagnostics: list[str] = []
     try:
         server.request(
             "initialize",
@@ -551,6 +557,9 @@ def main() -> int:
         print("\n  provider health at end:")
         for provider in final:
             name = provider["provider"]
+            # Kept untruncated for the scan: a credential can straddle the 42-character display cut,
+            # and a partial match would be missed.
+            server_diagnostics.append(str(provider.get("last_error") or ""))
             if provider["requests"] or provider["status"] != "not_configured":
                 print(
                     f"    {name:16} {provider['status']:14} "
@@ -560,12 +569,14 @@ def main() -> int:
                 )
 
         stderr = server.close()
-        leaked = find_credential_leaks(stderr, load_secret_values())
-        print(f"\n  credential leak in stderr: {leaked or 'none'}")
+        leaked = find_credential_leaks(
+            stderr + "\n" + "\n".join(server_diagnostics), load_secret_values()
+        )
+        print(f"\n  credential leak in the server's output: {leaked or 'none'}")
 
         if leaked:
             # A credential in a diagnostic is a defect, not an observation to interpret.
-            print(f"\nSOAK FAILED: credential material appeared in stderr: {leaked}")
+            print(f"\nSOAK FAILED: credential material appeared in the server's output: {leaked}")
             return 1
 
         # A soak that produced errors everywhere, or where a requested provider never
@@ -579,6 +590,20 @@ def main() -> int:
     finally:
         if server.process.poll() is None:
             server.process.kill()
+        # The scan must not be skippable. It sat inside the try above, so any exception before
+        # it — the status call raising, or a shape change making the payload index fail —
+        # jumped straight here, and this block only killed the child: the stderr that may hold
+        # the leak was never read or scanned, so the check silently did not run on exactly the
+        # failed runs (ledger A0020). The run is failing anyway; this makes the leak visible
+        # instead of silent.
+        stderr_tail = server.close()
+        leaked_late = find_credential_leaks(
+            stderr_tail + "\n" + "\n".join(server_diagnostics), load_secret_values()
+        )
+        if leaked_late:
+            print(
+                f"\nSOAK FAILED: credential material appeared in the server's output: {leaked_late}"
+            )
 
 
 if __name__ == "__main__":
