@@ -104,6 +104,10 @@ limiter denied.
 
 ## Checks that did not run
 
+NOT_CHECKED_PENDING
+
+Two things beyond the release gates are also not covered by this release:
+
 - **Live provider tests.** `SEARCH_LIVE_TESTS` was not set and no usable key was available, so
   `LiveProviderTests` was skipped, as it is in CI. Every provider is covered against stubs.
 - **The real-page depth corpus is opt-in** and is not part of the default suite, so CI does not fetch
