@@ -765,13 +765,13 @@
       "location": "Sources/WebSearchCore/Providers/SearXNGProvider.swift:180,154",
       "title": "SearXNG answers are decoded as [String] but emitted as objects, so an answering query discards every result",
       "category": "correctness/decoding",
-      "status": "OPEN",
+      "status": "DONE",
       "host": "Node1",
       "discovered_by": "Providers tier A review (subagent)",
       "evidence_before": "`let answers: [String]?` with `payload.answers?.first(where: { !$0.isEmpty })`. SearXNG builds answers as a list of dicts (`Answer.as_dict()` -> {answer, url, engine}), so the wire type is an array of objects and never strings. decodeIfPresent([String].self) throws typeMismatch on an object array rather than returning nil, and Data.decodeJSON turns that into .malformedResponse(.searxng) — discarding the valid results array for the whole query. Trigger: any query an answering engine handles. The repo's own notes and the provider test feed only use \"answers\":[], so it is untested.",
-      "fix_summary": "",
-      "evidence_after": "",
-      "commit": "",
+      "fix_summary": "`answers` is now `[Answer]?`, decoding either an object ({answer,url,engine}) or a plain string, taking the first entry with non-empty text; an unrecognised element is ignored rather than fatal. Three tests added in a new SearXNGAnswerShapeTests file, because adding them to ProviderContractTests pushed it past the file-length envelope .swiftlint.yml records.",
+      "evidence_after": "With the fix stashed the new test failed as the defect predicts: caught error: \"malformedResponse(WebSearchCore.ProviderID.searxng)\". With the fix: the same test passes, plus plain-string and unreadable-entry cases. Full suite 593 tests (551 + 42), 6 skipped, 0 failures, 0 warnings; swift-format --strict and swiftlint --strict both exit 0.",
+      "commit": "14daaad",
       "blocked_reason": ""
     },
     {

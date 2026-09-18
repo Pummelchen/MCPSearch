@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 51 — done 1 · open 48 · blocked 2**
+**total 51 — done 2 · open 47 · blocked 2**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
-| S0 | 4 | 0 | 3 | 1 |
+| S0 | 4 | 1 | 2 | 1 |
 | S1 | 30 | 1 | 28 | 1 |
 | S2 | 16 | 0 | 16 | 0 |
 | S3 | 1 | 0 | 1 | 0 |
 
-Status tally: OPEN 46, PROGRESS 2, DONE 1, BLOCKED 2
+Status tally: OPEN 45, PROGRESS 2, DONE 2, BLOCKED 2
 
 ## Tasks
 
@@ -28,7 +28,7 @@ Status tally: OPEN 46, PROGRESS 2, DONE 1, BLOCKED 2
 | A0001 | S0 | A | BLOCKED | A live-looking Tavily credential prefix is in public git history and cannot be un-published |
 | A0007 | S0 | A | OPEN | /health returns a hardcoded ok, so the production health surface is wired to nothing |
 | A0011 | S0 | A | PROGRESS | The markup-depth guard is bypassable, so crafted HTML reaches a recursive parse and kills the process |
-| A0045 | S0 | A | OPEN | SearXNG answers are decoded as [String] but emitted as objects, so an answering query discards every result |
+| A0045 | S0 | A | DONE | SearXNG answers are decoded as [String] but emitted as objects, so an answering query discards every result |
 | A0002 | S1 | A | DONE | Warnings-as-errors is not in the build config, so the Swift standard is not in force at the build level |
 | A0003 | S1 | A | OPEN | SwiftLint cannot reject a force-unwrap, so the §1 Swift standard proof fails |
 | A0004 | S1 | A | OPEN | Ruff does not select S101, so `assert` used for validation is unchecked |
@@ -110,12 +110,15 @@ Status tally: OPEN 46, PROGRESS 2, DONE 1, BLOCKED 2
 
 ### A0045 — SearXNG answers are decoded as [String] but emitted as objects, so an answering query discards every result
 
-- **Severity / tier / status:** S0 / A / OPEN
+- **Severity / tier / status:** S0 / A / DONE
 - **Location:** `Sources/WebSearchCore/Providers/SearXNGProvider.swift:180,154`
 - **Category:** correctness/decoding
 - **Host:** Node1
 - **Discovered by:** Providers tier A review (subagent)
 - **Evidence before:** `let answers: [String]?` with `payload.answers?.first(where: { !$0.isEmpty })`. SearXNG builds answers as a list of dicts (`Answer.as_dict()` -> {answer, url, engine}), so the wire type is an array of objects and never strings. decodeIfPresent([String].self) throws typeMismatch on an object array rather than returning nil, and Data.decodeJSON turns that into .malformedResponse(.searxng) — discarding the valid results array for the whole query. Trigger: any query an answering engine handles. The repo's own notes and the provider test feed only use "answers":[], so it is untested.
+- **Fix:** `answers` is now `[Answer]?`, decoding either an object ({answer,url,engine}) or a plain string, taking the first entry with non-empty text; an unrecognised element is ignored rather than fatal. Three tests added in a new SearXNGAnswerShapeTests file, because adding them to ProviderContractTests pushed it past the file-length envelope .swiftlint.yml records.
+- **Evidence after:** With the fix stashed the new test failed as the defect predicts: caught error: "malformedResponse(WebSearchCore.ProviderID.searxng)". With the fix: the same test passes, plus plain-string and unreadable-entry cases. Full suite 593 tests (551 + 42), 6 skipped, 0 failures, 0 warnings; swift-format --strict and swiftlint --strict both exit 0.
+- **Commit:** `14daaad`
 
 ### A0002 — Warnings-as-errors is not in the build config, so the Swift standard is not in force at the build level
 
