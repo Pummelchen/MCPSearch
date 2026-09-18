@@ -346,11 +346,16 @@ NOTES="$DIST/release-notes-v$VERSION.md"
 if [ ! -f "$NOTES_SRC" ]; then
     fail "$NOTES_SRC does not exist; the notes are part of the release, not an afterthought"
 else
+    # The marker is required, not merely tolerated. Without this the notes could omit the
+    # "Checks that did not run" section entirely and still pass: the placeholder check below only
+    # rejects a *remaining* PENDING, so a section that was never written looks identical to one where
+    # every gate ran — which is the distinction RELEASE.md §1.2.7 exists to protect (ledger A0041).
     if grep -qE 'SHA256_(PENDING)?[0-9a-f]{0,64}|SHA256_PENDING' "$NOTES_SRC" &&
-        grep -q 'ARCHIVE_BYTES_PENDING\|ARCHIVE_BYTES [0-9]' "$NOTES_SRC"; then
-        pass "notes carry the checksum block"
+        grep -q 'ARCHIVE_BYTES_PENDING\|ARCHIVE_BYTES [0-9]' "$NOTES_SRC" &&
+        grep -q 'NOT_CHECKED_PENDING' "$NOTES_SRC"; then
+        pass "notes carry the checksum block and the not-checked marker"
     else
-        fail "$NOTES_SRC must end with a checksum block carrying SHA256_PENDING / ARCHIVE_BYTES / NOT_CHECKED"
+        fail "$NOTES_SRC must end with a checksum block carrying SHA256_PENDING / ARCHIVE_BYTES / NOT_CHECKED_PENDING"
     fi
     # Scoped on purpose. This line is substituted under the heading "Checks that did not run", and
     # the notes may also carry something that did *not* run for another reason — CI, in this
@@ -392,6 +397,13 @@ PY
         fail "the rendered notes still contain a PENDING placeholder"
     else
         pass "no placeholder left in the rendered notes"
+    fi
+    # And the section must actually have arrived. Checking only that nothing PENDING is left cannot
+    # distinguish the two states a reader cares about (ledger A0041).
+    if grep -qF "$not_checked_label" "$NOTES"; then
+        pass "the published notes state which gates did not run"
+    else
+        fail "the published notes do not carry the not-checked section"
     fi
 fi
 
