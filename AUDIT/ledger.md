@@ -10,23 +10,23 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 52 — done 2 · open 48 · blocked 2**
+**total 52 — done 3 · open 47 · blocked 2**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
-| S0 | 4 | 1 | 2 | 1 |
+| S0 | 4 | 2 | 1 | 1 |
 | S1 | 30 | 1 | 28 | 1 |
 | S2 | 16 | 0 | 16 | 0 |
 | S3 | 2 | 0 | 2 | 0 |
 
-Status tally: OPEN 46, PROGRESS 2, DONE 2, BLOCKED 2
+Status tally: OPEN 45, PROGRESS 2, DONE 3, BLOCKED 2
 
 ## Tasks
 
 | id | sev | tier | status | title |
 | --- | --- | --- | --- | --- |
 | A0001 | S0 | A | BLOCKED | A live-looking Tavily credential prefix is in public git history and cannot be un-published |
-| A0007 | S0 | A | OPEN | /health returns a hardcoded ok, so the production health surface is wired to nothing |
+| A0007 | S0 | A | DONE | /health returns a hardcoded ok, so the production health surface is wired to nothing |
 | A0011 | S0 | A | PROGRESS | The markup-depth guard is bypassable, so crafted HTML reaches a recursive parse and kills the process |
 | A0045 | S0 | A | DONE | SearXNG answers are decoded as [String] but emitted as objects, so an answering query discards every result |
 | A0002 | S1 | A | DONE | Warnings-as-errors is not in the build config, so the Swift standard is not in force at the build level |
@@ -92,12 +92,15 @@ Status tally: OPEN 46, PROGRESS 2, DONE 2, BLOCKED 2
 
 ### A0007 — /health returns a hardcoded ok, so the production health surface is wired to nothing
 
-- **Severity / tier / status:** S0 / A / OPEN
+- **Severity / tier / status:** S0 / A / DONE
 - **Location:** `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:537-542`
 - **Category:** facade/ops
 - **Host:** Node1
 - **Discovered by:** L7 ops + §5 facade hunt (subagent, verified by reading the handler at 537-542)
 - **Evidence before:** The GET/HEAD /health branch returns a literal body: Data(#"{"status":"ok"}"#.utf8) with status .ok. It consults neither the MCP server, nor the provider registry, nor the circuit breakers, nor the local SearXNG. main.swift advertises the endpoint and README/AGENTS document it as the health check, so an operator or supervisor reading it learns nothing about whether search works. §5: a hardcoded success return on a production path. Re-classified S1 -> S0: §5 says a production-path facade is S0, and a hardcoded success return on the documented health endpoint is one.
+- **Fix:** `HTTPMCPHost` takes a `HealthSource` closure and serves a body built from it, answering 503 when the report is not ready; `main.swift` supplies a source reading the live registry (version from VERSION, provider totals and configured count).
+- **Evidence after:** With the source stashed the new test failed on exactly the facade: XCTAssertEqual failed ("nil") is not equal to ("Optional(\"1.2.0\")") and an XCTUnwrap failed for the missing integer count. With the fix it passes, asserting the version equals BuildVersion.value and that the counts parse and are consistent. Full suite 596 tests (554 + 42), 6 skipped, 0 failures, 0 warnings; swift-format --strict and swiftlint --strict both exit 0.
+- **Commit:** `f4028ba`
 
 ### A0011 — The markup-depth guard is bypassable, so crafted HTML reaches a recursive parse and kills the process
 
@@ -191,7 +194,7 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 - **Category:** check-cannot-fail
 - **Host:** Node1
 - **Discovered by:** L7 ops + §5 facade hunt (subagent), corroborated by reading the function
-- **Evidence before:** wait_for_health opens the health URL and returns as soon as response.status == 200. It never reads or asserts the body. Since the body is a constant (A0007), "the server is healthy" is proven by "a socket is bound": a process that bound the port and then bricked still passes the smoke test and CI.
+- **Evidence before:** wait_for_health opens the health URL and returns as soon as response.status == 200. It never reads or asserts the body. Since the body is a constant (A0007), "the server is healthy" is proven by "a socket is bound": a process that bound the port and then bricked still passes the smoke test and CI. NOTE: after A0007 the body is derived and carries version plus provider counts, so this is now cheap to close — the gate should read the body it already fetches and assert status/version rather than only that a socket answered.
 
 ### A0009 — The HTTP server installs no signal handler, and its graceful-shutdown helper is dead code
 
