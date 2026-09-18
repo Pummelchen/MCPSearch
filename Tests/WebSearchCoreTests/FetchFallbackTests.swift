@@ -151,6 +151,34 @@ final class FetchFallbackTests: XCTestCase {
         XCTAssertFalse(result.text.contains("Ð"), "the body was decoded as Latin-1: \(result.text)")
     }
 
+    /// A cancelled caller must see the cancellation, not a fallback result.
+    ///
+    /// The broad catch on the reader path turned `CancellationError` into "the reader was
+    /// unavailable; here is the native extraction", so a caller that had already gone away received a
+    /// successful-looking result and the cancellation was absorbed — the work it reports on was done
+    /// for nobody (ledger A0015).
+    func testACancelledReaderIsNotTurnedIntoAFallbackResult() async throws {
+        let server = try htmlServer(thinHTML())
+        let jinaHTTP = MockHTTPClient()
+        jinaHTTP.on("jina.reader") { _ in throw CancellationError() }
+        let fetcher = WebFetcher(
+            direct: directFetcher(allowPrivateNetwork: true),
+            jina: jinaFetcher(jinaHTTP),
+            log: .disabled
+        )
+
+        do {
+            let result = try await fetcher.open(FetchRequest(url: server.baseURL))
+            XCTFail("a cancelled fetch returned \(result.method) instead of propagating")
+        } catch {
+            // The cancellation may arrive wrapped; what must not happen is a returned result.
+            XCTAssertTrue(
+                error is CancellationError || "\(error)".lowercased().contains("cancel"),
+                "expected a cancellation, got \(error)"
+            )
+        }
+    }
+
     func testThinNativeExtractionFallsBackToTheReader() async throws {
         let server = try htmlServer(thinHTML())
         let jinaHTTP = MockHTTPClient()

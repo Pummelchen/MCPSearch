@@ -176,6 +176,13 @@ public actor WebFetcher {
             finalized.elapsedMilliseconds =
                 Int((DispatchTime.now().uptimeNanoseconds - started) / 1_000_000)
             return finalized
+        } catch let error where Self.isCancellation(error) {
+            // A cancelled caller must see the cancellation, not a fallback result. The broad catch
+            // below turned `CancellationError` into "the reader was unavailable, here is the native
+            // extraction", so a caller that had already gone away received a successful-looking result
+            // and the cancellation was silently absorbed — the work it reports on was done for nobody
+            // (ledger A0015).
+            throw error
         } catch {
             log.debug(
                 "Jina Reader fallback failed",
@@ -195,4 +202,16 @@ public actor WebFetcher {
             return finalized
         }
     }
+
+    /// Whether an error is the caller's own cancellation rather than a failure of the reader.
+    ///
+    /// Mirrors `SearchOrchestrator.isCancellation`: the transport reports a cancellation as
+    /// `CancellationError` in some paths and as `HTTPError.cancelled` in others, and both mean the
+    /// caller went away rather than that the request failed (ledger A0015, A0030).
+    private static func isCancellation(_ error: any Error) -> Bool {
+        if error is CancellationError { return true }
+        if case HTTPError.cancelled = error { return true }
+        return false
+    }
+
 }
