@@ -4,6 +4,30 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+Security and correctness work from the pre-production audit. The complete set of findings — including
+the ones with no user-visible effect — is in [`AUDIT/ledger.md`](AUDIT/ledger.md).
+
+### Security
+
+- **`web_open` now checks the address it actually connected to.** `URLSession` cannot be told to connect
+  to the address the SSRF policy validated, so a name whose answer changed between the policy's lookup
+  and the connection — DNS rebinding — could still land on a private address. The fetch now reads the
+  address the connection used from the task metrics and refuses the body unless it was one the policy
+  resolved for that host. This is **detection, not prevention**: the connection is still made, but the
+  attacker does not receive the response. Not in `v1.2.0`.
+
+### Fixed
+
+- **The markup-nesting guard could be walked past.** It decremented a counter on every closing tag,
+  under the comment *"a closing tag always returns to the parent, even if it never matched one"* — which
+  is false for real HTML. `<div></p>` repeated nests 100 000 deep while the counter read 0 or 1, and that
+  document did not finish parsing within ten minutes. The guard now tracks open element names on a stack,
+  ignores a closing tag that matches nothing open, and models HTML's implied end tags. Measured against
+  37 real pages, no page now reads shallower than the tree the parser builds. `v1.2.0` has the older,
+  unsound model.
+
 ## [1.2.0] — 2026-09-17
 
 Feature release. **Every provider is on by default**, and installing with a verified local SearXNG
