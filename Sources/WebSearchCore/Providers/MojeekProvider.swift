@@ -66,6 +66,11 @@ public struct MojeekProvider: SearchProvider {
             ),
             // Mojeek spells safe search `safe`; `safesearch` does not exist.
             URLQueryItem(name: "safe", value: "1"),
+            // The response's `timestamp` is only present when it is asked for. Mojeek's `date`
+            // parameter is documented as "Include the last modified date as recognised by Mojeek",
+            // valid [0|1], **default 0** — so the provider was reading a field it never requested and
+            // `publishedAt` was always nil (ledger A0051).
+            URLQueryItem(name: "date", value: "1"),
         ]
 
         if let since = MojeekProvider.sinceValue(for: request.recency) {

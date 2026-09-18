@@ -15,6 +15,37 @@ import XCTest
 final class MojeekDomainFilterTests: XCTestCase {
     private let configuration = Fixtures.configuration()
 
+    /// `timestamp` is present in the response only when `date=1` asks for it, and it defaults to 0.
+    ///
+    /// The provider read `item.timestamp` but never requested it, so `publishedAt` was always nil.
+    /// Mojeek's parameter documentation lists `date` as "Include the last modified date as recognised
+    /// by Mojeek", valid `[0|1]`, **default 0** (ledger A0051).
+    func testTheRequestAsksForTheDateAndUsesWhatComesBack() async throws {
+        let http = MockHTTPClient()
+        http.respondJSON(
+            #"{"response":{"status":"OK","results":[{"title":"T","url":"https://example.com/a","desc":"d","timestamp":1700000000}]}}"#
+        )
+        let provider = MojeekProvider(
+            apiKey: "k",
+            http: http,
+            configuration: Fixtures.configuration()
+        )
+
+        let results = try await provider.search(Fixtures.request("swift"))
+
+        let url = try XCTUnwrap(http.requests.first?.url.absoluteString)
+        XCTAssertTrue(
+            url.contains("date=1"),
+            "the response's timestamp is only sent when it is asked for: \(url)"
+        )
+        // And the field that arrives is used, so the parameter is not merely decorative.
+        XCTAssertEqual(
+            results.results.first?.publishedAt,
+            Date(timeIntervalSince1970: 1_700_000_000),
+            "\(String(describing: results.results.first))"
+        )
+    }
+
     func testFiltersAreCommaSeparated() async throws {
         let http = MockHTTPClient()
         http.respondJSON(
