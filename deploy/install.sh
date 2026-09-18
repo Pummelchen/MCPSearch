@@ -552,7 +552,18 @@ if [ "$DRY_RUN" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
     if [ -f "$CFG" ]; then base="$CFG"; elif [ -f "${REPO_ROOT}/config.env" ]; then base="${REPO_ROOT}/config.env"; fi
     staged="$(umask 077 && mktemp)" || die "could not stage ${CFG}"
     if [ -n "$base" ]; then
-        grep -v '^[[:space:]]*SEARXNG_BASE_URL=' "$base" > "$staged" || true
+        # `|| true` here swallowed a grep that *failed*. Exit 1 is "no line survived the filter",
+        # which is a legitimate result; anything above it is a failure to read the base file, and the
+        # `|| true` then left `$staged` empty for the installer to move over `$CFG` — dropping every
+        # API key, which is the one thing this block exists to prevent (ledger A0038).
+        grep -v '^[[:space:]]*SEARXNG_BASE_URL=' "$base" > "$staged"
+        case "$?" in
+            0 | 1) ;;
+            *)
+                rm -f "$staged"
+                die "could not read ${base} while staging the configuration; refusing to replace ${CFG} with a file that may have lost every key"
+                ;;
+        esac
     else
         {
             printf '# Written by deploy/install.sh. Read by SwiftWebSearchMCP via SEARCH_CONFIG_FILE.\n'
