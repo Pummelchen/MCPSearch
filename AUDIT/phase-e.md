@@ -98,3 +98,42 @@ The commit verified above builds warning-free and passes every static gate, the 
 all three Python harnesses and the version check **on a machine other than the one it was written
 on**, from a clean checkout. Per §11 Phase E, that is the required end-to-end run, and it passed in
 one pass after one invocation error of mine was corrected.
+
+---
+
+# Phase E — final run
+
+The run above verified `75adee87`. The tree changed afterwards (A0005, A0016, A0029, A0055), so it
+was **stale** and Phase E was repeated on the final commit. A verification that predates the work it
+verifies is not a verification, which is why this second run exists rather than a reference to the
+first.
+
+| | |
+|---|---|
+| Commit verified | `a7c840b9497b173c36463a3025cdcc743ff1cad6` |
+| Clone | fresh, from the bundle, `git status --porcelain` empty |
+| Build | exit 0, **0 warnings** |
+| Tests | **Executed 574 tests, with 6 tests skipped and 0 failures (0 unexpected) in 35.910 (35.969) seconds** |
+| Gates | **all PASS** |
+
+Every gate, run in that clone:
+
+```
+PASS  swift-format        PASS  harness_tests        PASS  gitleaks defaults
+PASS  swiftlint           PASS  smoke stdio          PASS  gitleaks project
+PASS  ruff check          PASS  smoke http           PASS  osv-scanner
+PASS  ruff format         PASS  contract             PASS  semgrep
+PASS  pyright             PASS  check-version
+PASS  shellcheck
+```
+
+Two gitleaks rows, not one: the project credential-shape rules are a second pass because one config
+cannot carry both the defaults and custom rules in this scanner version (A0005).
+
+Nothing in that list is NOT CHECKED for want of a tool, and no gate in the audit's gate list was
+skipped. The limits named above still apply: no live provider traffic, the installer not run, no clone
+from `origin`, no release packaging.
+
+**With this run, both halves of the completion condition hold on the same commit: the ledger's open
+count is zero (52 DONE, 3 BLOCKED with named owners) and Phase E passes end to end on an independent
+host.**
