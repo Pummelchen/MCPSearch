@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 28 · open 23 · blocked 3**
+**total 54 — done 29 · open 22 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 20 | 9 | 1 |
+| S1 | 30 | 21 | 8 | 1 |
 | S2 | 16 | 4 | 12 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 22, PROGRESS 1, DONE 28, BLOCKED 3
+Status tally: OPEN 21, PROGRESS 1, DONE 29, BLOCKED 3
 
 ## Tasks
 
@@ -36,7 +36,7 @@ Status tally: OPEN 22, PROGRESS 1, DONE 28, BLOCKED 3
 | A0008 | S1 | C | DONE | The only check that consumes /health reads the status code and never the body, so it cannot fail |
 | A0009 | S1 | A | OPEN | The HTTP server installs no signal handler, and its graceful-shutdown helper is dead code |
 | A0012 | S1 | A | DONE | The response charset is discarded, so non-UTF-8 pages are silently decoded as Latin-1 |
-| A0013 | S1 | A | OPEN | Credentials in the target URL's query or fragment are forwarded to the third-party reader |
+| A0013 | S1 | A | DONE | Credentials in the target URL's query or fragment are forwarded to the third-party reader |
 | A0014 | S1 | A | DONE | An empty extraction is returned as a success, discarding the real failure reason |
 | A0015 | S1 | A | DONE | Cancellation is swallowed on the reader path, so a cancelled fetch can return a stale success |
 | A0017 | S1 | A | BLOCKED | DNS-rebinding TOCTOU between validation and connect (documented, no local fix) |
@@ -234,12 +234,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0013 — Credentials in the target URL's query or fragment are forwarded to the third-party reader
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:48`
 - **Category:** security/credential-disclosure
 - **Host:** Node1
 - **Discovered by:** Fetch tier A manual review (subagent)
 - **Evidence before:** The reader URL is built by appending the whole target (`URL(string: readerURL + request.url.absoluteString)`). URLPolicy.validateLexically rejects only url.user/url.password, so `?api_key=...` or a signed URL passes validation and is transmitted in full to r.jina.ai. The only control is a warning appended after the request (JinaReaderFetcher.swift:127-130). The pure-userinfo case cannot reach here (WebFetcher.swift:126 rethrows .blockedURL first). Documented as a known trap in AGENTS.md; mitigation today is SEARCH_ENABLE_JINA_READER=false.
+- **Fix:** `credentialToWithhold(from:)` declines the fallback for userinfo or a credential-shaped parameter name, and `withoutFragment(_:)` drops the fragment. Matching is on a closed list of parameter names, not on values, and excludes names like `key` and `code` that are usually benign.
+- **Evidence after:** Committed in 1b1a332. Before: the request that left the machine read "https://reader.invalid/http://127.0.0.1:51555/?token=super-secret-value". After: the reader is not consulted and the native extraction is returned, while the existing thin-page test still shows the reader being used for an ordinary URL. Suite green at 613 tests (571 + 42), 0 failures; both linters exit 0.
+- **Commit:** `1b1a332`
 
 ### A0014 — An empty extraction is returned as a success, discarding the real failure reason
 

@@ -221,14 +221,16 @@
       "location": "Sources/WebSearchCore/Fetch/JinaReaderFetcher.swift:48",
       "title": "Credentials in the target URL's query or fragment are forwarded to the third-party reader",
       "category": "security/credential-disclosure",
-      "status": "OPEN",
+      "status": "DONE",
       "host": "Node1",
       "discovered_by": "Fetch tier A manual review (subagent)",
       "evidence_before": "The reader URL is built by appending the whole target (`URL(string: readerURL + request.url.absoluteString)`). URLPolicy.validateLexically rejects only url.user/url.password, so `?api_key=...` or a signed URL passes validation and is transmitted in full to r.jina.ai. The only control is a warning appended after the request (JinaReaderFetcher.swift:127-130). The pure-userinfo case cannot reach here (WebFetcher.swift:126 rethrows .blockedURL first). Documented as a known trap in AGENTS.md; mitigation today is SEARCH_ENABLE_JINA_READER=false.",
-      "fix_summary": "",
-      "evidence_after": "",
-      "commit": "",
-      "blocked_reason": ""
+      "fix_summary": "`credentialToWithhold(from:)` declines the fallback for userinfo or a credential-shaped parameter name, and `withoutFragment(_:)` drops the fragment. Matching is on a closed list of parameter names, not on values, and excludes names like `key` and `code` that are usually benign.",
+      "evidence_after": "Committed in 1b1a332. Before: the request that left the machine read \"https://reader.invalid/http://127.0.0.1:51555/?token=super-secret-value\". After: the reader is not consulted and the native extraction is returned, while the existing thin-page test still shows the reader being used for an ordinary URL. Suite green at 613 tests (571 + 42), 0 failures; both linters exit 0.",
+      "commit": "1b1a332",
+      "blocked_reason": "",
+      "detail": "The reader takes the target URL verbatim, so userinfo, a credential-shaped query parameter or a fragment all left the machine for `r.jina.ai`.",
+      "why_it_matters": "`web_open` accepts authorisation-bearing URLs and the model cannot be relied on to avoid them, so a signed query was disclosed to a third party by the act of fetching the page the caller asked for."
     },
     {
       "id": "A0014",
