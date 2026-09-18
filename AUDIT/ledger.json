@@ -527,13 +527,13 @@
       "location": "Sources/WebSearchCore/Search/ProviderHealth.swift:143,156-159",
       "title": "A claimed half-open probe is never released when the local rate limiter denies, wedging the breaker",
       "category": "concurrency/state-machine",
-      "status": "OPEN",
+      "status": "DONE",
       "host": "Node1",
       "discovered_by": "Search + Support tier A review (subagent)",
       "evidence_before": "breaker.shouldAttempt() claims the probe (probeInFlight = true). If limiter.tryAcquire() then denies, authorize returns the rate-limited failure without releaseProbe(); runSingle treats an authorize denial as skippedLocally and records no outcome, and the only releaseProbe caller is the CancellationError arm. State stays .halfOpen with probeInFlight == true, so every later authorize returns .circuitOpen — permanently, until a manual reset(). Reachable: a half-open probe cancelled as CancellationError correctly releases, leaving .halfOpen; the next search inside the refill/min-interval window is denied after claiming a new probe. Scraper policy is burst 1 / 10 rpm / 1.5 s, so that window is up to 6 s.",
-      "fix_summary": "",
-      "evidence_after": "",
-      "commit": "",
+      "fix_summary": "`authorize` tracks whether this call claimed the half-open probe and releases it before returning when the local limiter refuses. `releaseProbe` no-ops unless half-open, so marking both claim sites is safe.",
+      "evidence_after": "Before: the third authorize failed with `.circuitOpen` — \"Tavily is being probed after failures; this request is skipped until that probe finishes.\" After: the sequence recovers and it returns nil. Suite green at 601 tests (559 + 42), 0 failures, 0 warnings; both linters exit 0.",
+      "commit": "8c671e9",
       "blocked_reason": ""
     },
     {

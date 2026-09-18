@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 53 — done 10 · open 40 · blocked 3**
+**total 53 — done 11 · open 39 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 6 | 23 | 1 |
+| S1 | 30 | 7 | 22 | 1 |
 | S2 | 16 | 1 | 15 | 0 |
 | S3 | 3 | 1 | 2 | 0 |
 
-Status tally: OPEN 39, PROGRESS 1, DONE 10, BLOCKED 3
+Status tally: OPEN 38, PROGRESS 1, DONE 11, BLOCKED 3
 
 ## Tasks
 
@@ -47,7 +47,7 @@ Status tally: OPEN 39, PROGRESS 1, DONE 10, BLOCKED 3
 | A0028 | S1 | A | OPEN | The HTTP session registry is unbounded, so an unauthenticated client can grow it without limit |
 | A0029 | S1 | A | OPEN | A disconnected SSE client leaks a suspended relay task and wedges the session |
 | A0030 | S1 | A | DONE | A cancelled provider request is recorded as a transient failure and can open a circuit breaker |
-| A0031 | S1 | A | OPEN | A claimed half-open probe is never released when the local rate limiter denies, wedging the breaker |
+| A0031 | S1 | A | DONE | A claimed half-open probe is never released when the local rate limiter denies, wedging the breaker |
 | A0032 | S1 | A | OPEN | Length-omitted results enter the fenced prompt unsanitised, so a page title can close the untrusted-data fence |
 | A0035 | S1 | A | OPEN | The mandatory-SearXNG proof passes on an instance that returns zero results |
 | A0036 | S1 | A | OPEN | The end-to-end gate accepts a JSON-RPC error reply as success and never asserts the result count |
@@ -330,12 +330,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0031 — A claimed half-open probe is never released when the local rate limiter denies, wedging the breaker
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `Sources/WebSearchCore/Search/ProviderHealth.swift:143,156-159`
 - **Category:** concurrency/state-machine
 - **Host:** Node1
 - **Discovered by:** Search + Support tier A review (subagent)
 - **Evidence before:** breaker.shouldAttempt() claims the probe (probeInFlight = true). If limiter.tryAcquire() then denies, authorize returns the rate-limited failure without releaseProbe(); runSingle treats an authorize denial as skippedLocally and records no outcome, and the only releaseProbe caller is the CancellationError arm. State stays .halfOpen with probeInFlight == true, so every later authorize returns .circuitOpen — permanently, until a manual reset(). Reachable: a half-open probe cancelled as CancellationError correctly releases, leaving .halfOpen; the next search inside the refill/min-interval window is denied after claiming a new probe. Scraper policy is burst 1 / 10 rpm / 1.5 s, so that window is up to 6 s.
+- **Fix:** `authorize` tracks whether this call claimed the half-open probe and releases it before returning when the local limiter refuses. `releaseProbe` no-ops unless half-open, so marking both claim sites is safe.
+- **Evidence after:** Before: the third authorize failed with `.circuitOpen` — "Tavily is being probed after failures; this request is skipped until that probe finishes." After: the sequence recovers and it returns nil. Suite green at 601 tests (559 + 42), 0 failures, 0 warnings; both linters exit 0.
+- **Commit:** `8c671e9`
 
 ### A0032 — Length-omitted results enter the fenced prompt unsanitised, so a page title can close the untrusted-data fence
 
