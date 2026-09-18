@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 53 — done 20 · open 30 · blocked 3**
+**total 53 — done 21 · open 29 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 14 | 15 | 1 |
+| S1 | 30 | 15 | 14 | 1 |
 | S2 | 16 | 3 | 13 | 0 |
 | S3 | 3 | 1 | 2 | 0 |
 
-Status tally: OPEN 28, PROGRESS 2, DONE 20, BLOCKED 3
+Status tally: OPEN 27, PROGRESS 2, DONE 21, BLOCKED 3
 
 ## Tasks
 
@@ -37,7 +37,7 @@ Status tally: OPEN 28, PROGRESS 2, DONE 20, BLOCKED 3
 | A0009 | S1 | A | OPEN | The HTTP server installs no signal handler, and its graceful-shutdown helper is dead code |
 | A0012 | S1 | A | OPEN | The response charset is discarded, so non-UTF-8 pages are silently decoded as Latin-1 |
 | A0013 | S1 | A | OPEN | Credentials in the target URL's query or fragment are forwarded to the third-party reader |
-| A0014 | S1 | A | OPEN | An empty extraction is returned as a success, discarding the real failure reason |
+| A0014 | S1 | A | DONE | An empty extraction is returned as a success, discarding the real failure reason |
 | A0015 | S1 | A | OPEN | Cancellation is swallowed on the reader path, so a cancelled fetch can return a stale success |
 | A0017 | S1 | A | BLOCKED | DNS-rebinding TOCTOU between validation and connect (documented, no local fix) |
 | A0018 | S1 | A | DONE | The soak's stdio read has no timeout, so one unanswered query hangs the whole run |
@@ -236,12 +236,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0014 — An empty extraction is returned as a success, discarding the real failure reason
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `Sources/WebSearchCore/Fetch/WebFetcher.swift:147-158,175-189`
 - **Category:** correctness/error-reporting
 - **Host:** Node1
 - **Discovered by:** Fetch tier A manual review (subagent)
 - **Evidence before:** When the reader is disabled or fails, `guard let result = directResult else { throw ... }` returns whatever directResult holds, including an empty text. The transport or reader reason is discarded and web_open returns success with text_characters: 0 plus a note. A caller cannot distinguish 'the page has no text' from 'every extraction path failed'.
+- **Fix:** Both fallback arms require non-empty text before returning the direct result; an empty extraction throws `directError ?? .extractionFailed` instead of reporting success with 0 characters.
+- **Evidence after:** Before: the new test's XCTFail fired — open returned normally for a document with no extractable text. After: it throws with category .malformedResponse. The four existing fetch suites still pass, so nothing had asserted the old behaviour. Suite green at 606 tests (564 + 42), 0 failures, 0 warnings; both linters exit 0.
+- **Commit:** `6569e77`
 
 ### A0015 — Cancellation is swallowed on the reader path, so a cancelled fetch can return a stale success
 
