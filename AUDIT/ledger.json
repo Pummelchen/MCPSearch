@@ -497,13 +497,13 @@
       "location": "Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:721,723,403-408",
       "title": "A disconnected SSE client leaks a suspended relay task and wedges the session",
       "category": "resource/leak",
-      "status": "OPEN",
+      "status": "PROGRESS",
       "host": "Node1",
       "discovered_by": "MCP surface tier A review (subagent)",
       "evidence_before": "SSEStreamRelay.relay spawns Task { for try await frame in stream }. Nothing cancels it; channelInactive only cancels the deadline and releases the connection count. It never finishes the stream or clears the SDK's standaloneSSEContinuation, which the SDK finishes only in terminate(). After a client disconnect the task stays parked for the session's life retaining the channel, and later plain GETs on that session return 409 until DELETE or Last-Event-ID. Combined with A0028 this grows without bound.",
-      "fix_summary": "",
-      "evidence_after": "",
-      "commit": "",
+      "fix_summary": "`SSEStreamRelay.relay` keeps its task, watches `channel.closeFuture` and cancels it when the channel closes, with a `catch is CancellationError` arm that stops rather than trying to close an already-closed channel. The relay no longer depends on the stream ending.",
+      "evidence_after": "Committed in d110631. NOT CLOSED: the before-state could not be demonstrated. A probe that opens a session, opens the SSE stream three times, kills each socket with SO_LINGER=0 (RST, not FIN) and then calls `tools/list` on the same session returns 200 afterwards — and returns 200 with the pre-change relay too, so the probe does not discriminate and is not evidence. Either the finding's \"wedges the session\" half does not reproduce under an abrupt disconnect, or it needs a different trigger; I do not know which, and that is written down rather than guessed. The fix is landed because nothing in the old relay could ever end a parked task. REMAINING: an observation that distinguishes the two relays — a task-count or memory probe across many connect/disconnect cycles — and a decision on whether the ledger's wording is accurate. Suite green at 613 tests (571 + 42), 0 failures; both linters exit 0.",
+      "commit": "d110631",
       "blocked_reason": ""
     },
     {
