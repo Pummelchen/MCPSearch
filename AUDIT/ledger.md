@@ -19,7 +19,7 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 | S2 | 16 | 4 | 12 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 20, PROGRESS 1, DONE 30, BLOCKED 3
+Status tally: OPEN 19, PROGRESS 2, DONE 30, BLOCKED 3
 
 ## Tasks
 
@@ -44,7 +44,7 @@ Status tally: OPEN 20, PROGRESS 1, DONE 30, BLOCKED 3
 | A0019 | S1 | A | DONE | The child's stderr pipe is not drained until exit, which deadlocks against the stdout read |
 | A0020 | S1 | A | DONE | The credential-leak scan is stderr-only and only runs on the fully successful path |
 | A0021 | S1 | A | DONE | A non-JSON stdout line is embedded in a raised exception, reaching an unscanned traceback |
-| A0028 | S1 | A | OPEN | The HTTP session registry is unbounded, so an unauthenticated client can grow it without limit |
+| A0028 | S1 | A | PROGRESS | The HTTP session registry is unbounded, so an unauthenticated client can grow it without limit |
 | A0029 | S1 | A | OPEN | A disconnected SSE client leaks a suspended relay task and wedges the session |
 | A0030 | S1 | A | DONE | A cancelled provider request is recorded as a transient failure and can open a circuit breaker |
 | A0031 | S1 | A | DONE | A claimed half-open probe is never released when the local rate limiter denies, wedging the breaker |
@@ -328,12 +328,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0028 — The HTTP session registry is unbounded, so an unauthenticated client can grow it without limit
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / PROGRESS
 - **Location:** `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:80,196`
 - **Category:** resource/unbounded
 - **Host:** Node1
 - **Discovered by:** MCP surface tier A review (subagent)
 - **Evidence before:** sessions entries are removed only by closeSession (DELETE or refused initialize) or stop(). maximumConnections=64 bounds concurrent sockets, but non-streaming responses send Connection: close, so a client can POST initialize, drop the connection and repeat serially forever. Each entry holds a Server plus a StatefulHTTPServerTransport whose storedEvents also never shrinks. No cap and no idle expiry.
+- **Fix:** `HTTPMCPHost` keeps at most `maximumLiveSessions` (64) sessions, with the slot reserved under a lock before any work starts and released on every path — the normal release, the failure that never registered a session, and `stop()`'s sweep, which resets the count itself because it bypasses `closeSession`. A reservation rather than a `count` check, so the bound is exact under concurrent `initialize` requests.
+- **Evidence after:** Committed in 650c2f9. swift build clean; full suite green at 613 tests (571 + 42), 0 failures, 0 warnings; both linters exit 0. STILL OPEN BECAUSE: no before-state was demonstrated — a build that compiles is not evidence that a bound holds. The cap is a `static let` and no Swift test constructs `HTTPMCPHost` (the host is exercised through `scripts/mcp_smoke.py --http`). REMAINING: make the limit injectable via an initialiser parameter defaulting to 64, add `--max-sessions` to the server, and drive it with a low cap to show the over-cap `initialize` answered 503 where it previously succeeded.
+- **Commit:** `650c2f9`
 
 ### A0029 — A disconnected SSE client leaks a suspended relay task and wedges the session
 
