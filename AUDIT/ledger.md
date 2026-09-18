@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 23 · open 28 · blocked 3**
+**total 54 — done 24 · open 27 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 16 | 13 | 1 |
+| S1 | 30 | 17 | 12 | 1 |
 | S2 | 16 | 3 | 13 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 26, PROGRESS 2, DONE 23, BLOCKED 3
+Status tally: OPEN 26, PROGRESS 1, DONE 24, BLOCKED 3
 
 ## Tasks
 
@@ -42,7 +42,7 @@ Status tally: OPEN 26, PROGRESS 2, DONE 23, BLOCKED 3
 | A0017 | S1 | A | BLOCKED | DNS-rebinding TOCTOU between validation and connect (documented, no local fix) |
 | A0018 | S1 | A | DONE | The soak's stdio read has no timeout, so one unanswered query hangs the whole run |
 | A0019 | S1 | A | DONE | The child's stderr pipe is not drained until exit, which deadlocks against the stdout read |
-| A0020 | S1 | A | PROGRESS | The credential-leak scan is stderr-only and only runs on the fully successful path |
+| A0020 | S1 | A | DONE | The credential-leak scan is stderr-only and only runs on the fully successful path |
 | A0021 | S1 | A | OPEN | A non-JSON stdout line is embedded in a raised exception, reaching an unscanned traceback |
 | A0028 | S1 | A | OPEN | The HTTP session registry is unbounded, so an unauthenticated client can grow it without limit |
 | A0029 | S1 | A | OPEN | A disconnected SSE client leaks a suspended relay task and wedges the session |
@@ -295,13 +295,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0020 — The credential-leak scan is stderr-only and only runs on the fully successful path
 
-- **Severity / tier / status:** S1 / A / PROGRESS
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `scripts/soak.py:513,384`
 - **Category:** security/credential-detection
 - **Host:** Node1
 - **Discovered by:** Python scripts tier review (subagent), statically verified against the code
 - **Evidence before:** Two independent holes. (a) Only stderr is scanned, but the harness prints server-supplied last_error to stdout (502-510). The server documents that a diagnostic can carry a credential: Mojeek authenticates with api_key= in the query string, HTTPClient.swift:379-384 says a URL in a diagnostic is a credential in a diagnostic, and ProviderHealth.swift:215 copies that into lastError which ToolSchemas.swift:831 returns to the client. (b) The scan sits inside the try opened at 384, so any exception before 513 jumps to finally (529-531) which only kills the child: the stderr that may hold the leak is never read or scanned, so the check silently does not run on exactly the failed runs. Whether a key currently reaches last_error is UNSURE.
-- **Fix:** DRAFTED AND REVERTED, because the change was made but its TEST gate could not be met in the round that made it. The drafted change, to be re-applied with a verification: (1) collect the server-supplied text the report prints — the `last_error` values, untruncated, since a credential can straddle the 42-character display cut — into a `server_diagnostics` list, and scan `stderr + server_diagnostics` rather than stderr alone, because the report prints server text and `HTTPClient` documents that a URL in a diagnostic is a credential in a diagnostic (Mojeek authenticates with `api_key=` in the query string); (2) run the scan from the `finally` as well, because it sat inside the `try` and an exception before it skipped the scan entirely while the `finally` only killed the child, so the check silently did not run on exactly the failed runs. WHY REVERTED: the end-to-end check needs a stub server that answers the MCP handshake, `web_search` and `web_search_status` with a configurable `last_error`, driven with `SEARCH_CONFIG_FILE` pointing at a temp config holding a known secret. The first stub attempt did not answer the handshake correctly and the run raised. Committing a change whose failure mode was never reproduced would be a gate violation, so it is written down here instead. NEXT ROUND: build the stub (or add a `harness_tests.py` case), then apply the two edits above and show the leak reported before the fix and not after.
+- **Fix:** `server_diagnostics` collects the server-supplied `last_error` values untruncated and the scan reads stderr plus that text; the scan also runs from the `finally`, so an early failure cannot skip it.
+- **Evidence after:** Committed in 122aafe. Before, with a stub whose last_error carries the configured TAVILY_API_KEY: the report printed the secret and then "credential leak in stderr: none", SOAK COMPLETE, exit 0. After: "credential leak in the server's output: ['TAVILY_API_KEY value', 'api_key=']", SOAK FAILED, exit 1. ruff, ruff-format and pyright clean; 18 harness tests pass. REMAINING: the evidence is a manual reproduction, not a harness test, so CI does not re-run it — a `harness_tests.py` case driving the soak against a stub with a known secret would make it permanent.
+- **Commit:** `122aafe`
 
 ### A0021 — A non-JSON stdout line is embedded in a raised exception, reaching an unscanned traceback
 
