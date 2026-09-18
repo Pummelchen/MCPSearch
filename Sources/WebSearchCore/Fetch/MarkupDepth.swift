@@ -98,15 +98,45 @@ public enum MarkupDepth {
         Array("noscript".utf8), Array("plaintext".utf8),
     ]
 
+    /// Bytes of element name each stack slot compares exactly.
+    ///
+    /// Every HTML element name fits: the longest are `figcaption` (11), `foreignObject` (13) and
+    /// `feGaussianBlur` (14).
+    private static let nameSlotBytes = 16
+
+    /// Length marker for a name too long to compare exactly. Such a name opens a level and can never
+    /// be closed by an end tag, so it can only over-count — the safe direction, since over-counting
+    /// refuses a page while under-counting lets a crash through.
+    private static let unmatchedNameLength: UInt8 = 0xFF
+
+    /// Most open elements the stack tracks.
+    ///
+    /// Reaching this is already far past any limit worth enforcing, so a document that gets here is
+    /// reported as over the limit rather than grown further.
+    static let maximumTrackedDepth = 4096
+
     /// Measure nesting on bytes. No recursion, early exit, saturating at `limit + 1`.
+    ///
+    /// The open elements are a **stack of names**, not a counter, because a counter cannot tell a
+    /// closing tag that closes something from one that closes nothing. The counter decremented
+    /// unconditionally — "a closing tag always returns to the parent, even if it never matched one" —
+    /// and that is false. `<div></p>` repeated exploits it: the `</p>` closes nothing in the real
+    /// tree, so the `div`s nest 100 000 deep while the counter reads 0 or 1. A stray end tag is now
+    /// ignored, exactly as a parser ignores it (ledger A0011).
     static func scan<Bytes: RandomAccessCollection>(
         _ bytes: Bytes,
         limit: Int
     ) -> Int where Bytes.Element == UInt8, Bytes.Index == Int {
-        var depth = 0
-        var deepest = 0
         var index = bytes.startIndex
         let end = bytes.endIndex
+
+        // One allocation for the document rather than one per tag: names live in a flat byte arena
+        // with a length per slot.
+        let capacity = min(limit, maximumTrackedDepth) + 1
+        var arena = [UInt8](repeating: 0, count: capacity * nameSlotBytes)
+        var lengths = [UInt8](repeating: 0, count: capacity)
+        var depth = 0
+        var deepest = 0
 
         while index < end {
             guard bytes[index] == UInt8(ascii: "<") else {
@@ -126,10 +156,26 @@ public enum MarkupDepth {
                 continue
             }
 
-            // A closing tag always returns to the parent, even if it never matched one.
+            // A closing tag pops to the innermost element with that name, and closes nothing at all
+            // when no open element has it.
             if bytes[afterBracket] == UInt8(ascii: "/") {
-                depth = depth > 0 ? depth - 1 : 0
-                index = skip(bytes, from: afterBracket + 1, until: ">", end: end)
+                let nameStart = afterBracket + 1
+                let close = skip(bytes, from: nameStart, until: ">", end: end)
+                let nameFinish = nameEnd(in: bytes, from: nameStart, to: min(close, end))
+                var slot = depth - 1
+                while slot >= 0 {
+                    let stored = Int(lengths[slot])
+                    if stored != Int(unmatchedNameLength), stored == nameFinish - nameStart,
+                        sameSlotName(bytes, from: nameStart, to: nameFinish, arena: arena, slot: slot)
+                    {
+                        // Popping the matched element takes everything above it with it, which is
+                        // what `generate implied end tags` plus the pop amounts to.
+                        depth = slot
+                        break
+                    }
+                    slot -= 1
+                }
+                index = close
                 continue
             }
 
@@ -171,6 +217,17 @@ public enum MarkupDepth {
             }
 
             if !selfClosing, !matchesAny(bytes, from: tagBody, to: tagNameEnd, in: voidElements) {
+                guard depth < capacity else { return limit + 1 }
+                let length = tagNameEnd - tagBody
+                if length <= nameSlotBytes {
+                    let base = depth * nameSlotBytes
+                    for offset in 0..<length {
+                        arena[base + offset] = lowercased(bytes[tagBody + offset])
+                    }
+                    lengths[depth] = UInt8(length)
+                } else {
+                    lengths[depth] = unmatchedNameLength
+                }
                 depth += 1
                 if depth > deepest { deepest = depth }
                 if depth > limit { return depth }
@@ -178,6 +235,23 @@ public enum MarkupDepth {
             index = min(cursor + 1, end)
         }
         return deepest
+    }
+
+    /// Whether the name in `bytes` matches the name stored in `arena` at `slot`, case-insensitively.
+    private static func sameSlotName<Bytes: RandomAccessCollection>(
+        _ bytes: Bytes,
+        from start: Int,
+        to end: Int,
+        arena: [UInt8],
+        slot: Int
+    ) -> Bool where Bytes.Element == UInt8, Bytes.Index == Int {
+        let base = slot * nameSlotBytes
+        var offset = 0
+        while start + offset < end {
+            if lowercased(bytes[start + offset]) != arena[base + offset] { return false }
+            offset += 1
+        }
+        return true
     }
 
     /// Where the tag name ends: the first whitespace or `/`.
@@ -189,8 +263,12 @@ public enum MarkupDepth {
         var index = start
         while index < limit {
             let byte = bytes[index]
+            // `>` terminates too: an end tag's name is measured up to the bracket, and the start-tag
+            // caller already passes the bracket as its limit, so this only makes the helper safe for
+            // both. Without it, `</div>` measured as the name `div>…` up to the next whitespace, so no
+            // closing tag ever matched and every ordinary page over-counted (ledger A0011).
             if byte == UInt8(ascii: " ") || byte == UInt8(ascii: "\t") || byte == UInt8(ascii: "\n")
-                || byte == UInt8(ascii: "\r") || byte == UInt8(ascii: "/")
+                || byte == UInt8(ascii: "\r") || byte == UInt8(ascii: "/") || byte == UInt8(ascii: ">")
             {
                 return index
             }

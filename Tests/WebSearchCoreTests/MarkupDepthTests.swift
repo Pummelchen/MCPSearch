@@ -1,4 +1,5 @@
 import Foundation
+import SwiftSoup
 import XCTest
 
 @testable import WebSearchCore
@@ -27,6 +28,84 @@ final class MarkupDepthTests: XCTestCase {
 
     func testNestingAtTheLimitIsAccepted() {
         XCTAssertFalse(MarkupDepth.exceedsLimit(Self.nested(MarkupDepth.maximumNesting)))
+    }
+
+    /// A closing tag that closes nothing must not suppress the depth it does not close.
+    ///
+    /// The guard's counter decremented on every closing tag, with the comment "a closing tag always
+    /// returns to the parent, even if it never matched one". That is false for real HTML: `</p>` with
+    /// no open `p` closes nothing, so `<div></p>` repeated nests the `div`s 100 000 deep — 900 KB,
+    /// inside the fetch cap — while the counter reads 0 or 1 and the guard never trips. Measured
+    /// through `SwiftSoup.parse`, that document did not crash and did not finish within ten minutes
+    /// (ledger A0011).
+    /// The model's depth against the depth SwiftSoup actually builds.
+    ///
+    /// A bound is only sound if the model never reads *below* the real tree, and only usable if it is
+    /// not far above it. The documents here include the constructs that make the two diverge: HTML
+    /// permits omitting `</p>`, `</li>`, `</td>` and `</tr>`, and a model that keeps those open counts
+    /// nesting the parser does not build — which is a false rejection waiting for a real page.
+    func testTheModelDepthIsNeverBelowTheParsedTree() throws {
+        let documents: [(String, String)] = [
+            ("nested divs", String(repeating: "<div>", count: 40) + "x" + String(repeating: "</div>", count: 40)),
+            ("omitted </p>", "<p>one<p>two<p>three<p>four<p>five"),
+            ("omitted </li>", "<ul><li>a<li>b<li>c<li>d<li>e</ul>"),
+            ("omitted </td></tr>", "<table><tr><td>a<td>b<tr><td>c<td>d</table>"),
+            ("omitted </dt><dd>", "<dl><dt>a<dd>b<dt>c<dd>d</dl>"),
+            ("select options", "<select><option>a<option>b<option>c</select>"),
+            ("deep then shallow", String(repeating: "<div>", count: 30) + "</div></div></div>" + "<span>y</span>"),
+            ("mixed ordinary", "<html><body><div><ul><li><p>text</p></li></ul></div></body></html>"),
+        ]
+
+        for (label, fragment) in documents {
+            // A complete document, so the parser adds no implicit `html`/`body` wrapper. With a bare
+            // fragment it always adds two, which the model cannot see: measuring fragments made the
+            // model look like it under-counted by a constant 2 when the two levels were the parser's.
+            let html = "<!DOCTYPE html><html><head></head><body>" + fragment + "</body></html>"
+            let real = try Self.parsedDepth(html)
+            let model = MarkupDepth.maximumDepth(html, limit: 100_000)
+            print("      A0011 \(label): model=\(model) parsed=\(real)")
+            XCTAssertGreaterThanOrEqual(
+                model,
+                real,
+                "\(label): the model read \(model) but the parser built \(real) — under-counting is a bypass"
+            )
+        }
+    }
+
+    /// Deepest element nesting in the tree `SwiftSoup` builds, walked iteratively so the measurement
+    /// cannot itself recurse into a stack overflow.
+    private static func parsedDepth(_ html: String) throws -> Int {
+        let document = try SwiftSoup.parse(html)
+        var deepest = 0
+        var stack: [(Element, Int)] = [(document, 0)]
+        while let (element, depth) = stack.popLast() {
+            if depth > deepest { deepest = depth }
+            for child in element.children() { stack.append((child, depth + 1)) }
+        }
+        return deepest
+    }
+
+    func testAStrayClosingTagDoesNotSuppressDepth() {
+        let bypass = String(repeating: "<div></p>", count: 100_000)
+
+        XCTAssertTrue(
+            MarkupDepth.exceedsLimit(bypass),
+            "a stray closing tag must not let the guard read shallow"
+        )
+    }
+
+    /// The other half: a closing tag that *does* match still returns to its parent.
+    ///
+    /// A stack that simply ignored every closing tag would refuse `<div><span></span></div>` repeated,
+    /// which is every ordinary page. This is the control for the test above.
+    func testAMatchedClosingTagStillReturnsToItsParent() {
+        let ordinary = String(repeating: "<div><span>x</span></div>", count: 400)
+
+        XCTAssertFalse(
+            MarkupDepth.exceedsLimit(ordinary),
+            "matched closing tags must still return to the parent"
+        )
+        XCTAssertLessThanOrEqual(MarkupDepth.maximumDepth(ordinary), 2)
     }
 
     func testNestingBeyondTheLimitIsRejected() {
