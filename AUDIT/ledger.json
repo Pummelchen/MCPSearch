@@ -909,6 +909,22 @@
       "evidence_after": "",
       "commit": "",
       "blocked_reason": ""
+    },
+    {
+      "id": "A0054",
+      "title": "The documented test count drifted from the suite as the audit added tests",
+      "severity": "S3",
+      "status": "DONE",
+      "tier": "C",
+      "location": "AGENTS.md:36, AGENTS.md:82, README.md:201, wiki Home.md:18, wiki Home.md:128",
+      "detail": "A0052 corrected the count to 597 when the suite held 593. Fifteen tests have landed since, so all five sites understated the suite. Two of them are the per-target breakdown, which names the split rather than a total.",
+      "why_it_matters": "A documented count that is wrong is the first thing a reader checks and the fastest way for the rest of the document to lose credibility. It is also self-inflicted: this audit added the tests.",
+      "fix_summary": "All five sites now say 610 — 568 in WebSearchCoreTests and 42 in MCPSMonitorTests — which is what `swift test` reports. Repo and wiki committed separately, as they are separate repositories.",
+      "evidence_before": "AGENTS.md said 555 + 42 and 597; README.md said 597; the wiki said 597 twice.",
+      "evidence_after": "`swift test` reports 568 + 42 = 610. Repo commit f1eaf41, wiki commit 0a5582d. The counts now match the suite and the per-target split matches the actual target sizes.",
+      "commit": "f1eaf41",
+      "wiki_commit": "0a5582d",
+      "owner": "agent"
     }
   ]
 }
