@@ -61,6 +61,13 @@ paths = [
   '''Tests/MCPSMonitorTests/MonitorActorTests\.swift''',
   '''Tests/WebSearchCoreTests/TestSupport\.swift''',
   '''Tests/WebSearchCoreTests/LiveProviderTests\.swift''',
+  # Added when TestSupport.swift was split: `Fixtures.syntheticDeepSeekKey` lived in TestDoubles.swift
+  # for a few commits (0580763 onward) before moving back, and this scan walks all history, so those
+  # commits still contain the literal under that path. The file has since moved back and the tree is
+  # clean without this entry; it exists only so the historical commits stay readable. The value is
+  # `sk-0{20,}` — a run of zeroes, not a credential — and the AND condition still requires both this
+  # path and that exact shape.
+  '''Tests/WebSearchCoreTests/TestDoubles\.swift''',
 ]
 regexes = [
   '''sk-0{20,}''',
