@@ -169,7 +169,15 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
 
     // MARK: - Transport
 
-    private func perform(_ request: HTTPRequest, validated: [IPAddress]) async throws -> HTTPResponse {
+    /// Perform one hop and refuse its body if the connection did not honour the policy.
+    ///
+    /// **Internal rather than private so the refusal can be tested.** A real DNS rebinding needs a
+    /// resolver that lies to the policy and tells the truth to the connection, which is the attack
+    /// itself and cannot be arranged in a test; taking `validated` as an argument is what lets a test
+    /// inject that divergence and drive everything after it — the real socket, the real task metrics,
+    /// and this comparison — rather than leaving the check covered only through the decision it
+    /// delegates to (ledger A0017, tracker T4).
+    func perform(_ request: HTTPRequest, validated: [IPAddress]) async throws -> HTTPResponse {
         var urlRequest = URLRequest(url: request.url)
         urlRequest.httpMethod = request.method
         urlRequest.timeoutInterval = requestTimeout.seconds
