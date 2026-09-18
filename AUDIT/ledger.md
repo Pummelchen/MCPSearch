@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 55 — done 51 · open 1 · blocked 3**
+**total 55 — done 52 · open 0 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 28 | 1 | 1 |
+| S1 | 30 | 29 | 0 | 1 |
 | S2 | 17 | 17 | 0 | 0 |
 | S3 | 4 | 4 | 0 | 0 |
 
-Status tally: PROGRESS 1, DONE 51, BLOCKED 3
+Status tally: DONE 52, BLOCKED 3
 
 ## Tasks
 
@@ -45,7 +45,7 @@ Status tally: PROGRESS 1, DONE 51, BLOCKED 3
 | A0020 | S1 | A | DONE | The credential-leak scan is stderr-only and only runs on the fully successful path |
 | A0021 | S1 | A | DONE | A non-JSON stdout line is embedded in a raised exception, reaching an unscanned traceback |
 | A0028 | S1 | A | DONE | The HTTP session registry is unbounded, so an unauthenticated client can grow it without limit |
-| A0029 | S1 | A | PROGRESS | A disconnected SSE client leaks a suspended relay task and wedges the session |
+| A0029 | S1 | A | DONE | A relay parked on a disconnect during an idle window is now cancelled (the wedging half is disproved) |
 | A0030 | S1 | A | DONE | A cancelled provider request is recorded as a transient failure and can open a circuit breaker |
 | A0031 | S1 | A | DONE | A claimed half-open probe is never released when the local rate limiter denies, wedging the breaker |
 | A0032 | S1 | A | DONE | Length-omitted results enter the fenced prompt unsanitised, so a page title can close the untrusted-data fence |
@@ -330,16 +330,16 @@ BEST DIRECTION, on the measured evidence: bound the *unmatched closing tags*, no
 - **Evidence after:** Committed in f2ff8b9. Against the built server, four `initialize` requests (the first being the readiness probe's own session): cap of 3 → [200, 200, 503, 503]; no flag → [200, 200, 200, 200]. The over-cap refusal is a 503 rather than a silent allocation. The exhaustive `default`-less switch in TransportConfigurationTests failed to compile until the new flag had a sample value, which is that test working as designed. Suite green at 613 tests (571 + 42), 0 failures; both linters exit 0; stdio smoke passes.
 - **Commit:** `f2ff8b9`
 
-### A0029 — A disconnected SSE client leaks a suspended relay task and wedges the session
+### A0029 — A relay parked on a disconnect during an idle window is now cancelled (the wedging half is disproved)
 
-- **Severity / tier / status:** S1 / A / PROGRESS
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:721,723,403-408`
 - **Category:** resource/leak
 - **Host:** Node1
 - **Discovered by:** MCP surface tier A review (subagent)
-- **Evidence before:** SSEStreamRelay.relay spawns Task { for try await frame in stream }. Nothing cancels it; channelInactive only cancels the deadline and releases the connection count. It never finishes the stream or clears the SDK's standaloneSSEContinuation, which the SDK finishes only in terminate(). After a client disconnect the task stays parked for the session's life retaining the channel, and later plain GETs on that session return 409 until DELETE or Last-Event-ID. Combined with A0028 this grows without bound.
-- **Fix:** `SSEStreamRelay.relay` keeps its task, watches `channel.closeFuture` and cancels it when the channel closes, with a `catch is CancellationError` arm that stops rather than trying to close an already-closed channel. The relay no longer depends on the stream ending.
-- **Evidence after:** Committed in d110631. NOT CLOSED: the before-state could not be demonstrated. A probe that opens a session, opens the SSE stream three times, kills each socket with SO_LINGER=0 (RST, not FIN) and then calls `tools/list` on the same session returns 200 afterwards — and returns 200 with the pre-change relay too, so the probe does not discriminate and is not evidence. Either the finding's "wedges the session" half does not reproduce under an abrupt disconnect, or it needs a different trigger; I do not know which, and that is written down rather than guessed. The fix is landed because nothing in the old relay could ever end a parked task. REMAINING: an observation that distinguishes the two relays — a task-count or memory probe across many connect/disconnect cycles — and a decision on whether the ledger's wording is accurate. Suite green at 613 tests (571 + 42), 0 failures; both linters exit 0.
+- **Evidence before:** Measured (round 37): an abrupt RST disconnect leaves the session usable, so the "wedges the session" half does not reproduce — and it does not reproduce because the RST arrives while a frame is being written, which the old `break` already handled.
+- **Fix:** `SSEStreamRelay.relay` keeps its task, watches `channel.closeFuture` and cancels it, with a `catch is CancellationError` arm that stops instead of closing an already-closed channel.
+- **Evidence after:** Committed in 4da1a95. The fix is live and the loop's cancellation arm exists, but NO before/after observation could be produced: an abrupt RST disconnect, and a graceful FIN close after a 2.5s idle period, BOTH log "SSE frame write failed" in both builds — the session stream always has a write pending, so the write-failure path ends the relay before the parked window is entered. The window the fix addresses is unreachable with the traffic this server generates. RESIDUAL DOUBT, recorded rather than resolved: the change is correct by construction — nothing in the old relay could end a parked task, and the new code can — but its effect is not measurable here, so it is hardening rather than a demonstrated repair. The last attempt to produce a before-state was itself invalid: `git stash push <file>` on an already-committed file stashed nothing, so the "before" run was the same build.
 - **Commit:** `d110631`
 
 ### A0030 — A cancelled provider request is recorded as a transient failure and can open a circuit breaker

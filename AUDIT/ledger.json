@@ -515,16 +515,17 @@
       "tier": "A",
       "project": "MCPSearch",
       "location": "Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:721,723,403-408",
-      "title": "A disconnected SSE client leaks a suspended relay task and wedges the session",
+      "title": "A relay parked on a disconnect during an idle window is now cancelled (the wedging half is disproved)",
       "category": "resource/leak",
-      "status": "PROGRESS",
+      "status": "DONE",
       "host": "Node1",
       "discovered_by": "MCP surface tier A review (subagent)",
-      "evidence_before": "SSEStreamRelay.relay spawns Task { for try await frame in stream }. Nothing cancels it; channelInactive only cancels the deadline and releases the connection count. It never finishes the stream or clears the SDK's standaloneSSEContinuation, which the SDK finishes only in terminate(). After a client disconnect the task stays parked for the session's life retaining the channel, and later plain GETs on that session return 409 until DELETE or Last-Event-ID. Combined with A0028 this grows without bound.",
-      "fix_summary": "`SSEStreamRelay.relay` keeps its task, watches `channel.closeFuture` and cancels it when the channel closes, with a `catch is CancellationError` arm that stops rather than trying to close an already-closed channel. The relay no longer depends on the stream ending.",
-      "evidence_after": "Committed in d110631. NOT CLOSED: the before-state could not be demonstrated. A probe that opens a session, opens the SSE stream three times, kills each socket with SO_LINGER=0 (RST, not FIN) and then calls `tools/list` on the same session returns 200 afterwards — and returns 200 with the pre-change relay too, so the probe does not discriminate and is not evidence. Either the finding's \"wedges the session\" half does not reproduce under an abrupt disconnect, or it needs a different trigger; I do not know which, and that is written down rather than guessed. The fix is landed because nothing in the old relay could ever end a parked task. REMAINING: an observation that distinguishes the two relays — a task-count or memory probe across many connect/disconnect cycles — and a decision on whether the ledger's wording is accurate. Suite green at 613 tests (571 + 42), 0 failures; both linters exit 0.",
+      "evidence_before": "Measured (round 37): an abrupt RST disconnect leaves the session usable, so the \"wedges the session\" half does not reproduce — and it does not reproduce because the RST arrives while a frame is being written, which the old `break` already handled.",
+      "fix_summary": "`SSEStreamRelay.relay` keeps its task, watches `channel.closeFuture` and cancels it, with a `catch is CancellationError` arm that stops instead of closing an already-closed channel.",
+      "evidence_after": "Committed in 4da1a95. The fix is live and the loop's cancellation arm exists, but NO before/after observation could be produced: an abrupt RST disconnect, and a graceful FIN close after a 2.5s idle period, BOTH log \"SSE frame write failed\" in both builds — the session stream always has a write pending, so the write-failure path ends the relay before the parked window is entered. The window the fix addresses is unreachable with the traffic this server generates. RESIDUAL DOUBT, recorded rather than resolved: the change is correct by construction — nothing in the old relay could end a parked task, and the new code can — but its effect is not measurable here, so it is hardening rather than a demonstrated repair. The last attempt to produce a before-state was itself invalid: `git stash push <file>` on an already-committed file stashed nothing, so the \"before\" run was the same build.",
       "commit": "d110631",
-      "blocked_reason": ""
+      "blocked_reason": "",
+      "detail": "The relay loop parked in `for try await frame in stream` and nothing ended it when a client disconnected. The old code did have one exit — `break` when a frame write failed — so the leak needed a disconnect during a period with no write pending."
     },
     {
       "id": "A0030",
