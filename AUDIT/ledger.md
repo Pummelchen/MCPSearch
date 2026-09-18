@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 44 — done 1 · open 41 · blocked 2**
+**total 51 — done 1 · open 48 · blocked 2**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
-| S0 | 3 | 0 | 2 | 1 |
-| S1 | 25 | 1 | 23 | 1 |
-| S2 | 15 | 0 | 15 | 0 |
+| S0 | 4 | 0 | 3 | 1 |
+| S1 | 30 | 1 | 28 | 1 |
+| S2 | 16 | 0 | 16 | 0 |
 | S3 | 1 | 0 | 1 | 0 |
 
-Status tally: OPEN 39, PROGRESS 2, DONE 1, BLOCKED 2
+Status tally: OPEN 46, PROGRESS 2, DONE 1, BLOCKED 2
 
 ## Tasks
 
@@ -28,6 +28,7 @@ Status tally: OPEN 39, PROGRESS 2, DONE 1, BLOCKED 2
 | A0001 | S0 | A | BLOCKED | A live-looking Tavily credential prefix is in public git history and cannot be un-published |
 | A0007 | S0 | A | OPEN | /health returns a hardcoded ok, so the production health surface is wired to nothing |
 | A0011 | S0 | A | PROGRESS | The markup-depth guard is bypassable, so crafted HTML reaches a recursive parse and kills the process |
+| A0045 | S0 | A | OPEN | SearXNG answers are decoded as [String] but emitted as objects, so an answering query discards every result |
 | A0002 | S1 | A | DONE | Warnings-as-errors is not in the build config, so the Swift standard is not in force at the build level |
 | A0003 | S1 | A | OPEN | SwiftLint cannot reject a force-unwrap, so the §1 Swift standard proof fails |
 | A0004 | S1 | A | OPEN | Ruff does not select S101, so `assert` used for validation is unchecked |
@@ -53,6 +54,11 @@ Status tally: OPEN 39, PROGRESS 2, DONE 1, BLOCKED 2
 | A0037 | S1 | A | OPEN | The generated SearXNG secret is passed as a command-line argument, where ps can read it |
 | A0038 | S1 | A | OPEN | `|| true` swallows a grep error and the truncated staging file then replaces config.env, dropping every API key |
 | A0041 | S1 | A | OPEN | The release-notes gate names NOT_CHECKED in its failure message but never checks for it |
+| A0046 | S1 | A | OPEN | Include and exclude domains are space-joined but Mojeek documents comma separation, so the filters never apply |
+| A0047 | S1 | A | OPEN | Bot-challenge markers are substring-matched against the whole page, so ordinary queries are discarded as challenges |
+| A0048 | S1 | A | OPEN | Cancellation is mapped to a transient network failure, so a caller cancel is charged to the provider's breaker |
+| A0049 | S1 | A | OPEN | A handshake that was assigned a session id and then failed leaves sessionID set, so initialization is never retried |
+| A0050 | S1 | A | OPEN | URL query construction drops '+', so queries containing it are corrupted |
 | A0006 | S2 | A | OPEN | Validation is written as `assert`, which python -O strips |
 | A0010 | S2 | A | OPEN | Installing overwrites the previous binary in place with no rollback path |
 | A0016 | S2 | A | OPEN | An over-cap transfer may keep streaming after the cap is hit (UNSURE) |
@@ -68,6 +74,7 @@ Status tally: OPEN 39, PROGRESS 2, DONE 1, BLOCKED 2
 | A0042 | S2 | A | OPEN | `rm -rf $STAGE/$VERSION` runs even after the identity gate failed, and VERSION is never validated in this script |
 | A0043 | S2 | A | OPEN | The test-suite count is reported as PASS without checking that it parsed |
 | A0044 | S2 | A | OPEN | `--dry-run` creates the SearXNG directory, so it does change the filesystem |
+| A0051 | S2 | A | OPEN | Mojeek timestamp is read but never requested, so publishedAt is always nil (UNSURE) |
 | A0027 | S3 | C | OPEN | A lost bind race abandons the exited child unreaped |
 
 ---
@@ -100,6 +107,15 @@ Status tally: OPEN 39, PROGRESS 2, DONE 1, BLOCKED 2
 - **Discovered by:** Fetch tier A manual review (subagent), with the SwiftSoup internals cited at file:line; static verification pending
 - **Evidence before:** exceedsLimit counts every closing tag as closing one level (depth > 0 ? depth - 1 : 0) and treats trailing '/>' as self-closing. Neither matches SwiftSoup: a closing tag with no matching open element is ignored (or inserts an empty <p>), and `<div foo=/>` gives '/' to the attribute value rather than setting the self-closing flag, because the unquoted-attribute reader excludes '/' from its delimiters. So `<div></p>` repeated N times builds an N-deep tree while the guard reports depth ~1. HTMLExtractor.swift:91 is the only bound before SwiftSoup.parse and the recursive walk; the body cap is 10 MiB, i.e. >1M levels of the 7-byte form. The repository's own comment records ~20 000 levels as fatal (stack exhaustion). VERIFIED STATICALLY by reading the guard: MarkupDepth.swift:114-115 decrements on every closing tag (`depth = depth > 0 ? depth - 1 : 0`) and :137 reads `/>` as self-closing from the byte before `>`. Neither matches SwiftSoup, so `<div></p>` repeated N times leaves depth pinned at 0 while the parsed tree is N deep. START gate satisfied; the expected-correct is 'the depth bound must never under-count the tree the parser will build'.
 - **Fix:** Planned, not yet implemented. The bound must be unfoolable rather than model-matching: count start tags without any decrement, since every element in the tree was opened by some start tag, so start-tag count is a sound upper bound on tree depth. That costs a behaviour change (a very tag-heavy but shallow page would also be refused), so the limit needs choosing against the ~20 000 level figure the file already records as fatal, and the byte cap stays. Rejected alternatives: teaching the scan HTML's implied end-tag and self-closing rules (still model-matching, still bypassable), and making our own walk iterative (does not help: SwiftSoup's parse is recursive and runs first).
+
+### A0045 — SearXNG answers are decoded as [String] but emitted as objects, so an answering query discards every result
+
+- **Severity / tier / status:** S0 / A / OPEN
+- **Location:** `Sources/WebSearchCore/Providers/SearXNGProvider.swift:180,154`
+- **Category:** correctness/decoding
+- **Host:** Node1
+- **Discovered by:** Providers tier A review (subagent)
+- **Evidence before:** `let answers: [String]?` with `payload.answers?.first(where: { !$0.isEmpty })`. SearXNG builds answers as a list of dicts (`Answer.as_dict()` -> {answer, url, engine}), so the wire type is an array of objects and never strings. decodeIfPresent([String].self) throws typeMismatch on an object array rather than returning nil, and Data.decodeJSON turns that into .malformedResponse(.searxng) — discarding the valid results array for the whole query. Trigger: any query an answering engine handles. The repo's own notes and the provider test feed only use "answers":[], so it is untested.
 
 ### A0002 — Warnings-as-errors is not in the build config, so the Swift standard is not in force at the build level
 
@@ -348,6 +364,51 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 - **Discovered by:** installer/release shell tier A review (subagent)
 - **Evidence before:** Neither grep condition looks for NOT_CHECKED_PENDING, and the renderer only substitutes a line starting with it. A notes file with the checksum block but without that placeholder passes every gate, so any gate that skip()ed (pyright, semgrep, gitleaks, osv-scanner) is absent from the published notes while the script still prints PUBLISHED. That contradicts RELEASE.md §1.2.7/§1.8. The console summary lists them; the irreversible artifact does not.
 
+### A0046 — Include and exclude domains are space-joined but Mojeek documents comma separation, so the filters never apply
+
+- **Severity / tier / status:** S1 / A / OPEN
+- **Location:** `Sources/WebSearchCore/Providers/MojeekProvider.swift:78-79,87-88`
+- **Category:** correctness/request-encoding
+- **Host:** Node1
+- **Discovered by:** Providers tier A review (subagent)
+- **Evidence before:** joined(separator: " ") for both `fi` and `fe`. Mojeek's parameter docs and this repo's docs/provider-api-notes.md:58 say comma separated ("Comma separated domain names"). A space-joined list is sent as one malformed domain, so a caller's filter is silently ignored (unfiltered results) or returns nothing.
+
+### A0047 — Bot-challenge markers are substring-matched against the whole page, so ordinary queries are discarded as challenges
+
+- **Severity / tier / status:** S1 / A / OPEN
+- **Location:** `Sources/WebSearchCore/Providers/ScraperSupport.swift:38-52`
+- **Category:** correctness/false-positive
+- **Host:** Node1
+- **Discovered by:** Providers tier A review (subagent)
+- **Evidence before:** challengeMarkers.contains { lowered.contains($0) } against the entire response body, which includes the echoed query and every result title and snippet. Searching "anomaly detection", "captcha", "blocked" or "anubis" makes a legitimate results page contain the marker, so parse returns .botChallenge with zero results and DuckDuckGo:119-121 / Startpage:104-106 throw providerUnavailable — transient, so it also counts toward the circuit breaker. The single word "blocked" makes this routine.
+
+### A0048 — Cancellation is mapped to a transient network failure, so a caller cancel is charged to the provider's breaker
+
+- **Severity / tier / status:** S1 / A / OPEN
+- **Location:** `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift:48,52`
+- **Category:** concurrency/cancellation
+- **Host:** Node1
+- **Discovered by:** Providers tier A review (subagent)
+- **Evidence before:** Both `if error is CancellationError` and `case .cancelled` return .networkFailure(provider, "cancelled"), whose .network category isTransient, so CircuitBreaker.recordFailure increments consecutiveFailures and can open. URLSessionHTTPClient.perform converts in-flight cancellation into HTTPError.cancelled, so the orchestrator's `catch is CancellationError` arm never sees it. Same defect as A0030 seen from the mapping side; both must be fixed together or the breaker still trips.
+
+### A0049 — A handshake that was assigned a session id and then failed leaves sessionID set, so initialization is never retried
+
+- **Severity / tier / status:** S1 / A / OPEN
+- **Location:** `Sources/WebSearchCore/Providers/ParallelMCPProvider.swift:178,187-192,311-313`
+- **Category:** state-machine
+- **Host:** Node1
+- **Discovered by:** Providers tier A review (subagent)
+- **Evidence before:** send captures MCP-Session-Id (311) before the caller interprets the body, so if performHandshake then throws — a JSON-RPC error returned (:208-214) or an unparsable body (:318-322, thrown after 311) — ensureInitialized clears only `handshake`, leaving sessionID non-nil. Every later call returns at 178 and never sends notifications/initialized (:222) or re-runs tools/list (:225), so the provider stays half-initialized for the process lifetime. The doc comment at :175-176 ("A failed handshake is not cached, so the next caller retries it") is therefore false. Related: a 404 for an expired session is mapped to providerUnavailable and never clears sessionID, though the MCP spec requires re-initialize on 404.
+
+### A0050 — URL query construction drops '+', so queries containing it are corrupted
+
+- **Severity / tier / status:** S1 / A / OPEN
+- **Location:** `Providers/BraveProvider.swift:83, DuckDuckGoProvider.swift:77, MojeekProvider.swift:92, OpenWebSearchProvider.swift:73, SearXNGProvider.swift:66, StartpageProvider.swift:73`
+- **Category:** correctness/encoding
+- **Host:** Node1
+- **Discovered by:** Providers tier A review (subagent)
+- **Evidence before:** components.queryItems = items at all six sites. Foundation's queryItems setter validates with the .queryItem allowed mask, which includes '+', so q=C++ is emitted literally instead of C%2B%2B. DuckDuckGo, Startpage and SearXNG are form-style GET endpoints that decode '+' as a space, so the query becomes 'C' and the results are wrong for C++, A+B and regex queries. No test asserts query percent-encoding.
+
 ### A0006 — Validation is written as `assert`, which python -O strips
 
 - **Severity / tier / status:** S2 / A / OPEN
@@ -482,6 +543,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 - **Host:** Node1
 - **Discovered by:** installer/release shell tier A review (subagent)
 - **Evidence before:** mkdir -p "${SEARXNG_DIR}" is the one mutation in the native path not routed through the run helper that exists so "--dry-run is honest rather than decorative", and it is not behind a DRY_RUN guard. deploy/install.sh --dry-run --method native leaves a directory behind while the help text promises it will change nothing.
+
+### A0051 — Mojeek timestamp is read but never requested, so publishedAt is always nil (UNSURE)
+
+- **Severity / tier / status:** S2 / A / OPEN
+- **Location:** `Sources/WebSearchCore/Providers/MojeekProvider.swift:143`
+- **Category:** correctness/date
+- **Host:** Node1
+- **Discovered by:** Providers tier A review (subagent)
+- **Evidence before:** item.timestamp is read, but Mojeek's `date` flag is opt-in and defaults to 0 and the provider sends no date=1 (it sends no such parameter at :55-69), so every Mojeek result may have a nil date. The repo's notes say timestamp appears only when the flag is requested. UNSURE: settled by one live request with and without date=1.
 
 ### A0027 — A lost bind race abandons the exited child unreaped
 
