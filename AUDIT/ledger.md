@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 53 — done 13 · open 37 · blocked 3**
+**total 53 — done 15 · open 35 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 8 | 21 | 1 |
+| S1 | 30 | 10 | 19 | 1 |
 | S2 | 16 | 2 | 14 | 0 |
 | S3 | 3 | 1 | 2 | 0 |
 
-Status tally: OPEN 36, PROGRESS 1, DONE 13, BLOCKED 3
+Status tally: OPEN 34, PROGRESS 1, DONE 15, BLOCKED 3
 
 ## Tasks
 
@@ -49,8 +49,8 @@ Status tally: OPEN 36, PROGRESS 1, DONE 13, BLOCKED 3
 | A0030 | S1 | A | DONE | A cancelled provider request is recorded as a transient failure and can open a circuit breaker |
 | A0031 | S1 | A | DONE | A claimed half-open probe is never released when the local rate limiter denies, wedging the breaker |
 | A0032 | S1 | A | OPEN | Length-omitted results enter the fenced prompt unsanitised, so a page title can close the untrusted-data fence |
-| A0035 | S1 | A | OPEN | The mandatory-SearXNG proof passes on an instance that returns zero results |
-| A0036 | S1 | A | OPEN | The end-to-end gate accepts a JSON-RPC error reply as success and never asserts the result count |
+| A0035 | S1 | A | DONE | The mandatory-SearXNG proof passes on an instance that returns zero results |
+| A0036 | S1 | A | DONE | The end-to-end gate accepts a JSON-RPC error reply as success and never asserts the result count |
 | A0037 | S1 | A | DONE | The generated SearXNG secret is passed as a command-line argument, where ps can read it |
 | A0038 | S1 | A | OPEN | `|| true` swallows a grep error and the truncated staging file then replaces config.env, dropping every API key |
 | A0041 | S1 | A | OPEN | The release-notes gate names NOT_CHECKED in its failure message but never checks for it |
@@ -351,21 +351,27 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0035 — The mandatory-SearXNG proof passes on an instance that returns zero results
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `deploy/install.sh:427-433,382-384`
 - **Category:** check-cannot-fail
 - **Host:** Node1
 - **Discovered by:** installer/release shell tier A review (subagent)
 - **Evidence before:** searxng_answers prints len(data["results"]), so {"results": []} prints the string "0", which [ -n ... ] treats as true. An instance with json enabled but every engine failing or disabled is adopted as "a working SearXNG is already listening" and reported as having "answered a real query: 0 results". Nothing else covers it: the end-to-end step can pass through the default-enabled scrapers and Parallel, so the install's central claim is not established.
+- **Fix:** A `has_results` predicate refuses anything that is not a positive integer, used at both adoption sites, so a zero-result instance is no longer adopted as working.
+- **Evidence after:** The real `has_results`, extracted from install.sh and evaluated: "" refused, "0" refused, "abc" refused, "5" accepted, "12" accepted. bash -n and shellcheck clean. NOT VERIFIED: the installer was not run (it installs software; this host runs a live SearXNG).
+- **Commit:** `5439839`
 
 ### A0036 — The end-to-end gate accepts a JSON-RPC error reply as success and never asserts the result count
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `deploy/install.sh:585-592`
 - **Category:** check-cannot-fail
 - **Host:** Node1
 - **Discovered by:** installer/release shell tier A review (subagent)
 - **Evidence before:** A reply carrying "error" and no "result" gives res = {}, isError falsy, and prints ok: 0 result blocks, which the gate reports as "returned a real search result". The same happens if a stray stdout notification arrives first — the exact trap stdout purity exists to catch. The block count is computed but never asserted, and it is off by one: the joined text starts with [1], so text.count("\n[") is 0 for a genuine single-result answer.
+- **Fix:** The gate rejects a JSON-RPC error, a reply with no result object, an `isError` result and a content-less result, and asserts at least one result block instead of printing a count it never checked.
+- **Evidence after:** Previous logic on a JSON-RPC error printed `ok: 0 result blocks` — its own success path. The new gate, extracted from install.sh and run against stubs: error reply -> "error: JSON-RPC error: ..."; one real result -> "ok: 1 result block(s)"; empty content -> "error: the search returned no result blocks". NOT VERIFIED: the installer was not run.
+- **Commit:** `5439839`
 
 ### A0037 — The generated SearXNG secret is passed as a command-line argument, where ps can read it
 
