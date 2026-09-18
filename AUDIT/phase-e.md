@@ -269,3 +269,26 @@ Two things the waiver does **not** change, because they were never the owner's t
 stated so that no reader infers otherwise: `A0001` — rotating the live Tavily credential — is still
 open and still owned by the repository owner, and it was not performed. And nothing in this audit
 touched a live runtime system, a deployment, a release, or a real credential.
+
+---
+
+## Second publication — and the verification that was **not** run
+
+Two commits landed after the run-3 verification: `14087ab`, which fixes two bypass-direction defects in
+the A0011 depth model that measuring against real pages exposed, and `111daf1`, its ledger entry. The
+repository owner directed that they go to `main` and be pushed, and they have.
+
+**Phase E has not been re-run for them.** That is stated plainly rather than left to be inferred,
+because they are the first change in this audit to reach `main` without an independent-host run behind
+it, and this audit's own standard says the final commit is the one Phase E verifies. What they do have:
+
+- `swift build --build-tests -Xswiftc -warnings-as-errors` and the full suite on the primary host:
+  **582 tests, 0 failures**;
+- `swift-format lint --recursive --strict` and `swiftlint lint --strict`: exit 0;
+- the measurement that motivated them: **34 of 37 real pages exact, 3 over, 0 under**, against 18
+  under-counts before the fix.
+
+What they do **not** have is a run on a machine other than the one they were written on. The obligation
+that follows is named rather than left to be discovered: **Phase E must be run again on `main` as it now
+stands before this work is treated as verified**, and until it is, the ledger's closure of `A0011` rests
+on the primary host alone.
