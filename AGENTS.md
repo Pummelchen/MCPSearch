@@ -33,7 +33,7 @@ Intel slice).
   breaker), `Fetch/` (`URLPolicy` SSRF layer, `HTMLExtractor`, `JinaReaderFetcher`),
   `Support/` (`HTTPClient`, config, loopback/Origin policy, the generated
   `BuildVersion.swift`), `Monitor/`.
-- `Tests/WebSearchCoreTests/` (568) and `Tests/MCPSMonitorTests/` (42) — fixtures
+- `Tests/WebSearchCoreTests/` (581) and `Tests/MCPSMonitorTests/` (42) — fixtures
   are inline Swift literals, not a resource bundle.
 - `VERSION` — the authoritative version at the repository root. See Identity.
 - `tools/` — the release machinery: `sync-version.sh` (writes the mirrors from
@@ -79,7 +79,7 @@ the server actually uses. The installer checks the JSON API, not the health endp
 
 ```bash
 swift build                     # release: swift build -c release
-swift test                      # 610 tests, 6 skipped
+swift test                      # 623 tests, 6 skipped
 SEARCH_LIVE_TESTS=1 swift test --filter LiveProviderTests   # opt-in, needs a key
 
 swift run mcps-mon              # --probe adds provider latency
