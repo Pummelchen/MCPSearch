@@ -267,6 +267,57 @@ final class LoopbackServer: @unchecked Sendable {
 /// Transport-level retry, timeout and size policy.
 final class HTTPClientTests: XCTestCase {
 
+    /// The peer address is available by the time the body has been read.
+    ///
+    /// This is the timing the mitigation rests on. `didFinishCollecting` is delivered when the task
+    /// completes, and a check that reads `addresses` too early sees an empty list — which would either
+    /// refuse a good response or, worse, pass a bad one as unverifiable. Measured rather than assumed
+    /// (ledger A0017).
+    func testThePeerAddressIsAvailableWhenTheBodyHasBeenRead() async throws {
+        let server = try LoopbackServer(responses: [.init(status: 200, body: "hello")])
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+        let recorder = PeerAddressRecorder()
+
+        let (stream, _) = try await session.bytes(
+            for: URLRequest(url: server.baseURL),
+            delegate: recorder
+        )
+        var received: [UInt8] = []
+        for try await byte in stream { received.append(byte) }
+
+        print(
+            "      A0017: collected=\(recorder.hasCollected) addresses=\(recorder.addresses)"
+        )
+        XCTAssertEqual(String(decoding: received, as: UTF8.self), "hello")
+        XCTAssertTrue(
+            recorder.hasCollected,
+            "the metrics callback had not fired by the time the body was fully read"
+        )
+        XCTAssertEqual(
+            recorder.addresses.compactMap(BoundedResponseBody.host(ofRemoteAddress:)),
+            ["127.0.0.1"]
+        )
+    }
+
+    /// The address is split from its port for both literal forms.
+    func testRemoteAddressParsing() {
+        XCTAssertEqual(BoundedResponseBody.host(ofRemoteAddress: "93.184.216.34:443"), "93.184.216.34")
+        XCTAssertEqual(BoundedResponseBody.host(ofRemoteAddress: "127.0.0.1:8765"), "127.0.0.1")
+        XCTAssertEqual(
+            BoundedResponseBody.host(ofRemoteAddress: "[2606:2800:220:1:248:1893:25c8:1946]:443"),
+            "2606:2800:220:1:248:1893:25c8:1946")
+        XCTAssertEqual(BoundedResponseBody.host(ofRemoteAddress: "[::1]:8080"), "::1")
+        XCTAssertEqual(BoundedResponseBody.host(ofRemoteAddress: "unexpected"), "unexpected")
+        // A bare IPv6 literal ending in digits must not lose its last group to a port split.
+        XCTAssertEqual(
+            BoundedResponseBody.host(ofRemoteAddress: "2606:2800:220:1:248:1893:25c8:1946"),
+            "2606:2800:220:1:248:1893:25c8:1946"
+        )
+        // A port that is not a number is not a port.
+        XCTAssertEqual(BoundedResponseBody.host(ofRemoteAddress: "host:https"), "host:https")
+    }
+
     /// Does a capped transfer also stop the server sending?
     ///
     /// `BoundedResponseBody.read` throws at the cap, which abandons the byte sequence. Whether that
