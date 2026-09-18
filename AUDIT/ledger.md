@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 31 · open 20 · blocked 3**
+**total 54 — done 32 · open 19 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 23 | 6 | 1 |
+| S1 | 30 | 24 | 5 | 1 |
 | S2 | 16 | 4 | 12 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 18, PROGRESS 2, DONE 31, BLOCKED 3
+Status tally: OPEN 17, PROGRESS 2, DONE 32, BLOCKED 3
 
 ## Tasks
 
@@ -52,7 +52,7 @@ Status tally: OPEN 18, PROGRESS 2, DONE 31, BLOCKED 3
 | A0035 | S1 | A | DONE | The mandatory-SearXNG proof passes on an instance that returns zero results |
 | A0036 | S1 | A | DONE | The end-to-end gate accepts a JSON-RPC error reply as success and never asserts the result count |
 | A0037 | S1 | A | DONE | The generated SearXNG secret is passed as a command-line argument, where ps can read it |
-| A0038 | S1 | A | OPEN | `|| true` swallows a grep error and the truncated staging file then replaces config.env, dropping every API key |
+| A0038 | S1 | A | DONE | `|| true` swallows a grep error and the truncated staging file then replaces config.env, dropping every API key |
 | A0041 | S1 | A | OPEN | The release-notes gate names NOT_CHECKED in its failure message but never checks for it |
 | A0046 | S1 | A | DONE | Include and exclude domains are space-joined but Mojeek documents comma separation, so the filters never apply |
 | A0047 | S1 | A | DONE | Bot-challenge markers are substring-matched against the whole page, so ordinary queries are discarded as challenges |
@@ -421,12 +421,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0038 — `|| true` swallows a grep error and the truncated staging file then replaces config.env, dropping every API key
 
-- **Severity / tier / status:** S1 / A / OPEN
-- **Location:** `deploy/install.sh:522,533`
+- **Severity / tier / status:** S1 / A / DONE
+- **Location:** `deploy/install.sh:559`
 - **Category:** data-loss
 - **Host:** Node1
 - **Discovered by:** installer/release shell tier A review (subagent)
 - **Evidence before:** `grep -v '^SEARXNG_BASE_URL=' "$base" > "$staged" || true` needs || true for grep's exit 1 (no match) but also masks exit 2 (open/read error). The redirection has already truncated $staged, so it is empty, and the next line moves it over config.env, leaving only the new SEARXNG_BASE_URL block while the script prints "existing keys preserved". Trigger: $base passes the -f test at :519 but cannot be read at :522 (permissions change, or removal between the two).
+- **Fix:** grep's status is examined: 0 and 1 are accepted, anything else removes the staged file and stops the install. The distinction is made on the exit status rather than the file's size, so a legitimate config whose only line is SEARXNG_BASE_URL still stages.
+- **Evidence after:** Committed in 68c6907. Before: an unreadable base gave no refusal and "staged bytes: 0" — the file that would replace config.env. After: case (a) stages 51 bytes, case (b) stages 0 with no refusal (legitimate, grep exit 1), case (c) refuses and removes the staged file. bash -n and shellcheck -S warning clean over install.sh, provision-node.sh and tools/*.sh; 18 harness tests pass.
+- **Commit:** `68c6907`
 
 ### A0041 — The release-notes gate names NOT_CHECKED in its failure message but never checks for it
 
