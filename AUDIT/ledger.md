@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 55 — done 53 · open 0 · blocked 2**
+**total 55 — done 53 · open 1 · blocked 1**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 3 | 0 | 1 |
-| S1 | 30 | 29 | 0 | 1 |
+| S1 | 30 | 29 | 1 | 0 |
 | S2 | 17 | 17 | 0 | 0 |
 | S3 | 4 | 4 | 0 | 0 |
 
-Status tally: DONE 53, BLOCKED 2
+Status tally: PROGRESS 1, DONE 53, BLOCKED 1
 
 ## Tasks
 
@@ -39,7 +39,7 @@ Status tally: DONE 53, BLOCKED 2
 | A0013 | S1 | A | DONE | Credentials in the target URL's query or fragment are forwarded to the third-party reader |
 | A0014 | S1 | A | DONE | An empty extraction is returned as a success, discarding the real failure reason |
 | A0015 | S1 | A | DONE | Cancellation is swallowed on the reader path, so a cancelled fetch can return a stale success |
-| A0017 | S1 | A | BLOCKED | DNS-rebinding TOCTOU between validation and connect (documented, no local fix) |
+| A0017 | S1 | A | PROGRESS | DNS-rebinding TOCTOU between validation and connect (documented, no local fix) |
 | A0018 | S1 | A | DONE | The soak's stdio read has no timeout, so one unanswered query hangs the whole run |
 | A0019 | S1 | A | DONE | The child's stderr pipe is not drained until exit, which deadlocks against the stdout read |
 | A0020 | S1 | A | DONE | The credential-leak scan is stderr-only and only runs on the fully successful path |
@@ -255,13 +255,15 @@ ANALYSIS of what actually bounds this, worked through rather than guessed: the b
 
 ### A0017 — DNS-rebinding TOCTOU between validation and connect (documented, no local fix)
 
-- **Severity / tier / status:** S1 / A / BLOCKED
+- **Severity / tier / status:** S1 / A / PROGRESS
 - **Location:** `Sources/WebSearchCore/Fetch/URLPolicy.swift:147-154; DirectHTTPFetcher.swift:68,83`
 - **Category:** security/ssrf
 - **Host:** Node1
 - **Discovered by:** Fetch tier A manual review (subagent)
 - **Evidence before:** The URL is validated (resolved, checked) and then handed to URLSession, which resolves the name again when it connects; a name whose A record flips into private space between the two lookups lands internally. The window is bounded by DNS TTL and the code documents it as an accepted limitation. URLSession exposes no address pinning, so there is no local fix.
-- **BLOCKED:** Owner: platform (Foundation/URLSession) + repository owner for the residual risk decision. No local fix exists because URLSession offers no address pinning. Options for a human: (1) accept and keep the existing documentation, which is already done in URLPolicy.swift:147-154 and the tracker; (2) move the fetch to a transport that exposes the resolved address (a custom NIO client, or a connector that pins the IP) as its own project-sized task. Already documented as accepted before this audit; recorded here so it is counted rather than silently dropped.
+- **Fix:** DETECTION, NOT PINNING. `PeerAddressRecorder` is a `URLSessionTaskDelegate` collecting `transactionMetrics.remoteAddress` for every hop; `BoundedResponseBody.host(ofRemoteAddress:)` splits the address from its port. The reader will compare the recorded peer against the addresses `DNSAnswerCache` holds for that host and refuse the body when the peer was never one of them, which denies the attacker the response. REMAINING: wire the recorder through `BoundedResponseBody.read` and the comparison through `DirectHTTPFetcher`.
+- **Evidence after:** Committed in c87c237 as a first increment. The timing the mitigation rests on was measured rather than assumed: against the loopback server the recorder reports "collected=true addresses=[\"127.0.0.1\"]" immediately after the body is fully read, with no wait. A parser bug the measurement's output exposed was fixed: the address/port split treated a bare IPv6 literal ending in a numeric group as `host:port`, which would have refused a legitimate peer. Suite green at 620 tests (578 + 42), 0 failures; both linters exit 0.
+- **Commit:** `c87c237`
 
 ### A0018 — The soak's stdio read has no timeout, so one unanswered query hangs the whole run
 
