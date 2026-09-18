@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 53 — done 4 · open 46 · blocked 3**
+**total 53 — done 5 · open 45 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 2 | 27 | 1 |
+| S1 | 30 | 3 | 26 | 1 |
 | S2 | 16 | 0 | 16 | 0 |
 | S3 | 3 | 0 | 3 | 0 |
 
-Status tally: OPEN 45, PROGRESS 1, DONE 4, BLOCKED 3
+Status tally: OPEN 44, PROGRESS 1, DONE 5, BLOCKED 3
 
 ## Tasks
 
@@ -54,7 +54,7 @@ Status tally: OPEN 45, PROGRESS 1, DONE 4, BLOCKED 3
 | A0037 | S1 | A | OPEN | The generated SearXNG secret is passed as a command-line argument, where ps can read it |
 | A0038 | S1 | A | OPEN | `|| true` swallows a grep error and the truncated staging file then replaces config.env, dropping every API key |
 | A0041 | S1 | A | OPEN | The release-notes gate names NOT_CHECKED in its failure message but never checks for it |
-| A0046 | S1 | A | OPEN | Include and exclude domains are space-joined but Mojeek documents comma separation, so the filters never apply |
+| A0046 | S1 | A | DONE | Include and exclude domains are space-joined but Mojeek documents comma separation, so the filters never apply |
 | A0047 | S1 | A | OPEN | Bot-challenge markers are substring-matched against the whole page, so ordinary queries are discarded as challenges |
 | A0048 | S1 | A | OPEN | Cancellation is mapped to a transient network failure, so a caller cancel is charged to the provider's breaker |
 | A0049 | S1 | A | OPEN | A handshake that was assigned a session id and then failed leaves sessionID set, so initialization is never retried |
@@ -390,12 +390,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0046 — Include and exclude domains are space-joined but Mojeek documents comma separation, so the filters never apply
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `Sources/WebSearchCore/Providers/MojeekProvider.swift:78-79,87-88`
 - **Category:** correctness/request-encoding
 - **Host:** Node1
 - **Discovered by:** Providers tier A review (subagent)
 - **Evidence before:** joined(separator: " ") for both `fi` and `fe`. Mojeek's parameter docs and this repo's docs/provider-api-notes.md:58 say comma separated ("Comma separated domain names"). A space-joined list is sent as one malformed domain, so a caller's filter is silently ignored (unfiltered results) or returns nothing.
+- **Fix:** `fi`/`fe` join include and exclude domains with "," instead of " ", matching what Mojeek documents and what docs/provider-api-notes.md:58 already recorded. Test lives in its own MojeekDomainFilterTests.swift, because adding it to ProviderContractTests pushed that file past its length envelope.
+- **Evidence after:** With the source fix stashed the new test fails on exactly the defect: XCTAssertEqual failed: ("Optional(\"example.com example.org\")") is not equal to (\"Optional(\"example.com,example.org\")\"). With it, it passes. Compared through queryItems so the assertion is the value Mojeek receives, not Foundation's escaping. Full suite 597 tests (555 + 42), 6 skipped, 0 failures, 0 warnings; swift-format --strict and swiftlint --strict both exit 0.
+- **Commit:** `f6df2a4 + d3e5d9d`
 
 ### A0047 — Bot-challenge markers are substring-matched against the whole page, so ordinary queries are discarded as challenges
 

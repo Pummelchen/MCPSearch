@@ -782,13 +782,13 @@
       "location": "Sources/WebSearchCore/Providers/MojeekProvider.swift:78-79,87-88",
       "title": "Include and exclude domains are space-joined but Mojeek documents comma separation, so the filters never apply",
       "category": "correctness/request-encoding",
-      "status": "OPEN",
+      "status": "DONE",
       "host": "Node1",
       "discovered_by": "Providers tier A review (subagent)",
       "evidence_before": "joined(separator: \" \") for both `fi` and `fe`. Mojeek's parameter docs and this repo's docs/provider-api-notes.md:58 say comma separated (\"Comma separated domain names\"). A space-joined list is sent as one malformed domain, so a caller's filter is silently ignored (unfiltered results) or returns nothing.",
-      "fix_summary": "",
-      "evidence_after": "",
-      "commit": "",
+      "fix_summary": "`fi`/`fe` join include and exclude domains with \",\" instead of \" \", matching what Mojeek documents and what docs/provider-api-notes.md:58 already recorded. Test lives in its own MojeekDomainFilterTests.swift, because adding it to ProviderContractTests pushed that file past its length envelope.",
+      "evidence_after": "With the source fix stashed the new test fails on exactly the defect: XCTAssertEqual failed: (\"Optional(\\\"example.com example.org\\\")\") is not equal to (\\\"Optional(\\\"example.com,example.org\\\")\\\"). With it, it passes. Compared through queryItems so the assertion is the value Mojeek receives, not Foundation's escaping. Full suite 597 tests (555 + 42), 6 skipped, 0 failures, 0 warnings; swift-format --strict and swiftlint --strict both exit 0.",
+      "commit": "f6df2a4 + d3e5d9d",
       "blocked_reason": ""
     },
     {
