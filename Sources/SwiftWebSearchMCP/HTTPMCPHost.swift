@@ -802,10 +802,17 @@ private final class SSEStreamRelay: @unchecked Sendable {
     }
 
     /// Consume the stream and write each frame as a chunk, then close.
+    ///
+    /// The relay ends when the *client* goes away, not only when the stream does. Without that, a task
+    /// parked in `for try await frame in stream` waited for a next frame that, for a long-lived MCP
+    /// session stream, may never arrive: a disconnected client left a suspended task holding the
+    /// channel and the stream, and the session it belonged to could not make progress (ledger A0029).
+    /// `closeFuture` is NIO's own signal and completes on every close path, including a peer that
+    /// vanished mid-response.
     func relay(_ stream: AsyncThrowingStream<Data, Swift.Error>) {
         let log = self.log
 
-        Task {
+        let relay = Task {
             do {
                 for try await frame in stream {
                     do {
@@ -816,11 +823,17 @@ private final class SSEStreamRelay: @unchecked Sendable {
                     }
                 }
                 _ = try? await finish().get()
+            } catch is CancellationError {
+                // The client disconnected: there is no one to finish the response for, and the
+                // session's own teardown is what cleans up. Reaching this instead of hanging is the
+                // whole point (ledger A0029).
+                log.debug("SSE client disconnected; relay stopped")
             } catch {
                 log.debug("SSE stream ended with an error", metadata: ["error": "\(error)"])
                 _ = try? await close().get()
             }
         }
+        channel.closeFuture.whenComplete { _ in relay.cancel() }
     }
 
     private func writeFrame(_ frame: Data) -> EventLoopFuture<Void> {
