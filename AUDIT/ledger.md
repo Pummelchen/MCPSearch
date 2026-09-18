@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 53 — done 6 · open 44 · blocked 3**
+**total 53 — done 7 · open 43 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
 | S1 | 30 | 3 | 26 | 1 |
-| S2 | 16 | 0 | 16 | 0 |
+| S2 | 16 | 1 | 15 | 0 |
 | S3 | 3 | 1 | 2 | 0 |
 
-Status tally: OPEN 43, PROGRESS 1, DONE 6, BLOCKED 3
+Status tally: OPEN 42, PROGRESS 1, DONE 7, BLOCKED 3
 
 ## Tasks
 
@@ -68,7 +68,7 @@ Status tally: OPEN 43, PROGRESS 1, DONE 6, BLOCKED 3
 | A0025 | S2 | C | OPEN | The test depends on the developer's ambient config.env and contradicts the function it tests |
 | A0026 | S2 | C | OPEN | No read timeout, and the early-close path blocks on stderr of a possibly-live child |
 | A0033 | S2 | A | OPEN | A rejected URL-valued setting is echoed verbatim into a diagnostic that is logged, contradicting the type's own contract |
-| A0034 | S2 | A | OPEN | A repeated name in SEARCH_PROVIDER_ORDER is not deduplicated, so one provider can vote twice |
+| A0034 | S2 | A | DONE | A repeated name in SEARCH_PROVIDER_ORDER is not deduplicated, so one provider can vote twice |
 | A0039 | S2 | A | OPEN | --bind is accepted and silently dropped by the docker method |
 | A0040 | S2 | A | OPEN | The documented invocation puts the sudo password on a command line and into the child environment |
 | A0042 | S2 | A | OPEN | `rm -rf $STAGE/$VERSION` runs even after the identity gate failed, and VERSION is never validated in this script |
@@ -519,12 +519,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0034 — A repeated name in SEARCH_PROVIDER_ORDER is not deduplicated, so one provider can vote twice
 
-- **Severity / tier / status:** S2 / A / OPEN
+- **Severity / tier / status:** S2 / A / DONE
 - **Location:** `Sources/WebSearchCore/Support/AppConfiguration.swift:447-448`
 - **Category:** correctness/ranking
 - **Host:** Node1
 - **Discovered by:** Search + Support tier A review (subagent)
-- **Evidence before:** `seen` is seeded from `parsed` but `full` starts as `parsed` with duplicates intact; the dedup loop only guards providers appended afterwards. SEARCH_PROVIDER_ORDER=tavily,tavily,brave yields two Tavily entries, and select takes ordered.prefix(maxDirectProviders), so balanced fans out to Tavily twice and never to Brave. RankFusion's duplicate guard is per response, so identical URLs from both responses each get a full contribution. Requires an operator typo.
+- **Evidence before:** `seen` is seeded from `parsed` but `full` starts as `parsed` with duplicates intact; the dedup loop only guards providers appended afterwards. SEARCH_PROVIDER_ORDER=tavily,tavily,brave yields two Tavily entries, and select takes ordered.prefix(maxDirectProviders), so balanced fans out to Tavily twice and never to Brave. RankFusion's duplicate guard is per response, so identical URLs from both responses each get a full contribution. Requires an operator typo. NOTE ON THIS AUDIT'S OWN RECORD: the A0034 fix commit (6efcc38) says the complexity overrun came from 'my first attempt at this task' having been committed before the linter ran. That is wrong: the linter WAS run before committing A0034 and caught the overrun, which is why this commit is clean. The commit-before-linting slip belongs to A0046 (f6df2a4). The message cannot be corrected because rewriting history is forbidden, so the correction lives here.
+- **Fix:** `AppConfiguration.parse` resolves `SEARCH_PROVIDER_ORDER` through a new `resolvedProviderOrder(from:)` that deduplicates the operator's list as it seeds the result, then appends the remaining providers. The extraction also takes `parse` back under the cyclomatic-complexity envelope my inline fix had pushed it one over.
+- **Evidence after:** With the source fix stashed the new test fails on both counts — ("[tavily, tavily]") != ("[tavily, brave]") and count 10 != 9. With it, it passes, the neighbouring order test still passes, and the suite is green at 598 tests (556 + 42), 6 skipped, 0 failures, 0 warnings; swift-format --strict and swiftlint --strict exit 0.
+- **Commit:** `6efcc38`
 
 ### A0039 — --bind is accepted and silently dropped by the docker method
 
