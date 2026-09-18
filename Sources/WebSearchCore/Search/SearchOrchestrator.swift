@@ -485,6 +485,21 @@ public actor SearchOrchestrator {
 
     /// Run one provider, translating every failure mode into a failure record rather
     /// than an exception, so one bad provider never aborts the fan-out.
+    /// Whether an error means the caller went away, rather than the provider failing.
+    ///
+    /// In-flight cancellation surfaces as `HTTPError.cancelled`, not `CancellationError` — the
+    /// codebase records exactly that at `AnswerSynthesizer.swift`. Catching only
+    /// `CancellationError` therefore let the transport's shape fall through to the generic arm,
+    /// where `HTTPStatusMapper` maps it to `.networkFailure`, whose `.network` category is
+    /// transient, so `ProviderHealth.recordFailure` charged it to the provider: three client
+    /// disconnects opened a breaker on a provider that had never failed, and the half-open probe
+    /// the attempt had claimed was never given back (ledger A0030/A0048).
+    private static func isCancellation(_ error: any Error) -> Bool {
+        if error is CancellationError { return true }
+        if case HTTPError.cancelled = error { return true }
+        return false
+    }
+
     private func runSingle(
         _ provider: any SearchProvider,
         request: SearchRequest,
@@ -540,7 +555,7 @@ public actor SearchOrchestrator {
                     "category": failure.category.rawValue,
                 ]
             )
-        } catch is CancellationError {
+        } catch let error where Self.isCancellation(error) {
             // The request was claimed from the breaker before the call and produced no outcome, so
             // the claim is given back rather than recorded as a provider failure: a caller that
             // goes away says nothing about the provider. Without this a cancelled request left the

@@ -566,6 +566,52 @@ final class SearchOrchestratorTests: XCTestCase {
         XCTAssertNil(next, "the probe must have been released, got \(next as Any)")
     }
 
+    /// The transport's cancellation shape must be treated as cancellation, not as provider failure.
+    ///
+    /// In-flight cancellation surfaces as `HTTPError.cancelled`, not `CancellationError` — this
+    /// codebase records exactly that at `AnswerSynthesizer.swift`. Catching only
+    /// `CancellationError` let the transport's shape fall into the generic arm, where
+    /// `HTTPStatusMapper` called it a transient network failure and `recordFailure` charged it to
+    /// the breaker: three client disconnects opened a breaker on a provider that never failed, and
+    /// the half-open probe the attempt had claimed was never given back (ledger A0030/A0048).
+    func testATransportCancellationIsNotChargedToTheBreaker() async throws {
+        let clock = TestClock()
+        let health = ProviderHealth(clock: clock)
+        await health.register(
+            .tavily,
+            breakerPolicy: .init(failureThreshold: 1, cooldown: .seconds(30))
+        )
+        await health.recordFailure(
+            .tavily,
+            failure: ProviderFailure(provider: .tavily, category: .serverError, message: "500")
+        )
+        clock.advance(by: .seconds(31))
+
+        // The transport's shape, not `CancellationError`: this is what a dropped connection throws.
+        let cancelling = MockSearchProvider(id: .tavily) { _ in throw HTTPError.cancelled(label: "test") }
+        let healthy = MockSearchProvider.returning(
+            .brave,
+            results: [("B", "https://b.example.com/1", nil)]
+        )
+        let (orchestrator, _, _) = makeOrchestrator(
+            providers: [cancelling, healthy],
+            configuration: Fixtures.configuration(providerOrder: [.tavily, .brave]),
+            health: health,
+            clock: clock
+        )
+
+        let response = try await orchestrator.search(Fixtures.request(mode: .balanced))
+
+        XCTAssertTrue(
+            response.providersFailed.contains { $0.category == .cancelled },
+            "a caller that goes away says nothing about the provider: \(response.providersFailed)"
+        )
+        // Released, not charged: before the fix the generic arm recorded a transient failure here,
+        // which both reopened the breaker and left the claimed probe held.
+        let next = await health.authorize(.tavily)
+        XCTAssertNil(next, "the probe must have been released, got \(next as Any)")
+    }
+
     func testProviderThatHangsIsCutOffByTheTimeBudget() async throws {
         var configuration = Fixtures.configuration()
         configuration.balancedTimeout = .milliseconds(300)
