@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 40 · open 11 · blocked 3**
+**total 54 — done 41 · open 10 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
 | S1 | 30 | 27 | 2 | 1 |
-| S2 | 16 | 9 | 7 | 0 |
+| S2 | 16 | 10 | 6 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 9, PROGRESS 2, DONE 40, BLOCKED 3
+Status tally: OPEN 8, PROGRESS 2, DONE 41, BLOCKED 3
 
 ## Tasks
 
@@ -60,7 +60,7 @@ Status tally: OPEN 9, PROGRESS 2, DONE 40, BLOCKED 3
 | A0049 | S1 | A | DONE | A handshake that was assigned a session id and then failed leaves sessionID set, so initialization is never retried |
 | A0050 | S1 | A | DONE | URL query construction drops '+', so queries containing it are corrupted |
 | A0006 | S2 | A | DONE | Validation is written as `assert`, which python -O strips |
-| A0010 | S2 | A | OPEN | Installing overwrites the previous binary in place with no rollback path |
+| A0010 | S2 | A | DONE | Installing overwrites the previous binary in place with no rollback path |
 | A0016 | S2 | A | OPEN | An over-cap transfer may keep streaming after the cap is hit (UNSURE) |
 | A0022 | S2 | C | OPEN | The PTY master and slave fds leak when the spawn raises |
 | A0023 | S2 | C | OPEN | A failed signal case leaks the stub's socket and thread |
@@ -523,12 +523,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0010 — Installing overwrites the previous binary in place with no rollback path
 
-- **Severity / tier / status:** S2 / A / OPEN
-- **Location:** `deploy/install.sh:477-478`
+- **Severity / tier / status:** S2 / A / DONE
+- **Location:** `deploy/install.sh:110-124,518,531`
 - **Category:** ops/rollback
 - **Host:** Node1
 - **Discovered by:** L7 ops pass (subagent)
 - **Evidence before:** cp of the new binary over $BIN, with no backup of the previous one, no version pin to reinstall and no uninstall path (grep finds no rollback/uninstall/backup/revert in deploy/, tools/ or Sources/). config.env is staged safely and keys are preserved, so the binary is the only irreversible part.
+- **Fix:** A new `install_binary` copies beside `$BIN`, sets the mode on the staged file, and moves it into place, removing the staged file on either failure. The path is always either the old binary or the new one.
+- **Evidence after:** Committed in 3a9edcb. `install_binary` extracted from the script, run against a `cp` stub that truncates the destination then fails: before, BIN held "partial"; after, BIN held the untouched "GOOD OLD BINARY". The failure mode is simulated because the real `cp` cannot be made to fail half-way without filling a disk. Two harness mistakes produced a passing before-state first and were corrected; the commit records both. bash -n and shellcheck clean; 18 harness tests pass.
+- **Commit:** `3a9edcb`
 
 ### A0016 — An over-cap transfer may keep streaming after the cap is hit (UNSURE)
 
