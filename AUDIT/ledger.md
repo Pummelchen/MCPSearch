@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 55 — done 53 · open 1 · blocked 1**
+**total 55 — done 54 · open 0 · blocked 1**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 3 | 0 | 1 |
-| S1 | 30 | 29 | 1 | 0 |
+| S1 | 30 | 30 | 0 | 0 |
 | S2 | 17 | 17 | 0 | 0 |
 | S3 | 4 | 4 | 0 | 0 |
 
-Status tally: PROGRESS 1, DONE 53, BLOCKED 1
+Status tally: DONE 54, BLOCKED 1
 
 ## Tasks
 
@@ -39,7 +39,7 @@ Status tally: PROGRESS 1, DONE 53, BLOCKED 1
 | A0013 | S1 | A | DONE | Credentials in the target URL's query or fragment are forwarded to the third-party reader |
 | A0014 | S1 | A | DONE | An empty extraction is returned as a success, discarding the real failure reason |
 | A0015 | S1 | A | DONE | Cancellation is swallowed on the reader path, so a cancelled fetch can return a stale success |
-| A0017 | S1 | A | PROGRESS | DNS-rebinding TOCTOU between validation and connect (documented, no local fix) |
+| A0017 | S1 | A | DONE | DNS-rebinding TOCTOU between validation and connect (documented, no local fix) |
 | A0018 | S1 | A | DONE | The soak's stdio read has no timeout, so one unanswered query hangs the whole run |
 | A0019 | S1 | A | DONE | The child's stderr pipe is not drained until exit, which deadlocks against the stdout read |
 | A0020 | S1 | A | DONE | The credential-leak scan is stderr-only and only runs on the fully successful path |
@@ -255,15 +255,15 @@ ANALYSIS of what actually bounds this, worked through rather than guessed: the b
 
 ### A0017 — DNS-rebinding TOCTOU between validation and connect (documented, no local fix)
 
-- **Severity / tier / status:** S1 / A / PROGRESS
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `Sources/WebSearchCore/Fetch/URLPolicy.swift:147-154; DirectHTTPFetcher.swift:68,83`
 - **Category:** security/ssrf
 - **Host:** Node1
 - **Discovered by:** Fetch tier A manual review (subagent)
 - **Evidence before:** The URL is validated (resolved, checked) and then handed to URLSession, which resolves the name again when it connects; a name whose A record flips into private space between the two lookups lands internally. The window is bounded by DNS TTL and the code documents it as an accepted limitation. URLSession exposes no address pinning, so there is no local fix.
 - **Fix:** DETECTION, NOT PINNING. `PeerAddressRecorder` is a `URLSessionTaskDelegate` collecting `transactionMetrics.remoteAddress` for every hop; `BoundedResponseBody.host(ofRemoteAddress:)` splits the address from its port. The reader will compare the recorded peer against the addresses `DNSAnswerCache` holds for that host and refuse the body when the peer was never one of them, which denies the attacker the response. REMAINING: wire the recorder through `BoundedResponseBody.read` and the comparison through `DirectHTTPFetcher`.
-- **Evidence after:** Committed in c87c237 as a first increment. The timing the mitigation rests on was measured rather than assumed: against the loopback server the recorder reports "collected=true addresses=[\"127.0.0.1\"]" immediately after the body is fully read, with no wait. A parser bug the measurement's output exposed was fixed: the address/port split treated a bare IPv6 literal ending in a numeric group as `host:port`, which would have refused a legitimate peer. Suite green at 622 tests (580 + 42) — the commit message says 620 (578 + 42); the run reports 580 core tests, and the correct total is recorded here rather than repeated. That commit also went in with `swiftlint exit=2`, a violation of the gate this audit set itself: the exit code was printed and not acted on. The violation (`String(decoding:as:)`) is fixed and the gate now exits non-zero on a linter finding, 0 failures; both linters exit 0.
-- **Commit:** `c87c237`
+- **Evidence after:** Committed in 565c0c1. `DirectHTTPFetcher.perform` attaches a `PeerAddressRecorder` to the capped read and refuses the body when the address the connection used was not one the policy resolved for that hop; `BoundedResponseBody.unvalidatedPeers` compares addresses rather than strings, so `::1` and `0:0:0:0:0:0:0:1` are the same peer and an unparseable peer counts as unvalidated. The timing was measured, not assumed: the recorder reports the address immediately after the body is fully read, no waiting. The check applies only where the policy resolved addresses, which is why the suite passes unchanged. Two cases fail closed deliberately — a non-validated peer, and a connection with no reported address; the second is a choice rather than a measurement and is flagged as the part most likely to need revisiting. RESIDUAL, named: the refusal branch is not exercised end to end, because arranging it needs a resolver that answers differently for the policy and for the connection — the attack itself; it is covered through the decision it delegates to. A parser bug the measurement exposed was fixed: a bare IPv6 literal ending in a numeric group was split as `host:port` and a legitimate peer would have been refused. Suite green at 623 tests (581 + 42), 0 failures; both linters exit 0.
+- **Commit:** `565c0c1`
 
 ### A0018 — The soak's stdio read has no timeout, so one unanswered query hangs the whole run
 
