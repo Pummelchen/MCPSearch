@@ -923,8 +923,12 @@
       "evidence_before": "AGENTS.md said 555 + 42 and 597; README.md said 597; the wiki said 597 twice.",
       "evidence_after": "`swift test` reports 568 + 42 = 610. Repo commit f1eaf41, wiki commit 0a5582d. The counts now match the suite and the per-target split matches the actual target sizes.",
       "commit": "f1eaf41",
-      "wiki_commit": "0a5582d",
-      "owner": "agent"
+      "owner": "agent",
+      "project": "MCPSearch",
+      "category": "documentation/accuracy",
+      "host": "Node1",
+      "discovered_by": "The workspace instructions surfaced it: AGENTS.md is injected into the session and it stated 597 tests while the suite reported 610.",
+      "blocked_reason": ""
     }
   ]
 }

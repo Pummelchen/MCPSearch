@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 53 — done 21 · open 29 · blocked 3**
+**total 54 — done 22 · open 29 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
 | S1 | 30 | 15 | 14 | 1 |
 | S2 | 16 | 3 | 13 | 0 |
-| S3 | 3 | 1 | 2 | 0 |
+| S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 26, PROGRESS 3, DONE 21, BLOCKED 3
+Status tally: OPEN 26, PROGRESS 3, DONE 22, BLOCKED 3
 
 ## Tasks
 
@@ -78,6 +78,7 @@ Status tally: OPEN 26, PROGRESS 3, DONE 21, BLOCKED 3
 | A0027 | S3 | C | OPEN | A lost bind race abandons the exited child unreaped |
 | A0052 | S3 | C | DONE | The documented test count is stale after A0045 added three tests |
 | A0053 | S3 | A | OPEN | /health readiness reflects configuration, not reachability |
+| A0054 | S3 | C | DONE | The documented test count drifted from the suite as the audit added tests |
 
 ---
 
@@ -658,3 +659,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 - **Host:** Node1
 - **Discovered by:** residual of the audit's own A0007 fix (§6)
 - **Evidence before:** After A0007 the body is derived, so it is no longer a facade, but `ready` is computed from `configured` alone: a provider that is configured and unreachable still reports ok. That is a deliberate limit — probing a provider inside a liveness endpoint adds network latency and a new failure mode to the probe — but it means an operator cannot distinguish 'configured' from 'working' without calling web_search_status. Recorded so the limit is a decision on the record rather than an unstated gap, and so nobody later reads a 200 as proof that search works.
+
+### A0054 — The documented test count drifted from the suite as the audit added tests
+
+- **Severity / tier / status:** S3 / C / DONE
+- **Location:** `AGENTS.md:36, AGENTS.md:82, README.md:201, wiki Home.md:18, wiki Home.md:128`
+- **Category:** documentation/accuracy
+- **Host:** Node1
+- **Discovered by:** The workspace instructions surfaced it: AGENTS.md is injected into the session and it stated 597 tests while the suite reported 610.
+- **Evidence before:** AGENTS.md said 555 + 42 and 597; README.md said 597; the wiki said 597 twice.
+- **Fix:** All five sites now say 610 — 568 in WebSearchCoreTests and 42 in MCPSMonitorTests — which is what `swift test` reports. Repo and wiki committed separately, as they are separate repositories.
+- **Evidence after:** `swift test` reports 568 + 42 = 610. Repo commit f1eaf41, wiki commit 0a5582d. The counts now match the suite and the per-target split matches the actual target sizes.
+- **Commit:** `f1eaf41`
