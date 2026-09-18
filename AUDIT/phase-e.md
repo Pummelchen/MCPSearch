@@ -243,3 +243,29 @@ end to end on an independent host.
 
 The only commit after `bcc29bc` is this record's own update, so the diff following verification is the
 audit's documentation and nothing else — the same arrangement as runs 1 and 2.
+
+---
+
+## Publication, on the owner's instruction
+
+This audit's §0 required that anything reaching `main` go **through a pull request**. The repository
+owner has since instructed a **direct fast-forward** of `audit/2026-09-18` into `main` instead, and a
+push of the wiki. That is recorded here rather than left in a commit message, for two reasons.
+
+It is a deliberate waiver, by the person entitled to make it, of a constraint the audit wrote for
+itself — the same kind of decision as `A0011`'s option 2, and it belongs on the record. And it is the
+only step in this audit that is **not reversible without rewriting history**, which this audit forbade:
+once `main` moves, the previous state is reachable only by a revert commit.
+
+What was published, and what a reviewer can still check:
+
+- `main` fast-forwarded from `992a27f` to the commit carrying this record — a true fast-forward, so no
+  merge commit, no rewritten history and no lost commit. `992a27f` remains an ancestor of `main`.
+- All 145 audit commits, including `AUDIT/` itself: `ledger.json` and `ledger.md` (the single source of
+  truth, 54 DONE and 1 BLOCKED with a named owner), this Phase E record, and the tool-coverage proof.
+- The wiki, corrected for the test counts and extended for the two changes this goal landed.
+
+Two things the waiver does **not** change, because they were never the owner's to waive, and they are
+stated so that no reader infers otherwise: `A0001` — rotating the live Tavily credential — is still
+open and still owned by the repository owner, and it was not performed. And nothing in this audit
+touched a live runtime system, a deployment, a release, or a real credential.
