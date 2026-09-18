@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 42 · open 9 · blocked 3**
+**total 54 — done 43 · open 8 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
 | S1 | 30 | 27 | 2 | 1 |
-| S2 | 16 | 11 | 5 | 0 |
+| S2 | 16 | 12 | 4 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 7, PROGRESS 2, DONE 42, BLOCKED 3
+Status tally: OPEN 6, PROGRESS 2, DONE 43, BLOCKED 3
 
 ## Tasks
 
@@ -63,7 +63,7 @@ Status tally: OPEN 7, PROGRESS 2, DONE 42, BLOCKED 3
 | A0010 | S2 | A | DONE | Installing overwrites the previous binary in place with no rollback path |
 | A0016 | S2 | A | OPEN | An over-cap transfer may keep streaming after the cap is hit (UNSURE) |
 | A0022 | S2 | C | DONE | The PTY master and slave fds leak when the spawn raises |
-| A0023 | S2 | C | OPEN | A failed signal case leaks the stub's socket and thread |
+| A0023 | S2 | C | DONE | A failed signal case leaks the stub's socket and thread |
 | A0024 | S2 | C | OPEN | Per-instance stub state lives on the handler class, so two concurrent stubs would share it |
 | A0025 | S2 | C | DONE | The test depends on the developer's ambient config.env and contradicts the function it tests |
 | A0026 | S2 | C | OPEN | No read timeout, and the early-close path blocks on stderr of a possibly-live child |
@@ -556,12 +556,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0023 — A failed signal case leaks the stub's socket and thread
 
-- **Severity / tier / status:** S2 / C / OPEN
+- **Severity / tier / status:** S2 / C / DONE
 - **Location:** `scripts/monitor_tty_smoke.py:599`
 - **Category:** resource/leak
 - **Host:** Node1
 - **Discovered by:** Python scripts tier review (subagent), statically verified against the code
 - **Evidence before:** stub.stop() sits after the for loop; only session.close() is in a finally. A Failure inside the loop skips stub.stop(), leaving the HTTP stub bound until process exit.
+- **Fix:** The loop is wrapped in `try`/`finally` and `stub.stop()` is in the `finally`, so it runs whether the cases pass, fail, or raise.
+- **Evidence after:** Committed in 5ec56c6. The real function run with a spy stub that records `stop()` and a `Session` whose `drain` raises: before, calls = ['session.close'] and stub.stop() was skipped; after, ['session.close', 'stub.stop']. The doubles replace only the process spawn and the HTTP stub; the control flow under test is the file's own. ruff, ruff-format and pyright clean; 18 harness tests pass.
+- **Commit:** `5ec56c6`
 
 ### A0024 — Per-instance stub state lives on the handler class, so two concurrent stubs would share it
 

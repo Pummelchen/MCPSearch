@@ -399,14 +399,16 @@
       "location": "scripts/monitor_tty_smoke.py:599",
       "title": "A failed signal case leaks the stub's socket and thread",
       "category": "resource/leak",
-      "status": "OPEN",
+      "status": "DONE",
       "host": "Node1",
       "discovered_by": "Python scripts tier review (subagent), statically verified against the code",
       "evidence_before": "stub.stop() sits after the for loop; only session.close() is in a finally. A Failure inside the loop skips stub.stop(), leaving the HTTP stub bound until process exit.",
-      "fix_summary": "",
-      "evidence_after": "",
-      "commit": "",
-      "blocked_reason": ""
+      "fix_summary": "The loop is wrapped in `try`/`finally` and `stub.stop()` is in the `finally`, so it runs whether the cases pass, fail, or raise.",
+      "evidence_after": "Committed in 5ec56c6. The real function run with a spy stub that records `stop()` and a `Session` whose `drain` raises: before, calls = ['session.close'] and stub.stop() was skipped; after, ['session.close', 'stub.stop']. The doubles replace only the process spawn and the HTTP stub; the control flow under test is the file's own. ruff, ruff-format and pyright clean; 18 harness tests pass.",
+      "commit": "5ec56c6",
+      "blocked_reason": "",
+      "detail": "`stub.stop()` followed the signal-case loop rather than being in its `finally`, so a `require` inside the loop that raised propagated past it and left the stub's listening socket and thread alive.",
+      "why_it_matters": "The port stays bound, so the next run of the same smoke test can fail for a different reason than the one being reported."
     },
     {
       "id": "A0024",
