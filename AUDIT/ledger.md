@@ -10,15 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 17 — done 1 · open 14 · blocked 2**
+**total 27 — done 1 · open 24 · blocked 2**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 3 | 0 | 2 | 1 |
-| S1 | 11 | 1 | 9 | 1 |
-| S2 | 3 | 0 | 3 | 0 |
+| S1 | 15 | 1 | 13 | 1 |
+| S2 | 8 | 0 | 8 | 0 |
+| S3 | 1 | 0 | 1 | 0 |
 
-Status tally: OPEN 12, PROGRESS 2, DONE 1, BLOCKED 2
+Status tally: OPEN 22, PROGRESS 2, DONE 1, BLOCKED 2
 
 ## Tasks
 
@@ -38,9 +39,19 @@ Status tally: OPEN 12, PROGRESS 2, DONE 1, BLOCKED 2
 | A0014 | S1 | A | OPEN | An empty extraction is returned as a success, discarding the real failure reason |
 | A0015 | S1 | A | OPEN | Cancellation is swallowed on the reader path, so a cancelled fetch can return a stale success |
 | A0017 | S1 | A | BLOCKED | DNS-rebinding TOCTOU between validation and connect (documented, no local fix) |
+| A0018 | S1 | A | OPEN | The soak's stdio read has no timeout, so one unanswered query hangs the whole run |
+| A0019 | S1 | A | OPEN | The child's stderr pipe is not drained until exit, which deadlocks against the stdout read |
+| A0020 | S1 | A | OPEN | The credential-leak scan is stderr-only and only runs on the fully successful path |
+| A0021 | S1 | A | OPEN | A non-JSON stdout line is embedded in a raised exception, reaching an unscanned traceback |
 | A0006 | S2 | A | OPEN | Validation is written as `assert`, which python -O strips |
 | A0010 | S2 | A | OPEN | Installing overwrites the previous binary in place with no rollback path |
 | A0016 | S2 | A | OPEN | An over-cap transfer may keep streaming after the cap is hit (UNSURE) |
+| A0022 | S2 | C | OPEN | The PTY master and slave fds leak when the spawn raises |
+| A0023 | S2 | C | OPEN | A failed signal case leaks the stub's socket and thread |
+| A0024 | S2 | C | OPEN | Per-instance stub state lives on the handler class, so two concurrent stubs would share it |
+| A0025 | S2 | C | OPEN | The test depends on the developer's ambient config.env and contradicts the function it tests |
+| A0026 | S2 | C | OPEN | No read timeout, and the early-close path blocks on stderr of a possibly-live child |
+| A0027 | S3 | C | OPEN | A lost bind race abandons the exited child unreaped |
 
 ---
 
@@ -177,6 +188,42 @@ Status tally: OPEN 12, PROGRESS 2, DONE 1, BLOCKED 2
 - **Evidence before:** The URL is validated (resolved, checked) and then handed to URLSession, which resolves the name again when it connects; a name whose A record flips into private space between the two lookups lands internally. The window is bounded by DNS TTL and the code documents it as an accepted limitation. URLSession exposes no address pinning, so there is no local fix.
 - **BLOCKED:** Owner: platform (Foundation/URLSession) + repository owner for the residual risk decision. No local fix exists because URLSession offers no address pinning. Options for a human: (1) accept and keep the existing documentation, which is already done in URLPolicy.swift:147-154 and the tracker; (2) move the fetch to a transport that exposes the resolved address (a custom NIO client, or a connector that pins the IP) as its own project-sized task. Already documented as accepted before this audit; recorded here so it is counted rather than silently dropped.
 
+### A0018 — The soak's stdio read has no timeout, so one unanswered query hangs the whole run
+
+- **Severity / tier / status:** S1 / A / OPEN
+- **Location:** `scripts/soak.py:167,181-193`
+- **Category:** reliability/hang
+- **Host:** Node1
+- **Discovered by:** Python scripts tier review (subagent), statically verified against the code
+- **Evidence before:** line = self.process.stdout.readline() with no timeout, deadline or watchdog on any read path. The only timeout is process.wait(timeout=30) in close(), which is unreachable if a read never returns. A server that stops answering without closing stdout hangs all 50 queries and produces no verdict at all.
+
+### A0019 — The child's stderr pipe is not drained until exit, which deadlocks against the stdout read
+
+- **Severity / tier / status:** S1 / A / OPEN
+- **Location:** `scripts/soak.py:152,209`
+- **Category:** reliability/deadlock
+- **Host:** Node1
+- **Discovered by:** Python scripts tier review (subagent), statically verified against the code
+- **Evidence before:** stderr=subprocess.PIPE and read() only in close() after wait(). macOS pipe capacity is ~16 KiB; SEARCH_LOG_LEVEL=warning is set deliberately so warnings are retained, and 50 queries against rate-limited providers emit them. Once the child blocks writing stderr it stops answering stdout and the parent blocks in readline() — a deadlock, not a timeout. The Swift harness drains stderr as it is produced for exactly this reason (Tests/WebSearchCoreTests/TestSupport.swift:205-209).
+
+### A0020 — The credential-leak scan is stderr-only and only runs on the fully successful path
+
+- **Severity / tier / status:** S1 / A / OPEN
+- **Location:** `scripts/soak.py:513,384`
+- **Category:** security/credential-detection
+- **Host:** Node1
+- **Discovered by:** Python scripts tier review (subagent), statically verified against the code
+- **Evidence before:** Two independent holes. (a) Only stderr is scanned, but the harness prints server-supplied last_error to stdout (502-510). The server documents that a diagnostic can carry a credential: Mojeek authenticates with api_key= in the query string, HTTPClient.swift:379-384 says a URL in a diagnostic is a credential in a diagnostic, and ProviderHealth.swift:215 copies that into lastError which ToolSchemas.swift:831 returns to the client. (b) The scan sits inside the try opened at 384, so any exception before 513 jumps to finally (529-531) which only kills the child: the stderr that may hold the leak is never read or scanned, so the check silently does not run on exactly the failed runs. Whether a key currently reaches last_error is UNSURE.
+
+### A0021 — A non-JSON stdout line is embedded in a raised exception, reaching an unscanned traceback
+
+- **Severity / tier / status:** S1 / A / OPEN
+- **Location:** `scripts/soak.py:176-179`
+- **Category:** security/credential-detection
+- **Host:** Node1
+- **Discovered by:** Python scripts tier review (subagent), statically verified against the code
+- **Evidence before:** RuntimeError(f"...; offending line: {line!r}") with no handler in main (only KeyboardInterrupt, 534-538), so Python prints the raw server line to stderr — and by A0020 nothing scans that traceback. Reachability is UNSURE: it requires the server to write credential material on stdout, which is itself what the soak probes for.
+
 ### A0006 — Validation is written as `assert`, which python -O strips
 
 - **Severity / tier / status:** S2 / A / OPEN
@@ -203,3 +250,57 @@ Status tally: OPEN 12, PROGRESS 2, DONE 1, BLOCKED 2
 - **Host:** Node1
 - **Discovered by:** Fetch tier A manual review (subagent, marked UNSURE)
 - **Evidence before:** Throwing ResponseBodyTooLarge out of `for try await byte in stream` finishes the task normally; nothing cancels the underlying URLSessionDataTask and DirectHTTPFetcher sets no timeoutIntervalForResource. If Foundation does not cancel on AsyncBytes deinit, a hostile endless body keeps arriving. Marked UNSURE: what would settle it is inspecting this Foundation's AsyncBytes deinit/cancellation behaviour or observing the data task after the throw.
+
+### A0022 — The PTY master and slave fds leak when the spawn raises
+
+- **Severity / tier / status:** S2 / C / OPEN
+- **Location:** `scripts/monitor_tty_smoke.py:196,230-239`
+- **Category:** resource/leak
+- **Host:** Node1
+- **Discovered by:** Python scripts tier review (subagent), statically verified against the code
+- **Evidence before:** pty.openpty() then os.close(slave) only after a successful subprocess.Popen. A FileNotFoundError or EMFILE in that gap leaks both fds and never closes self.master; check_ctrl_c_quits_cleanly starts three sessions, so several can leak.
+
+### A0023 — A failed signal case leaks the stub's socket and thread
+
+- **Severity / tier / status:** S2 / C / OPEN
+- **Location:** `scripts/monitor_tty_smoke.py:599`
+- **Category:** resource/leak
+- **Host:** Node1
+- **Discovered by:** Python scripts tier review (subagent), statically verified against the code
+- **Evidence before:** stub.stop() sits after the for loop; only session.close() is in a finally. A Failure inside the loop skips stub.stop(), leaving the HTTP stub bound until process exit.
+
+### A0024 — Per-instance stub state lives on the handler class, so two concurrent stubs would share it
+
+- **Severity / tier / status:** S2 / C / OPEN
+- **Location:** `scripts/searxng_stub.py:31-33,51-54`
+- **Category:** shared-state
+- **Host:** Node1
+- **Discovered by:** Python scripts tier review (subagent), statically verified against the code
+- **Evidence before:** status, payload and requests are class attributes mutated per instance. The docstring's claim that each caller building its own server avoids sharing is false for payload/status/log. Both current callers create stubs sequentially, so there is no live failure today; a second concurrent stub, or a handler thread outliving close() (shutdown() does not join handler threads), would serve the wrong body and clobber the log. UNSURE only in that nothing exercises it yet.
+
+### A0025 — The test depends on the developer's ambient config.env and contradicts the function it tests
+
+- **Severity / tier / status:** S2 / C / OPEN
+- **Location:** `scripts/harness_tests.py:265`
+- **Category:** test-portability
+- **Host:** Node1
+- **Discovered by:** Python scripts tier review (subagent), statically verified against the code
+- **Evidence before:** assertNotIn("MOJEEK_API_KEY", values) after load_secret_values(), which unconditionally appends <repo>/config.env as a candidate (soak.py:301-302). The temp config defines only TAVILY and BRAVE, so MOJEEK falls through to the repository file: a developer whose git-ignored config.env defines MOJEEK_API_KEY fails locally while CI passes.
+
+### A0026 — No read timeout, and the early-close path blocks on stderr of a possibly-live child
+
+- **Severity / tier / status:** S2 / C / OPEN
+- **Location:** `scripts/mcp_smoke.py:168,170,206`
+- **Category:** reliability/hang
+- **Host:** Node1
+- **Discovered by:** Python scripts tier review (subagent), statically verified against the code
+- **Evidence before:** readline() with no timeout; on failure the message calls stderr_text(), which does process.stderr.read(). Closing stdout is not exiting: if the child is alive, read() waits for EOF and the smoke test hangs instead of reporting the failure it already detected.
+
+### A0027 — A lost bind race abandons the exited child unreaped
+
+- **Severity / tier / status:** S3 / C / OPEN
+- **Location:** `scripts/mcp_smoke.py:517-523`
+- **Category:** resource/leak
+- **Host:** Node1
+- **Discovered by:** Python scripts tier review (subagent), statically verified against the code
+- **Evidence before:** Under except BindRace the code records last_race and continues; only the except Failure branch cleans up. The child has exited (that is what makes it a BindRace) but is never waited and its pipes are never closed; up to HTTP_START_ATTEMPTS = 3 sets leak per run.
