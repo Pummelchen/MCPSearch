@@ -19,7 +19,7 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 | S2 | 16 | 4 | 12 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 15, PROGRESS 2, DONE 34, BLOCKED 3
+Status tally: OPEN 14, PROGRESS 3, DONE 34, BLOCKED 3
 
 ## Tasks
 
@@ -34,7 +34,7 @@ Status tally: OPEN 15, PROGRESS 2, DONE 34, BLOCKED 3
 | A0004 | S1 | A | DONE | Ruff does not select S101, so `assert` used for validation is unchecked |
 | A0005 | S1 | A | PROGRESS | The secret-scan delegation is unproven: gitleaks is blind to the credential pattern this repository actually leaked |
 | A0008 | S1 | C | DONE | The only check that consumes /health reads the status code and never the body, so it cannot fail |
-| A0009 | S1 | A | OPEN | The HTTP server installs no signal handler, and its graceful-shutdown helper is dead code |
+| A0009 | S1 | A | PROGRESS | The HTTP server installs no signal handler, and its graceful-shutdown helper is dead code |
 | A0012 | S1 | A | DONE | The response charset is discarded, so non-UTF-8 pages are silently decoded as Latin-1 |
 | A0013 | S1 | A | DONE | Credentials in the target URL's query or fragment are forwarded to the third-party reader |
 | A0014 | S1 | A | DONE | An empty extraction is returned as a success, discarding the real failure reason |
@@ -213,12 +213,14 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0009 — The HTTP server installs no signal handler, and its graceful-shutdown helper is dead code
 
-- **Severity / tier / status:** S1 / A / OPEN
-- **Location:** `Sources/SwiftWebSearchMCP/main.swift:120-124`
+- **Severity / tier / status:** S1 / A / PROGRESS
+- **Location:** `Sources/SwiftWebSearchMCP/main.swift:120-124,186`
 - **Category:** ops/graceful-shutdown
 - **Host:** Node1
 - **Discovered by:** L7 ops pass (subagent), corroborated by grepping Sources/ for the caller
-- **Evidence before:** shutdown(server:host:) is declared and never called anywhere in Sources/. No SIGTERM/SIGINT handler or DispatchSourceSignal exists for the server (the only sigaction code in Sources/ is Monitor/SignalRestore.swift, which belongs to mcps-mon). The HTTP path parks on host.waitUntilStopped(), whose continuation is resumed only by stop(). So `docker stop` or `launchctl unload` kills the process outright: open sessions, the bound socket and group.shutdownGracefully() never run. The stdio path is unaffected (the SDK exits on stdin EOF).
+- **Evidence before:** Measured, and this is new: start the server, wait for /health, send SIGTERM — the committed build exits with returncode -15, i.e. killed by the signal.
+- **Fix:** ATTEMPTED TWICE AND REVERTED. Both attempts installed a `DispatchSourceSignal` for SIGINT/SIGTERM calling `shutdown(server:host:)`; the first left `shutdown`'s original order (server then host) and the second reversed it, on the theory that stopping the SDK server first waits on a transport that is still serving. Both HUNG the process on SIGTERM instead of exiting. The likely cause is that `HTTPMCPHost.stop()` is not idempotent: the handler runs it, and the task parked in `waitUntilStopped()` then runs it again, re-entering `group.shutdownGracefully()` and the already-consumed shutdown continuation. Reverted rather than shipped, because a hang on shutdown is worse than the kill it replaces.
+- **Evidence after:** No after-state: both candidate fixes exited with returncode -9, meaning the harness's own `kill()` fired after a 15-second timeout. What exists now is the measurement the task needs — a probe that discriminates clean exit (0) from killed (-15) from hung (-9). REMAINING: make `HTTPMCPHost.stop()` idempotent (a once-only flag, or a single-shot continuation that cannot be resumed twice) and prove it with a test that calls it twice; only then install the handler and require returncode 0 on SIGTERM.
 
 ### A0012 — The response charset is discarded, so non-UTF-8 pages are silently decoded as Latin-1
 
