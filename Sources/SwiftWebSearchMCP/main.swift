@@ -150,6 +150,22 @@ case .http(let httpConfiguration):
     }
 
     do {
+        // Derived from the same state `web_search_status` reports, so an operator reading
+        // `/health` sees the process rather than a claim about it. `ready` is what a supervisor
+        // should act on: a server with no configured provider cannot serve a search, and saying so
+        // with a 503 is the point of the endpoint.
+        let healthSource: HTTPMCPHost.HealthSource = {
+            let states = await pipeline.orchestrator.status()
+            let configured = states.filter(\.configured).count
+            return HTTPMCPHost.HealthReport(
+                ready: configured > 0,
+                details: [
+                    "version": BuildVersion.value,
+                    "providers_total": "\(states.count)",
+                    "providers_configured": "\(configured)",
+                ]
+            )
+        }
         let host = HTTPMCPHost(
             configuration: httpConfiguration,
             makeServer: makeSessionServer,
@@ -157,6 +173,7 @@ case .http(let httpConfiguration):
             // connection may stay open without completing its request, so a peer that opens
             // connections and never finishes a request cannot hold them indefinitely
             requestCompletionTimeout: configuration.requestTimeout,
+            health: healthSource,
             log: log
         )
         try await host.start()

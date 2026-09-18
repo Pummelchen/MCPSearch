@@ -463,14 +463,33 @@ final class HTTPTransportTests: XCTestCase {
 
     // MARK: - Liveness
 
-    func testHealthEndpointAnswersTheDocumentedBody() throws {
+    /// `/health` must describe the process, not assert a claim about it.
+    ///
+    /// This test used to pin the body to the exact string `{"status":"ok"}` — which is what the
+    /// endpoint returned from a literal. That made the check the facade's accomplice: it passed
+    /// for a body that was identical whether every provider was dead or the process had bricked
+    /// after binding its port. The assertions below are the ones a literal cannot satisfy: the
+    /// reported version has to come from `VERSION`, and the provider counts have to come from the
+    /// live registry.
+    func testHealthEndpointReportsTheProcessRatherThanAConstant() throws {
         try startServer()
 
         let response = try RawHTTP.request(port: port, method: "GET", path: "/health")
         XCTAssertEqual(response.status, 200)
-        // The exact body a container or proxy probe is documented to see.
-        XCTAssertEqual(response.body, #"{"status":"ok"}"#)
         XCTAssertEqual(response.headers["content-type"], "application/json; charset=utf-8")
+
+        let object = try XCTUnwrap(
+            try JSONSerialization.jsonObject(with: Data(response.body.utf8)) as? [String: String]
+        )
+        XCTAssertEqual(object["status"], "ok")
+        // Derived, not declared: a hardcoded body cannot carry the version this binary was built
+        // from, which is the same identity `initialize` reports and RELEASE.md §1.3 enforces.
+        XCTAssertEqual(object["version"], BuildVersion.value)
+        let total = try XCTUnwrap(object["providers_total"].flatMap(Int.init))
+        let configured = try XCTUnwrap(object["providers_configured"].flatMap(Int.init))
+        XCTAssertGreaterThan(total, 0, "the registry always has providers to report")
+        XCTAssertGreaterThan(configured, 0, "a usable install has at least one provider configured")
+        XCTAssertLessThanOrEqual(configured, total)
 
         // HEAD is supported for probes that do not want a body.
         let head = try RawHTTP.request(port: port, method: "HEAD", path: "/health")

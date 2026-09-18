@@ -46,12 +46,44 @@ final class HTTPMCPHost: @unchecked Sendable {
     /// transport for the life of that server.
     typealias SessionFactory = @Sendable (StatefulHTTPServerTransport) async throws -> Server
 
+    /// What `/health` reports about this process.
+    ///
+    /// It used to return a hardcoded `{"status":"ok"}` from a literal, which told a supervisor
+    /// nothing: the answer was identical whether every provider was dead or not, so a process that
+    /// had bound the port and then bricked still looked healthy. The host now asks whoever built it,
+    /// so the body describes the process instead of asserting a claim about it.
+    struct HealthReport: Sendable {
+        /// Whether this process can serve a search at all. False answers 503, which is what a
+        /// supervisor should act on.
+        var ready: Bool
+        /// Facts for an operator or supervisor. Values are strings so the body cannot fail to encode.
+        var details: [String: String]
+    }
+
+    /// Supplies the current health. Async because the state it reads is actor-isolated.
+    typealias HealthSource = @Sendable () async -> HealthReport
+
+    /// The `/health` body.
+    ///
+    /// `JSONSerialization` cannot fail on `[String: String]`, so the fallback is unreachable; it is
+    /// `degraded` rather than `ok` so that even an impossible encoding failure cannot report health
+    /// that was never observed.
+    static func encode(_ report: HealthReport) -> Data {
+        var payload: [String: String] = report.details
+        payload["status"] = report.ready ? "ok" : "degraded"
+        return (try? JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys]))
+            ?? Data(#"{"status":"degraded","reason":"health body could not be encoded"}"#.utf8)
+    }
+
     private let configuration: HTTPTransportConfiguration
     /// The `Host`/`Origin` allow-list the validation pipeline was built with, kept so the
     /// startup log can name it: a 421 is otherwise a puzzle for an operator.
     private let originPolicy: HTTPOriginPolicy
     private let makeServer: SessionFactory
     private let log: Log
+    /// `fileprivate` because the request handler is a separate type in this file and is the
+    /// only reader.
+    fileprivate let health: HealthSource
     private let group: EventLoopGroup
     private let validationPipeline: any HTTPRequestValidationPipeline
     /// How long a connection may stay open without completing a request.
@@ -100,11 +132,13 @@ final class HTTPMCPHost: @unchecked Sendable {
         configuration: HTTPTransportConfiguration,
         makeServer: @escaping SessionFactory,
         requestCompletionTimeout: Duration,
+        health: @escaping HealthSource,
         log: Log
     ) {
         self.configuration = configuration
         self.makeServer = makeServer
         self.requestCompletionTimeout = requestCompletionTimeout
+        self.health = health
         self.log = log
         // The same validation for every session: origin, Accept, content type, protocol
         // version and session header. Origin validation costs nothing for server-to-server
@@ -534,11 +568,14 @@ private final class HTTPMCPHandler: ChannelInboundHandler, @unchecked Sendable {
 
         // Liveness probe, deliberately outside the MCP endpoint so a proxy can check
         // the process without an MCP handshake.
+        //
+        // The body is derived from the process, not asserted by it. See `HealthReport`.
         if path == "/health", method == .GET || method == .HEAD {
+            let report = await host.health()
             return PreparedResponse(
-                status: .ok,
+                status: report.ready ? .ok : .serviceUnavailable,
                 headers: [("Content-Type", "application/json; charset=utf-8")],
-                body: method == .HEAD ? nil : Data(#"{"status":"ok"}"#.utf8)
+                body: method == .HEAD ? nil : HTTPMCPHost.encode(report)
             )
         }
 
