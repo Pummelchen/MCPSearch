@@ -13,6 +13,7 @@ line-length = 100
 # Deliberately explicit rather than `ALL`: a rule that fires on every line of a 1 500-line script
 # should be adopted on purpose, not inherited.
 select = [
+    "S101",  # assert: never a substitute for a check, because `python -O` removes it
     "E",    # pycodestyle errors
     "F",    # pyflakes
     "W",    # pycodestyle warnings

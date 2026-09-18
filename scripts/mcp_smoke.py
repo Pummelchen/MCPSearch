@@ -144,7 +144,8 @@ class Server:
         # enforces.
         deliberate = {"SEARCH_ENABLE_SCRAPERS", "SEARCH_ENABLE_PARALLEL"} | set(extra)
         leaked = set(environment) & (set(SCRUBBED_VARIABLES) - deliberate)
-        assert not leaked, f"the child environment still carries {sorted(leaked)}"
+        if leaked:
+            raise Failure(f"the child environment still carries {sorted(leaked)}")
 
         self.process = subprocess.Popen(
             [binary],
@@ -158,14 +159,18 @@ class Server:
         self._next_id = 0
 
     def send(self, payload: dict[str, Any]) -> None:
-        assert self.process.stdin is not None
-        self.process.stdin.write(json.dumps(payload) + "\n")
-        self.process.stdin.flush()
+        stdin = self.process.stdin
+        if stdin is None:
+            raise Failure("the child has no stdin pipe")
+        stdin.write(json.dumps(payload) + "\n")
+        stdin.flush()
 
     def read_message(self) -> dict[str, Any]:
         """Read one stdout line and assert it is valid JSON."""
-        assert self.process.stdout is not None
-        line = self.process.stdout.readline()
+        stdout = self.process.stdout
+        if stdout is None:
+            raise Failure("the child has no stdout pipe")
+        line = stdout.readline()
         if not line:
             raise Failure(f"server closed stdout early; stderr:\n{self.stderr_text()}")
         try:
@@ -201,15 +206,18 @@ class Server:
         self.send({"jsonrpc": "2.0", "method": method})
 
     def stderr_text(self) -> str:
-        assert self.process.stderr is not None
+        stderr = self.process.stderr
+        if stderr is None:
+            return "<unavailable>"
         try:
-            return self.process.stderr.read()
+            return stderr.read()
         except OSError, ValueError:  # pragma: no cover - best effort in a failure path
             return "<unavailable>"
 
     def close(self) -> int:
-        assert self.process.stdin is not None
-        self.process.stdin.close()
+        stdin = self.process.stdin
+        if stdin is not None:
+            stdin.close()
         return self.process.wait(timeout=30)
 
 
@@ -572,10 +580,9 @@ def start_http_server(binary: str) -> tuple[int, subprocess.Popen[str]]:
             raise
         return port, process
 
-    assert last_race is not None
     raise Failure(
         f"the HTTP child lost the bind race on {HTTP_START_ATTEMPTS} ports in a row; "
-        f"last failure:\n{last_race}"
+        f"last failure:\n{last_race or 'none recorded'}"
     )
 
 

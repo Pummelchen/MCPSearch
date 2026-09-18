@@ -196,9 +196,11 @@ class Server:
         self._stdout.put(None)
 
     def send(self, payload: dict[str, Any]) -> None:
-        assert self.process.stdin is not None
-        self.process.stdin.write(json.dumps(payload) + "\n")
-        self.process.stdin.flush()
+        stdin = self.process.stdin
+        if stdin is None:
+            raise RuntimeError("the child has no stdin pipe")
+        stdin.write(json.dumps(payload) + "\n")
+        stdin.flush()
 
     def read(self, timeout: float = 120.0) -> dict[str, Any] | None:
         """Next protocol message, or None only when stdout is at end of stream.
@@ -245,11 +247,13 @@ class Server:
         self.send({"jsonrpc": "2.0", "method": method})
 
     def close(self) -> str:
-        assert self.process.stdin is not None
+        stdin = self.process.stdin
         # The child may already have closed its end; closing a pipe then raises OSError or
-        # ValueError, and there is nothing to recover.
+        # ValueError, and there is nothing to recover. A missing pipe is a no-op rather than an
+        # assertion, so this survives `python -O` (ledger A0004, A0006).
         with contextlib.suppress(OSError, ValueError):
-            self.process.stdin.close()
+            if stdin is not None:
+                stdin.close()
         try:
             self.process.wait(timeout=30)
         except subprocess.TimeoutExpired:
