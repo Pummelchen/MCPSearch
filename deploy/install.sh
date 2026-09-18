@@ -206,6 +206,20 @@ print(len(data["results"]))
 ' 2>/dev/null
 }
 
+# Whether the probe came back with a positive number of results.
+#
+# `[ -n "$results" ]` is true for the string "0", which `searxng_answers` prints when the instance
+# answers with an empty result array. An instance whose engines are all failing was therefore adopted
+# as "a working SearXNG" and reported as having "answered a real query: 0 results" — the installer's
+# central claim, passing while false (ledger A0035).
+has_results() {
+    case "${1:-}" in
+        '' | *[!0-9]*) return 1 ;;
+        0) return 1 ;;
+        *) return 0 ;;
+    esac
+}
+
 install_searxng_docker() {
     step "installing SearXNG (docker)"
     command -v docker >/dev/null || return 1
@@ -399,7 +413,7 @@ if [ -n "$SEARXNG_URL" ]; then
 else
     BASE="http://127.0.0.1:${PORT}"
     existing="$(searxng_answers "$BASE" || true)"
-    if [ -n "$existing" ]; then
+    if has_results "$existing"; then
         pass "a working SearXNG is already listening on ${BASE} (${existing} results)"
         # An instance that is already serving is left alone, which also means its listener is
         # left alone — it may be a container, or another install with its own settings. Saying so
@@ -444,11 +458,11 @@ if [ "$DRY_RUN" -eq 0 ]; then
     i=0
     while [ "$i" -lt 30 ]; do
         results="$(searxng_answers "$BASE" || true)"
-        [ -n "$results" ] && break
+        has_results "$results" && break
         i=$((i + 1))
         sleep 2
     done
-    if [ -n "$results" ]; then
+    if has_results "$results"; then
         pass "SearXNG answered a real query: ${results} results from ${BASE}"
     else
         fail "SearXNG at ${BASE} did not return usable JSON results — MCPSearch would have no provider"
@@ -571,7 +585,7 @@ elif [ "$HAVE_PYTHON" -eq 0 ]; then
     fail "python3 is missing, so the end-to-end search could not be verified"
 else
     outcome="$(python3 - "$BIN" "$CFG" <<'PY' 2>/dev/null || true
-import json, os, subprocess, sys, threading
+import json, os, re, subprocess, sys, threading
 binpath, cfg = sys.argv[1], sys.argv[2]
 env = {k: v for k, v in os.environ.items() if not k.startswith("SEARCH_") and not k.endswith("_KEY")}
 env["SEARCH_CONFIG_FILE"] = cfg
@@ -597,11 +611,26 @@ reply = read()
 proc.stdin.close()
 if not reply:
     print("timeout"); sys.exit(0)
-res = reply.get("result", {})
-text = (res.get("content") or [{}])[0].get("text", "")
+# A JSON-RPC error reply carries no "result", so `reply.get("result", {})` produced an empty dict,
+# `isError` read as false, and this gate printed "ok: 0 result blocks" and passed while the server
+# could not search at all — the one thing it exists to prove (ledger A0036).
+if "error" in reply:
+    print("error: JSON-RPC error: " + str(reply["error"])[:200].replace("\n", " ")); sys.exit(0)
+res = reply.get("result")
+if not isinstance(res, dict):
+    print("error: the reply carried no result object"); sys.exit(0)
 if res.get("isError"):
+    text = (res.get("content") or [{}])[0].get("text", "")
     print("error: " + text[:200].replace("\n", " ")); sys.exit(0)
-print("ok: " + str(text.count("\n[")) + " result blocks")
+text = "".join(part.get("text", "") for part in (res.get("content") or [])
+               if isinstance(part, dict))
+# Blocks start at the beginning of a line as "[1] ", so the first one has no preceding newline and
+# `text.count("\n[")` reported 0 for a genuine single-result answer. The count is asserted below
+# rather than printed and ignored.
+blocks = len(re.findall(r"(?m)^\[\d+\]", text))
+if blocks < 1:
+    print("error: the search returned no result blocks"); sys.exit(0)
+print("ok: " + str(blocks) + " result block(s)")
 PY
 )"
     case "$outcome" in
