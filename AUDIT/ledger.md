@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 26 · open 25 · blocked 3**
+**total 54 — done 28 · open 23 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 19 | 10 | 1 |
-| S2 | 16 | 3 | 13 | 0 |
+| S1 | 30 | 20 | 9 | 1 |
+| S2 | 16 | 4 | 12 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 24, PROGRESS 1, DONE 26, BLOCKED 3
+Status tally: OPEN 22, PROGRESS 1, DONE 28, BLOCKED 3
 
 ## Tasks
 
@@ -31,7 +31,7 @@ Status tally: OPEN 24, PROGRESS 1, DONE 26, BLOCKED 3
 | A0045 | S0 | A | DONE | SearXNG answers are decoded as [String] but emitted as objects, so an answering query discards every result |
 | A0002 | S1 | A | DONE | Warnings-as-errors is not in the build config, so the Swift standard is not in force at the build level |
 | A0003 | S1 | A | DONE | SwiftLint cannot reject a force-unwrap, so the §1 Swift standard proof fails |
-| A0004 | S1 | A | OPEN | Ruff does not select S101, so `assert` used for validation is unchecked |
+| A0004 | S1 | A | DONE | Ruff does not select S101, so `assert` used for validation is unchecked |
 | A0005 | S1 | A | PROGRESS | The secret-scan delegation is unproven: gitleaks is blind to the credential pattern this repository actually leaked |
 | A0008 | S1 | C | DONE | The only check that consumes /health reads the status code and never the body, so it cannot fail |
 | A0009 | S1 | A | OPEN | The HTTP server installs no signal handler, and its graceful-shutdown helper is dead code |
@@ -59,7 +59,7 @@ Status tally: OPEN 24, PROGRESS 1, DONE 26, BLOCKED 3
 | A0048 | S1 | A | DONE | Cancellation is mapped to a transient network failure, so a caller cancel is charged to the provider's breaker |
 | A0049 | S1 | A | DONE | A handshake that was assigned a session id and then failed leaves sessionID set, so initialization is never retried |
 | A0050 | S1 | A | DONE | URL query construction drops '+', so queries containing it are corrupted |
-| A0006 | S2 | A | OPEN | Validation is written as `assert`, which python -O strips |
+| A0006 | S2 | A | DONE | Validation is written as `assert`, which python -O strips |
 | A0010 | S2 | A | OPEN | Installing overwrites the previous binary in place with no rollback path |
 | A0016 | S2 | A | OPEN | An over-cap transfer may keep streaming after the cap is hit (UNSURE) |
 | A0022 | S2 | C | OPEN | The PTY master and slave fds leak when the spawn raises |
@@ -165,12 +165,15 @@ BEST DIRECTION, on the measured evidence: bound the *unmatched closing tags*, no
 
 ### A0004 — Ruff does not select S101, so `assert` used for validation is unchecked
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `ruff.toml:15-27`
 - **Category:** language-standard
 - **Host:** Node1
 - **Discovered by:** Phase A lint-config review (§1)
 - **Evidence before:** select = [E, F, W, I, UP, B, BLE, SIM, RUF, PERF, FURB]; the S set is deliberately excluded with a rationale that names bandit's subprocess/socket rules. §1 requires the rule that catches 'assert used for validation that -O strips', which is S101.
+- **Fix:** `"S101"` is selected in `ruff.toml`, narrowly rather than re-enabling the whole `S` family the file explains is off on purpose.
+- **Evidence after:** Committed in 6c57464. Before: `ruff check --select S101 scripts` found 8. After: it passes, and the rule is live in the default config — a deliberate assert produced "scripts/proof_temp.py:2:5: S101 Use of `assert` detected". ruff format --check clean, pyright strict 0 errors, 18 harness tests pass, stdio smoke passes end to end.
+- **Commit:** `6c57464`
 
 ### A0005 — The secret-scan delegation is unproven: gitleaks is blind to the credential pattern this repository actually leaked
 
@@ -484,12 +487,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0006 — Validation is written as `assert`, which python -O strips
 
-- **Severity / tier / status:** S2 / A / OPEN
+- **Severity / tier / status:** S2 / A / DONE
 - **Location:** `scripts/mcp_smoke.py:147,161,167,204,211,533; scripts/soak.py:160,166,199,208`
 - **Category:** python/assert
 - **Host:** Node1
 - **Discovered by:** Phase A Python review (§1 pitfall list)
 - **Evidence before:** Ten `assert` statements guard real conditions, including the environment-scrub check (mcp_smoke.py:147) and a port-race check (mcp_smoke.py:533). Running the harness under `python3 -O` silently disables every one of them, so the check would report success while asserting nothing.
+- **Fix:** All eight assert sites became real checks: the credential-scrubbing check raises `Failure`, the five typing asserts became named errors or no-ops, and the bind-race message no longer needs an assert to be well-formed.
+- **Evidence after:** Committed in 6c57464. The converted credential check runs on its real path: the stdio smoke test passes end to end against the built server, and 18 harness tests pass. No assert remains in `scripts/`, so `python -O` no longer removes any check. A0004's entry carries the S101 proof.
+- **Commit:** `6c57464`
 
 ### A0010 — Installing overwrites the previous binary in place with no rollback path
 
