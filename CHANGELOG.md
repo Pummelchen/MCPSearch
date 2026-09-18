@@ -304,6 +304,7 @@ is built and verified on the `xcode-27` runner image, which is arm64-only.
 - Google Custom Search JSON and Bing Search are deliberately unsupported (closed to new customers and
   retired respectively).
 
+[1.3.0]: https://github.com/Pummelchen/MCPSearch/releases/tag/v1.3.0
 [1.2.0]: https://github.com/Pummelchen/MCPSearch/releases/tag/v1.2.0
 [1.0.1]: https://github.com/Pummelchen/MCPSearch/releases/tag/v1.0.1
 [1.0.0]: https://github.com/Pummelchen/MCPSearch/releases/tag/v1.0.0
