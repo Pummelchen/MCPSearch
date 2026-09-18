@@ -74,6 +74,14 @@ run_gate() {
 
 step "preconditions (RELEASE.md §1.4)"
 VERSION="$(tr -d '[:space:]' < VERSION)"
+# Validated before anything is built from it. `VERSION` becomes part of a path that is later
+# `rm -rf`'d, and `${VERSION:?}` only guards *empty*: a value like `../..` aimed the removal
+# somewhere else entirely. A bare X.Y.Z is the only shape the rest of this script can mean
+# (ledger A0042).
+if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+    echo "refusing: VERSION must be a bare X.Y.Z, found '$VERSION'" >&2
+    exit 2
+fi
 TAG="v$VERSION"
 say "version       $VERSION   (from VERSION; tools/check-version.sh enforces the mirrors)"
 say "tag           $TAG"
@@ -231,7 +239,15 @@ fi
 
 step "clean scratch release build, native arm64"
 STAGE="${RELEASE_STAGE:-$HOME/Library/Caches/MCPSearch/release}"
-rm -rf "${STAGE:?}/${VERSION:?}"
+if [ "$fails" -gt 0 ]; then
+    # `fail` deliberately does not abort, so the report can list every gate. But this is the one step
+    # here that cannot be undone, and taking it for a release already declared unfit is how a failed
+    # run still destroys the previous staging. Reported as NOT CHECKED rather than silently skipped
+    # (ledger A0042).
+    skip "clear the stage directory" "$fails gate(s) failed before this point"
+else
+    rm -rf "${STAGE:?}/${VERSION:?}"
+fi
 mkdir -p "${STAGE:?}/${VERSION:?}"
 SCRATCH="$STAGE/$VERSION/scratch"
 BUILD_LOG="$GATE_LOG_DIR/build-release.log"
