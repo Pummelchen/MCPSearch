@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 43 · open 8 · blocked 3**
+**total 54 — done 44 · open 7 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
 | S1 | 30 | 27 | 2 | 1 |
-| S2 | 16 | 12 | 4 | 0 |
+| S2 | 16 | 13 | 3 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 6, PROGRESS 2, DONE 43, BLOCKED 3
+Status tally: OPEN 5, PROGRESS 2, DONE 44, BLOCKED 3
 
 ## Tasks
 
@@ -64,7 +64,7 @@ Status tally: OPEN 6, PROGRESS 2, DONE 43, BLOCKED 3
 | A0016 | S2 | A | OPEN | An over-cap transfer may keep streaming after the cap is hit (UNSURE) |
 | A0022 | S2 | C | DONE | The PTY master and slave fds leak when the spawn raises |
 | A0023 | S2 | C | DONE | A failed signal case leaks the stub's socket and thread |
-| A0024 | S2 | C | OPEN | Per-instance stub state lives on the handler class, so two concurrent stubs would share it |
+| A0024 | S2 | C | DONE | Per-instance stub state lives on the handler class, so two concurrent stubs would share it |
 | A0025 | S2 | C | DONE | The test depends on the developer's ambient config.env and contradicts the function it tests |
 | A0026 | S2 | C | OPEN | No read timeout, and the early-close path blocks on stderr of a possibly-live child |
 | A0033 | S2 | A | DONE | A rejected URL-valued setting is echoed verbatim into a diagnostic that is logged, contradicting the type's own contract |
@@ -568,12 +568,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0024 — Per-instance stub state lives on the handler class, so two concurrent stubs would share it
 
-- **Severity / tier / status:** S2 / C / OPEN
+- **Severity / tier / status:** S2 / C / DONE
 - **Location:** `scripts/searxng_stub.py:31-33,51-54`
 - **Category:** shared-state
 - **Host:** Node1
 - **Discovered by:** Python scripts tier review (subagent), statically verified against the code
 - **Evidence before:** status, payload and requests are class attributes mutated per instance. The docstring's claim that each caller building its own server avoids sharing is false for payload/status/log. Both current callers create stubs sequentially, so there is no live failure today; a second concurrent stub, or a handler thread outliving close() (shutdown() does not join handler threads), would serve the wrong body and clobber the log. UNSURE only in that nothing exercises it yet.
+- **Fix:** A `_StubState` object per stub, carried by a typed `_StubServer` subclass and read by the handler through `self.server`. The handler class holds no state.
+- **Evidence after:** Committed in 59e5d37. Two stubs built in sequence, A asked before and after B exists: before, A answered {"from":"B"} with status 503 and its own '/search?q=1' had been erased; after, A answers {"from":"A"} with 200, A.requests = ['/search?q=1', '/search?q=2'] and B.requests = []. The typed subclass was needed because pyright strict cannot see a dynamic attribute through `self.server`. ruff, ruff-format and pyright clean; 18 harness tests pass.
+- **Commit:** `59e5d37`
 
 ### A0025 — The test depends on the developer's ambient config.env and contradicts the function it tests
 
