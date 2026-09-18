@@ -246,8 +246,14 @@ class SoakArgumentTests(unittest.TestCase):
 
     def test_load_secret_values_reads_a_config_file(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
-            config = Path(directory) / "config.env"
+            config = Path(directory) / "named" / "config.env"
+            config.parent.mkdir()
             config.write_text("TAVILY_API_KEY=tvly-fromfile\nBRAVE_SEARCH_API_KEY=b-fromfile\n")
+            # The repository-root fallback is pointed at an empty directory. `load_secret_values`
+            # reads the developer's own config.env by design, so without this the assertion below
+            # about an absent key passes in CI and fails on any machine that has one (ledger A0025).
+            empty_root = Path(directory) / "no-config-here"
+            empty_root.mkdir()
             # A credential already exported must not win over the file for a variable the file
             # does define, and a variable neither names must stay absent. `patch.dict` is used
             # rather than assigning `os.environ`, which Ruff correctly flags as a non-clearing
@@ -259,7 +265,7 @@ class SoakArgumentTests(unittest.TestCase):
             ):
                 for name in self.soak.SECRET_VARIABLES:
                     os.environ.pop(name, None)
-                values = self.soak.load_secret_values()
+                values = self.soak.load_secret_values(repository_root=str(empty_root))
             self.assertEqual(values["TAVILY_API_KEY"], "tvly-fromfile")
             self.assertEqual(values["BRAVE_SEARCH_API_KEY"], "b-fromfile")
             self.assertNotIn("MOJEEK_API_KEY", values)

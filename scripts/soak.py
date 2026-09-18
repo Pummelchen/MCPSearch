@@ -335,12 +335,17 @@ def parse_dotenv(contents: str) -> dict[str, str]:
     return result
 
 
-def load_secret_values() -> dict[str, str]:
+def load_secret_values(repository_root: str | None = None) -> dict[str, str]:
     """Credential name -> value, from the environment and any config file the server reads.
 
     The server resolves credentials from the environment and from ``SEARCH_CONFIG_FILE``,
     so both are scanned; the repository-root ``config.env`` is included as a fallback so
     a key that only lives there is still checked for leaks.
+
+    ``repository_root`` overrides where that fallback looks. It exists so a test can isolate
+    itself from the developer's own ``config.env``: the fallback is deliberate in production and
+    made every assertion about an *absent* key depend on the machine the suite ran on (ledger
+    A0025).
     """
     values: dict[str, str] = {}
     for name in SECRET_VARIABLES:
@@ -352,8 +357,8 @@ def load_secret_values() -> dict[str, str]:
     configured = os.environ.get("SEARCH_CONFIG_FILE", "").strip()
     if configured:
         candidates.append(configured)
-    repository_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    candidates.append(os.path.join(repository_root, "config.env"))
+    root = repository_root or os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    candidates.append(os.path.join(root, "config.env"))
 
     for path in candidates:
         try:
