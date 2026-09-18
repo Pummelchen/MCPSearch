@@ -137,3 +137,96 @@ from `origin`, no release packaging.
 **With this run, both halves of the completion condition hold on the same commit: the ledger's open
 count is zero (52 DONE, 3 BLOCKED with named owners) and Phase E passes end to end on an independent
 host.**
+
+---
+
+# Phase E — run 3, the commit that closes A0011 and A0017
+
+Runs 1 and 2 above verified `75adee87` and `a7c840b9`. Both are **stale**: A0011 (six steps of the
+`MarkupDepth` model) and A0017 (the peer-address check) landed after them. A verification that
+predates the work it verifies is not a verification, which is why this run exists rather than a
+reference to the second.
+
+| | |
+|---|---|
+| Commit verified | `44ced26a520637e9b08fbdc0cf742a1fbc543293` |
+| Branch | `audit/2026-09-18` — `main` still at `992a27f`, 142 ahead, 0 behind |
+| Clone | fresh, from the bundle, `git status --porcelain` empty |
+| Primary host | `Node1`, macOS 27.0, Swift 6.4 |
+| Independent host | `MacBook-AB.local`, macOS 27.0, Swift 6.4 (`swiftlang-6.4.0.34.1`), `arm64` |
+
+The clone's `HEAD` was compared with the primary host's before any gate ran, because a bundle that
+resolved to the wrong commit would make every row below meaningless:
+
+```
+primary     44ced26a520637e9b08fbdc0cf742a1fbc543293
+independent 44ced26a520637e9b08fbdc0cf742a1fbc543293
+```
+
+## Every gate
+
+| Gate | Result |
+|---|---|
+| `swift build --build-tests -Xswiftc -warnings-as-errors` | PASS — exit 0, **0 warnings**, 0 errors |
+| `swift test` | PASS — **581 + 42 tests, 6 skipped, 0 failures** |
+| `swift-format lint --recursive --strict` | PASS |
+| `swiftlint lint --strict` | PASS — 0 findings |
+| `tools/check-version.sh` | PASS — version agreement 1.2.0 |
+| `swift package resolve` + `git diff --exit-code Package.resolved` | PASS — no lockfile drift |
+| `gitleaks detect --source . --log-opts=--all` | PASS — no leaks |
+| `gitleaks` project config, same scope | PASS — no leaks |
+| `osv-scanner scan source -r .` | PASS — no issues |
+| `semgrep --error` | PASS |
+| `ruff check scripts` | PASS |
+| `ruff format --check scripts` | PASS |
+| `pyright scripts` | PASS |
+| `shellcheck -S warning` (deploy, tools) | PASS |
+| `scripts/harness_tests.py` | PASS |
+| `scripts/mcp_smoke.py <bin>` (stdio) | PASS — "stdout carried only valid JSON-RPC; diagnostics appeared on stderr" |
+| `scripts/mcp_smoke.py --http <bin>` | PASS — "negative cases refused (no session, no SSE accept, cross-origin)" |
+| `scripts/dual_client_contract.py <bin-dir>` | PASS |
+| `scripts/monitor_tty_smoke.py <bin>` | PASS — "SIGTERM exited 0 and restored the terminal" |
+
+The independent host has the whole toolchain, so **no row is `NOT CHECKED` for want of a tool**. The
+test count agrees exactly with the primary host: **581 in the core suite plus 42 in the monitor
+suite — 623 total — 6 skipped, 0 failures**. The smaller totals in the raw log are per-`XCTestCase`
+lines, not a second suite.
+
+The limits named above still apply unchanged: no live provider traffic, the installer not run, no
+clone from `origin`, no release packaging.
+
+## Three invocation errors, all mine, none a product defect
+
+A fresh host is where a difference in how a harness takes its argument shows up, and this run found
+three — each of which first read as a failure:
+
+| What I ran | What it said | What it was |
+|---|---|---|
+| `shellcheck deploy/… tools/*.sh` | exit 1, 4 findings | CI and `release.sh` both run **`shellcheck -S warning`**. At the default severity the four are `info`, and shellcheck exits non-zero on any finding. With `-S warning`: exit 0. |
+| `mcp_smoke.py <bin-dir>` | "server binary not found at …/Products/Debug" | CI passes the **binary**, `"$(swift build -c release --show-bin-path)/SwiftWebSearchMCP"`. With the binary: PASS. |
+| `dual_client_contract.py <bin-dir>` | — | This one I got right, having learned it in run 1: it takes the directory, not the binary. |
+
+So the argument conventions are not uniform across the four harnesses, and two of the three are the
+opposite of each other. That is worth knowing, and it is recorded here rather than in a message.
+
+## A false positive, named so it is not mistaken for a finding
+
+`shellcheck` at default severity reports **SC2015** at `deploy/install.sh:553`:
+
+```sh
+[ "$archs" = "arm64" ] && pass "binary is native arm64" || fail "binary is '$archs', expected arm64"
+```
+
+`A && B || C` is not `if-then-else`, because `C` runs when `B` fails. Here it cannot: `pass()` is
+`printf 'PASS  %s\n' "$*"`, which returns 0 whenever it returns. **Checked, not assumed** — this is a
+false positive at this call site, and it is recorded rather than silently dropped, because "the
+linter is at `-S warning`" is not a reason a reader should have to take on trust.
+
+## Verdict
+
+The commit that closes A0011 and A0017 builds warning-free and passes every static gate, the full
+Swift suite, all four Python harnesses and the version check **on a machine other than the one it was
+written on**, from a clean checkout at the verified commit. Both halves of the completion condition
+therefore hold on `44ced26`: the ledger's non-terminal count is **zero** (54 DONE, 1 BLOCKED with a
+named owner — A0001, rotating a live credential, which this audit does not touch), and Phase E passes
+end to end on an independent host.
