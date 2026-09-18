@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 30 · open 21 · blocked 3**
+**total 54 — done 31 · open 20 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 22 | 7 | 1 |
+| S1 | 30 | 23 | 6 | 1 |
 | S2 | 16 | 4 | 12 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 19, PROGRESS 2, DONE 30, BLOCKED 3
+Status tally: OPEN 19, PROGRESS 1, DONE 31, BLOCKED 3
 
 ## Tasks
 
@@ -44,7 +44,7 @@ Status tally: OPEN 19, PROGRESS 2, DONE 30, BLOCKED 3
 | A0019 | S1 | A | DONE | The child's stderr pipe is not drained until exit, which deadlocks against the stdout read |
 | A0020 | S1 | A | DONE | The credential-leak scan is stderr-only and only runs on the fully successful path |
 | A0021 | S1 | A | DONE | A non-JSON stdout line is embedded in a raised exception, reaching an unscanned traceback |
-| A0028 | S1 | A | PROGRESS | The HTTP session registry is unbounded, so an unauthenticated client can grow it without limit |
+| A0028 | S1 | A | DONE | The HTTP session registry is unbounded, so an unauthenticated client can grow it without limit |
 | A0029 | S1 | A | OPEN | A disconnected SSE client leaks a suspended relay task and wedges the session |
 | A0030 | S1 | A | DONE | A cancelled provider request is recorded as a transient failure and can open a circuit breaker |
 | A0031 | S1 | A | DONE | A claimed half-open probe is never released when the local rate limiter denies, wedging the breaker |
@@ -328,15 +328,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0028 — The HTTP session registry is unbounded, so an unauthenticated client can grow it without limit
 
-- **Severity / tier / status:** S1 / A / PROGRESS
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:80,196`
 - **Category:** resource/unbounded
 - **Host:** Node1
 - **Discovered by:** MCP surface tier A review (subagent)
 - **Evidence before:** sessions entries are removed only by closeSession (DELETE or refused initialize) or stop(). maximumConnections=64 bounds concurrent sockets, but non-streaming responses send Connection: close, so a client can POST initialize, drop the connection and repeat serially forever. Each entry holds a Server plus a StatefulHTTPServerTransport whose storedEvents also never shrinks. No cap and no idle expiry.
-- **Fix:** `HTTPMCPHost` keeps at most `maximumLiveSessions` (64) sessions, with the slot reserved under a lock before any work starts and released on every path — the normal release, the failure that never registered a session, and `stop()`'s sweep, which resets the count itself because it bypasses `closeSession`. A reservation rather than a `count` check, so the bound is exact under concurrent `initialize` requests.
-- **Evidence after:** Committed in 7a8077f (cap injectable) on top of the bound itself. swift build clean; full suite green at 613 tests (571 + 42), 0 failures; both linters exit 0. STILL OPEN BECAUSE no before-state was demonstrated — a compiling build is not evidence that a bound holds. REMAINING, all mechanical now the seam exists: (1) an enum case plus a `names` entry in `TransportConfiguration.Option`; (2) a switch arm parsing `--max-sessions` as a positive integer; (3) the field on `HTTPTransportConfiguration` and `main.swift` passing it to `HTTPMCPHost`; (4) the proof — `--max-sessions 2`, open three sessions, show the third answered 503 where it previously succeeded.
-- **Commit:** `7a8077f`
+- **Fix:** `HTTPMCPHost` keeps at most `maximumLiveSessions` (64 by default) sessions, with the slot reserved under a lock before any work starts and released on every path — the normal release, the failure that never registered a session, and `stop()`'s sweep. The cap is injectable and settable with `--max-sessions N`, so an operator can tighten it.
+- **Evidence after:** Committed in f2ff8b9. Against the built server, four `initialize` requests (the first being the readiness probe's own session): cap of 3 → [200, 200, 503, 503]; no flag → [200, 200, 200, 200]. The over-cap refusal is a 503 rather than a silent allocation. The exhaustive `default`-less switch in TransportConfigurationTests failed to compile until the new flag had a sample value, which is that test working as designed. Suite green at 613 tests (571 + 42), 0 failures; both linters exit 0; stdio smoke passes.
+- **Commit:** `f2ff8b9`
 
 ### A0029 — A disconnected SSE client leaks a suspended relay task and wedges the session
 
