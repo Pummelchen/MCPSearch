@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 49 · open 2 · blocked 3**
+**total 55 — done 51 · open 1 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
 | S1 | 30 | 28 | 1 | 1 |
-| S2 | 16 | 15 | 1 | 0 |
+| S2 | 17 | 17 | 0 | 0 |
 | S3 | 4 | 4 | 0 | 0 |
 
-Status tally: OPEN 1, PROGRESS 1, DONE 49, BLOCKED 3
+Status tally: PROGRESS 1, DONE 51, BLOCKED 3
 
 ## Tasks
 
@@ -61,7 +61,7 @@ Status tally: OPEN 1, PROGRESS 1, DONE 49, BLOCKED 3
 | A0050 | S1 | A | DONE | URL query construction drops '+', so queries containing it are corrupted |
 | A0006 | S2 | A | DONE | Validation is written as `assert`, which python -O strips |
 | A0010 | S2 | A | DONE | Installing overwrites the previous binary in place with no rollback path |
-| A0016 | S2 | A | OPEN | An over-cap transfer may keep streaming after the cap is hit (UNSURE) |
+| A0016 | S2 | A | DONE | An over-cap transfer stops the server sending (measured; the UNSURE concern does not hold) |
 | A0022 | S2 | C | DONE | The PTY master and slave fds leak when the spawn raises |
 | A0023 | S2 | C | DONE | A failed signal case leaks the stub's socket and thread |
 | A0024 | S2 | C | DONE | Per-instance stub state lives on the handler class, so two concurrent stubs would share it |
@@ -75,6 +75,7 @@ Status tally: OPEN 1, PROGRESS 1, DONE 49, BLOCKED 3
 | A0043 | S2 | A | DONE | The test-suite count is reported as PASS without checking that it parsed |
 | A0044 | S2 | A | DONE | `--dry-run` creates the SearXNG directory, so it does change the filesystem |
 | A0051 | S2 | A | DONE | Mojeek timestamp is read but never requested, so publishedAt is always nil (UNSURE) |
+| A0055 | S2 | C | DONE | The loopback test server could kill the whole test run with SIGPIPE |
 | A0027 | S3 | C | DONE | A lost bind race leaks the child's pipes (the finding's original claim was wrong) |
 | A0052 | S3 | C | DONE | The documented test count is stale after A0045 added three tests |
 | A0053 | S3 | A | DONE | /health readiness reflects configuration, not reachability |
@@ -521,14 +522,17 @@ BEST DIRECTION, on the measured evidence: bound the *unmatched closing tags*, no
 - **Evidence after:** Committed in 3a9edcb. `install_binary` extracted from the script, run against a `cp` stub that truncates the destination then fails: before, BIN held "partial"; after, BIN held the untouched "GOOD OLD BINARY". The failure mode is simulated because the real `cp` cannot be made to fail half-way without filling a disk. Two harness mistakes produced a passing before-state first and were corrected; the commit records both. bash -n and shellcheck clean; 18 harness tests pass.
 - **Commit:** `3a9edcb`
 
-### A0016 — An over-cap transfer may keep streaming after the cap is hit (UNSURE)
+### A0016 — An over-cap transfer stops the server sending (measured; the UNSURE concern does not hold)
 
-- **Severity / tier / status:** S2 / A / OPEN
+- **Severity / tier / status:** S2 / A / DONE
 - **Location:** `Sources/WebSearchCore/Support/BoundedResponseBody.swift:37-40`
 - **Category:** resource/unbounded
 - **Host:** Node1
 - **Discovered by:** Fetch tier A manual review (subagent, marked UNSURE)
 - **Evidence before:** Throwing ResponseBodyTooLarge out of `for try await byte in stream` finishes the task normally; nothing cancels the underlying URLSessionDataTask and DirectHTTPFetcher sets no timeoutIntervalForResource. If Foundation does not cancel on AsyncBytes deinit, a hostile endless body keeps arriving. Marked UNSURE: what would settle it is inspecting this Foundation's AsyncBytes deinit/cancellation behaviour or observing the data task after the throw.
+- **Fix:** No product change was needed — the concern does not hold. The measurement required a `bytesSent` counter on the test server, which is test support.
+- **Evidence after:** Committed in 69a191c. `read` capped at 8192 bytes against a 262144-byte dripped body: the server sent 16384 bytes and stopped, so the connection closes with the abandoned sequence. The first run of the measurement died with signal 13 (SIGPIPE) and exposed a real harness defect, recorded separately. Suite green at 616 tests (574 + 42), 0 failures; both linters exit 0. Phase E is now stale.
+- **Commit:** `69a191c`
 
 ### A0022 — The PTY master and slave fds leak when the spawn raises
 
@@ -685,6 +689,18 @@ BEST DIRECTION, on the measured evidence: bound the *unmatched closing tags*, no
 - **Fix:** The request carries `date=1`.
 - **Evidence after:** Committed in 3d3a924. Before: the request URL was "https://api.mojeek.com/search?api_key=k&q=swift&fmt=json&s=1&t=8&safe=1" with no `date=1`. After: the test passes; it asserts the parameter is requested and that a returned `timestamp` reaches `publishedAt`, the first being the discriminating one. The fix rests on Mojeek's published parameter list (https://www.mojeek.com/support/api/search/request_parameters.html). Suite green at 615 tests (573 + 42), 0 failures; both linters exit 0.
 - **Commit:** `3d3a924`
+
+### A0055 — The loopback test server could kill the whole test run with SIGPIPE
+
+- **Severity / tier / status:** S2 / C / DONE
+- **Location:** `Tests/WebSearchCoreTests/HTTPClientTests.swift`
+- **Category:** test-harness/reliability
+- **Host:** Node1
+- **Discovered by:** Running the A0016 measurement: the first attempt died with signal 13
+- **Evidence before:** The A0016 measurement exited with "unexpected signal code 13" (SIGPIPE).
+- **Fix:** `SO_NOSIGPIPE` is set on every accepted socket, so the write returns an error.
+- **Evidence after:** Committed in 69a191c. The same measurement now completes: "read capped at 8192; server sent 16384 of 262144 bytes", and the full suite passes.
+- **Commit:** `69a191c`
 
 ### A0027 — A lost bind race leaks the child's pipes (the finding's original claim was wrong)
 

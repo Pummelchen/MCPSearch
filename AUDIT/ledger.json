@@ -278,16 +278,18 @@
       "tier": "A",
       "project": "MCPSearch",
       "location": "Sources/WebSearchCore/Support/BoundedResponseBody.swift:37-40",
-      "title": "An over-cap transfer may keep streaming after the cap is hit (UNSURE)",
+      "title": "An over-cap transfer stops the server sending (measured; the UNSURE concern does not hold)",
       "category": "resource/unbounded",
-      "status": "OPEN",
+      "status": "DONE",
       "host": "Node1",
       "discovered_by": "Fetch tier A manual review (subagent, marked UNSURE)",
       "evidence_before": "Throwing ResponseBodyTooLarge out of `for try await byte in stream` finishes the task normally; nothing cancels the underlying URLSessionDataTask and DirectHTTPFetcher sets no timeoutIntervalForResource. If Foundation does not cancel on AsyncBytes deinit, a hostile endless body keeps arriving. Marked UNSURE: what would settle it is inspecting this Foundation's AsyncBytes deinit/cancellation behaviour or observing the data task after the throw.",
-      "fix_summary": "",
-      "evidence_after": "",
-      "commit": "",
-      "blocked_reason": ""
+      "fix_summary": "No product change was needed — the concern does not hold. The measurement required a `bytesSent` counter on the test server, which is test support.",
+      "evidence_after": "Committed in 69a191c. `read` capped at 8192 bytes against a 262144-byte dripped body: the server sent 16384 bytes and stopped, so the connection closes with the abandoned sequence. The first run of the measurement died with signal 13 (SIGPIPE) and exposed a real harness defect, recorded separately. Suite green at 616 tests (574 + 42), 0 failures; both linters exit 0. Phase E is now stale.",
+      "commit": "69a191c",
+      "blocked_reason": "",
+      "detail": "Recorded as UNSURE: whether abandoning the byte sequence at the cap also stops the transfer. Measured with a new `bytesSent` counter on `LoopbackServer`, whose drip loop already broke when `send` reported the peer gone.",
+      "why_it_matters": "If it had kept streaming, a capped fetch would still spend bandwidth and hold a connection; allocation was already bounded by the cap."
     },
     {
       "id": "A0017",
@@ -969,6 +971,26 @@
       "host": "Node1",
       "discovered_by": "The workspace instructions surfaced it: AGENTS.md is injected into the session and it stated 597 tests while the suite reported 610.",
       "blocked_reason": ""
+    },
+    {
+      "id": "A0055",
+      "project": "MCPSearch",
+      "title": "The loopback test server could kill the whole test run with SIGPIPE",
+      "severity": "S2",
+      "status": "DONE",
+      "tier": "C",
+      "category": "test-harness/reliability",
+      "host": "Node1",
+      "discovered_by": "Running the A0016 measurement: the first attempt died with signal 13",
+      "location": "Tests/WebSearchCoreTests/HTTPClientTests.swift",
+      "detail": "`send` to a socket the peer has closed raises SIGPIPE, whose default disposition is to terminate the process. The drip loop's `if sent <= 0 { break }` was written to handle a failed write, but on this path the write killed the test binary before the loop could see it — so a client that stopped reading at a byte cap took down xctest with signal 13.",
+      "why_it_matters": "A test harness that can terminate the whole run on a path it is supposed to handle turns a measurable behaviour into a crash, and the crash reads as a defect in the code under test.",
+      "fix_summary": "`SO_NOSIGPIPE` is set on every accepted socket, so the write returns an error.",
+      "evidence_before": "The A0016 measurement exited with \"unexpected signal code 13\" (SIGPIPE).",
+      "evidence_after": "Committed in 69a191c. The same measurement now completes: \"read capped at 8192; server sent 16384 of 262144 bytes\", and the full suite passes.",
+      "blocked_reason": "",
+      "commit": "69a191c",
+      "owner": "agent"
     }
   ]
 }
