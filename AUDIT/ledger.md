@@ -18,7 +18,7 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 | S1 | 11 | 1 | 9 | 1 |
 | S2 | 3 | 0 | 3 | 0 |
 
-Status tally: OPEN 13, PROGRESS 1, DONE 1, BLOCKED 2
+Status tally: OPEN 12, PROGRESS 2, DONE 1, BLOCKED 2
 
 ## Tasks
 
@@ -26,7 +26,7 @@ Status tally: OPEN 13, PROGRESS 1, DONE 1, BLOCKED 2
 | --- | --- | --- | --- | --- |
 | A0001 | S0 | A | BLOCKED | A live-looking Tavily credential prefix is in public git history and cannot be un-published |
 | A0007 | S0 | A | OPEN | /health returns a hardcoded ok, so the production health surface is wired to nothing |
-| A0011 | S0 | A | OPEN | The markup-depth guard is bypassable, so crafted HTML reaches a recursive parse and kills the process |
+| A0011 | S0 | A | PROGRESS | The markup-depth guard is bypassable, so crafted HTML reaches a recursive parse and kills the process |
 | A0002 | S1 | A | DONE | Warnings-as-errors is not in the build config, so the Swift standard is not in force at the build level |
 | A0003 | S1 | A | OPEN | SwiftLint cannot reject a force-unwrap, so the §1 Swift standard proof fails |
 | A0004 | S1 | A | OPEN | Ruff does not select S101, so `assert` used for validation is unchecked |
@@ -65,12 +65,13 @@ Status tally: OPEN 13, PROGRESS 1, DONE 1, BLOCKED 2
 
 ### A0011 — The markup-depth guard is bypassable, so crafted HTML reaches a recursive parse and kills the process
 
-- **Severity / tier / status:** S0 / A / OPEN
+- **Severity / tier / status:** S0 / A / PROGRESS
 - **Location:** `Sources/WebSearchCore/Fetch/MarkupDepth.swift:114-115,137`
 - **Category:** security/dos
 - **Host:** Node1
 - **Discovered by:** Fetch tier A manual review (subagent), with the SwiftSoup internals cited at file:line; static verification pending
-- **Evidence before:** exceedsLimit counts every closing tag as closing one level (depth > 0 ? depth - 1 : 0) and treats trailing '/>' as self-closing. Neither matches SwiftSoup: a closing tag with no matching open element is ignored (or inserts an empty <p>), and `<div foo=/>` gives '/' to the attribute value rather than setting the self-closing flag, because the unquoted-attribute reader excludes '/' from its delimiters. So `<div></p>` repeated N times builds an N-deep tree while the guard reports depth ~1. HTMLExtractor.swift:91 is the only bound before SwiftSoup.parse and the recursive walk; the body cap is 10 MiB, i.e. >1M levels of the 7-byte form. The repository's own comment records ~20 000 levels as fatal (stack exhaustion).
+- **Evidence before:** exceedsLimit counts every closing tag as closing one level (depth > 0 ? depth - 1 : 0) and treats trailing '/>' as self-closing. Neither matches SwiftSoup: a closing tag with no matching open element is ignored (or inserts an empty <p>), and `<div foo=/>` gives '/' to the attribute value rather than setting the self-closing flag, because the unquoted-attribute reader excludes '/' from its delimiters. So `<div></p>` repeated N times builds an N-deep tree while the guard reports depth ~1. HTMLExtractor.swift:91 is the only bound before SwiftSoup.parse and the recursive walk; the body cap is 10 MiB, i.e. >1M levels of the 7-byte form. The repository's own comment records ~20 000 levels as fatal (stack exhaustion). VERIFIED STATICALLY by reading the guard: MarkupDepth.swift:114-115 decrements on every closing tag (`depth = depth > 0 ? depth - 1 : 0`) and :137 reads `/>` as self-closing from the byte before `>`. Neither matches SwiftSoup, so `<div></p>` repeated N times leaves depth pinned at 0 while the parsed tree is N deep. START gate satisfied; the expected-correct is 'the depth bound must never under-count the tree the parser will build'.
+- **Fix:** Planned, not yet implemented. The bound must be unfoolable rather than model-matching: count start tags without any decrement, since every element in the tree was opened by some start tag, so start-tag count is a sound upper bound on tree depth. That costs a behaviour change (a very tag-heavy but shallow page would also be refused), so the limit needs choosing against the ~20 000 level figure the file already records as fatal, and the byte cap stays. Rejected alternatives: teaching the scan HTML's implied end-tag and self-closing rules (still model-matching, still bypassable), and making our own walk iterative (does not help: SwiftSoup's parse is recursive and runs first).
 
 ### A0002 — Warnings-as-errors is not in the build config, so the Swift standard is not in force at the build level
 
