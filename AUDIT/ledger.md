@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 35 · open 16 · blocked 3**
+**total 54 — done 36 · open 15 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
 | S1 | 30 | 27 | 2 | 1 |
-| S2 | 16 | 4 | 12 | 0 |
+| S2 | 16 | 5 | 11 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 14, PROGRESS 2, DONE 35, BLOCKED 3
+Status tally: OPEN 13, PROGRESS 2, DONE 36, BLOCKED 3
 
 ## Tasks
 
@@ -72,7 +72,7 @@ Status tally: OPEN 14, PROGRESS 2, DONE 35, BLOCKED 3
 | A0039 | S2 | A | OPEN | --bind is accepted and silently dropped by the docker method |
 | A0040 | S2 | A | DONE | The documented invocation puts the sudo password on a command line and into the child environment |
 | A0042 | S2 | A | OPEN | `rm -rf $STAGE/$VERSION` runs even after the identity gate failed, and VERSION is never validated in this script |
-| A0043 | S2 | A | OPEN | The test-suite count is reported as PASS without checking that it parsed |
+| A0043 | S2 | A | DONE | The test-suite count is reported as PASS without checking that it parsed |
 | A0044 | S2 | A | OPEN | `--dry-run` creates the SearXNG directory, so it does change the filesystem |
 | A0051 | S2 | A | OPEN | Mojeek timestamp is read but never requested, so publishedAt is always nil (UNSURE) |
 | A0027 | S3 | C | OPEN | A lost bind race abandons the exited child unreaped |
@@ -640,12 +640,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0043 — The test-suite count is reported as PASS without checking that it parsed
 
-- **Severity / tier / status:** S2 / A / OPEN
+- **Severity / tier / status:** S2 / A / DONE
 - **Location:** `tools/release.sh:212-213`
 - **Category:** misleading-report
 - **Host:** Node1
 - **Discovered by:** installer/release shell tier A review (subagent)
 - **Evidence before:** `read -r total bundles skipped <<<"$counts"` then pass "test suite: $total tests ...", with no check that the python parse succeeded. If it fails or XCTest's log format changes, the gate still prints PASS with blank counts, contrary to RELEASE.md §1.5.2. The suite is genuinely gated by swift test's exit status, so this is a misleading report rather than a false green.
+- **Fix:** Fewer than one bundle or fewer than one test fails the gate, naming what was parsed, so an unreadable count cannot be reported as a pass.
+- **Evidence after:** Committed in d3c3778. The script's own parser, run against a well-formed log and one with XCTest's wording changed: good → PASS "614 tests across 2 bundles" before and after; changed → PASS "0 tests across 0 bundles, 0 skipped, 0 failures" before, FAIL after. The good log is the control. bash -n and shellcheck clean; 18 harness tests pass.
+- **Commit:** `d3c3778`
 
 ### A0044 — `--dry-run` creates the SearXNG directory, so it does change the filesystem
 

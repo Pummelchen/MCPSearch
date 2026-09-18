@@ -743,14 +743,16 @@
       "location": "tools/release.sh:212-213",
       "title": "The test-suite count is reported as PASS without checking that it parsed",
       "category": "misleading-report",
-      "status": "OPEN",
+      "status": "DONE",
       "host": "Node1",
       "discovered_by": "installer/release shell tier A review (subagent)",
       "evidence_before": "`read -r total bundles skipped <<<\"$counts\"` then pass \"test suite: $total tests ...\", with no check that the python parse succeeded. If it fails or XCTest's log format changes, the gate still prints PASS with blank counts, contrary to RELEASE.md §1.5.2. The suite is genuinely gated by swift test's exit status, so this is a misleading report rather than a false green.",
-      "fix_summary": "",
-      "evidence_after": "",
-      "commit": "",
-      "blocked_reason": ""
+      "fix_summary": "Fewer than one bundle or fewer than one test fails the gate, naming what was parsed, so an unreadable count cannot be reported as a pass.",
+      "evidence_after": "Committed in d3c3778. The script's own parser, run against a well-formed log and one with XCTest's wording changed: good → PASS \"614 tests across 2 bundles\" before and after; changed → PASS \"0 tests across 0 bundles, 0 skipped, 0 failures\" before, FAIL after. The good log is the control. bash -n and shellcheck clean; 18 harness tests pass.",
+      "commit": "d3c3778",
+      "blocked_reason": "",
+      "detail": "The count is parsed from `swift test`'s output text, and the parse was never checked: a format change or a Python error yielded zeros that were reported as a pass.",
+      "why_it_matters": "A green gate reading \"0 tests across 0 bundles, 0 failures\" tells a reviewer the suite ran and passed when the number proves the opposite."
     },
     {
       "id": "A0044",
