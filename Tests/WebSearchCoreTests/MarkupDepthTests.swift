@@ -74,6 +74,32 @@ final class MarkupDepthTests: XCTestCase {
             ("option outside a select", "<option>a<option>b"),
             ("paragraphs with inline", "<p>a<b>b<i>c</i></b><p>d<em>e</em>"),
             ("deep inline", String(repeating: "<span>", count: 60) + "x" + String(repeating: "</span>", count: 60)),
+            // A self-closing tag in foreign content, and a void element, are both **elements** at
+            // `depth + 1` that never stay open. The model skipped them entirely and read one level
+            // short on four of 37 real pages — every one an SVG icon (`<circle/>`, `<line/>`) inside a
+            // button. `<br>`, `<img>` and `<input>` are the same shape, so the same shortfall applied
+            // to ordinary markup that the hand-written corpus never nested deeply (ledger A0011).
+            ("self-closing svg counts a level", "<div><svg><g><circle/><line/></g></svg></div>"),
+            (
+                "void elements count a level",
+                String(repeating: "<div>", count: 12) + "<br><img src=\"x\">" + String(repeating: "</div>", count: 12)
+            ),
+            ("entry then self-closing", "<ul><li>a<br><li>b<br></ul>"),
+            ("self-closing html element", "<div><span/><span/></div>"),
+            ("svg deep", "<svg><defs><clipPath><rect></rect></clipPath></defs></svg>"),
+            ("svg in a button", "<button><svg><line></line></svg></button>"),
+            ("svg under a link", "<a><div><svg><defs><clipPath><rect></rect></clipPath></defs></svg></div></a>"),
+            (
+                "template containing a button",
+                "<template><fieldset><div><button><span><svg><path></path></svg></span></button></div></fieldset></template>"
+            ),
+            (
+                "nested templates",
+                "<template><div><template><div><template><div>x</div></template></div></template></div></template>"
+            ),
+            ("text inside svg", "<svg><text><tspan>a</tspan></text></svg>"),
+            ("foreignObject", "<svg><foreignObject><div><p>x</p></div></foreignObject></svg>"),
+            ("math inside svg", "<svg><foreignObject><math><mrow><mi>x</mi></mrow></math></foreignObject></svg>"),
             (
                 "realistic page",
                 """
@@ -143,6 +169,84 @@ final class MarkupDepthTests: XCTestCase {
                 "fragment \(index): the parser added \(real - model) levels, more than its html/body pair"
             )
         }
+    }
+
+    /// The depth model against **real pages**, when a corpus is supplied.
+    ///
+    /// The corpus above is 25 hand-written constructs. That is enough to catch a regression and it is
+    /// not evidence about the web: the model's entire job is to be a sound bound on documents it has
+    /// never seen, and a hand-written construct is a document someone already had in mind while writing
+    /// the model. This reads whatever HTML is in `MARKUP_DEPTH_CORPUS`, so the claim can be re-checked
+    /// against real pages without the default suite needing a network — the same opt-in arrangement as
+    /// `LiveProviderTests` (ledger A0011).
+    ///
+    /// An **under-count is a failure** here, not a warning: it is the bypass direction. An over-count
+    /// is reported but tolerated, because it costs a refusal rather than a crash, and the point of the
+    /// run is to find out how large it gets on pages nobody wrote for this test.
+    func testTheModelAgainstARealPageCorpus() throws {
+        guard let directory = ProcessInfo.processInfo.environment["MARKUP_DEPTH_CORPUS"] else {
+            throw XCTSkip("set MARKUP_DEPTH_CORPUS to a directory of saved .html files")
+        }
+        let pages = try FileManager.default
+            .contentsOfDirectory(atPath: directory)
+            .filter { $0.hasSuffix(".html") || $0.hasSuffix(".htm") }
+            .sorted()
+        guard !pages.isEmpty else {
+            throw XCTSkip("no .html files in \(directory)")
+        }
+
+        var exact = 0
+        var overCounts: [(String, Int)] = []
+        var underCounts: [(String, Int, Int)] = []
+
+        for page in pages {
+            let path = (directory as NSString).appendingPathComponent(page)
+            guard let html = try? String(contentsOfFile: path, encoding: .utf8) else { continue }
+            let real = try Self.parsedDepth(html)
+            let model = MarkupDepth.maximumDepth(html, limit: 100_000)
+
+            if model == real {
+                exact += 1
+            } else if model > real {
+                overCounts.append((page, model - real))
+            } else {
+                underCounts.append((page, model, real))
+            }
+        }
+
+        let measured = exact + overCounts.count + underCounts.count
+        print(
+            "      A0011 corpus: \(measured) pages, \(exact) exact, \(overCounts.count) over, \(underCounts.count) under"
+        )
+        for (page, delta) in overCounts.sorted(by: { $0.1 > $1.1 }).prefix(8) {
+            print("      A0011 over  +\(delta)  \(page)")
+        }
+        for (page, model, real) in underCounts.prefix(6) {
+            let path = (directory as NSString).appendingPathComponent(page)
+            let chain =
+                (try? String(contentsOfFile: path, encoding: .utf8))
+                .flatMap { try? Self.deepestChain($0) } ?? "?"
+            print("      A0011 UNDER \(page): model=\(model) parsed=\(real)")
+            print("      A0011 chain: \(chain)")
+        }
+
+        XCTAssertTrue(
+            underCounts.isEmpty,
+            "the model under-counted \(underCounts.count) of \(measured) real pages — that is the bypass direction"
+        )
+    }
+
+    /// The tag chain down to the deepest element, to show what the parser built and the model missed.
+    private static func deepestChain(_ html: String) throws -> String {
+        let document = try SwiftSoup.parse(html)
+        var deepest: [String] = []
+        var stack: [(Element, [String])] = [(document, [])]
+        while let (element, path) = stack.popLast() {
+            let here = path + [element.tagName()]
+            if here.count > deepest.count { deepest = here }
+            for child in element.children() { stack.append((child, here)) }
+        }
+        return deepest.joined(separator: " > ")
     }
 
     private static func parsedDepth(_ html: String) throws -> Int {

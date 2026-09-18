@@ -149,36 +149,68 @@ public enum MarkupDepth {
     private static let anchorElements: [[UInt8]] = ["a"].map { Array($0.utf8) }
     private static let impliedTableSection: [UInt8] = Array("tbody".utf8)
 
+    /// Elements the implied-end-tag walk must not cross.
+    ///
+    /// The spec walks down from the current node and stops at the first element in the **special**
+    /// category that is not `address`, `div` or `p`. Modelling that whole category is out of proportion
+    /// here, so this is the subset that both covers the common cases — a nested list, a nested
+    /// definition list, a table cell, a template — and appears in the spec's generic "in scope" list,
+    /// where crossing it would be wrong in every case.
+    ///
+    /// What is omitted can only make the model **over**-count: the walk stops late, keeps elements the
+    /// parser closed, and over-counting refuses a page rather than letting a deep one through. Measured
+    /// against 37 real pages, omitting these was not neutral — it under-counted 18 of them, because
+    /// `ul > li > ul > li` is ordinary markup and the walk was popping straight through the inner list
+    /// (ledger A0011).
+    private static let impliedEndTagBoundaries: [[UInt8]] = [
+        "ul", "ol", "menu", "dl", "table", "caption", "td", "th", "template",
+        "button", "select", "object", "marquee", "applet", "html",
+    ].map { Array($0.utf8) }
+
     /// Elements that close an open element of their own kind.
     ///
     /// Each rule is `(what starts, what it closes)`, and each closes the innermost match. Only the
     /// sets measured to matter are modelled. Finding no match is deliberate and safe: the parser would
     /// still close something, so the model is left **over**-counting rather than under-counting, and
     /// under-counting is the bypass.
-    private static let impliedEndTagRules: [(starts: [[UInt8]], closes: [[UInt8]], inTable: Bool)] = [
-        (["p"].map { Array($0.utf8) }, ["p"].map { Array($0.utf8) }, false),
-        (["li"].map { Array($0.utf8) }, ["li"].map { Array($0.utf8) }, false),
-        (["dt", "dd"].map { Array($0.utf8) }, ["dt", "dd"].map { Array($0.utf8) }, false),
-        (["option"].map { Array($0.utf8) }, ["option"].map { Array($0.utf8) }, false),
-        (["optgroup"].map { Array($0.utf8) }, ["optgroup"].map { Array($0.utf8) }, false),
+    private static let impliedEndTagRules: [(starts: [[UInt8]], closes: [[UInt8]], boundaries: [[UInt8]])] = [
+        (
+            ["p"].map { Array($0.utf8) }, ["p"].map { Array($0.utf8) },
+            impliedEndTagBoundaries + [Array("button".utf8)]
+        ),
+        (
+            ["li"].map { Array($0.utf8) }, ["li"].map { Array($0.utf8) }, impliedEndTagBoundaries
+        ),
+        (
+            ["dt", "dd"].map { Array($0.utf8) }, ["dt", "dd"].map { Array($0.utf8) },
+            impliedEndTagBoundaries
+        ),
+        (
+            ["option"].map { Array($0.utf8) }, ["option"].map { Array($0.utf8) },
+            impliedEndTagBoundaries
+        ),
+        (
+            ["optgroup"].map { Array($0.utf8) }, ["optgroup"].map { Array($0.utf8) },
+            impliedEndTagBoundaries
+        ),
         // A heading start tag closes an open heading, and an `<a>` start tag closes an open `<a>`.
         // Both are the observable effect of adoption-agency handling; without them a page that omits
         // the end tag over-counts by one per element.
         (
             ["h1", "h2", "h3", "h4", "h5", "h6"].map { Array($0.utf8) },
             ["h1", "h2", "h3", "h4", "h5", "h6"].map { Array($0.utf8) },
-            false
+            impliedEndTagBoundaries
         ),
-        (["a"].map { Array($0.utf8) }, ["a"].map { Array($0.utf8) }, false),
-        // Table structure, scoped to the innermost table. Unscoped, a `<tr>` in an inner table popped
-        // through the **outer** table's row: nested tables then read 8 deep where the parser builds 14
-        // — an under-count, which is the bypass direction (ledger A0011).
-        (["td", "th"].map { Array($0.utf8) }, ["td", "th"].map { Array($0.utf8) }, true),
-        (["tr"].map { Array($0.utf8) }, ["tr"].map { Array($0.utf8) }, true),
+        (["a"].map { Array($0.utf8) }, ["a"].map { Array($0.utf8) }, impliedEndTagBoundaries),
+        // Table structure, scoped to the innermost table: an inner table's row must not close the outer
+        // table's row, which is what an unscoped walk did (nested tables read 8 deep where the parser
+        // builds 14).
+        (["td", "th"].map { Array($0.utf8) }, ["td", "th"].map { Array($0.utf8) }, tableElement),
+        (["tr"].map { Array($0.utf8) }, ["tr"].map { Array($0.utf8) }, tableElement),
         (
             ["thead", "tbody", "tfoot"].map { Array($0.utf8) },
             ["thead", "tbody", "tfoot"].map { Array($0.utf8) },
-            true
+            tableElement
         ),
     ]
 
@@ -247,25 +279,27 @@ public enum MarkupDepth {
             if depth > deepest { deepest = depth }
         }
 
-        /// Pop to the innermost match, and report whether one was found. Popping the match takes
-        /// everything opened inside it, which is what the parser's implied end tags amount to.
+        /// Pop to the innermost match **above the innermost boundary**, and report whether one was
+        /// found. Popping the match takes everything opened inside it, which is what the parser's
+        /// implied end tags amount to.
         ///
-        /// `insideInnermostTable` restricts the search to elements opened inside the innermost open
-        /// table. Only table structure uses it, and it is what keeps an inner table's row from closing
-        /// the outer table's row.
+        /// The boundary is what keeps a walk inside the scope the spec puts it in: list items do not
+        /// close across the enclosing list, definition items do not close across the enclosing `dl`,
+        /// and a table row does not close across the enclosing table. Returning nothing when no
+        /// boundary is open is deliberate — the parser would still close something, so the model stays
+        /// over-counting, and under-counting is the bypass.
         @discardableResult
-        func popThroughAny(_ candidates: [[UInt8]], insideInnermostTable: Bool = false) -> Bool {
+        func popThroughAny(_ candidates: [[UInt8]], boundaries: [[UInt8]] = []) -> Bool {
             var floor = -1
-            if insideInnermostTable {
+            if !boundaries.isEmpty {
                 var slot = depth - 1
-                while slot >= 0 {
-                    if slotIs(slot, tableElement.first ?? []) {
+                search: while slot >= 0 {
+                    for boundary in boundaries where slotIs(slot, boundary) {
                         floor = slot
-                        break
+                        break search
                     }
                     slot -= 1
                 }
-                // No table open: leave the stack alone rather than popping something unrelated.
                 if floor < 0 { return false }
             }
             var slot = depth - 1
@@ -307,6 +341,10 @@ public enum MarkupDepth {
                 var name: [UInt8] = []
                 name.reserveCapacity(nameFinish - nameStart)
                 for offset in nameStart..<nameFinish { name.append(lowercased(bytes[offset])) }
+                // No boundary here. A boundary exists to model where an *implied* end tag stops
+                // searching; an explicit `</ul>` closes the `ul` it names, and bounding this walk by a
+                // set that contains `ul` made the element unclosable. Measured: 35 of 37 real pages
+                // over-counted, one by 560 levels, because open elements never came off the stack.
                 popThroughAny([name])
                 index = close
                 continue
@@ -349,11 +387,24 @@ public enum MarkupDepth {
                 continue
             }
 
-            if !selfClosing, !matchesAny(bytes, from: tagBody, to: tagNameEnd, in: voidElements) {
+            // A void element, or a self-closing tag in foreign content, **is** an element: it is a
+            // child of its parent at `depth + 1`, it simply never stays open and never has children.
+            // Not counting it read one level short on four of 37 real pages, all of them SVG icons
+            // (`<circle/>`, `<line/>`) inside a button — and `<br>`, `<img>` and `<input>` are the same
+            // shape, so the same shortfall applied to ordinary markup the hand-written corpus happened
+            // never to nest deeply (ledger A0011).
+            if selfClosing || matchesAny(bytes, from: tagBody, to: tagNameEnd, in: voidElements) {
+                if depth + 1 > deepest { deepest = depth + 1 }
+                if depth + 1 > limit { return depth + 1 }
+                index = min(cursor + 1, end)
+                continue
+            }
+
+            if !matchesAny(bytes, from: tagBody, to: tagNameEnd, in: voidElements) {
                 // An element this start tag implies the end of: close the innermost match first, so
                 // the new element opens at the depth the parser gives it and not one level deeper.
                 if matchesAny(bytes, from: tagBody, to: tagNameEnd, in: closesParagraph) {
-                    popThroughAny(paragraphElement)
+                    popThroughAny(paragraphElement, boundaries: impliedEndTagBoundaries)
                 }
                 // A `<tr>` with no open table section gets an implicit `<tbody>`: the parser inserts
                 // one, so not counting it under-counts every table by a level — and under-counting is
@@ -365,7 +416,7 @@ public enum MarkupDepth {
                 }
                 for rule in impliedEndTagRules
                 where matchesAny(bytes, from: tagBody, to: tagNameEnd, in: rule.starts) {
-                    popThroughAny(rule.closes, insideInnermostTable: rule.inTable)
+                    popThroughAny(rule.closes, boundaries: rule.boundaries)
                 }
                 guard depth < capacity else { return limit + 1 }
                 let length = tagNameEnd - tagBody
