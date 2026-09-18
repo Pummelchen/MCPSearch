@@ -19,6 +19,8 @@ public struct HTTPTransportConfiguration: Sendable, Equatable {
     /// requires an explicit opt-in and is documented as needing TLS in front.
     public var host: String
     public var port: Int
+    /// Most live sessions; nil means the HTTP host's own default.
+    public var maximumLiveSessions: Int?
     /// MCP endpoint path.
     public var path: String
     /// Extra host names this deployment answers to, from `--http-allowed-host`.
@@ -69,6 +71,7 @@ public struct ServerOptions: Sendable {
         case host
         case httpAllowedHost
         case httpPath
+        case maxSessions
 
         /// Every spelling the parser accepts for this flag, canonical first.
         var names: [String] {
@@ -79,6 +82,7 @@ public struct ServerOptions: Sendable {
             case .host: ["--host"]
             case .httpAllowedHost: ["--http-allowed-host"]
             case .httpPath: ["--http-path"]
+            case .maxSessions: ["--max-sessions"]
             }
         }
 
@@ -89,7 +93,7 @@ public struct ServerOptions: Sendable {
         var takesValue: Bool {
             switch self {
             case .help: false
-            case .transport, .port, .host, .httpAllowedHost, .httpPath: true
+            case .transport, .port, .host, .httpAllowedHost, .httpPath, .maxSessions: true
             }
         }
 
@@ -102,13 +106,14 @@ public struct ServerOptions: Sendable {
             case .host: "addr"
             case .httpAllowedHost: "host"
             case .httpPath: "path"
+            case .maxSessions: "n"
             }
         }
 
         /// Whether naming this flag on its own selects the HTTP transport.
         var selectsHTTP: Bool {
             switch self {
-            case .port, .host, .httpAllowedHost, .httpPath: true
+            case .port, .host, .httpAllowedHost, .httpPath, .maxSessions: true
             case .help, .transport: false
             }
         }
@@ -141,6 +146,11 @@ public struct ServerOptions: Sendable {
                 ]
             case .httpPath:
                 ["MCP endpoint path. Default: \(HTTPTransportConfiguration.defaultPath)"]
+            case .maxSessions:
+                [
+                    "Most MCP sessions kept at once. Default: 64. Bounds what an",
+                    "unauthenticated client can open.",
+                ]
             }
         }
 
@@ -340,6 +350,18 @@ public struct ServerOptions: Sendable {
                     )
                 }
                 httpConfiguration.additionalAllowedHosts.append(raw)
+                httpSettingsGiven = true
+
+            case .maxSessions:
+                let raw = try value(for: .maxSessions)
+                guard let cap = Int(raw), cap > 0 else {
+                    throw OptionError.invalidValue(
+                        flag: "--max-sessions",
+                        value: raw,
+                        expected: "a positive integer"
+                    )
+                }
+                httpConfiguration.maximumLiveSessions = cap
                 httpSettingsGiven = true
 
             case .httpPath:

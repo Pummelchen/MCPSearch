@@ -174,6 +174,10 @@ case .http(let httpConfiguration):
             // connections and never finishes a request cannot hold them indefinitely
             requestCompletionTimeout: configuration.requestTimeout,
             health: healthSource,
+            // An unauthenticated peer controls how many sessions exist, so the bound is configurable
+            // rather than fixed. Nil means the host's own default (ledger A0028).
+            maximumLiveSessions: httpConfiguration.maximumLiveSessions
+                ?? HTTPMCPHost.defaultMaximumLiveSessions,
             log: log
         )
         try await host.start()

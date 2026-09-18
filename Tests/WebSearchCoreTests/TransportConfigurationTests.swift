@@ -370,6 +370,7 @@ final class TransportConfigurationTests: XCTestCase {
         case .host: "127.0.0.1"
         case .httpAllowedHost: "search.example.com"
         case .httpPath: "/x"
+        case .maxSessions: "16"
         }
     }
 
