@@ -41,21 +41,60 @@ final class MarkupDepthTests: XCTestCase {
     /// The model's depth against the depth SwiftSoup actually builds.
     ///
     /// A bound is only sound if the model never reads *below* the real tree, and only usable if it is
-    /// not far above it. The documents here include the constructs that make the two diverge: HTML
-    /// permits omitting `</p>`, `</li>`, `</td>` and `</tr>`, and a model that keeps those open counts
-    /// nesting the parser does not build — which is a false rejection waiting for a real page.
+    /// not far above it. The corpus below is the constructs where the two can diverge: the optional end
+    /// tags HTML permits, the adoption-agency elements, tables with implied structure, and foreign
+    /// content. Every case asserts soundness, because an under-count is the bypass; tightness is
+    /// asserted separately, against the divergence each case was measured at.
     func testTheModelDepthIsNeverBelowTheParsedTree() throws {
         let documents: [(String, String)] = [
             ("nested divs", String(repeating: "<div>", count: 40) + "x" + String(repeating: "</div>", count: 40)),
+            ("deep then shallow", String(repeating: "<div>", count: 30) + "</div></div></div><span>y</span>"),
             ("omitted </p>", "<p>one<p>two<p>three<p>four<p>five"),
             ("omitted </li>", "<ul><li>a<li>b<li>c<li>d<li>e</ul>"),
             ("omitted </td></tr>", "<table><tr><td>a<td>b<tr><td>c<td>d</table>"),
             ("omitted </dt><dd>", "<dl><dt>a<dd>b<dt>c<dd>d</dl>"),
             ("select options", "<select><option>a<option>b<option>c</select>"),
-            ("deep then shallow", String(repeating: "<div>", count: 30) + "</div></div></div>" + "<span>y</span>"),
             ("mixed ordinary", "<div><ul><li><p>text</p></li></ul></div>"),
+            ("adoption agency a", String(repeating: "<a>", count: 20) + "x"),
+            ("adoption agency b/i", String(repeating: "<b><i>", count: 20) + "x"),
+            ("nobr repeated", String(repeating: "<nobr>", count: 20) + "x"),
+            ("headings close each other", "<h1>a<h2>b<h3>c<h4>d<h5>e<h6>f"),
+            ("button closes button", "<button>a<button>b<button>c"),
+            ("form repeated", "<form><form><form>x"),
+            ("svg foreign content", "<svg><g><g><g><text>t</text></g></g></g></svg>"),
+            ("math foreign content", "<math><mrow><mrow><mi>x</mi></mrow></mrow></math>"),
+            (
+                "table sections",
+                "<table><caption>c</caption><colgroup><col></colgroup><thead><tr><th>h<tbody><tr><td>d</table>"
+            ),
+            ("nested tables", "<table><tr><td><table><tr><td><table><tr><td>x</table></table></table>"),
+            ("select inside a table", "<table><tr><td><select><option>a<option>b</select></table>"),
+            ("stray end tags", "</div></p></span><div>a</div></li></ul>"),
+            ("li outside a list", "<li>a<li>b<li>c"),
+            ("option outside a select", "<option>a<option>b"),
+            ("paragraphs with inline", "<p>a<b>b<i>c</i></b><p>d<em>e</em>"),
+            ("deep inline", String(repeating: "<span>", count: 60) + "x" + String(repeating: "</span>", count: 60)),
+            (
+                "realistic page",
+                """
+                <div class="page"><header><nav><ul><li><a href="/a">A</a><li><a href="/b">B</a></ul></nav></header>
+                <main><article><h1>Title</h1><p>One<p>Two<ul><li>x<li>y</ul>
+                <table><tr><th>h<th>h<tbody><tr><td>a<td>b</table>
+                <form><label>L<input name="i"></label><button>Go</button></form></article></main>
+                <footer><p>f</p></footer></div>
+                """
+            ),
         ]
 
+        // Divergences measured and accepted. Every other case must be exact.
+        let acceptedOverCount: [String: Int] = [
+            // A parser ignores a `<form>` start tag while a form is open — a form inside a form creates
+            // no element — so the model counts two levels the tree does not have. The markup is
+            // invalid, real pages do not contain it, and over-counting is the safe direction.
+            "form repeated": 2
+        ]
+
+        var exact = 0
         for (label, fragment) in documents {
             // A complete document, so the parser adds no implicit `html`/`body` wrapper. With a bare
             // fragment it always adds two, which the model cannot see: measuring fragments made the
@@ -63,24 +102,24 @@ final class MarkupDepthTests: XCTestCase {
             let html = "<!DOCTYPE html><html><head></head><body>" + fragment + "</body></html>"
             let real = try Self.parsedDepth(html)
             let model = MarkupDepth.maximumDepth(html, limit: 100_000)
-            print("      A0011 \(label): model=\(model) parsed=\(real)")
+            if model == real { exact += 1 }
+            print("      A0011 \(label): model=\(model) parsed=\(real) delta=\(model - real)")
             XCTAssertGreaterThanOrEqual(
                 model,
                 real,
                 "\(label): the model read \(model) but the parser built \(real) — under-counting is a bypass"
             )
-            // Exactness, not just soundness, on constructs the model claims to know. Over-counting is
-            // the safe direction, but a drift here is how it silently becomes a false rejection.
+            // Tightness, per case. A lower bound alone would let the model drift upward into a false
+            // rejection with no test noticing, which is the failure mode this exercise exists to avoid.
             XCTAssertEqual(
-                model,
-                real,
+                model - real,
+                acceptedOverCount[label] ?? 0,
                 "\(label): the model read \(model), the parser built \(real)"
             )
         }
+        print("      A0011 exact: \(exact) of \(documents.count)")
     }
 
-    /// Deepest element nesting in the tree `SwiftSoup` builds, walked iteratively so the measurement
-    /// cannot itself recurse into a stack overflow.
     private static func parsedDepth(_ html: String) throws -> Int {
         let document = try SwiftSoup.parse(html)
         var deepest = 0

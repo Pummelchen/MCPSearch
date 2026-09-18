@@ -135,6 +135,11 @@ public enum MarkupDepth {
         Array($0.utf8)
     }
     private static let tableRowElements: [[UInt8]] = ["tr"].map { Array($0.utf8) }
+    private static let tableElement: [[UInt8]] = ["table"].map { Array($0.utf8) }
+    private static let headingElements: [[UInt8]] = ["h1", "h2", "h3", "h4", "h5", "h6"].map {
+        Array($0.utf8)
+    }
+    private static let anchorElements: [[UInt8]] = ["a"].map { Array($0.utf8) }
     private static let impliedTableSection: [UInt8] = Array("tbody".utf8)
 
     /// Elements that close an open element of their own kind.
@@ -143,17 +148,30 @@ public enum MarkupDepth {
     /// sets measured to matter are modelled. Finding no match is deliberate and safe: the parser would
     /// still close something, so the model is left **over**-counting rather than under-counting, and
     /// under-counting is the bypass.
-    private static let impliedEndTagRules: [(starts: [[UInt8]], closes: [[UInt8]])] = [
-        (["p"].map { Array($0.utf8) }, ["p"].map { Array($0.utf8) }),
-        (["li"].map { Array($0.utf8) }, ["li"].map { Array($0.utf8) }),
-        (["dt", "dd"].map { Array($0.utf8) }, ["dt", "dd"].map { Array($0.utf8) }),
-        (["option"].map { Array($0.utf8) }, ["option"].map { Array($0.utf8) }),
-        (["optgroup"].map { Array($0.utf8) }, ["optgroup"].map { Array($0.utf8) }),
-        (["td", "th"].map { Array($0.utf8) }, ["td", "th"].map { Array($0.utf8) }),
-        (["tr"].map { Array($0.utf8) }, ["tr"].map { Array($0.utf8) }),
+    private static let impliedEndTagRules: [(starts: [[UInt8]], closes: [[UInt8]], inTable: Bool)] = [
+        (["p"].map { Array($0.utf8) }, ["p"].map { Array($0.utf8) }, false),
+        (["li"].map { Array($0.utf8) }, ["li"].map { Array($0.utf8) }, false),
+        (["dt", "dd"].map { Array($0.utf8) }, ["dt", "dd"].map { Array($0.utf8) }, false),
+        (["option"].map { Array($0.utf8) }, ["option"].map { Array($0.utf8) }, false),
+        (["optgroup"].map { Array($0.utf8) }, ["optgroup"].map { Array($0.utf8) }, false),
+        // A heading start tag closes an open heading, and an `<a>` start tag closes an open `<a>`.
+        // Both are the observable effect of adoption-agency handling; without them a page that omits
+        // the end tag over-counts by one per element.
+        (
+            ["h1", "h2", "h3", "h4", "h5", "h6"].map { Array($0.utf8) },
+            ["h1", "h2", "h3", "h4", "h5", "h6"].map { Array($0.utf8) },
+            false
+        ),
+        (["a"].map { Array($0.utf8) }, ["a"].map { Array($0.utf8) }, false),
+        // Table structure, scoped to the innermost table. Unscoped, a `<tr>` in an inner table popped
+        // through the **outer** table's row: nested tables then read 8 deep where the parser builds 14
+        // — an under-count, which is the bypass direction (ledger A0011).
+        (["td", "th"].map { Array($0.utf8) }, ["td", "th"].map { Array($0.utf8) }, true),
+        (["tr"].map { Array($0.utf8) }, ["tr"].map { Array($0.utf8) }, true),
         (
             ["thead", "tbody", "tfoot"].map { Array($0.utf8) },
-            ["thead", "tbody", "tfoot"].map { Array($0.utf8) }
+            ["thead", "tbody", "tfoot"].map { Array($0.utf8) },
+            true
         ),
     ]
 
@@ -196,11 +214,17 @@ public enum MarkupDepth {
         /// Pop to the innermost open element matching one of `candidates`, and report whether one was
         /// found. Popping the match takes everything opened inside it, which is what the parser's
         /// "generate implied end tags" plus its pop amounts to.
-        /// Whether any open element matches `candidates`, without popping.
-        func containsAny(_ candidates: [[UInt8]]) -> Bool {
+        /// Whether a table section is open **inside the innermost open table**.
+        ///
+        /// Scoped to the innermost table, not to the whole stack. A global check looked right and was
+        /// not: in `<table><tr><td><table><tr>…` the *outer* section suppressed the inner table's
+        /// implicit one, and nested tables then read 7 deep where the parser builds 14 — an
+        /// under-count, which is the bypass direction (ledger A0011).
+        func sectionOpenInsideInnermostTable() -> Bool {
             var slot = depth - 1
             while slot >= 0 {
-                for candidate in candidates where slotIs(slot, candidate) { return true }
+                if slotIs(slot, tableElement.first ?? []) { return false }
+                for candidate in tableSectionElements where slotIs(slot, candidate) { return true }
                 slot -= 1
             }
             return false
@@ -216,10 +240,29 @@ public enum MarkupDepth {
             if depth > deepest { deepest = depth }
         }
 
+        /// Pop to the innermost match, and report whether one was found. Popping the match takes
+        /// everything opened inside it, which is what the parser's implied end tags amount to.
+        ///
+        /// `insideInnermostTable` restricts the search to elements opened inside the innermost open
+        /// table. Only table structure uses it, and it is what keeps an inner table's row from closing
+        /// the outer table's row.
         @discardableResult
-        func popThroughAny(_ candidates: [[UInt8]]) -> Bool {
+        func popThroughAny(_ candidates: [[UInt8]], insideInnermostTable: Bool = false) -> Bool {
+            var floor = -1
+            if insideInnermostTable {
+                var slot = depth - 1
+                while slot >= 0 {
+                    if slotIs(slot, tableElement.first ?? []) {
+                        floor = slot
+                        break
+                    }
+                    slot -= 1
+                }
+                // No table open: leave the stack alone rather than popping something unrelated.
+                if floor < 0 { return false }
+            }
             var slot = depth - 1
-            while slot >= 0 {
+            while slot > floor {
                 for candidate in candidates where slotIs(slot, candidate) {
                     depth = slot
                     return true
@@ -309,13 +352,13 @@ public enum MarkupDepth {
                 // one, so not counting it under-counts every table by a level — and under-counting is
                 // the bypass, not a rounding error (ledger A0011).
                 if matchesAny(bytes, from: tagBody, to: tagNameEnd, in: tableRowElements),
-                    !containsAny(tableSectionElements)
+                    !sectionOpenInsideInnermostTable()
                 {
                     pushName(impliedTableSection)
                 }
                 for rule in impliedEndTagRules
                 where matchesAny(bytes, from: tagBody, to: tagNameEnd, in: rule.starts) {
-                    popThroughAny(rule.closes)
+                    popThroughAny(rule.closes, insideInnermostTable: rule.inTable)
                 }
                 guard depth < capacity else { return limit + 1 }
                 let length = tagNameEnd - tagBody
