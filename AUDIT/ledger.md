@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 25 · open 26 · blocked 3**
+**total 54 — done 26 · open 25 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 18 | 11 | 1 |
+| S1 | 30 | 19 | 10 | 1 |
 | S2 | 16 | 3 | 13 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 24, PROGRESS 2, DONE 25, BLOCKED 3
+Status tally: OPEN 24, PROGRESS 1, DONE 26, BLOCKED 3
 
 ## Tasks
 
@@ -30,7 +30,7 @@ Status tally: OPEN 24, PROGRESS 2, DONE 25, BLOCKED 3
 | A0011 | S0 | A | BLOCKED | The markup-depth guard is bypassable, so crafted HTML reaches a recursive parse and kills the process |
 | A0045 | S0 | A | DONE | SearXNG answers are decoded as [String] but emitted as objects, so an answering query discards every result |
 | A0002 | S1 | A | DONE | Warnings-as-errors is not in the build config, so the Swift standard is not in force at the build level |
-| A0003 | S1 | A | PROGRESS | SwiftLint cannot reject a force-unwrap, so the §1 Swift standard proof fails |
+| A0003 | S1 | A | DONE | SwiftLint cannot reject a force-unwrap, so the §1 Swift standard proof fails |
 | A0004 | S1 | A | OPEN | Ruff does not select S101, so `assert` used for validation is unchecked |
 | A0005 | S1 | A | PROGRESS | The secret-scan delegation is unproven: gitleaks is blind to the credential pattern this repository actually leaked |
 | A0008 | S1 | C | DONE | The only check that consumes /health reads the status code and never the body, so it cannot fail |
@@ -153,15 +153,15 @@ BEST DIRECTION, on the measured evidence: bound the *unmatched closing tags*, no
 
 ### A0003 — SwiftLint cannot reject a force-unwrap, so the §1 Swift standard proof fails
 
-- **Severity / tier / status:** S1 / A / PROGRESS
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `.swiftlint.yml:40`
 - **Category:** language-standard
 - **Host:** Node1
 - **Discovered by:** Phase A language-standard proof (§1)
 - **Evidence before:** The config enables no opt-in rules ('Opt-in rules are deliberately not enabled by this task', .swiftlint.yml:40), so force_unwrapping is off and `swiftlint lint --strict` accepts a `!` force-unwrap. §1 requires that a force-unwrap fail SwiftLint --strict.
-- **Fix:** INVENTORY TAKEN, RULE STILL OFF. The rule identifier is `force_unwrapping` (not `force_unwrap`). With it enabled there are exactly 20 findings, all in Tests/, none in Sources/. The sites are: 15 x `URL(string: X)!` (AnswerSynthesizerTests:24, MonitorActorTests:59, CoreUnitTests:93, FetchRedirectTests:114, HTTPClientTests:107, URLPolicyTests:52,77,86,126,146,157,194,210, FusionAndReliabilityTests:137,138,316,403,723,734,968), plus `diagnostics!` and `hit!` in FusionAndReliabilityTests:968. REMAINING WORK: convert each to `try XCTUnwrap(...)` where the enclosing context throws, and restructure the two that cannot throw — `HTTPClientTests:107` is a computed property `var baseURL: URL` and `AnswerSynthesizerTests:24` is a default argument. Then add `force_unwrapping` to `.swiftlint.yml` and prove the §1 standard: a deliberate force-unwrap must fail `swiftlint --strict`.
-- **Evidence after:** Committed in 56b0e93. 18 of 20 sites converted; 20 function signatures gained `throws` across URLPolicyTests, FusionAndReliabilityTests, CoreUnitTests and MonitorActorTests; two nested local functions became `throws -> SearchResult`. Suite green at 612 tests (570 + 42), 0 failures; both linters exit 0 with the rule still off. REMAINING 2, both design decisions rather than edits: (1) `HTTPClientTests:107` `var baseURL: URL` — make it a stored `let` assigned in the initialiser, which already throws, so the unwrap becomes a `guard` reporting a real error; (2) `AnswerSynthesizerTests:24` `var sampleResults` — a computed property with 31 usages, so `get throws` cascades into all 31 and a stored property needs an `init` that an XCTestCase cannot throw from. The file was converted, rejected for this reason, and restored rather than left half-done. Then add `force_unwrapping` to .swiftlint.yml and prove a deliberate force-unwrap fails `swiftlint --strict`.
-- **Commit:** `56b0e93`
+- **Fix:** All 20 sites fixed rather than suppressed and `force_unwrapping` is enabled under `opt_in_rules`. The two sites in contexts that cannot `try` were resolved structurally: `LoopbackServer.baseURL` became a stored `let` assigned in the throwing `init` with a real error case, and `AnswerSynthesizerTests` gained a non-throwing `fixtureURL` that calls `XCTFail` and returns a sentinel, which no test can pass on because it is already marked failed.
+- **Evidence after:** Committed in b95038a. §1 standard proof: a deliberate `value!` added in Sources/WebSearchCore/Support/ produced "error: Force Unwrapping Violation: Force unwrapping should be avoided (force_unwrapping)" under `swiftlint --strict`, so the gate fails on it; the file was then removed. `swiftlint lint --strict` on the repository exits 0 with 0 findings. No `# swiftlint:disable`, no `try!` substitution and no `fatalError` helper standing in for `!`. 20 signatures gained `throws`. Suite green at 612 tests (570 + 42), 0 failures; swift-format --strict exits 0.
+- **Commit:** `b95038a`
 
 ### A0004 — Ruff does not select S101, so `assert` used for validation is unchecked
 
