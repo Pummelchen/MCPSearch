@@ -177,12 +177,19 @@ case .http(let httpConfiguration):
         let healthSource: HTTPMCPHost.HealthSource = {
             let states = await pipeline.orchestrator.status()
             let configured = states.filter(\.configured).count
+            // Readiness is usability, not configuration. A provider whose circuit is open is
+            // configured and cannot serve: reporting `ok` for a process whose every configured
+            // provider is skipping requests tells a supervisor to keep sending traffic to something
+            // that will answer each one with a failure. `web_search_status` already reports the
+            // circuit, so this derives from the same state rather than guessing at it (ledger A0053).
+            let usable = states.filter { $0.configured && $0.circuit.state != .open }.count
             return HTTPMCPHost.HealthReport(
-                ready: configured > 0,
+                ready: usable > 0,
                 details: [
                     "version": BuildVersion.value,
                     "providers_total": "\(states.count)",
                     "providers_configured": "\(configured)",
+                    "providers_usable": "\(usable)",
                 ]
             )
         }
