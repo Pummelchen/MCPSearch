@@ -186,7 +186,7 @@ Leave previous releases' notes and performance tables alone.
 
 # Part 2 — This repository
 
-## MCPSearch — Swift, semantic version, 2 releases
+## MCPSearch — Swift, semantic version, 4 releases
 
 - **Identity** `vX.Y.Z`, **single-sourced and enforced since `v1.0.1`**. `VERSION` at
   the repository root is authoritative and holds a bare `X.Y.Z`.
@@ -205,7 +205,8 @@ Leave previous releases' notes and performance tables alone.
   digest — this section names `SHA256SUMS` and Part 1 §1.7 names `<archive>.sha256`,
   so both ship. The archive carries both executables, `LICENSE`,
   `THIRD-PARTY-NOTICES.md` and `README-binaries.txt`; the install instructions live in
-  the release notes. `v1.0.0` (2026-09-15), `v1.0.1` (2026-09-16) and `v1.2.0` (2026-09-17) are released.
+  the release notes. `v1.0.0` (2026-09-15), `v1.0.1` (2026-09-16), `v1.2.0` (2026-09-17) and
+  `v1.3.0` (2026-09-18) are released.
 - **`tools/release.sh` cuts a release.** Dry run by default, publishing only with
   `--publish`. It checks the §1.4 preconditions (including that HEAD is the tag and
   that no competing build is running), runs the §1.5 gates in order, builds with a
@@ -230,9 +231,10 @@ Leave previous releases' notes and performance tables alone.
   `PATCH /repos/{owner}/{repo}/code-scanning/ai-scan` with `{"pr_scan":"enabled"}`.
 - **The pre-production audit material has been retired.** It was processed into the code and the
   changelog and then removed, so the next audit starts from the code rather than from a previous
-  audit's ledger, findings and baseline logs. The one item it left open — rotating the GitHub PAT
-  in cleartext in the local wiki clones' `.git/config` — is tracked as issue #16, because it is a
-  credential on a machine and no repository change can close it.
+  audit's ledger, findings and baseline logs. Its one human-action finding — a GitHub PAT embedded in
+  cleartext in the local wiki clones' `.git/config` — is closed as issue #16. Verified here: every local
+  clone's remote is now a plain `https://github.com/...` URL with no embedded userinfo. Whether the old
+  token was rotated is not something this repository can check, and the issue was closed by the owner.
 - **Next release** is machinery-complete: bump `VERSION`, run
   `tools/sync-version.sh`, add the `CHANGELOG.md` section and
   `docs/release-notes-vX.Y.Z.md`, land it, tag, then `tools/release.sh --publish`.

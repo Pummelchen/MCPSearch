@@ -41,13 +41,14 @@ Intel slice).
   `release.sh` (the whole release, dry run by default).
 - `scripts/` — the CI harnesses: `mcp_smoke.py`, `monitor_tty_smoke.py`,
   `dual_client_contract.py` (one stub, both executables, compared),
-  `coverage_floor.py`, `soak.py`, `harness_tests.py`, `third_party_notices.py`, and
-  `searxng_stub.py`, the loopback instance the last two of those serve.
+  `coverage_floor.py`, `soak.py`, `harness_tests.py`, `third_party_notices.py`,
+  `searxng_stub.py` — the loopback instance the last two of those serve — and
+  `searxng_health.py`, which asks a SearXNG whether its JSON API actually answers.
 - `deploy/` — `install.sh` (the installer, and the single implementation of a SearXNG install),
   `provision-node.sh` (a thin native node provisioner that delegates to it), and a digest-pinned
   SearXNG compose file kept as the container alternative.
-- `docs/` — four research notes whose claims are labelled VERIFIED / UNVERIFIED /
-  NOT FOUND, plus the per-release `release-notes-vX.Y.Z.md`.
+- `docs/` — an index, four research notes whose claims are labelled VERIFIED /
+  UNVERIFIED / NOT FOUND, and the per-release `release-notes-vX.Y.Z.md`.
 
 ## Install
 
