@@ -142,7 +142,7 @@
       "evidence_before": "wait_for_health opens the health URL and returns as soon as response.status == 200. It never reads or asserts the body. Since the body is a constant (A0007), \"the server is healthy\" is proven by \"a socket is bound\": a process that bound the port and then bricked still passes the smoke test and CI. NOTE: after A0007 the body is derived and carries version plus provider counts, so this is now cheap to close — the gate should read the body it already fetches and assert status/version rather than only that a socket answered.",
       "fix_summary": "`wait_for_health` parses the body and asserts status, version == VERSION, and that provider counts are present; a non-object or non-JSON body is a named failure.",
       "evidence_after": "Against the pre-A0007 release binary (which still has the hardcoded body) the gate fails with 'SMOKE TEST FAILED: /health reported version None, expected '1.2.0' from VERSION'. Against the current binary both stdio and --http modes pass. ruff clean, pyright strict 0 errors, 17 harness tests pass.",
-      "commit": "pending-ledger-commit",
+      "commit": "9d18d5d",
       "blocked_reason": ""
     },
     {
