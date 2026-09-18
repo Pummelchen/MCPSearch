@@ -75,15 +75,15 @@ final class HTTPMCPHost: @unchecked Sendable {
             ?? Data(#"{"status":"degraded","reason":"health body could not be encoded"}"#.utf8)
     }
 
-     let configuration: HTTPTransportConfiguration
+    let configuration: HTTPTransportConfiguration
     /// The `Host`/`Origin` allow-list the validation pipeline was built with, kept so the
     /// startup log can name it: a 421 is otherwise a puzzle for an operator.
     private let originPolicy: HTTPOriginPolicy
     private let makeServer: SessionFactory
-     let log: Log
+    let log: Log
     /// `fileprivate` because the request handler is a separate type in this file and is the
     /// only reader.
-     let health: HealthSource
+    let health: HealthSource
     private let group: EventLoopGroup
     private let validationPipeline: any HTTPRequestValidationPipeline
     /// How long a connection may stay open without completing a request.
@@ -91,8 +91,8 @@ final class HTTPMCPHost: @unchecked Sendable {
     /// The bound is on *receiving a request*, not on the exchange: it is disarmed the moment the
     /// request ends, so a response that legitimately streams (an SSE session stream) is never
     /// mistaken for an idle connection.
-     let requestCompletionTimeout: Duration
-     var channel: Channel?
+    let requestCompletionTimeout: Duration
+    var channel: Channel?
 
     /// Most child connections this listener holds at once.
     ///
