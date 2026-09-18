@@ -108,6 +108,21 @@ run() {
     "$@"
 }
 
+# Install a binary at `$BIN` without ever leaving a partial one there.
+#
+# `cp source "$BIN"` truncates the destination before it writes, so a copy that failed part-way — a
+# full disk, an interrupt — destroyed the working binary and put a truncated file in its place. The
+# `|| die` reported that but could not undo it, so a failed install left the operator with no server
+# at all (ledger A0010). Copying beside the destination and moving it into place makes the path
+# always either the old binary or the new one, because `mv` within a filesystem is atomic.
+install_binary() {
+    local source="$1" staged
+    staged="${BIN}.incoming.$$"
+    cp "$source" "$staged" || return 1
+    chmod +x "$staged" || { rm -f "$staged"; return 1; }
+    mv -f "$staged" "$BIN" || { rm -f "$staged"; return 1; }
+}
+
 # Docker Desktop keeps its CLI plugins and credential helpers inside the app bundle, and a
 # non-interactive shell — ssh, launchd, CI — does not have that directory on PATH. The failure
 # is misleading: `docker info` works, and then a pull of a *public* image dies with
@@ -515,8 +530,7 @@ if [ "$VERIFY_ONLY" -eq 0 ]; then
             curl -fsSL "${url%/*}/SHA256SUMS" -o "${tmp}/SHA256SUMS" || die "checksum download failed"
             ( cd "$tmp" && shasum -a 256 -c SHA256SUMS >/dev/null ) || die "checksum mismatch"
             tar -xzf "$archive" -C "$tmp" || die "could not unpack the archive"
-            cp "${tmp}/mcps-${version}-macos-arm64/SwiftWebSearchMCP" "$BIN" || die "could not install the binary"
-            chmod +x "$BIN"
+            install_binary "${tmp}/mcps-${version}-macos-arm64/SwiftWebSearchMCP" || die "could not install the binary"
             rm -rf "$tmp"
             say "installed the released binary for ${version}"
         fi
@@ -528,8 +542,7 @@ if [ "$VERIFY_ONLY" -eq 0 ]; then
             say "building from source at ${REPO_ROOT}"
             swift build -c release --package-path "$REPO_ROOT" -Xswiftc -warnings-as-errors || die "build failed"
             built="$(swift build -c release --package-path "$REPO_ROOT" --show-bin-path)/SwiftWebSearchMCP"
-            cp "$built" "$BIN" || die "could not install the built binary"
-            chmod +x "$BIN"
+            install_binary "$built" || die "could not install the built binary"
             say "installed the locally built binary"
         fi
     fi
