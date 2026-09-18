@@ -119,6 +119,38 @@ final class FetchFallbackTests: XCTestCase {
         }
     }
 
+    /// A page served in a non-UTF-8 charset must reach the extractor as the right characters.
+    ///
+    /// `mimeType(from:)` keeps only the part before `;`, so the `charset` parameter was discarded and
+    /// the body fell straight to UTF-8-then-Latin-1. Latin-1 cannot fail, so a windows-1251 page was
+    /// silently decoded into mojibake: wrong characters presented as success, with no warning and no
+    /// truncation flag. This drives the whole fetch, not the decoder, so it can show the before-state
+    /// (ledger A0012).
+    func testAPageInADeclaredNonUTF8CharsetIsDecodedCorrectly() async throws {
+        let greeting = "Привет мир"
+        let html = "<html><head><title>Кодировка</title></head><body><p>\(greeting)</p></body></html>"
+        let body = try XCTUnwrap(html.data(using: .windowsCP1251))
+        let server = try LoopbackServer(responses: [
+            .init(
+                status: 200,
+                headers: ["Content-Type": "text/html; charset=windows-1251"],
+                body: "",
+                bodyData: body
+            )
+        ])
+        let fetcher = directFetcher(allowPrivateNetwork: true)
+
+        let result = try await fetcher.fetch(
+            FetchRequest(url: server.baseURL),
+            maxRedirects: 5,
+            allowedContentTypePrefixes: ["text/"],
+            maxCharacters: 12_000
+        )
+
+        XCTAssertTrue(result.text.contains(greeting), "expected \(greeting) in: \(result.text)")
+        XCTAssertFalse(result.text.contains("Ð"), "the body was decoded as Latin-1: \(result.text)")
+    }
+
     func testThinNativeExtractionFallsBackToTheReader() async throws {
         let server = try htmlServer(thinHTML())
         let jinaHTTP = MockHTTPClient()

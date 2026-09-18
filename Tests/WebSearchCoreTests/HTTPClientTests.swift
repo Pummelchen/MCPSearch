@@ -13,6 +13,13 @@ final class LoopbackServer: @unchecked Sendable {
         var status: Int = 200
         var headers: [String: String] = ["Content-Type": "application/json"]
         var body: String = "{}"
+        /// The body as raw bytes, when it is not valid UTF-8.
+        ///
+        /// `body` is a `String`, so it reaches the wire as UTF-8 no matter what `Content-Type`
+        /// claims. A page served in windows-1251, Shift_JIS or GBK therefore could not be represented
+        /// at all, which is why the charset handling had no test that went through a fetch: there was
+        /// no way to serve such a page. When set, this wins and `body` is ignored.
+        var bodyData: Data?
         /// Delay before responding, for timeout tests.
         var delayMilliseconds: Int = 0
         /// Send the body in pieces and then hold the connection open without finishing it.
@@ -159,7 +166,8 @@ final class LoopbackServer: @unchecked Sendable {
             }
 
             var headers = "HTTP/1.1 \(response.status) \(LoopbackServer.reason(response.status))\r\n"
-            let declaredBytes = response.drip?.declaredBytes ?? response.body.utf8.count
+            let bodyBytes = response.bodyData ?? Data(response.body.utf8)
+            let declaredBytes = response.drip?.declaredBytes ?? bodyBytes.count
             headers += "Content-Length: \(declaredBytes)\r\n"
             headers += "Connection: close\r\n"
             for (name, value) in response.headers {
@@ -167,7 +175,7 @@ final class LoopbackServer: @unchecked Sendable {
             }
             headers += "\r\n"
 
-            let payload = Array((headers + response.body).utf8)
+            let payload = Array(headers.utf8) + Array(bodyBytes)
             if let drip = response.drip {
                 let headerBytes = Array(headers.utf8)
                 var offset = 0
