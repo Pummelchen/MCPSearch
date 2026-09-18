@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 36 · open 15 · blocked 3**
+**total 54 — done 37 · open 14 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
 | S1 | 30 | 27 | 2 | 1 |
-| S2 | 16 | 5 | 11 | 0 |
+| S2 | 16 | 6 | 10 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 13, PROGRESS 2, DONE 36, BLOCKED 3
+Status tally: OPEN 12, PROGRESS 2, DONE 37, BLOCKED 3
 
 ## Tasks
 
@@ -73,7 +73,7 @@ Status tally: OPEN 13, PROGRESS 2, DONE 36, BLOCKED 3
 | A0040 | S2 | A | DONE | The documented invocation puts the sudo password on a command line and into the child environment |
 | A0042 | S2 | A | OPEN | `rm -rf $STAGE/$VERSION` runs even after the identity gate failed, and VERSION is never validated in this script |
 | A0043 | S2 | A | DONE | The test-suite count is reported as PASS without checking that it parsed |
-| A0044 | S2 | A | OPEN | `--dry-run` creates the SearXNG directory, so it does change the filesystem |
+| A0044 | S2 | A | DONE | `--dry-run` creates the SearXNG directory, so it does change the filesystem |
 | A0051 | S2 | A | OPEN | Mojeek timestamp is read but never requested, so publishedAt is always nil (UNSURE) |
 | A0027 | S3 | C | OPEN | A lost bind race abandons the exited child unreaped |
 | A0052 | S3 | C | DONE | The documented test count is stale after A0045 added three tests |
@@ -652,12 +652,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0044 — `--dry-run` creates the SearXNG directory, so it does change the filesystem
 
-- **Severity / tier / status:** S2 / A / OPEN
-- **Location:** `deploy/install.sh:272`
+- **Severity / tier / status:** S2 / A / DONE
+- **Location:** `deploy/install.sh:300`
 - **Category:** dry-run-honesty
 - **Host:** Node1
 - **Discovered by:** installer/release shell tier A review (subagent)
 - **Evidence before:** mkdir -p "${SEARXNG_DIR}" is the one mutation in the native path not routed through the run helper that exists so "--dry-run is honest rather than decorative", and it is not behind a DRY_RUN guard. deploy/install.sh --dry-run --method native leaves a directory behind while the help text promises it will change nothing.
+- **Fix:** The call goes through `run`. The other two bare `mkdir` calls were checked rather than assumed: line 144 is inside `if [ "$DRY_RUN" -eq 0 ]` and line 380 is in the `else` of a `DRY_RUN` test.
+- **Evidence after:** Committed in 4f454ad. The script's own `run()` extracted from the file: under --dry-run the bare form created the directory and the staged form creates nothing; under a real run both create it, which is the control. bash -n and shellcheck clean; 18 harness tests pass.
+- **Commit:** `4f454ad`
 
 ### A0051 — Mojeek timestamp is read but never requested, so publishedAt is always nil (UNSURE)
 
