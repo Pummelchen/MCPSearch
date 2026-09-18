@@ -19,7 +19,7 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 | S2 | 16 | 3 | 13 | 0 |
 | S3 | 3 | 1 | 2 | 0 |
 
-Status tally: OPEN 27, PROGRESS 2, DONE 21, BLOCKED 3
+Status tally: OPEN 26, PROGRESS 3, DONE 21, BLOCKED 3
 
 ## Tasks
 
@@ -35,7 +35,7 @@ Status tally: OPEN 27, PROGRESS 2, DONE 21, BLOCKED 3
 | A0005 | S1 | A | PROGRESS | The secret-scan delegation is unproven: gitleaks is blind to the credential pattern this repository actually leaked |
 | A0008 | S1 | C | DONE | The only check that consumes /health reads the status code and never the body, so it cannot fail |
 | A0009 | S1 | A | OPEN | The HTTP server installs no signal handler, and its graceful-shutdown helper is dead code |
-| A0012 | S1 | A | OPEN | The response charset is discarded, so non-UTF-8 pages are silently decoded as Latin-1 |
+| A0012 | S1 | A | PROGRESS | The response charset is discarded, so non-UTF-8 pages are silently decoded as Latin-1 |
 | A0013 | S1 | A | OPEN | Credentials in the target URL's query or fragment are forwarded to the third-party reader |
 | A0014 | S1 | A | DONE | An empty extraction is returned as a success, discarding the real failure reason |
 | A0015 | S1 | A | OPEN | Cancellation is swallowed on the reader path, so a cancelled fetch can return a stale success |
@@ -218,12 +218,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0012 — The response charset is discarded, so non-UTF-8 pages are silently decoded as Latin-1
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / PROGRESS
 - **Location:** `Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:136-139,250-254`
 - **Category:** correctness/encoding
 - **Host:** Node1
 - **Discovered by:** Fetch tier A manual review (subagent)
 - **Evidence before:** mimeType(from:) keeps only the part before ';' and drops the charset parameter, and the <meta charset> in the markup is never consulted (`grep charset` over Sources/ finds no consumer). Decoding is `String(data:encoding:.utf8) ?? String(data:encoding:.isoLatin1) ?? ""`, and Latin-1 decoding cannot fail, so a windows-1251 / Shift_JIS / GBK page is silently mojibake with no warning and no truncation flag.
+- **Fix:** `decodeText(_:contentType:)` decodes with the declared `charset`, then UTF-8, then the document's own `<meta charset>`, then Latin-1; both decode sites use it. Latin-1 remains the last resort because it cannot fail.
+- **Evidence after:** Committed in 2f6af49. Four unit tests pass, including the quoted charset form and the meta declaration, and one asserts Latin-1 would have differed. Suite green at 610 tests (568 + 42), 0 failures, 0 warnings; both linters exit 0. STILL OPEN BECAUSE: the tests call `decodeText` directly, so reverting the two call sites did NOT make them fail — they do not exercise the fetch path and therefore did not demonstrate the before-state. REMAINING WORK: a fetcher-level test driving `DirectHTTPFetcher.fetch` against a server serving a windows-1251 body with a `charset` header, showing mojibake before and correct text after. Then this closes.
+- **Commit:** `2f6af49`
 
 ### A0013 — Credentials in the target URL's query or fragment are forwarded to the third-party reader
 

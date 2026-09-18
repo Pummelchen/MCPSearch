@@ -204,13 +204,13 @@
       "location": "Sources/WebSearchCore/Fetch/DirectHTTPFetcher.swift:136-139,250-254",
       "title": "The response charset is discarded, so non-UTF-8 pages are silently decoded as Latin-1",
       "category": "correctness/encoding",
-      "status": "OPEN",
+      "status": "PROGRESS",
       "host": "Node1",
       "discovered_by": "Fetch tier A manual review (subagent)",
       "evidence_before": "mimeType(from:) keeps only the part before ';' and drops the charset parameter, and the <meta charset> in the markup is never consulted (`grep charset` over Sources/ finds no consumer). Decoding is `String(data:encoding:.utf8) ?? String(data:encoding:.isoLatin1) ?? \"\"`, and Latin-1 decoding cannot fail, so a windows-1251 / Shift_JIS / GBK page is silently mojibake with no warning and no truncation flag.",
-      "fix_summary": "",
-      "evidence_after": "",
-      "commit": "",
+      "fix_summary": "`decodeText(_:contentType:)` decodes with the declared `charset`, then UTF-8, then the document's own `<meta charset>`, then Latin-1; both decode sites use it. Latin-1 remains the last resort because it cannot fail.",
+      "evidence_after": "Committed in 2f6af49. Four unit tests pass, including the quoted charset form and the meta declaration, and one asserts Latin-1 would have differed. Suite green at 610 tests (568 + 42), 0 failures, 0 warnings; both linters exit 0. STILL OPEN BECAUSE: the tests call `decodeText` directly, so reverting the two call sites did NOT make them fail — they do not exercise the fetch path and therefore did not demonstrate the before-state. REMAINING WORK: a fetcher-level test driving `DirectHTTPFetcher.fetch` against a server serving a windows-1251 body with a `charset` header, showing mojibake before and correct text after. Then this closes.",
+      "commit": "2f6af49",
       "blocked_reason": ""
     },
     {
