@@ -266,10 +266,13 @@ install_searxng_docker() {
         return 1
     fi
 
+    # The host side of the publish mapping is the operator's `--bind`, not a constant: it was
+    # hardcoded to 127.0.0.1 while the native path honoured BIND, so `--bind 0.0.0.0` was
+    # accepted, reported as applied, and silently dropped by this method (ledger A0039).
     run env ${DOCKER_CONFIG_DIR:+DOCKER_CONFIG="$DOCKER_CONFIG_DIR"} docker run -d \
         --name "$CONTAINER_NAME" \
         --restart unless-stopped \
-        -p "127.0.0.1:${PORT}:8080" \
+        -p "${BIND}:${PORT}:8080" \
         -v "${SEARXNG_DIR}/settings.yml:/etc/searxng/settings.yml:ro" \
         -e "SEARXNG_BASE_URL=http://localhost:8080/" \
         --env-file "$secret_file" \
@@ -278,7 +281,7 @@ install_searxng_docker() {
     rm -f "$secret_file"
     [ "$status" -eq 0 ] || return 1
 
-    say "started ${CONTAINER_NAME} on 127.0.0.1:${PORT} (pinned by digest, restart unless-stopped)"
+    say "started ${CONTAINER_NAME} on ${BIND}:${PORT} (pinned by digest, restart unless-stopped)"
 }
 
 install_searxng_native() {
