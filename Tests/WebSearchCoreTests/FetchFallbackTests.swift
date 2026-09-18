@@ -90,6 +90,35 @@ final class FetchFallbackTests: XCTestCase {
         )
     }
 
+    /// An extraction that produced no text is a failure, not a success carrying nothing.
+    ///
+    /// The fallback returned `directResult` whenever it existed, including when its text was empty —
+    /// which is what a script-only document, a JS-only page or an empty `text/plain` body produces.
+    /// `web_open` then reported success with `text_characters: 0` and the real reason was discarded,
+    /// so a caller could not tell "this page has no text" from "every extraction path failed"
+    /// (ledger A0014).
+    func testAnEmptyExtractionIsAFailureRatherThanASuccess() async throws {
+        let server = try htmlServer(
+            "<html><head><title>Script only</title></head>"
+                + "<body><script>var x = 1;</script></body></html>"
+        )
+        let fetcher = WebFetcher(
+            direct: directFetcher(allowPrivateNetwork: true),
+            jina: nil,
+            log: .disabled
+        )
+
+        do {
+            let result = try await fetcher.open(FetchRequest(url: server.baseURL))
+            XCTFail(
+                "an extraction with no text must not be reported as success "
+                    + "(\(result.text.count) characters)"
+            )
+        } catch let error as SearchError {
+            XCTAssertEqual(error.category, .malformedResponse, "\(error)")
+        }
+    }
+
     func testThinNativeExtractionFallsBackToTheReader() async throws {
         let server = try htmlServer(thinHTML())
         let jinaHTTP = MockHTTPClient()

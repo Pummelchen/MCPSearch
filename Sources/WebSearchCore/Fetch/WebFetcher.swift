@@ -145,7 +145,11 @@ public actor WebFetcher {
         // work for nobody, and the cancellation is what the caller should see.
         try Task.checkCancellation()
         guard let jina else {
-            guard let result = directResult else {
+            // An extraction with no text is not a usable result. It is what a JS-only page, an empty
+            // `text/plain` body or a script-only document produces, and returning it reported
+            // success with `text_characters: 0` while discarding the real reason — the caller could
+            // not tell "this page has no text" from "every extraction path failed" (ledger A0014).
+            guard let result = directResult, !result.text.isEmpty else {
                 throw directError ?? SearchError.extractionFailed(request.url)
             }
             var finalized = result
@@ -177,7 +181,9 @@ public actor WebFetcher {
                 "Jina Reader fallback failed",
                 metadata: ["error": "\(type(of: error))"]
             )
-            guard let result = directResult else {
+            // Same rule as above: no text is not a result, and the reader's failure is the reason
+            // the caller should see rather than a success carrying nothing (ledger A0014).
+            guard let result = directResult, !result.text.isEmpty else {
                 throw directError ?? SearchError.extractionFailed(request.url)
             }
             var finalized = result
