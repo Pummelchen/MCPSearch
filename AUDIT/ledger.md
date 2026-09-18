@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 27 — done 1 · open 24 · blocked 2**
+**total 44 — done 1 · open 41 · blocked 2**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 3 | 0 | 2 | 1 |
-| S1 | 15 | 1 | 13 | 1 |
-| S2 | 8 | 0 | 8 | 0 |
+| S1 | 25 | 1 | 23 | 1 |
+| S2 | 15 | 0 | 15 | 0 |
 | S3 | 1 | 0 | 1 | 0 |
 
-Status tally: OPEN 22, PROGRESS 2, DONE 1, BLOCKED 2
+Status tally: OPEN 39, PROGRESS 2, DONE 1, BLOCKED 2
 
 ## Tasks
 
@@ -43,6 +43,16 @@ Status tally: OPEN 22, PROGRESS 2, DONE 1, BLOCKED 2
 | A0019 | S1 | A | OPEN | The child's stderr pipe is not drained until exit, which deadlocks against the stdout read |
 | A0020 | S1 | A | OPEN | The credential-leak scan is stderr-only and only runs on the fully successful path |
 | A0021 | S1 | A | OPEN | A non-JSON stdout line is embedded in a raised exception, reaching an unscanned traceback |
+| A0028 | S1 | A | OPEN | The HTTP session registry is unbounded, so an unauthenticated client can grow it without limit |
+| A0029 | S1 | A | OPEN | A disconnected SSE client leaks a suspended relay task and wedges the session |
+| A0030 | S1 | A | OPEN | A cancelled provider request is recorded as a transient failure and can open a circuit breaker |
+| A0031 | S1 | A | OPEN | A claimed half-open probe is never released when the local rate limiter denies, wedging the breaker |
+| A0032 | S1 | A | OPEN | Length-omitted results enter the fenced prompt unsanitised, so a page title can close the untrusted-data fence |
+| A0035 | S1 | A | OPEN | The mandatory-SearXNG proof passes on an instance that returns zero results |
+| A0036 | S1 | A | OPEN | The end-to-end gate accepts a JSON-RPC error reply as success and never asserts the result count |
+| A0037 | S1 | A | OPEN | The generated SearXNG secret is passed as a command-line argument, where ps can read it |
+| A0038 | S1 | A | OPEN | `|| true` swallows a grep error and the truncated staging file then replaces config.env, dropping every API key |
+| A0041 | S1 | A | OPEN | The release-notes gate names NOT_CHECKED in its failure message but never checks for it |
 | A0006 | S2 | A | OPEN | Validation is written as `assert`, which python -O strips |
 | A0010 | S2 | A | OPEN | Installing overwrites the previous binary in place with no rollback path |
 | A0016 | S2 | A | OPEN | An over-cap transfer may keep streaming after the cap is hit (UNSURE) |
@@ -51,6 +61,13 @@ Status tally: OPEN 22, PROGRESS 2, DONE 1, BLOCKED 2
 | A0024 | S2 | C | OPEN | Per-instance stub state lives on the handler class, so two concurrent stubs would share it |
 | A0025 | S2 | C | OPEN | The test depends on the developer's ambient config.env and contradicts the function it tests |
 | A0026 | S2 | C | OPEN | No read timeout, and the early-close path blocks on stderr of a possibly-live child |
+| A0033 | S2 | A | OPEN | A rejected URL-valued setting is echoed verbatim into a diagnostic that is logged, contradicting the type's own contract |
+| A0034 | S2 | A | OPEN | A repeated name in SEARCH_PROVIDER_ORDER is not deduplicated, so one provider can vote twice |
+| A0039 | S2 | A | OPEN | --bind is accepted and silently dropped by the docker method |
+| A0040 | S2 | A | OPEN | The documented invocation puts the sudo password on a command line and into the child environment |
+| A0042 | S2 | A | OPEN | `rm -rf $STAGE/$VERSION` runs even after the identity gate failed, and VERSION is never validated in this script |
+| A0043 | S2 | A | OPEN | The test-suite count is reported as PASS without checking that it parsed |
+| A0044 | S2 | A | OPEN | `--dry-run` creates the SearXNG directory, so it does change the filesystem |
 | A0027 | S3 | C | OPEN | A lost bind race abandons the exited child unreaped |
 
 ---
@@ -104,6 +121,9 @@ Status tally: OPEN 22, PROGRESS 2, DONE 1, BLOCKED 2
 - **Host:** Node1
 - **Discovered by:** Phase A language-standard proof (§1)
 - **Evidence before:** The config enables no opt-in rules ('Opt-in rules are deliberately not enabled by this task', .swiftlint.yml:40), so force_unwrapping is off and `swiftlint lint --strict` accepts a `!` force-unwrap. §1 requires that a force-unwrap fail SwiftLint --strict.
+- **Fix:** ATTEMPTED AND REVERTED. Enabling `- force_unwrapping` in .swiftlint.yml produced 20 findings, all in Tests/ and none in Sources/. A delegated mechanical fix converted most sites to `try XCTUnwrap` but did not compile: it left a throwing `baseURL` ambiguous at 7 call sites in FetchRedirectTests.swift, and left formatting broken in FusionAndReliabilityTests.swift. Reverted rather than committed half-done, so the rule stays off and the task stays open.
+
+REMAINING WORK: enable the rule, then convert the 20 sites — they were enumerated and are reproducible with `swiftlint lint --strict` once the rule is on. Prefer `try XCTUnwrap` with `throws` added to the enclosing test method; for helpers that cannot throw, restructure so no optional arises. Forbidden: `!`, `try!`, inline swiftlint disables, editing the config to excuse the sites, or deleting/weakening a test. Must finish with swiftlint --strict 0 findings, swift-format --strict exit 0, and 551 + 42 tests still green.
 
 ### A0004 — Ruff does not select S101, so `assert` used for validation is unchecked
 
@@ -123,6 +143,20 @@ Status tally: OPEN 22, PROGRESS 2, DONE 1, BLOCKED 2
 - **Discovered by:** L4 tool-coverage proof (§1)
 - **Evidence before:** gitleaks detect --log-opts=--all on full history: 0 findings. Pointed directly at the historical blob (gitleaks detect --no-git --source <blob>) which contains six tvly-prefixed literals: 0 findings. A tool that stays silent does not cover the check.
 - **Fix:** Added a `tavily-api-key` rule to .gitleaks.toml. It fires on 17 history findings, so the delegation is no longer silent — but the regex does not yet fire on the historical fixture blob even though Python's `re` matches 6 literals there, so the rule is not yet understood well enough to trust. Open: why gitleaks and Python disagree on the same bytes.
+
+RULE TEXT TO RE-APPLY (reverted uncommitted because it makes the CI gitleaks gate fail on 17 history findings with no waiver yet):
+
+[[rules]]
+id = "tavily-api-key"
+description = "Tavily API key or key prefix"
+# `{10,}` and not `{8,}`: the shortest real literal in the leaked blob has a 14-character body,
+# while the prose "tvly-prefixed" has 8 — the first draft of this rule fired on this very
+# document, which is how the bound was chosen. A disclosure shorter than 10 body characters is
+# not usable as a credential.
+regex = '''\btvly-[A-Za-z0-9_-]{10,}'''
+keywords = ["tvly-"]
+
+REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture blob while Python's re matches 6 literals in the same bytes — until then the rule is not trusted; (2) decide the waiver: the 17 findings are real disclosures in immutable history, so they need either a narrow allowlist keyed on commit SHA plus path (never on the secret value, which must not be written into a committed file) plus a written waiver, or acceptance that CI stays red until A0001 is rotated.
 
 ### A0008 — The only check that consumes /health reads the status code and never the body, so it cannot fail
 
@@ -224,6 +258,96 @@ Status tally: OPEN 22, PROGRESS 2, DONE 1, BLOCKED 2
 - **Discovered by:** Python scripts tier review (subagent), statically verified against the code
 - **Evidence before:** RuntimeError(f"...; offending line: {line!r}") with no handler in main (only KeyboardInterrupt, 534-538), so Python prints the raw server line to stderr — and by A0020 nothing scans that traceback. Reachability is UNSURE: it requires the server to write credential material on stdout, which is itself what the soak probes for.
 
+### A0028 — The HTTP session registry is unbounded, so an unauthenticated client can grow it without limit
+
+- **Severity / tier / status:** S1 / A / OPEN
+- **Location:** `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:80,196`
+- **Category:** resource/unbounded
+- **Host:** Node1
+- **Discovered by:** MCP surface tier A review (subagent)
+- **Evidence before:** sessions entries are removed only by closeSession (DELETE or refused initialize) or stop(). maximumConnections=64 bounds concurrent sockets, but non-streaming responses send Connection: close, so a client can POST initialize, drop the connection and repeat serially forever. Each entry holds a Server plus a StatefulHTTPServerTransport whose storedEvents also never shrinks. No cap and no idle expiry.
+
+### A0029 — A disconnected SSE client leaks a suspended relay task and wedges the session
+
+- **Severity / tier / status:** S1 / A / OPEN
+- **Location:** `Sources/SwiftWebSearchMCP/HTTPMCPHost.swift:721,723,403-408`
+- **Category:** resource/leak
+- **Host:** Node1
+- **Discovered by:** MCP surface tier A review (subagent)
+- **Evidence before:** SSEStreamRelay.relay spawns Task { for try await frame in stream }. Nothing cancels it; channelInactive only cancels the deadline and releases the connection count. It never finishes the stream or clears the SDK's standaloneSSEContinuation, which the SDK finishes only in terminate(). After a client disconnect the task stays parked for the session's life retaining the channel, and later plain GETs on that session return 409 until DELETE or Last-Event-ID. Combined with A0028 this grows without bound.
+
+### A0030 — A cancelled provider request is recorded as a transient failure and can open a circuit breaker
+
+- **Severity / tier / status:** S1 / A / OPEN
+- **Location:** `Sources/WebSearchCore/Search/SearchOrchestrator.swift:557-561`
+- **Category:** concurrency/cancellation
+- **Host:** Node1
+- **Discovered by:** Search + Support tier A review (subagent)
+- **Evidence before:** Only `catch is CancellationError` is treated as cancellation. A mid-flight URLSession cancellation surfaces as HTTPError.cancelled, not CancellationError — documented in this codebase at AnswerSynthesizer.swift:380-385. It reaches the generic arm; HTTPStatusMapper maps .cancelled to .networkFailure, whose .network category isTransient, so ProviderHealth increments consecutiveFailures and CircuitBreaker can open. Three client disconnects therefore open breakers on providers that never failed, contradicting the intent at :543-548 and recordBudgetExceeded (:428-431). The existing test uses a mock that throws CancellationError directly, so it never exercises the real transport path.
+
+### A0031 — A claimed half-open probe is never released when the local rate limiter denies, wedging the breaker
+
+- **Severity / tier / status:** S1 / A / OPEN
+- **Location:** `Sources/WebSearchCore/Search/ProviderHealth.swift:143,156-159`
+- **Category:** concurrency/state-machine
+- **Host:** Node1
+- **Discovered by:** Search + Support tier A review (subagent)
+- **Evidence before:** breaker.shouldAttempt() claims the probe (probeInFlight = true). If limiter.tryAcquire() then denies, authorize returns the rate-limited failure without releaseProbe(); runSingle treats an authorize denial as skippedLocally and records no outcome, and the only releaseProbe caller is the CancellationError arm. State stays .halfOpen with probeInFlight == true, so every later authorize returns .circuitOpen — permanently, until a manual reset(). Reachable: a half-open probe cancelled as CancellationError correctly releases, leaving .halfOpen; the next search inside the refill/min-interval window is denied after claiming a new probe. Scraper policy is burst 1 / 10 rpm / 1.5 s, so that window is up to 6 s.
+
+### A0032 — Length-omitted results enter the fenced prompt unsanitised, so a page title can close the untrusted-data fence
+
+- **Severity / tier / status:** S1 / A / OPEN
+- **Location:** `Sources/WebSearchCore/Search/AnswerSynthesizer.swift:485-489`
+- **Category:** security/prompt-injection
+- **Host:** Node1
+- **Discovered by:** Search + Support tier A review (subagent)
+- **Evidence before:** Every other insertion sanitises the delimiter (:482-484), but this branch appends result.title and the URL verbatim. web_answer passes up to 20 fused results; with a 14 000-character budget and 1 200 per result roughly half take this branch, and ResultNormalizer.cleanText does not remove the literal delimiter. A hostile page title containing </untrusted-search-results> is emitted inside the block, letting the remainder read as text outside the fence — the escape the fence exists to prevent.
+
+### A0035 — The mandatory-SearXNG proof passes on an instance that returns zero results
+
+- **Severity / tier / status:** S1 / A / OPEN
+- **Location:** `deploy/install.sh:427-433,382-384`
+- **Category:** check-cannot-fail
+- **Host:** Node1
+- **Discovered by:** installer/release shell tier A review (subagent)
+- **Evidence before:** searxng_answers prints len(data["results"]), so {"results": []} prints the string "0", which [ -n ... ] treats as true. An instance with json enabled but every engine failing or disabled is adopted as "a working SearXNG is already listening" and reported as having "answered a real query: 0 results". Nothing else covers it: the end-to-end step can pass through the default-enabled scrapers and Parallel, so the install's central claim is not established.
+
+### A0036 — The end-to-end gate accepts a JSON-RPC error reply as success and never asserts the result count
+
+- **Severity / tier / status:** S1 / A / OPEN
+- **Location:** `deploy/install.sh:585-592`
+- **Category:** check-cannot-fail
+- **Host:** Node1
+- **Discovered by:** installer/release shell tier A review (subagent)
+- **Evidence before:** A reply carrying "error" and no "result" gives res = {}, isError falsy, and prints ok: 0 result blocks, which the gate reports as "returned a real search result". The same happens if a stray stdout notification arrives first — the exact trap stdout purity exists to catch. The block count is computed but never asserted, and it is off by one: the joined text starts with [1], so text.count("\n[") is 0 for a genuine single-result answer.
+
+### A0037 — The generated SearXNG secret is passed as a command-line argument, where ps can read it
+
+- **Severity / tier / status:** S1 / A / OPEN
+- **Location:** `deploy/install.sh:250,295`
+- **Category:** security/credential-disclosure
+- **Host:** Node1
+- **Discovered by:** installer/release shell tier A review (subagent)
+- **Evidence before:** `-e SEARXNG_SECRET=${secret}` on the docker run, and the same value as an argv to python3. On a real run the secret is in the argv of docker/python3 for the life of the process, readable by any local user via ps, and later exposed by docker inspect. The script keeps the secret 600 everywhere else; this is the one place it is exposed.
+
+### A0038 — `|| true` swallows a grep error and the truncated staging file then replaces config.env, dropping every API key
+
+- **Severity / tier / status:** S1 / A / OPEN
+- **Location:** `deploy/install.sh:522,533`
+- **Category:** data-loss
+- **Host:** Node1
+- **Discovered by:** installer/release shell tier A review (subagent)
+- **Evidence before:** `grep -v '^SEARXNG_BASE_URL=' "$base" > "$staged" || true` needs || true for grep's exit 1 (no match) but also masks exit 2 (open/read error). The redirection has already truncated $staged, so it is empty, and the next line moves it over config.env, leaving only the new SEARXNG_BASE_URL block while the script prints "existing keys preserved". Trigger: $base passes the -f test at :519 but cannot be read at :522 (permissions change, or removal between the two).
+
+### A0041 — The release-notes gate names NOT_CHECKED in its failure message but never checks for it
+
+- **Severity / tier / status:** S1 / A / OPEN
+- **Location:** `tools/release.sh:349-353`
+- **Category:** release-gate
+- **Host:** Node1
+- **Discovered by:** installer/release shell tier A review (subagent)
+- **Evidence before:** Neither grep condition looks for NOT_CHECKED_PENDING, and the renderer only substitutes a line starting with it. A notes file with the checksum block but without that placeholder passes every gate, so any gate that skip()ed (pyright, semgrep, gitleaks, osv-scanner) is absent from the published notes while the script still prints PUBLISHED. That contradicts RELEASE.md §1.2.7/§1.8. The console summary lists them; the irreversible artifact does not.
+
 ### A0006 — Validation is written as `assert`, which python -O strips
 
 - **Severity / tier / status:** S2 / A / OPEN
@@ -295,6 +419,69 @@ Status tally: OPEN 22, PROGRESS 2, DONE 1, BLOCKED 2
 - **Host:** Node1
 - **Discovered by:** Python scripts tier review (subagent), statically verified against the code
 - **Evidence before:** readline() with no timeout; on failure the message calls stderr_text(), which does process.stderr.read(). Closing stdout is not exiting: if the child is alive, read() waits for EOF and the smoke test hangs instead of reporting the failure it already detected.
+
+### A0033 — A rejected URL-valued setting is echoed verbatim into a diagnostic that is logged, contradicting the type's own contract
+
+- **Severity / tier / status:** S2 / A / OPEN
+- **Location:** `Sources/WebSearchCore/Support/AppConfiguration.swift:401 (also :373,:385); Sources/SwiftWebSearchMCP/main.swift:44-50`
+- **Category:** security/credential-in-log
+- **Host:** Node1
+- **Discovered by:** MCP surface tier A review (subagent) and Search + Support tier A review (subagent)
+- **Evidence before:** record(.invalidURL, key, "'\(raw)' is not an http(s) URL with a host") interpolates the raw value, and main.swift logs issue.detail. Four keys are URL-typed and may carry an embedded token; a schemeless value such as search.example.com/mcp?token=... is realistic. This contradicts AppConfiguration.swift:106-107 ("Never contains a credential") and the comment at main.swift:44. Reported independently by two review agents; UNSURE whether operators embed secrets in those settings.
+
+### A0034 — A repeated name in SEARCH_PROVIDER_ORDER is not deduplicated, so one provider can vote twice
+
+- **Severity / tier / status:** S2 / A / OPEN
+- **Location:** `Sources/WebSearchCore/Support/AppConfiguration.swift:447-448`
+- **Category:** correctness/ranking
+- **Host:** Node1
+- **Discovered by:** Search + Support tier A review (subagent)
+- **Evidence before:** `seen` is seeded from `parsed` but `full` starts as `parsed` with duplicates intact; the dedup loop only guards providers appended afterwards. SEARCH_PROVIDER_ORDER=tavily,tavily,brave yields two Tavily entries, and select takes ordered.prefix(maxDirectProviders), so balanced fans out to Tavily twice and never to Brave. RankFusion's duplicate guard is per response, so identical URLs from both responses each get a full contribution. Requires an operator typo.
+
+### A0039 — --bind is accepted and silently dropped by the docker method
+
+- **Severity / tier / status:** S2 / A / OPEN
+- **Location:** `deploy/install.sh:247`
+- **Category:** config-ignored
+- **Host:** Node1
+- **Discovered by:** installer/release shell tier A review (subagent)
+- **Evidence before:** install_searxng_docker hardcodes -p 127.0.0.1:${PORT}:8080 and never uses BIND, so --bind 0.0.0.0 binds loopback only whenever the method resolves to docker. The sibling adopt path warns explicitly when --bind was not applied, so this is an unintended silent drop rather than a stated limitation: a node is unreachable from other machines while the install reports success.
+
+### A0040 — The documented invocation puts the sudo password on a command line and into the child environment
+
+- **Severity / tier / status:** S2 / A / OPEN
+- **Location:** `deploy/provision-node.sh:6`
+- **Category:** security/credential-disclosure
+- **Host:** Node1
+- **Discovered by:** installer/release shell tier A review (subagent)
+- **Evidence before:** The header example is ssh node1@node1.local 'SUDO_PASSWORD=... bash -s'. sshd runs that through the user's shell, so the value is in the shell's argv on the node (readable via ps) and in the local ssh argv, and it is inherited by every child. The code itself is correct (it pipes the password to sudo -S from stdin); the leak is created by the documented interface.
+
+### A0042 — `rm -rf $STAGE/$VERSION` runs even after the identity gate failed, and VERSION is never validated in this script
+
+- **Severity / tier / status:** S2 / A / OPEN
+- **Location:** `tools/release.sh:226`
+- **Category:** destructive-without-validation
+- **Host:** Node1
+- **Discovered by:** installer/release shell tier A review (subagent)
+- **Evidence before:** VERSION is only whitespace-stripped; the only X.Y.Z validation is tools/check-version.sh via run_gate, which records FAIL and continues. A VERSION containing .. or / therefore reaches the deletion with a path outside the staging directory (VERSION=.. deletes the release cache root, including the gate logs). ${:?} covers empty/unset only. Publication is still blocked by fails, so the consequence is deletion rather than a bad release. UNSURE on exploitability: VERSION is reviewed input.
+
+### A0043 — The test-suite count is reported as PASS without checking that it parsed
+
+- **Severity / tier / status:** S2 / A / OPEN
+- **Location:** `tools/release.sh:212-213`
+- **Category:** misleading-report
+- **Host:** Node1
+- **Discovered by:** installer/release shell tier A review (subagent)
+- **Evidence before:** `read -r total bundles skipped <<<"$counts"` then pass "test suite: $total tests ...", with no check that the python parse succeeded. If it fails or XCTest's log format changes, the gate still prints PASS with blank counts, contrary to RELEASE.md §1.5.2. The suite is genuinely gated by swift test's exit status, so this is a misleading report rather than a false green.
+
+### A0044 — `--dry-run` creates the SearXNG directory, so it does change the filesystem
+
+- **Severity / tier / status:** S2 / A / OPEN
+- **Location:** `deploy/install.sh:272`
+- **Category:** dry-run-honesty
+- **Host:** Node1
+- **Discovered by:** installer/release shell tier A review (subagent)
+- **Evidence before:** mkdir -p "${SEARXNG_DIR}" is the one mutation in the native path not routed through the run helper that exists so "--dry-run is honest rather than decorative", and it is not behind a DRY_RUN guard. deploy/install.sh --dry-run --method native leaves a directory behind while the help text promises it will change nothing.
 
 ### A0027 — A lost bind race abandons the exited child unreaped
 
