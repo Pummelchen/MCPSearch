@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 47 · open 4 · blocked 3**
+**total 54 — done 48 · open 3 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
 | S1 | 30 | 27 | 2 | 1 |
-| S2 | 16 | 14 | 2 | 0 |
+| S2 | 16 | 15 | 1 | 0 |
 | S3 | 4 | 4 | 0 | 0 |
 
-Status tally: OPEN 2, PROGRESS 2, DONE 47, BLOCKED 3
+Status tally: OPEN 1, PROGRESS 2, DONE 48, BLOCKED 3
 
 ## Tasks
 
@@ -74,7 +74,7 @@ Status tally: OPEN 2, PROGRESS 2, DONE 47, BLOCKED 3
 | A0042 | S2 | A | DONE | `rm -rf $STAGE/$VERSION` runs even after the identity gate failed, and VERSION is never validated in this script |
 | A0043 | S2 | A | DONE | The test-suite count is reported as PASS without checking that it parsed |
 | A0044 | S2 | A | DONE | `--dry-run` creates the SearXNG directory, so it does change the filesystem |
-| A0051 | S2 | A | OPEN | Mojeek timestamp is read but never requested, so publishedAt is always nil (UNSURE) |
+| A0051 | S2 | A | DONE | Mojeek timestamp is read but never requested, so publishedAt is always nil (UNSURE) |
 | A0027 | S3 | C | DONE | A lost bind race leaks the child's pipes (the finding's original claim was wrong) |
 | A0052 | S3 | C | DONE | The documented test count is stale after A0045 added three tests |
 | A0053 | S3 | A | DONE | /health readiness reflects configuration, not reachability |
@@ -675,12 +675,15 @@ BEST DIRECTION, on the measured evidence: bound the *unmatched closing tags*, no
 
 ### A0051 — Mojeek timestamp is read but never requested, so publishedAt is always nil (UNSURE)
 
-- **Severity / tier / status:** S2 / A / OPEN
+- **Severity / tier / status:** S2 / A / DONE
 - **Location:** `Sources/WebSearchCore/Providers/MojeekProvider.swift:143`
 - **Category:** correctness/date
 - **Host:** Node1
 - **Discovered by:** Providers tier A review (subagent)
 - **Evidence before:** item.timestamp is read, but Mojeek's `date` flag is opt-in and defaults to 0 and the provider sends no date=1 (it sends no such parameter at :55-69), so every Mojeek result may have a nil date. The repo's notes say timestamp appears only when the flag is requested. UNSURE: settled by one live request with and without date=1.
+- **Fix:** The request carries `date=1`.
+- **Evidence after:** Committed in 3d3a924. Before: the request URL was "https://api.mojeek.com/search?api_key=k&q=swift&fmt=json&s=1&t=8&safe=1" with no `date=1`. After: the test passes; it asserts the parameter is requested and that a returned `timestamp` reaches `publishedAt`, the first being the discriminating one. The fix rests on Mojeek's published parameter list (https://www.mojeek.com/support/api/search/request_parameters.html). Suite green at 615 tests (573 + 42), 0 failures; both linters exit 0.
+- **Commit:** `3d3a924`
 
 ### A0027 — A lost bind race leaks the child's pipes (the finding's original claim was wrong)
 

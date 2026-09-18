@@ -903,14 +903,16 @@
       "location": "Sources/WebSearchCore/Providers/MojeekProvider.swift:143",
       "title": "Mojeek timestamp is read but never requested, so publishedAt is always nil (UNSURE)",
       "category": "correctness/date",
-      "status": "OPEN",
+      "status": "DONE",
       "host": "Node1",
       "discovered_by": "Providers tier A review (subagent)",
       "evidence_before": "item.timestamp is read, but Mojeek's `date` flag is opt-in and defaults to 0 and the provider sends no date=1 (it sends no such parameter at :55-69), so every Mojeek result may have a nil date. The repo's notes say timestamp appears only when the flag is requested. UNSURE: settled by one live request with and without date=1.",
-      "fix_summary": "",
-      "evidence_after": "",
-      "commit": "",
-      "blocked_reason": ""
+      "fix_summary": "The request carries `date=1`.",
+      "evidence_after": "Committed in 3d3a924. Before: the request URL was \"https://api.mojeek.com/search?api_key=k&q=swift&fmt=json&s=1&t=8&safe=1\" with no `date=1`. After: the test passes; it asserts the parameter is requested and that a returned `timestamp` reaches `publishedAt`, the first being the discriminating one. The fix rests on Mojeek's published parameter list (https://www.mojeek.com/support/api/search/request_parameters.html). Suite green at 615 tests (573 + 42), 0 failures; both linters exit 0.",
+      "commit": "3d3a924",
+      "blocked_reason": "",
+      "detail": "The provider read `item.timestamp` into `publishedAt` but never requested it. Mojeek documents `date` as \"Include the last modified date as recognised by Mojeek\", valid [0|1], default 0, so `timestamp` was absent from every response and `publishedAt` was always nil — on every query, with no error.",
+      "why_it_matters": "Freshness ordering and any caller filtering by date saw nothing, silently, for every Mojeek result."
     },
     {
       "id": "A0052",
