@@ -456,14 +456,16 @@
       "location": "scripts/mcp_smoke.py:168,170,206",
       "title": "No read timeout, and the early-close path blocks on stderr of a possibly-live child",
       "category": "reliability/hang",
-      "status": "OPEN",
+      "status": "DONE",
       "host": "Node1",
       "discovered_by": "Python scripts tier review (subagent), statically verified against the code",
       "evidence_before": "readline() with no timeout; on failure the message calls stderr_text(), which does process.stderr.read(). Closing stdout is not exiting: if the child is alive, read() waits for EOF and the smoke test hangs instead of reporting the failure it already detected.",
-      "fix_summary": "",
-      "evidence_after": "",
-      "commit": "",
-      "blocked_reason": ""
+      "fix_summary": "Daemon threads drain stderr into a lock-guarded buffer and stdout into a queue, so `read_message(timeout:)` has a deadline and `stderr_text()` never blocks; `close()` kills a child that will not exit.",
+      "evidence_after": "Committed in 4ff6609. Before, under a 15s wall clock: read_message() against a silent child and stderr_text() against a live child with 3000 stderr lines both exited 124 (hung). After: read_message(timeout=2.0) raised after 2.0s with the timeout message, and stderr_text() returned 160 893 characters in 0.00s — ten times the pipe's capacity. The (a) probes differ because the old signature has no timeout at all, which is the finding; both are stated. ruff, ruff-format and pyright clean; 18 harness tests and the stdio smoke pass.",
+      "commit": "4ff6609",
+      "blocked_reason": "",
+      "detail": "`readline` had no timeout, the stderr pipe was never drained while the child ran, and `stderr_text()` called `stderr.read()`, which waits for EOF from a child that may still be alive. The same pair fixed in soak.py under A0018/A0019.",
+      "why_it_matters": "The smoke test exists to produce a verdict; a hang produces none, and the diagnostic meant to explain the failure was itself capable of hanging."
     },
     {
       "id": "A0027",

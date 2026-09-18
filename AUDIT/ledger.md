@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 44 · open 7 · blocked 3**
+**total 54 — done 45 · open 6 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
 | S1 | 30 | 27 | 2 | 1 |
-| S2 | 16 | 13 | 3 | 0 |
+| S2 | 16 | 14 | 2 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 5, PROGRESS 2, DONE 44, BLOCKED 3
+Status tally: OPEN 4, PROGRESS 2, DONE 45, BLOCKED 3
 
 ## Tasks
 
@@ -66,7 +66,7 @@ Status tally: OPEN 5, PROGRESS 2, DONE 44, BLOCKED 3
 | A0023 | S2 | C | DONE | A failed signal case leaks the stub's socket and thread |
 | A0024 | S2 | C | DONE | Per-instance stub state lives on the handler class, so two concurrent stubs would share it |
 | A0025 | S2 | C | DONE | The test depends on the developer's ambient config.env and contradicts the function it tests |
-| A0026 | S2 | C | OPEN | No read timeout, and the early-close path blocks on stderr of a possibly-live child |
+| A0026 | S2 | C | DONE | No read timeout, and the early-close path blocks on stderr of a possibly-live child |
 | A0033 | S2 | A | DONE | A rejected URL-valued setting is echoed verbatim into a diagnostic that is logged, contradicting the type's own contract |
 | A0034 | S2 | A | DONE | A repeated name in SEARCH_PROVIDER_ORDER is not deduplicated, so one provider can vote twice |
 | A0039 | S2 | A | DONE | --bind is accepted and silently dropped by the docker method |
@@ -592,12 +592,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0026 — No read timeout, and the early-close path blocks on stderr of a possibly-live child
 
-- **Severity / tier / status:** S2 / C / OPEN
+- **Severity / tier / status:** S2 / C / DONE
 - **Location:** `scripts/mcp_smoke.py:168,170,206`
 - **Category:** reliability/hang
 - **Host:** Node1
 - **Discovered by:** Python scripts tier review (subagent), statically verified against the code
 - **Evidence before:** readline() with no timeout; on failure the message calls stderr_text(), which does process.stderr.read(). Closing stdout is not exiting: if the child is alive, read() waits for EOF and the smoke test hangs instead of reporting the failure it already detected.
+- **Fix:** Daemon threads drain stderr into a lock-guarded buffer and stdout into a queue, so `read_message(timeout:)` has a deadline and `stderr_text()` never blocks; `close()` kills a child that will not exit.
+- **Evidence after:** Committed in 4ff6609. Before, under a 15s wall clock: read_message() against a silent child and stderr_text() against a live child with 3000 stderr lines both exited 124 (hung). After: read_message(timeout=2.0) raised after 2.0s with the timeout message, and stderr_text() returned 160 893 characters in 0.00s — ten times the pipe's capacity. The (a) probes differ because the old signature has no timeout at all, which is the finding; both are stated. ruff, ruff-format and pyright clean; 18 harness tests and the stdio smoke pass.
+- **Commit:** `4ff6609`
 
 ### A0033 — A rejected URL-valued setting is echoed verbatim into a diagnostic that is logged, contradicting the type's own contract
 
