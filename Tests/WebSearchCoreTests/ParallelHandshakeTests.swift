@@ -13,6 +13,33 @@ final class ParallelHandshakeTests: XCTestCase {
 
     private let configuration = Fixtures.configuration()
 
+    /// A handshake that assigned a session id and then failed must not be remembered.
+    ///
+    /// `send` captures `MCP-Session-Id` before the body is interpreted, so an `initialize` that
+    /// returned a session header *and* a JSON-RPC error left `sessionID` set. `ensureInitialized`'s
+    /// first line then returned early for the life of the process: the provider never sent
+    /// `notifications/initialized` and never discovered its tool again, so it was unusable even
+    /// though a fresh handshake would have worked. The doc comment on `handshake` already claimed a
+    /// failed handshake is not cached (ledger A0049).
+    func testAFailedHandshakeDoesNotLeaveAPoisonedSessionBehind() async throws {
+        let http = GatedInitializeHTTPClient(failFirstInitialize: true)
+        let provider = parallelProvider(http)
+
+        do {
+            _ = try await provider.search(Fixtures.request("first"))
+            XCTFail("the first handshake was scripted to fail")
+        } catch {
+            // Expected: the handshake fails, which is the state that used to poison the session.
+        }
+
+        // The second search must handshake again rather than reuse the session the failed handshake
+        // was assigned. Before the fix it returned early, reported the tool as undiscovered, and no
+        // second `initialize` was ever sent.
+        _ = try await provider.search(Fixtures.request("second"))
+
+        let initializes = await http.count(of: "initialize")
+        XCTAssertEqual(initializes, 2, "the second search must have re-run the handshake")
+    }
     private func parallelProvider(_ http: any HTTPClient) -> ParallelMCPProvider {
         ParallelMCPProvider(
             endpoint: URL(string: "https://parallel.example.com/mcp")!,
@@ -89,6 +116,14 @@ final class ParallelHandshakeTests: XCTestCase {
 private actor GatedInitializeHTTPClient: HTTPClient {
     private var methods: [String] = []
     private var firstInitializeSeen = false
+    /// When set, the first `initialize` returns a session header *and* a JSON-RPC error — the shape
+    /// that left the session cached and the provider half-initialised (ledger A0049).
+    private let failFirstInitialize: Bool
+    private var initializeAttempts = 0
+
+    init(failFirstInitialize: Bool = false) {
+        self.failFirstInitialize = failFirstInitialize
+    }
     private var releaseRequested = false
     private var parked: CheckedContinuation<Void, Never>?
     private var initializeArrived: CheckedContinuation<Void, Never>?
@@ -132,7 +167,25 @@ private actor GatedInitializeHTTPClient: HTTPClient {
         let id = body["id"] as? Int ?? 0
         methods.append(method)
 
-        if method == "initialize" && !firstInitializeSeen {
+        if method == "initialize" {
+            initializeAttempts += 1
+            if failFirstInitialize && initializeAttempts == 1 {
+                // Answered before the parking logic: this attempt is meant to fail, so it must not
+                // wait for a release the test has no reason to give.
+                let json =
+                    #"{"jsonrpc":"2.0","id":\#(id),"error":{"code":-32603,"message":"boom"}}"#
+                return HTTPResponse(
+                    statusCode: 200,
+                    headers: ["content-type": "application/json", "MCP-Session-Id": "sess-poisoned"],
+                    body: Data(json.utf8),
+                    url: request.url
+                )
+            }
+        }
+
+        // In the failing-handshake mode there is nothing to gate: parking the second attempt would
+        // wait for a release the test has no reason to give, which is a hang, not a test.
+        if method == "initialize" && !firstInitializeSeen && !failFirstInitialize {
             firstInitializeSeen = true
             initializeArrived?.resume()
             initializeArrived = nil

@@ -187,7 +187,17 @@ public actor ParallelMCPProvider: SearchProvider {
         do {
             try await handshake.value
         } catch {
+            // A handshake that assigned a session id and *then* failed must not keep it. `send`
+            // captures `MCP-Session-Id` before the body is interpreted, so a JSON-RPC error or an
+            // unparsable body left `sessionID` set; `ensureInitialized`'s first line then returned
+            // early for the life of the process, and the provider stayed half-initialised — never
+            // sending `notifications/initialized` and never discovering the tool name (ledger
+            // A0049). The comment above already claimed a failed handshake is not cached; this makes
+            // that true of the state it leaves behind and not only of the task.
             self.handshake = nil
+            self.sessionID = nil
+            self.resolvedToolName = nil
+            self.resolvedToolSupportsMaxResults = false
             throw error
         }
     }
@@ -302,6 +312,15 @@ public actor ParallelMCPProvider: SearchProvider {
         }
         if response.statusCode == 429 {
             throw SearchError.rateLimited(.parallel, retryAfter: nil)
+        }
+        if response.statusCode == 404 {
+            // The MCP spec requires a client to re-initialise when the server no longer knows the
+            // session. Without this the dead id was sent on every later call, so the provider was
+            // unusable for the rest of the process even though a fresh handshake would have worked
+            // (ledger A0049). The next caller re-runs the handshake because both are now nil.
+            sessionID = nil
+            handshake = nil
+            throw SearchError.providerUnavailable(.parallel)
         }
         guard response.isSuccess else {
             throw SearchError.providerUnavailable(.parallel)
