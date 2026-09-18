@@ -4,6 +4,33 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.1] — 2026-09-18
+
+Repository cleanup. **No behavioural change** — the binaries do the same thing as 1.3.0. This release
+exists so the restructuring is tagged and reproducible rather than living only on `main`.
+
+### Changed
+
+- **Every source and test file is now under 500 lines**, which is roughly where a file stops being one
+  thing. One type per file where the types were unrelated; an `extension` file where a single class had
+  outgrown a screen. No public API changed and no test changed meaning — the suite reports the same count
+  and the same result before and after.
+- `AGENTS.md` and `RELEASE.md` were re-checked against the tree. The release count, the released-version
+  list, the `scripts/` inventory and the state of issue #16 had all drifted.
+
+### Removed
+
+- **The pre-production audit material.** Its findings were processed into 1.3.0 and its ledger, baseline,
+  proofs and coverage record are gone — along with **108 code comments that cited it**, because a
+  reference to a document that no longer exists is worse than no reference at all.
+
+### Security
+
+- The project's secret scan waives one more path, `TestDoubles.swift`, **for historical commits only**. A
+  synthetic test fixture lived there for a few commits while files were being split, and the scan walks
+  all history. The current tree is clean without the waiver, and the waiver still requires both the path
+  *and* the exact literal.
+
 ## [1.3.0] — 2026-09-18
 
 Security and correctness work from a pre-production audit of the whole tree. Most of it is not new
@@ -304,6 +331,7 @@ is built and verified on the `xcode-27` runner image, which is arm64-only.
 - Google Custom Search JSON and Bing Search are deliberately unsupported (closed to new customers and
   retired respectively).
 
+[1.3.1]: https://github.com/Pummelchen/MCPSearch/releases/tag/v1.3.1
 [1.3.0]: https://github.com/Pummelchen/MCPSearch/releases/tag/v1.3.0
 [1.2.0]: https://github.com/Pummelchen/MCPSearch/releases/tag/v1.2.0
 [1.0.1]: https://github.com/Pummelchen/MCPSearch/releases/tag/v1.0.1
