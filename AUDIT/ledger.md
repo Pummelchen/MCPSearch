@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 46 · open 5 · blocked 3**
+**total 54 — done 47 · open 4 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
 | S1 | 30 | 27 | 2 | 1 |
 | S2 | 16 | 14 | 2 | 0 |
-| S3 | 4 | 3 | 1 | 0 |
+| S3 | 4 | 4 | 0 | 0 |
 
-Status tally: OPEN 3, PROGRESS 2, DONE 46, BLOCKED 3
+Status tally: OPEN 2, PROGRESS 2, DONE 47, BLOCKED 3
 
 ## Tasks
 
@@ -77,7 +77,7 @@ Status tally: OPEN 3, PROGRESS 2, DONE 46, BLOCKED 3
 | A0051 | S2 | A | OPEN | Mojeek timestamp is read but never requested, so publishedAt is always nil (UNSURE) |
 | A0027 | S3 | C | DONE | A lost bind race leaks the child's pipes (the finding's original claim was wrong) |
 | A0052 | S3 | C | DONE | The documented test count is stale after A0045 added three tests |
-| A0053 | S3 | A | OPEN | /health readiness reflects configuration, not reachability |
+| A0053 | S3 | A | DONE | /health readiness reflects configuration, not reachability |
 | A0054 | S3 | C | DONE | The documented test count drifted from the suite as the audit added tests |
 
 ---
@@ -708,12 +708,15 @@ BEST DIRECTION, on the measured evidence: bound the *unmatched closing tags*, no
 
 ### A0053 — /health readiness reflects configuration, not reachability
 
-- **Severity / tier / status:** S3 / A / OPEN
+- **Severity / tier / status:** S3 / A / DONE
 - **Location:** `Sources/SwiftWebSearchMCP/main.swift (the health source)`
 - **Category:** ops/health-scope
 - **Host:** Node1
 - **Discovered by:** residual of the audit's own A0007 fix (§6)
 - **Evidence before:** After A0007 the body is derived, so it is no longer a facade, but `ready` is computed from `configured` alone: a provider that is configured and unreachable still reports ok. That is a deliberate limit — probing a provider inside a liveness endpoint adds network latency and a new failure mode to the probe — but it means an operator cannot distinguish 'configured' from 'working' without calling web_search_status. Recorded so the limit is a decision on the record rather than an unstated gap, and so nobody later reads a 200 as proof that search works.
+- **Fix:** Readiness counts providers that are configured and whose circuit is not open, reported as `providers_usable`; `ready` follows it.
+- **Evidence after:** Committed in 1975b3e. A server whose only configured provider points at a dead port: before, /health answered 200 ok both before the searches and after eight consecutive failures; after, it answers 200 ok (usable 1) then 503 degraded (usable 0). Suite green at 614 tests (572 + 42), 0 failures, 0 warnings; both linters exit 0; stdio and --http smoke tests pass.
+- **Commit:** `1975b3e`
 
 ### A0054 — The documented test count drifted from the suite as the audit added tests
 

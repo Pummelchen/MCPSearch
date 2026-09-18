@@ -937,14 +937,16 @@
       "location": "Sources/SwiftWebSearchMCP/main.swift (the health source)",
       "title": "/health readiness reflects configuration, not reachability",
       "category": "ops/health-scope",
-      "status": "OPEN",
+      "status": "DONE",
       "host": "Node1",
       "discovered_by": "residual of the audit's own A0007 fix (§6)",
       "evidence_before": "After A0007 the body is derived, so it is no longer a facade, but `ready` is computed from `configured` alone: a provider that is configured and unreachable still reports ok. That is a deliberate limit — probing a provider inside a liveness endpoint adds network latency and a new failure mode to the probe — but it means an operator cannot distinguish 'configured' from 'working' without calling web_search_status. Recorded so the limit is a decision on the record rather than an unstated gap, and so nobody later reads a 200 as proof that search works.",
-      "fix_summary": "",
-      "evidence_after": "",
-      "commit": "",
-      "blocked_reason": ""
+      "fix_summary": "Readiness counts providers that are configured and whose circuit is not open, reported as `providers_usable`; `ready` follows it.",
+      "evidence_after": "Committed in 1975b3e. A server whose only configured provider points at a dead port: before, /health answered 200 ok both before the searches and after eight consecutive failures; after, it answers 200 ok (usable 1) then 503 degraded (usable 0). Suite green at 614 tests (572 + 42), 0 failures, 0 warnings; both linters exit 0; stdio and --http smoke tests pass.",
+      "commit": "1975b3e",
+      "blocked_reason": "",
+      "detail": "`ready` was `configured > 0`. A provider with a valid key whose host is down, or which is rate-limiting, is configured and cannot serve, so a server whose every configured provider was skipping requests reported `ok` and a supervisor kept sending it traffic.",
+      "why_it_matters": "The endpoint exists so a supervisor can act on it, and an `ok` that means \"a key is present\" rather than \"a search can succeed\" removes the only signal that would have made it act."
     },
     {
       "id": "A0054",
