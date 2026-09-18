@@ -120,6 +120,12 @@ public actor ProviderHealth {
     /// - Returns: nil when the request may proceed; otherwise the reason it was
     ///   skipped, as a failure record for the response.
     public func authorize(_ provider: ProviderID) async -> ProviderFailure? {
+        // Whether this call claimed the breaker's single half-open probe. It has to be given back
+        // if the call never reaches the provider: only the cancellation path used to release it, so
+        // a local rate-limit refusal left the breaker half-open with `probeInFlight` set and every
+        // later `authorize` answered `.circuitOpen` — the provider was never tried again until a
+        // manual reset (ledger A0031).
+        var probeClaimed = false
         if let breaker = breakers[provider] {
             let snapshot = await breaker.snapshot()
             if snapshot.state == .open {
@@ -134,6 +140,7 @@ public actor ProviderHealth {
                             "\(provider.displayName) is temporarily skipped after repeated failures."
                     )
                 }
+                probeClaimed = true
             } else {
                 // `.halfOpen` admits exactly one probe: `shouldAttempt` claims it for the first
                 // caller and refuses the rest. Discarding that refusal let every concurrent caller
@@ -150,12 +157,18 @@ public actor ProviderHealth {
                             + "is skipped until that probe finishes."
                     )
                 }
+                probeClaimed = true
             }
         }
 
         if let limiter = limiters[provider] {
             let acquired = await limiter.tryAcquire()
             if !acquired {
+                // Give the probe back before returning. `releaseProbe` does nothing unless the
+                // breaker is half-open, so this cannot surrender a claim the `.closed` path never
+                // took. The limiter refusing this request says nothing about the provider, which is
+                // the same reason the cancellation path releases the claim.
+                if probeClaimed { await breakers[provider]?.releaseProbe() }
                 let wait = await limiter.timeUntilAvailable()
                 let detail = wait.map { " Retry in about \($0.milliseconds) ms." } ?? ""
                 return ProviderFailure(

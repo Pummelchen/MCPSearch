@@ -56,6 +56,51 @@ final class LocalThrottleRaceTests: XCTestCase {
         XCTAssertTrue(response.providersFailed.isEmpty)
     }
 
+    /// A local rate-limit refusal must give back the half-open probe it claimed.
+    ///
+    /// `shouldAttempt` claims the breaker's single probe; the limiter path then returned without
+    /// releasing it, so the breaker stayed `.halfOpen` with `probeInFlight` set and every later
+    /// `authorize` answered `.circuitOpen` — the provider was never tried again until a manual
+    /// reset (ledger A0031). The cancellation path already gave the claim back for the same reason:
+    /// the local limiter refusing a request says nothing about the provider.
+    func testALocalRateLimitRefusalReleasesTheHalfOpenProbe() async {
+        let clock = TestClock()
+        let health = ProviderHealth(clock: clock)
+        await health.register(
+            .tavily,
+            breakerPolicy: .init(failureThreshold: 1, cooldown: .seconds(30)),
+            // One token, then a floor long enough that an attempt inside the window is refused
+            // locally rather than sent.
+            ratePolicy: RateLimiter.Policy(
+                burst: 1,
+                requestsPerMinute: 1,
+                minimumInterval: .seconds(60)
+            )
+        )
+        await health.recordFailure(
+            .tavily,
+            failure: ProviderFailure(provider: .tavily, category: .serverError, message: "500")
+        )
+        clock.advance(by: .seconds(31))
+
+        // The probe: allowed, and it spends the only token.
+        let probe = await health.authorize(.tavily)
+        XCTAssertNil(probe, "the first attempt after the cooldown is the probe")
+        // Handed straight back, as the cancellation path does, which leaves the breaker half-open
+        // with no claim — the state the rest of this test starts from.
+        await health.releaseProbe(.tavily)
+
+        // Inside the minimum interval the limiter refuses, after a probe was claimed again.
+        let refused = await health.authorize(.tavily)
+        XCTAssertEqual(refused?.category, .rateLimited, "\(refused as Any)")
+
+        // Before the fix this answered `.circuitOpen` for good, because the claim taken by the
+        // refused attempt was never given back.
+        clock.advance(by: .seconds(60))
+        let after = await health.authorize(.tavily)
+        XCTAssertNil(after, "the refused attempt must not have wedged the breaker: \(after as Any)")
+    }
+
     /// The wait estimate must never be shorter than the true minimum-interval remainder.
     func testTimeUntilAvailableRoundsTheMinimumIntervalUp() async {
         let clock = TestClock()
