@@ -485,7 +485,15 @@ public struct AnswerSynthesizer: Sendable {
             if used + block.count > totalBudget, !blocks.isEmpty {
                 // Still name the remaining results so citation numbers stay aligned
                 // with the list the caller sees; only their text is omitted.
-                blocks.append("[\(index)] \(result.title)\nURL: \(result.url.absoluteString)\n(omitted for length)")
+                // Sanitised exactly like the full block above. These two lines were the one place a
+                // page-supplied string entered the corpus raw, so a title carrying a fence delimiter could
+                // close the block and put instructions outside it — the injection the comment above says
+                // the three fields must not be trusted with (ledger A0032).
+                blocks.append(
+                    "[\(index)] \(Self.sanitiseFences(result.title))\n"
+                        + "URL: \(Self.sanitiseFences(result.url.absoluteString))\n"
+                        + "(omitted for length)"
+                )
                 continue
             }
             used += block.count
