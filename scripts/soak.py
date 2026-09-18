@@ -26,8 +26,10 @@ import argparse
 import contextlib
 import json
 import os
+import queue
 import subprocess
 import sys
+import threading
 import time
 from collections import Counter, defaultdict
 from typing import Any
@@ -155,17 +157,64 @@ class Server:
             bufsize=1,
         )
         self._next_id = 0
+        # Drain both pipes on daemon threads rather than reading them where they are used.
+        #
+        # stderr: the pipe holds about 16 KiB, `SEARCH_LOG_LEVEL=warning` is set on purpose, and
+        # fifty queries against rate-limited providers emit warnings. The child filled the pipe,
+        # blocked in `write`, stopped answering stdout, and the parent blocked in `readline` — a
+        # deadlock rather than a timeout, with no verdict at all (ledger A0019). Reading stderr only
+        # in `close`, after `wait`, could never have drained it in time.
+        #
+        # stdout: a blocking `readline` has no timeout of its own, so a server that stopped
+        # answering without closing the stream hung the whole run (ledger A0018). A reader thread
+        # turns the wait into a queue get with a deadline, which the timeout below can report.
+        self._stderr_chunks: list[str] = []
+        self._stderr_lock = threading.Lock()
+        threading.Thread(target=self._drain_stderr, daemon=True).start()
+        self._stdout: queue.Queue[str | None] = queue.Queue()
+        threading.Thread(target=self._drain_stdout, daemon=True).start()
+
+    def _drain_stderr(self) -> None:
+        stream = self.process.stderr
+        if stream is None:
+            return
+        for line in stream:
+            with self._stderr_lock:
+                self._stderr_chunks.append(line)
+
+    def _stderr_text(self) -> str:
+        with self._stderr_lock:
+            return "".join(self._stderr_chunks)
+
+    def _drain_stdout(self) -> None:
+        stream = self.process.stdout
+        if stream is not None:
+            for line in stream:
+                self._stdout.put(line)
+        # End of stream, so a reader blocked on `get` wakes and reports a closed stdout rather than
+        # waiting out its deadline.
+        self._stdout.put(None)
 
     def send(self, payload: dict[str, Any]) -> None:
         assert self.process.stdin is not None
         self.process.stdin.write(json.dumps(payload) + "\n")
         self.process.stdin.flush()
 
-    def read(self) -> dict[str, Any] | None:
-        """Next protocol message, or None only when stdout is at end of stream."""
-        assert self.process.stdout is not None
-        line = self.process.stdout.readline()
-        if not line:
+    def read(self, timeout: float = 120.0) -> dict[str, Any] | None:
+        """Next protocol message, or None only when stdout is at end of stream.
+
+        Raises when the server does not answer within `timeout`: a read that never returned used to
+        hang the whole run with no verdict, because the class's only timeout was on `wait` in
+        `close`, which is unreachable while a read is blocked (ledger A0018).
+        """
+        try:
+            line = self._stdout.get(timeout=timeout)
+        except queue.Empty:
+            raise RuntimeError(
+                f"the server did not answer within {timeout:.0f}s; abandoning the run rather than "
+                "hanging, which produced no verdict at all"
+            ) from None
+        if line is None:
             return None
         try:
             return json.loads(line)
@@ -205,8 +254,9 @@ class Server:
             self.process.wait(timeout=30)
         except subprocess.TimeoutExpired:
             self.process.kill()
-        assert self.process.stderr is not None
-        return self.process.stderr.read()
+        # The drain thread appends whatever arrived; reading the pipe here would return nothing,
+        # because the thread owns it (ledger A0019).
+        return self._stderr_text()
 
 
 def silent_providers(providers: set[str], usage: dict[str, int]) -> list[str]:
