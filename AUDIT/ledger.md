@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 48 · open 3 · blocked 3**
+**total 54 — done 49 · open 2 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 27 | 2 | 1 |
+| S1 | 30 | 28 | 1 | 1 |
 | S2 | 16 | 15 | 1 | 0 |
 | S3 | 4 | 4 | 0 | 0 |
 
-Status tally: OPEN 1, PROGRESS 2, DONE 48, BLOCKED 3
+Status tally: OPEN 1, PROGRESS 1, DONE 49, BLOCKED 3
 
 ## Tasks
 
@@ -32,7 +32,7 @@ Status tally: OPEN 1, PROGRESS 2, DONE 48, BLOCKED 3
 | A0002 | S1 | A | DONE | Warnings-as-errors is not in the build config, so the Swift standard is not in force at the build level |
 | A0003 | S1 | A | DONE | SwiftLint cannot reject a force-unwrap, so the §1 Swift standard proof fails |
 | A0004 | S1 | A | DONE | Ruff does not select S101, so `assert` used for validation is unchecked |
-| A0005 | S1 | A | PROGRESS | The secret-scan delegation is unproven: gitleaks is blind to the credential pattern this repository actually leaked |
+| A0005 | S1 | A | DONE | The secret-scan delegation is unproven: gitleaks is blind to the credential pattern this repository actually leaked |
 | A0008 | S1 | C | DONE | The only check that consumes /health reads the status code and never the body, so it cannot fail |
 | A0009 | S1 | A | DONE | The HTTP server installs no signal handler, and its graceful-shutdown helper is dead code |
 | A0012 | S1 | A | DONE | The response charset is discarded, so non-UTF-8 pages are silently decoded as Latin-1 |
@@ -177,14 +177,15 @@ BEST DIRECTION, on the measured evidence: bound the *unmatched closing tags*, no
 
 ### A0005 — The secret-scan delegation is unproven: gitleaks is blind to the credential pattern this repository actually leaked
 
-- **Severity / tier / status:** S1 / A / PROGRESS
-- **Location:** `.gitleaks.toml`
+- **Severity / tier / status:** S1 / A / DONE
+- **Location:** `.gitleaks-project.toml, .github/workflows/ci.yml, tools/release.sh`
 - **Category:** tool-coverage
 - **Host:** Node1
 - **Discovered by:** L4 tool-coverage proof (§1)
 - **Evidence before:** gitleaks detect --log-opts=--all on full history: 0 findings. Pointed directly at the historical blob (gitleaks detect --no-git --source <blob>) which contains six tvly-prefixed literals: 0 findings. A tool that stays silent does not cover the check.
-- **Fix:** IN PROGRESS. The blind spot is now measured rather than asserted, and four provider-shaped rules have been written and shown to fire in isolation. They cannot simply be added to `.gitleaks.toml`: in gitleaks 8.30.1 `[extend] useDefault = true` DROPS a config's own `[[rules]]`, verified three ways — my rule alone fires; my rule plus `useDefault = true` fires only the default; reversing the TOML order changes nothing. Extending by `path` keeps the custom rule but loses the defaults. The edit was reverted rather than left in place, because a change that has no effect must not look like a fix.
-- **Evidence after:** Measured on a scratch git repository with four synthetic provider-shaped keys, default config: 1 finding, `generic-api-key` on the Mojeek-shaped line; TAVILY, BRAVE and JINA all MISSED. With a custom `tvly-` rule in a config of its own: the rule fires on the Tavily line. With the same rule under `[extend] useDefault = true`: only `generic-api-key` fires, so the custom rule is dropped. REMAINING: a configuration that yields the default ruleset AND the project's rules — vendoring the defaults, or a rules directory — then proving both fire together and that the repository's own full history still reports zero.
+- **Fix:** A second gitleaks pass with `.gitleaks-project.toml` carrying rules for Tavily, Brave, Jina and DeepSeek, run by both CI and `tools/release.sh` alongside the default scan. Two passes rather than one config because in gitleaks 8.30.1 `useDefault = true` makes the scanner ignore the config's own `[[rules]]`, and `extend.path` cannot be combined with it — verified five ways. Three synthetic literals are waived in writing with `condition = "AND"` on path and value.
+- **Evidence after:** Committed in f7b5154. Real repository, full history: both configs exit 0 with no leaks. Negative control, real-shaped keys in a scratch repository outside the waived paths: all four rules fire. Two over/under-tightening mistakes were made and both were caught by measuring: `-`/`_` in the class matched 18 placeholder strings, and removing them then missed a real `tvly-dev-` key. This changes the tree after Phase E verified 75adee87, so Phase E must be repeated once the ledger stops changing.
+- **Commit:** `f7b5154`
 
 ### A0008 — The only check that consumes /health reads the status code and never the body, so it cannot fail
 
