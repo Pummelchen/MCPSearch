@@ -3,7 +3,13 @@
 #
 # Runs on the node, piped over ssh:
 #
-#   ssh node1@node1.local 'SUDO_PASSWORD=... bash -s' < deploy/provision-node.sh
+# Keep the password out of every argv. As `SUDO_PASSWORD=... bash -s` the value is in the argv of
+# the shell `sshd` starts on the node — readable there with `ps` — and in the local `ssh` argv, and
+# it stays in the environment inherited by every child (ledger A0040). Read it from a 600 file on
+# the node instead: the command string below mentions only the file, and `VAR="$(cat file)" cmd`
+# puts the value in the environment rather than in an argument list.
+#
+#   ssh node1@node1.local 'SUDO_PASSWORD="$(cat ~/.mcps-sudo)" bash -s' < deploy/provision-node.sh
 #
 # This script is deliberately thin. The SearXNG install itself lives in `deploy/install.sh` — the
 # same path a workstation install uses, and the one that is exercised — so this only does what a

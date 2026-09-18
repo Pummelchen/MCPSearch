@@ -241,14 +241,28 @@ install_searxng_docker() {
 
     prepare_image "$SEARXNG_IMAGE" || return 1
 
+    # The secret reaches the container through a file, not `-e`. As an argument it sits in the argv
+    # of `docker` for the life of the container start — readable with `ps` by any local user — and
+    # `docker inspect` exposes it afterwards (ledger A0037). The file is 600 in a 700 directory and
+    # is removed whether the run succeeds or fails.
+    local secret_file status
+    secret_file="$(umask 077 && mktemp "${TMPDIR:-/tmp}/mcps-searxng-secret.XXXXXX")" || return 1
+    if ! printf 'SEARXNG_SECRET=%s\n' "$secret" >"$secret_file"; then
+        rm -f "$secret_file"
+        return 1
+    fi
+
     run env ${DOCKER_CONFIG_DIR:+DOCKER_CONFIG="$DOCKER_CONFIG_DIR"} docker run -d \
         --name "$CONTAINER_NAME" \
         --restart unless-stopped \
         -p "127.0.0.1:${PORT}:8080" \
         -v "${SEARXNG_DIR}/settings.yml:/etc/searxng/settings.yml:ro" \
         -e "SEARXNG_BASE_URL=http://localhost:8080/" \
-        -e "SEARXNG_SECRET=${secret}" \
-        "$SEARXNG_IMAGE" >/dev/null || return 1
+        --env-file "$secret_file" \
+        "$SEARXNG_IMAGE" >/dev/null
+    status=$?
+    rm -f "$secret_file"
+    [ "$status" -eq 0 ] || return 1
 
     say "started ${CONTAINER_NAME} on 127.0.0.1:${PORT} (pinned by digest, restart unless-stopped)"
 }
@@ -292,9 +306,14 @@ install_searxng_native() {
             # receives it as SEARXNG_SECRET and an environment variable wins. A launchd job has no
             # such environment, so the key is written here — generated per install, never tracked —
             # and the bind narrows to loopback, which the container gets from its port mapping.
-            python3 - "${REPO_ROOT}/deploy/searxng/settings.yml" "${SEARXNG_DIR}/etc/settings.yml" "$PORT" "$secret" "$BIND" <<'PY' || return 1
-import pathlib, sys
-src, dst, port, secret, bind = sys.argv[1:6]
+            # The secret is passed in the environment, not as an argument: an argument is in the argv
+            # of `python3` and readable with `ps` by any local user (ledger A0037). The environment of
+            # another user's process is not readable without root, and the script writes the value
+            # straight into a 600 file.
+            SEARXNG_SECRET="$secret" python3 - "${REPO_ROOT}/deploy/searxng/settings.yml" "${SEARXNG_DIR}/etc/settings.yml" "$PORT" "$BIND" <<'PY' || return 1
+import os, pathlib, sys
+src, dst, port, bind = sys.argv[1:5]
+secret = os.environ["SEARXNG_SECRET"]
 text = pathlib.Path(src).read_text(encoding="utf-8")
 text = text.replace("  port: 8080", f"  port: {port}")
 text = text.replace('  bind_address: "0.0.0.0"', f'  bind_address: "{bind}"')
