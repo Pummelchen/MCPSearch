@@ -120,6 +120,31 @@ final class MarkupDepthTests: XCTestCase {
         print("      A0011 exact: \(exact) of \(documents.count)")
     }
 
+    /// What a bare fragment costs on top of the model, which is what the limit is chosen against.
+    ///
+    /// `web_open` hands a parser a fragment, not a complete document, and the parser inserts an `html`
+    /// and a `body` element the bytes never contained and the model cannot see. That constant is the
+    /// difference between `maximumNesting` and the tree depth it actually admits (ledger A0011).
+    func testAFragmentGainsOnlyTheParsersOwnWrapper() throws {
+        let fragments = [
+            String(repeating: "<div>", count: 50) + "x" + String(repeating: "</div>", count: 50),
+            "<p>one<p>two<p>three<ul><li>a<li>b</ul>",
+            "<table><tr><td>a<td>b<tr><td>c</table>",
+            "<section><article><h1>t</h1><p>b<p>c</article></section>",
+        ]
+
+        for (index, fragment) in fragments.enumerated() {
+            let real = try Self.parsedDepth(fragment)
+            let model = MarkupDepth.maximumDepth(fragment, limit: 100_000)
+            print("      A0011 fragment \(index): model=\(model) parsed=\(real)")
+            XCTAssertLessThanOrEqual(
+                real - model,
+                2,
+                "fragment \(index): the parser added \(real - model) levels, more than its html/body pair"
+            )
+        }
+    }
+
     private static func parsedDepth(_ html: String) throws -> Int {
         let document = try SwiftSoup.parse(html)
         var deepest = 0

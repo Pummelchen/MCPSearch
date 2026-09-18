@@ -248,52 +248,72 @@ public enum HTMLExtractor {
 
     private static let headingTags: Set<String> = ["h1", "h2", "h3", "h4", "h5", "h6"]
 
+    /// Walk the tree iteratively, in the same order the recursive version did.
+    ///
+    /// The guard in `MarkupDepth` bounds the depth that reaches here, so this is defence in depth
+    /// rather than the primary bound: it was a second, independent way to exhaust the task's stack,
+    /// and a bound that is the only thing standing between a page and a crash deserves not to have
+    /// one. An explicit stack of enter/exit frames reproduces the recursion exactly — the pre-visit
+    /// newlines and bullets go out before a node's children and the post-visit newlines after them —
+    /// so the extracted text is unchanged.
     static func walk(_ node: Node, into builder: inout TextBuilder) throws {
-        if let textNode = node as? TextNode {
-            let text = textNode.getWholeText()
-            if !text.isEmpty { builder.append(text) }
-            return
+        enum Step {
+            case enter(Node)
+            case exit(isBlock: Bool, isHeading: Bool, isListItem: Bool)
         }
 
-        guard let element = node as? Element else {
-            for child in node.getChildNodes() { try walk(child, into: &builder) }
-            return
-        }
+        var pending: [Step] = [.enter(node)]
+        while let step = pending.popLast() {
+            switch step {
+            case .enter(let node):
+                if let textNode = node as? TextNode {
+                    let text = textNode.getWholeText()
+                    if !text.isEmpty { builder.append(text) }
+                    continue
+                }
 
-        let tag = element.tagName().lowercased()
+                guard let element = node as? Element else {
+                    for child in node.getChildNodes().reversed() { pending.append(.enter(child)) }
+                    continue
+                }
 
-        // Skip hidden elements: `display:none` content is never article prose.
-        if let style = try? element.attr("style"),
-            style.replacingOccurrences(of: " ", with: "").lowercased().contains("display:none")
-        {
-            return
-        }
-        if element.hasAttr("hidden") { return }
+                let tag = element.tagName().lowercased()
 
-        let isBlock = blockTags.contains(tag)
-        let isHeading = headingTags.contains(tag)
-        let isListItem = tag == "li"
+                // Skip hidden elements: `display:none` content is never article prose.
+                if let style = try? element.attr("style"),
+                    style.replacingOccurrences(of: " ", with: "").lowercased()
+                        .contains("display:none")
+                {
+                    continue
+                }
+                if element.hasAttr("hidden") { continue }
 
-        if isBlock { builder.newline() }
-        if isHeading {
-            builder.newline()
-            builder.newline()
-        }
-        if isListItem {
-            builder.newline()
-            builder.append("– ")
-        }
+                let isBlock = blockTags.contains(tag)
+                let isHeading = headingTags.contains(tag)
+                let isListItem = tag == "li"
 
-        for child in element.getChildNodes() {
-            try walk(child, into: &builder)
-        }
+                if isBlock { builder.newline() }
+                if isHeading {
+                    builder.newline()
+                    builder.newline()
+                }
+                if isListItem {
+                    builder.newline()
+                    builder.append("– ")
+                }
 
-        if isHeading || isBlock || isListItem {
-            builder.newline()
-            if isHeading { builder.newline() }
+                // The exit frame is pushed before the children so it is popped after all of them.
+                pending.append(.exit(isBlock: isBlock, isHeading: isHeading, isListItem: isListItem))
+                for child in element.getChildNodes().reversed() { pending.append(.enter(child)) }
+
+            case .exit(let isBlock, let isHeading, let isListItem):
+                if isHeading || isBlock || isListItem {
+                    builder.newline()
+                    if isHeading { builder.newline() }
+                }
+            }
         }
     }
-
     /// Collapse runs of whitespace while preserving deliberate line structure.
     static func normalizeWhitespace(_ text: String) -> String {
         var lines: [String] = []

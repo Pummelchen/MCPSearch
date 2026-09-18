@@ -17,9 +17,16 @@ public enum MarkupDepth {
     /// Deepest element nesting any parser in this package will accept.
     ///
     /// The HTML specification and every mainstream browser stop at 512 nested elements, and
-    /// real pages rarely exceed a few dozen, so this rejects pathological input only. It is
-    /// deliberately well below the measured death thresholds so that any recursion inside a
-    /// parser or a tree walk has room to spare.
+    /// real pages rarely exceed a few dozen, so this rejects pathological input only.
+    ///
+    /// Measured, rather than chosen by feel. The model is exact on complete documents (24 of 25
+    /// constructs in `MarkupDepthTests`); a bare *fragment* gains up to two levels the model cannot
+    /// see, because a parser inserts an `html` and a `body` element the bytes never contained, so this
+    /// limit admits about 514 tree levels. The death threshold this file records is around 20 000
+    /// levels, which leaves a margin of roughly 39× for the recursion inside a parser or a tree walk.
+    ///
+    /// The margin is what the number is for: it is not the largest depth that happens to work, it is
+    /// far below the smallest depth measured to fail.
     public static let maximumNesting = 512
 
     /// Whether `html` nests elements deeper than `limit`.
