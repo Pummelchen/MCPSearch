@@ -579,34 +579,39 @@ def check_ctrl_c_quits_cleanly(binary: str) -> None:
         ("SIGINT", signal.SIGINT),
         ("SIGTERM", signal.SIGTERM),
     )
-    for label, number in cases:
-        session = Session(binary, stub.url)
-        try:
-            session.drain(2.5)
-            require(HIDE_CURSOR in session.transcript, f"{label}: the display must start")
-            if number is None:
-                session.send("\x03")
-            else:
-                session.process.send_signal(number)
-            deadline = time.monotonic() + 10
-            while time.monotonic() < deadline and session.process.poll() is None:
-                session.drain(0.2)
-            exit_code = session.process.poll()
-            require(exit_code is not None, f"{label}: the monitor must exit")
-            require(exit_code == 0, f"{label}: expected exit 0, got {exit_code}")
-            session.drain(1.0)
-            require(
-                SHOW_CURSOR in session.transcript,
-                f"{label}: the terminal's cursor must be restored",
-            )
-            require(
-                session.terminal_is_restored(),
-                f"{label}: the terminal must be left in canonical, echoing mode, not raw",
-            )
-            print(f"  {label} exited 0 and restored the terminal")
-        finally:
-            session.close()
-    stub.stop()
+    try:
+        for label, number in cases:
+            session = Session(binary, stub.url)
+            try:
+                session.drain(2.5)
+                require(HIDE_CURSOR in session.transcript, f"{label}: the display must start")
+                if number is None:
+                    session.send("\x03")
+                else:
+                    session.process.send_signal(number)
+                deadline = time.monotonic() + 10
+                while time.monotonic() < deadline and session.process.poll() is None:
+                    session.drain(0.2)
+                exit_code = session.process.poll()
+                require(exit_code is not None, f"{label}: the monitor must exit")
+                require(exit_code == 0, f"{label}: expected exit 0, got {exit_code}")
+                session.drain(1.0)
+                require(
+                    SHOW_CURSOR in session.transcript,
+                    f"{label}: the terminal's cursor must be restored",
+                )
+                require(
+                    session.terminal_is_restored(),
+                    f"{label}: the terminal must be left in canonical, echoing mode, not raw",
+                )
+                print(f"  {label} exited 0 and restored the terminal")
+            finally:
+                session.close()
+    finally:
+        # A failing `require` inside the loop used to skip this, leaking the stub's listening
+        # socket and its thread — and a bound port that then made the next run fail too
+        # (ledger A0023).
+        stub.stop()
 
 
 def main() -> int:
