@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 53 — done 8 · open 42 · blocked 3**
+**total 53 — done 10 · open 40 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 4 | 25 | 1 |
+| S1 | 30 | 6 | 23 | 1 |
 | S2 | 16 | 1 | 15 | 0 |
 | S3 | 3 | 1 | 2 | 0 |
 
-Status tally: OPEN 41, PROGRESS 1, DONE 8, BLOCKED 3
+Status tally: OPEN 39, PROGRESS 1, DONE 10, BLOCKED 3
 
 ## Tasks
 
@@ -46,7 +46,7 @@ Status tally: OPEN 41, PROGRESS 1, DONE 8, BLOCKED 3
 | A0021 | S1 | A | OPEN | A non-JSON stdout line is embedded in a raised exception, reaching an unscanned traceback |
 | A0028 | S1 | A | OPEN | The HTTP session registry is unbounded, so an unauthenticated client can grow it without limit |
 | A0029 | S1 | A | OPEN | A disconnected SSE client leaks a suspended relay task and wedges the session |
-| A0030 | S1 | A | OPEN | A cancelled provider request is recorded as a transient failure and can open a circuit breaker |
+| A0030 | S1 | A | DONE | A cancelled provider request is recorded as a transient failure and can open a circuit breaker |
 | A0031 | S1 | A | OPEN | A claimed half-open probe is never released when the local rate limiter denies, wedging the breaker |
 | A0032 | S1 | A | OPEN | Length-omitted results enter the fenced prompt unsanitised, so a page title can close the untrusted-data fence |
 | A0035 | S1 | A | OPEN | The mandatory-SearXNG proof passes on an instance that returns zero results |
@@ -56,7 +56,7 @@ Status tally: OPEN 41, PROGRESS 1, DONE 8, BLOCKED 3
 | A0041 | S1 | A | OPEN | The release-notes gate names NOT_CHECKED in its failure message but never checks for it |
 | A0046 | S1 | A | DONE | Include and exclude domains are space-joined but Mojeek documents comma separation, so the filters never apply |
 | A0047 | S1 | A | DONE | Bot-challenge markers are substring-matched against the whole page, so ordinary queries are discarded as challenges |
-| A0048 | S1 | A | OPEN | Cancellation is mapped to a transient network failure, so a caller cancel is charged to the provider's breaker |
+| A0048 | S1 | A | DONE | Cancellation is mapped to a transient network failure, so a caller cancel is charged to the provider's breaker |
 | A0049 | S1 | A | OPEN | A handshake that was assigned a session id and then failed leaves sessionID set, so initialization is never retried |
 | A0050 | S1 | A | OPEN | URL query construction drops '+', so queries containing it are corrupted |
 | A0006 | S2 | A | OPEN | Validation is written as `assert`, which python -O strips |
@@ -318,12 +318,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0030 — A cancelled provider request is recorded as a transient failure and can open a circuit breaker
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `Sources/WebSearchCore/Search/SearchOrchestrator.swift:557-561`
 - **Category:** concurrency/cancellation
 - **Host:** Node1
 - **Discovered by:** Search + Support tier A review (subagent)
 - **Evidence before:** Only `catch is CancellationError` is treated as cancellation. A mid-flight URLSession cancellation surfaces as HTTPError.cancelled, not CancellationError — documented in this codebase at AnswerSynthesizer.swift:380-385. It reaches the generic arm; HTTPStatusMapper maps .cancelled to .networkFailure, whose .network category isTransient, so ProviderHealth increments consecutiveFailures and CircuitBreaker can open. Three client disconnects therefore open breakers on providers that never failed, contradicting the intent at :543-548 and recordBudgetExceeded (:428-431). The existing test uses a mock that throws CancellationError directly, so it never exercises the real transport path.
+- **Fix:** `SearchOrchestrator.runSingle` now recognises cancellation in both shapes via a new `isCancellation(_:)` (CancellationError and HTTPError.cancelled), so the transport's shape no longer falls into the generic arm that mapped it to a transient network failure. The same fix closes A0048, which is the mapping half of this defect: with the orchestrator catching cancellation first, that arm is no longer reached from the path that charges the breaker.
+- **Evidence after:** Before: category .network ("Tavily network failure: cancelled") and authorize(.tavily) returned .circuitOpen — charged as transient AND the probe never released. After: category .cancelled and the probe is claimable. Suite green at 600 tests (558 + 42), 0 failures, 0 warnings; both linters exit 0.
+- **Commit:** `c3349bd`
 
 ### A0031 — A claimed half-open probe is never released when the local rate limiter denies, wedging the breaker
 
@@ -414,12 +417,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0048 — Cancellation is mapped to a transient network failure, so a caller cancel is charged to the provider's breaker
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `Sources/WebSearchCore/Providers/HTTPStatusMapper.swift:48,52`
 - **Category:** concurrency/cancellation
 - **Host:** Node1
 - **Discovered by:** Providers tier A review (subagent)
-- **Evidence before:** Both `if error is CancellationError` and `case .cancelled` return .networkFailure(provider, "cancelled"), whose .network category isTransient, so CircuitBreaker.recordFailure increments consecutiveFailures and can open. URLSessionHTTPClient.perform converts in-flight cancellation into HTTPError.cancelled, so the orchestrator's `catch is CancellationError` arm never sees it. Same defect as A0030 seen from the mapping side; both must be fixed together or the breaker still trips.
+- **Evidence before:** Both `if error is CancellationError` and `case .cancelled` return .networkFailure(provider, "cancelled"), whose .network category isTransient, so CircuitBreaker.recordFailure increments consecutiveFailures and can open. URLSessionHTTPClient.perform converts in-flight cancellation into HTTPError.cancelled, so the orchestrator's `catch is CancellationError` arm never sees it. Same defect as A0030 seen from the mapping side; both must be fixed together or the breaker still trips. NOTE: closed by the same change as A0030. The mapper's two cancellation arms still return .networkFailure, which remains semantically wrong for any future caller, but they are no longer reachable from the orchestrator path that charges the breaker — the defect's harm is removed at the point it mattered, and the residual is recorded here rather than claimed fixed.
+- **Fix:** `SearchOrchestrator.runSingle` now recognises cancellation in both shapes via a new `isCancellation(_:)` (CancellationError and HTTPError.cancelled), so the transport's shape no longer falls into the generic arm that mapped it to a transient network failure. The same fix closes A0048, which is the mapping half of this defect: with the orchestrator catching cancellation first, that arm is no longer reached from the path that charges the breaker.
+- **Evidence after:** Before: category .network ("Tavily network failure: cancelled") and authorize(.tavily) returned .circuitOpen — charged as transient AND the probe never released. After: category .cancelled and the probe is claimable. Suite green at 600 tests (558 + 42), 0 failures, 0 warnings; both linters exit 0.
+- **Commit:** `c3349bd`
 
 ### A0049 — A handshake that was assigned a session id and then failed leaves sessionID set, so initialization is never retried
 
