@@ -37,7 +37,7 @@ final class MarkupDepthTests: XCTestCase {
     /// no open `p` closes nothing, so `<div></p>` repeated nests the `div`s 100 000 deep — 900 KB,
     /// inside the fetch cap — while the counter reads 0 or 1 and the guard never trips. Measured
     /// through `SwiftSoup.parse`, that document did not crash and did not finish within ten minutes
-    /// (ledger A0011).
+    /// .
     /// The model's depth against the depth SwiftSoup actually builds.
     ///
     /// A bound is only sound if the model never reads *below* the real tree, and only usable if it is
@@ -78,7 +78,7 @@ final class MarkupDepthTests: XCTestCase {
             // `depth + 1` that never stay open. The model skipped them entirely and read one level
             // short on four of 37 real pages — every one an SVG icon (`<circle/>`, `<line/>`) inside a
             // button. `<br>`, `<img>` and `<input>` are the same shape, so the same shortfall applied
-            // to ordinary markup that the hand-written corpus never nested deeply (ledger A0011).
+            // to ordinary markup that the hand-written corpus never nested deeply.
             ("self-closing svg counts a level", "<div><svg><g><circle/><line/></g></svg></div>"),
             (
                 "void elements count a level",
@@ -150,7 +150,7 @@ final class MarkupDepthTests: XCTestCase {
     ///
     /// `web_open` hands a parser a fragment, not a complete document, and the parser inserts an `html`
     /// and a `body` element the bytes never contained and the model cannot see. That constant is the
-    /// difference between `maximumNesting` and the tree depth it actually admits (ledger A0011).
+    /// difference between `maximumNesting` and the tree depth it actually admits.
     func testAFragmentGainsOnlyTheParsersOwnWrapper() throws {
         let fragments = [
             String(repeating: "<div>", count: 50) + "x" + String(repeating: "</div>", count: 50),
@@ -178,7 +178,7 @@ final class MarkupDepthTests: XCTestCase {
     /// never seen, and a hand-written construct is a document someone already had in mind while writing
     /// the model. This reads whatever HTML is in `MARKUP_DEPTH_CORPUS`, so the claim can be re-checked
     /// against real pages without the default suite needing a network — the same opt-in arrangement as
-    /// `LiveProviderTests` (ledger A0011).
+    /// `LiveProviderTests`.
     ///
     /// An **under-count is a failure** here, not a warning: it is the bypass direction. An over-count
     /// is reported but tolerated, because it costs a refusal rather than a crash, and the point of the

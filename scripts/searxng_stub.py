@@ -34,7 +34,7 @@ class _StubServer(ThreadingHTTPServer):
     """`ThreadingHTTPServer` carrying this instance's scripted state.
 
     The attribute is declared here so a type checker can see it: the handler reaches it through
-    `self.server`, which is typed as the base server (ledger A0024).
+    `self.server`, which is typed as the base server.
     """
 
     stub_state: _StubState
@@ -51,7 +51,7 @@ class _StubHandler(BaseHTTPRequestHandler):
     on this handler, set by each `StubSearXNG.__init__` — so two instances shared one `status`, one
     `payload` and one `requests` list, and building the second silently reset the first's recorded
     paths and changed what the first would answer. The old docstring said callers must therefore not
-    share a server, which is a rule nothing enforced (ledger A0024).
+    share a server, which is a rule nothing enforced.
     """
 
     def do_GET(self) -> None:
@@ -74,7 +74,7 @@ class StubSearXNG:
     def __init__(self, status: int = 200, payload: str = "{}") -> None:
         self.state = _StubState(status=status, payload=payload)
         # The handler reaches this through `self.server`, so the state belongs to this instance and
-        # only to it (ledger A0024).
+        # only to it.
         self.server = _StubServer(("127.0.0.1", 0), self.state)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()

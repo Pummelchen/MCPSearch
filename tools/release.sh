@@ -77,7 +77,7 @@ VERSION="$(tr -d '[:space:]' < VERSION)"
 # Validated before anything is built from it. `VERSION` becomes part of a path that is later
 # `rm -rf`'d, and `${VERSION:?}` only guards *empty*: a value like `../..` aimed the removal
 # somewhere else entirely. A bare X.Y.Z is the only shape the rest of this script can mean
-# (ledger A0042).
+# .
 if ! printf '%s' "$VERSION" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+$'; then
     echo "refusing: VERSION must be a bare X.Y.Z, found '$VERSION'" >&2
     exit 2
@@ -180,7 +180,7 @@ else
     if command -v gitleaks >/dev/null 2>&1; then
         run_gate "gitleaks (full history)" gitleaks detect --source . --log-opts=--all --redact
         # A second pass for this project's own credential shapes: one config cannot carry both the
-        # defaults and custom rules in this gitleaks version (ledger A0005).
+        # defaults and custom rules in this gitleaks version.
         run_gate "gitleaks (project credential shapes)" gitleaks detect --source . --log-opts=--all --redact --config .gitleaks-project.toml
     else
         skip "gitleaks" "not installed"
@@ -224,7 +224,7 @@ PY
         # A parser that found nothing is not a passing suite. `swift test` exits 0 above, but the
         # count is derived from its *output*, and a format change or a Python error yields zeros — which
         # were then reported as "test suite: 0 tests across 0 bundles, 0 skipped, 0 failures", the most
-        # reassuring possible way to say the suite did not run (ledger A0043).
+        # reassuring possible way to say the suite did not run.
         if [ "${bundles:-0}" -ge 1 ] && [ "${total:-0}" -ge 1 ]; then
             pass "test suite: $total tests across $bundles bundles, $skipped skipped, 0 failures"
         else
@@ -246,7 +246,7 @@ if [ "$fails" -gt 0 ]; then
     # `fail` deliberately does not abort, so the report can list every gate. But this is the one step
     # here that cannot be undone, and taking it for a release already declared unfit is how a failed
     # run still destroys the previous staging. Reported as NOT CHECKED rather than silently skipped
-    # (ledger A0042).
+    # .
     skip "clear the stage directory" "$fails gate(s) failed before this point"
 else
     rm -rf "${STAGE:?}/${VERSION:?}"
@@ -376,7 +376,7 @@ else
     # The marker is required, not merely tolerated. Without this the notes could omit the
     # "Checks that did not run" section entirely and still pass: the placeholder check below only
     # rejects a *remaining* PENDING, so a section that was never written looks identical to one where
-    # every gate ran — which is the distinction RELEASE.md §1.2.7 exists to protect (ledger A0041).
+    # every gate ran — which is the distinction RELEASE.md §1.2.7 exists to protect.
     if grep -qE 'SHA256_(PENDING)?[0-9a-f]{0,64}|SHA256_PENDING' "$NOTES_SRC" &&
         grep -q 'ARCHIVE_BYTES_PENDING\|ARCHIVE_BYTES [0-9]' "$NOTES_SRC" &&
         grep -q 'NOT_CHECKED_PENDING' "$NOTES_SRC"; then
@@ -426,7 +426,7 @@ PY
         pass "no placeholder left in the rendered notes"
     fi
     # And the section must actually have arrived. Checking only that nothing PENDING is left cannot
-    # distinguish the two states a reader cares about (ledger A0041).
+    # distinguish the two states a reader cares about.
     if grep -qF "$not_checked_label" "$NOTES"; then
         pass "the published notes state which gates did not run"
     else

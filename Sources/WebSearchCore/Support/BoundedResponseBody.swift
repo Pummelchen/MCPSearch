@@ -24,8 +24,7 @@ struct ResponseBodyTooLarge: Error, Hashable {
 /// `URLSession` gives no way to pin the address it connects to, so a name whose answer changes between
 /// the policy's lookup and the connection — DNS rebinding — lands wherever it likes, and the SSRF
 /// policy cannot see it. This is the other half of that check: read the address back off the finished
-/// transaction so the caller can refuse a body that came from somewhere it never validated (ledger
-/// A0017).
+/// transaction so the caller can refuse a body that came from somewhere it never validated.
 ///
 /// `@unchecked Sendable` with a lock rather than an actor: the delegate callback is synchronous and
 /// arrives on a URLSession queue, and the reader asks for the result from a concurrency task.
@@ -68,7 +67,7 @@ extension BoundedResponseBody {
     ///
     /// Compared as addresses rather than as strings: `IPAddress` parses presentation form, so
     /// `::1` and `0:0:0:0:0:0:0:1` are the same peer, and a peer that will not parse counts as
-    /// unvalidated rather than as a match (ledger A0017).
+    /// unvalidated rather than as a match.
     static func unvalidatedPeers(_ peers: [String], validated: [IPAddress]) -> [String] {
         let allowed = Set(validated)
         return peers.filter { peer in
@@ -89,7 +88,7 @@ extension BoundedResponseBody {
         // More than one colon and no brackets is a bare IPv6 literal, not `host:port`. Without this,
         // the last colon was treated as a port separator and `2606:…:1946` lost its final group, so a
         // perfectly valid peer looked like one the policy never validated and the response would have
-        // been refused (ledger A0017).
+        // been refused.
         guard address.filter({ $0 == ":" }).count == 1, let colon = address.lastIndex(of: ":")
         else { return address }
         let port = address[address.index(after: colon)...]

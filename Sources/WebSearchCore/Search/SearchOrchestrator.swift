@@ -493,7 +493,7 @@ public actor SearchOrchestrator {
     /// where `HTTPStatusMapper` maps it to `.networkFailure`, whose `.network` category is
     /// transient, so `ProviderHealth.recordFailure` charged it to the provider: three client
     /// disconnects opened a breaker on a provider that had never failed, and the half-open probe
-    /// the attempt had claimed was never given back (ledger A0030/A0048).
+    /// the attempt had claimed was never given back.
     private static func isCancellation(_ error: any Error) -> Bool {
         if error is CancellationError { return true }
         if case HTTPError.cancelled = error { return true }

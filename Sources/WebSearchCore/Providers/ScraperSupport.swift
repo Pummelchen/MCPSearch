@@ -196,7 +196,7 @@ enum ScraperSupport {
         // every result title and snippet — so an ordinary search for "blocked", "captcha" or
         // "anomaly detection" made a genuine results page look like a bot challenge: the results
         // were discarded and the provider reported `providerUnavailable`, which is transient and so
-        // also counted against the circuit breaker (ledger A0047). A page that did yield results is
+        // also counted against the circuit breaker. A page that did yield results is
         // a results page, whatever words its content contains.
         let block: BlockKind? =
             if !parsed.isEmpty {

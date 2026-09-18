@@ -131,7 +131,7 @@ nonisolated(unsafe) var terminationSources: [DispatchSourceSignal] = []
 /// Nothing installed a handler and `shutdown` was never called, so the HTTP branch parked in
 /// `waitUntilStopped()` for a wake-up that nothing could send: `SIGTERM` killed the process outright
 /// and the sweep in `stop()` never ran. `HTTPMCPHost.stop()` had to become once-only first, because
-/// both this path and the parked task call it (ledger A0009).
+/// both this path and the parked task call it.
 func onTermination(_ body: @escaping @Sendable () -> Void) {
     for number in [SIGINT, SIGTERM] {
         // The default disposition would end the process before the source could fire.
@@ -181,7 +181,7 @@ case .http(let httpConfiguration):
             // configured and cannot serve: reporting `ok` for a process whose every configured
             // provider is skipping requests tells a supervisor to keep sending traffic to something
             // that will answer each one with a failure. `web_search_status` already reports the
-            // circuit, so this derives from the same state rather than guessing at it (ledger A0053).
+            // circuit, so this derives from the same state rather than guessing at it.
             let usable = states.filter { $0.configured && $0.circuit.state != .open }.count
             return HTTPMCPHost.HealthReport(
                 ready: usable > 0,
@@ -202,7 +202,7 @@ case .http(let httpConfiguration):
             requestCompletionTimeout: configuration.requestTimeout,
             health: healthSource,
             // An unauthenticated peer controls how many sessions exist, so the bound is configurable
-            // rather than fixed. Nil means the host's own default (ledger A0028).
+            // rather than fixed. Nil means the host's own default.
             maximumLiveSessions: httpConfiguration.maximumLiveSessions
                 ?? HTTPMCPHost.defaultMaximumLiveSessions,
             log: log
@@ -210,7 +210,7 @@ case .http(let httpConfiguration):
         try await host.start()
 
         // Serve until the process is asked to stop, and leave through the path a signal takes rather
-        // than by being killed (ledger A0009).
+        // than by being killed.
         onTermination { Task { await shutdown(server: server, host: host) } }
         await host.waitUntilStopped()
         await host.stop()

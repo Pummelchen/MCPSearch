@@ -61,7 +61,7 @@ final class LocalThrottleRaceTests: XCTestCase {
     /// `shouldAttempt` claims the breaker's single probe; the limiter path then returned without
     /// releasing it, so the breaker stayed `.halfOpen` with `probeInFlight` set and every later
     /// `authorize` answered `.circuitOpen` — the provider was never tried again until a manual
-    /// reset (ledger A0031). The cancellation path already gave the claim back for the same reason:
+    /// reset. The cancellation path already gave the claim back for the same reason:
     /// the local limiter refusing a request says nothing about the provider.
     func testALocalRateLimitRefusalReleasesTheHalfOpenProbe() async {
         let clock = TestClock()

@@ -357,7 +357,7 @@ extension AppConfiguration {
     /// Deduplicating the operator's own list matters as much as the appended defaults: a repeated
     /// name used to survive into the order, so the provider held two slots, `balanced` fanned out
     /// to it twice and never to a provider further down, and fusion counted its results twice
-    /// because its duplicate guard is per response (ledger A0034). `jina` is deliberately absent
+    /// because its duplicate guard is per response. `jina` is deliberately absent
     /// from `defaultProviderOrder`: it is a fetch provider and never participates in search.
     private static func resolvedProviderOrder(from raw: String) -> [ProviderID] {
         let parsed =
@@ -402,7 +402,7 @@ extension AppConfiguration {
                 // contains a credential", and this file already carried that promise while
                 // interpolating the raw value at three sites. Four keys are URL-typed and may carry
                 // an embedded token — a schemeless `host/path?token=...` is rejected here and was
-                // logged verbatim by `main.swift` (ledger A0033). The key is named, which is what
+                // logged verbatim by `main.swift`. The key is named, which is what
                 // an operator needs to fix it.
                 record(.unparseableValue, key, "is not a whole number")
                 return nil
@@ -473,7 +473,7 @@ extension AppConfiguration {
         if let order = string(.providerOrder) {
             // Resolved in a helper: the dedup and the append loop are five branches that belong to
             // this question, not to the whole of `parse`, whose cyclomatic complexity the envelope
-            // in .swiftlint.yml already sits against (ledger A0034).
+            // in.swiftlint.yml already sits against.
             let resolved = Self.resolvedProviderOrder(from: order)
             if !resolved.isEmpty { configuration.providerOrder = resolved }
         }

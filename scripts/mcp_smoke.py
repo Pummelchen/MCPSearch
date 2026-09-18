@@ -167,7 +167,7 @@ class Server:
         # would block in `write`, stop answering stdout, and leave this process blocked in
         # `readline`. The diagnostic path called `stderr.read()`, which waits for EOF from a
         # child possibly still alive, so the message meant to explain the hang was part of it
-        # (ledger A0026).
+        # .
         #
         # stdout: `readline` has no timeout of its own, so a child that stopped answering without
         # closing the stream hung the smoke test with no verdict. A reader thread turns the wait
@@ -206,7 +206,7 @@ class Server:
         """Read one stdout line and assert it is valid JSON.
 
         Raises when the child does not answer within `timeout`, instead of blocking forever: the
-        smoke test exists to produce a verdict, and a hang produces none (ledger A0026).
+        smoke test exists to produce a verdict, and a hang produces none.
         """
         stdout = self.process.stdout
         if stdout is None:
@@ -257,7 +257,7 @@ class Server:
 
         Never blocks. This used to call `stderr.read()`, which waits for end of stream, from a
         child that may still be running — on the very path whose purpose is to explain why it is
-        not answering (ledger A0026).
+        not answering.
         """
         with self._stderr_lock:
             return "".join(self._stderr_chunks)
@@ -518,7 +518,7 @@ def close_child_pipes(process: subprocess.Popen[str]) -> None:
     """Close a child's pipes once it has exited.
 
     `Popen.poll()` reaps the process but leaves `stdout` and `stderr` open, so a retry loop that
-    only polls leaks two descriptors per attempt (ledger A0027).
+    only polls leaks two descriptors per attempt.
     """
     for stream in (process.stdout, process.stderr):
         if stream is not None:
@@ -563,7 +563,7 @@ def wait_for_health(port: int, process: subprocess.Popen[str], timeout: float = 
                 # Read the body, not only the status. Until A0007 the body was the hardcoded
                 # string {"status":"ok"}, so accepting any 200 meant "a socket is bound": a
                 # process that bound the port and then bricked passed this gate and CI
-                # (ledger A0008). The endpoint now derives the body from the process, so the
+                # . The endpoint now derives the body from the process, so the
                 # body is the part worth asserting.
                 report = _health_report(response.read(4096), health_url)
                 if report.get("status") != "ok":
@@ -633,7 +633,7 @@ def start_http_server(binary: str) -> tuple[int, subprocess.Popen[str]]:
         except BindRace as race:
             # The child has exited *and* been reaped: `poll()` inside `wait_for_health` does that,
             # and a second `waitpid` afterwards raises ChildProcessError — measured, because this
-            # finding originally claimed the opposite (ledger A0027). What `poll()` does not do is
+            # finding originally claimed the opposite. What `poll()` does not do is
             # close the child's pipes, so both descriptors leaked on every retry. Print the race
             # rather than retrying silently, so a run that keeps racing is visible in the log.
             close_child_pipes(process)

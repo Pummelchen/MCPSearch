@@ -96,7 +96,7 @@ final class FetchFallbackTests: XCTestCase {
     /// which is what a script-only document, a JS-only page or an empty `text/plain` body produces.
     /// `web_open` then reported success with `text_characters: 0` and the real reason was discarded,
     /// so a caller could not tell "this page has no text" from "every extraction path failed"
-    /// (ledger A0014).
+    /// .
     func testAnEmptyExtractionIsAFailureRatherThanASuccess() async throws {
         let server = try htmlServer(
             "<html><head><title>Script only</title></head>"
@@ -125,7 +125,7 @@ final class FetchFallbackTests: XCTestCase {
     /// the body fell straight to UTF-8-then-Latin-1. Latin-1 cannot fail, so a windows-1251 page was
     /// silently decoded into mojibake: wrong characters presented as success, with no warning and no
     /// truncation flag. This drives the whole fetch, not the decoder, so it can show the before-state
-    /// (ledger A0012).
+    /// .
     func testAPageInADeclaredNonUTF8CharsetIsDecodedCorrectly() async throws {
         let greeting = "Привет мир"
         let html = "<html><head><title>Кодировка</title></head><body><p>\(greeting)</p></body></html>"
@@ -156,7 +156,7 @@ final class FetchFallbackTests: XCTestCase {
     /// The broad catch on the reader path turned `CancellationError` into "the reader was
     /// unavailable; here is the native extraction", so a caller that had already gone away received a
     /// successful-looking result and the cancellation was absorbed — the work it reports on was done
-    /// for nobody (ledger A0015).
+    /// for nobody.
     func testACancelledReaderIsNotTurnedIntoAFallbackResult() async throws {
         let server = try htmlServer(thinHTML())
         let jinaHTTP = MockHTTPClient()
@@ -184,7 +184,7 @@ final class FetchFallbackTests: XCTestCase {
     /// The reader takes the target URL verbatim, so everything in it goes to `r.jina.ai` — a service
     /// this repository does not control and that necessarily logs what it fetches. The existing
     /// thin-page test is the positive control: with an ordinary URL the reader *is* consulted, so
-    /// this test's empty request list is the fix and not a broken fixture (ledger A0013).
+    /// this test's empty request list is the fix and not a broken fixture.
     func testACredentialBearingURLIsNotForwardedToTheReader() async throws {
         let server = try htmlServer(thinHTML())
         let jinaHTTP = MockHTTPClient()

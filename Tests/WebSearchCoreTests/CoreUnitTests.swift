@@ -295,7 +295,7 @@ final class ConfigurationTests: XCTestCase {
     /// `tavily,tavily,brave` produced two Tavily entries: `balanced` fanned out to Tavily twice and
     /// never to Brave, and fusion counted Tavily's results twice because its duplicate guard is per
     /// response. The neighbouring test only ever used a list without repeats, which is why nothing
-    /// caught it (ledger A0034).
+    /// caught it.
     func testARepeatedProviderNameIsDeduplicated() {
         let configuration = AppConfiguration.parse([
             "SEARCH_PROVIDER_ORDER": "tavily,tavily,brave"
@@ -311,7 +311,7 @@ final class ConfigurationTests: XCTestCase {
     /// that promise while interpolating the raw value at three sites. Four keys are URL-typed and
     /// may legitimately carry an embedded token, so a schemeless value with a token in its query —
     /// a realistic operator mistake — was rejected here and then logged verbatim by `main.swift`
-    /// (ledger A0033).
+    /// .
     func testARejectedValueIsNotEchoedIntoTheDiagnostic() {
         let secret = "s3cr3t-token-value"
         let configuration = AppConfiguration.parse([

@@ -69,7 +69,7 @@ public struct MojeekProvider: SearchProvider {
             // The response's `timestamp` is only present when it is asked for. Mojeek's `date`
             // parameter is documented as "Include the last modified date as recognised by Mojeek",
             // valid [0|1], **default 0** — so the provider was reading a field it never requested and
-            // `publishedAt` was always nil (ledger A0051).
+            // `publishedAt` was always nil.
             URLQueryItem(name: "date", value: "1"),
         ]
 
@@ -82,7 +82,7 @@ public struct MojeekProvider: SearchProvider {
                     name: "fi",
                     // Mojeek takes a comma-separated list. A space-joined list is sent as one
                     // malformed domain, so the filter silently does nothing and the caller gets
-                    // unfiltered results while believing the filter applied (ledger A0046).
+                    // unfiltered results while believing the filter applied.
                     value: request.includeDomains.prefix(MojeekProvider.maxDomains)
                         .joined(separator: ",")
                 )

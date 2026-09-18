@@ -19,7 +19,7 @@ final class MojeekDomainFilterTests: XCTestCase {
     ///
     /// The provider read `item.timestamp` but never requested it, so `publishedAt` was always nil.
     /// Mojeek's parameter documentation lists `date` as "Include the last modified date as recognised
-    /// by Mojeek", valid `[0|1]`, **default 0** (ledger A0051).
+    /// by Mojeek", valid `[0|1]`, **default 0**.
     func testTheRequestAsksForTheDateAndUsesWhatComesBack() async throws {
         let http = MockHTTPClient()
         http.respondJSON(

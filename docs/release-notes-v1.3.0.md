@@ -3,7 +3,7 @@
 Released 2026-09-18. A hardening release. Almost nothing here is new capability: it is behaviour that
 was documented but not implemented, checks that could not fail, and one bypass in a guard that existed
 specifically to stop a crash. The full set of findings, including the ones with no user-visible effect,
-is in [`AUDIT/ledger.md`](../AUDIT/ledger.md).
+was processed into this release; the audit material itself has since been retired.
 
 ## The nesting guard could be walked past
 

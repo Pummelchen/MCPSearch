@@ -162,11 +162,11 @@ class Server:
         # stderr: the pipe holds about 16 KiB, `SEARCH_LOG_LEVEL=warning` is set on purpose, and
         # fifty queries against rate-limited providers emit warnings. The child filled the pipe,
         # blocked in `write`, stopped answering stdout, and the parent blocked in `readline` — a
-        # deadlock rather than a timeout, with no verdict at all (ledger A0019). Reading stderr only
+        # deadlock rather than a timeout, with no verdict at all. Reading stderr only
         # in `close`, after `wait`, could never have drained it in time.
         #
         # stdout: a blocking `readline` has no timeout of its own, so a server that stopped
-        # answering without closing the stream hung the whole run (ledger A0018). A reader thread
+        # answering without closing the stream hung the whole run. A reader thread
         # turns the wait into a queue get with a deadline, which the timeout below can report.
         self._stderr_chunks: list[str] = []
         self._stderr_lock = threading.Lock()
@@ -207,7 +207,7 @@ class Server:
 
         Raises when the server does not answer within `timeout`: a read that never returned used to
         hang the whole run with no verdict, because the class's only timeout was on `wait` in
-        `close`, which is unreachable while a read is blocked (ledger A0018).
+        `close`, which is unreachable while a read is blocked.
         """
         try:
             line = self._stdout.get(timeout=timeout)
@@ -250,7 +250,7 @@ class Server:
         stdin = self.process.stdin
         # The child may already have closed its end; closing a pipe then raises OSError or
         # ValueError, and there is nothing to recover. A missing pipe is a no-op rather than an
-        # assertion, so this survives `python -O` (ledger A0004, A0006).
+        # assertion, so this survives `python -O`.
         with contextlib.suppress(OSError, ValueError):
             if stdin is not None:
                 stdin.close()
@@ -259,7 +259,7 @@ class Server:
         except subprocess.TimeoutExpired:
             self.process.kill()
         # The drain thread appends whatever arrived; reading the pipe here would return nothing,
-        # because the thread owns it (ledger A0019).
+        # because the thread owns it.
         return self._stderr_text()
 
 
@@ -344,8 +344,7 @@ def load_secret_values(repository_root: str | None = None) -> dict[str, str]:
 
     ``repository_root`` overrides where that fallback looks. It exists so a test can isolate
     itself from the developer's own ``config.env``: the fallback is deliberate in production and
-    made every assertion about an *absent* key depend on the machine the suite ran on (ledger
-    A0025).
+    made every assertion about an *absent* key depend on the machine the suite ran on.
     """
     values: dict[str, str] = {}
     for name in SECRET_VARIABLES:
@@ -444,7 +443,7 @@ def main() -> int:
     # the report prints `last_error`, which `ProviderHealth` fills from a failure message — and
     # the HTTP client here documents that a URL in a diagnostic is a credential in a
     # diagnostic, because Mojeek authenticates with `api_key=` in the query string. A
-    # credential could reach the report and never be checked (ledger A0020).
+    # credential could reach the report and never be checked.
     server_diagnostics: list[str] = []
     try:
         server.request(
@@ -603,7 +602,7 @@ def main() -> int:
         # it — the status call raising, or a shape change making the payload index fail —
         # jumped straight here, and this block only killed the child: the stderr that may hold
         # the leak was never read or scanned, so the check silently did not run on exactly the
-        # failed runs (ledger A0020). The run is failing anyway; this makes the leak visible
+        # failed runs. The run is failing anyway; this makes the leak visible
         # instead of silent.
         stderr_tail = server.close()
         leaked_late = find_credential_leaks(

@@ -20,7 +20,7 @@ final class ParallelHandshakeTests: XCTestCase {
     /// first line then returned early for the life of the process: the provider never sent
     /// `notifications/initialized` and never discovered its tool again, so it was unusable even
     /// though a fresh handshake would have worked. The doc comment on `handshake` already claimed a
-    /// failed handshake is not cached (ledger A0049).
+    /// failed handshake is not cached.
     func testAFailedHandshakeDoesNotLeaveAPoisonedSessionBehind() async throws {
         let http = GatedInitializeHTTPClient(failFirstInitialize: true)
         let provider = parallelProvider(http)
@@ -117,7 +117,7 @@ private actor GatedInitializeHTTPClient: HTTPClient {
     private var methods: [String] = []
     private var firstInitializeSeen = false
     /// When set, the first `initialize` returns a session header *and* a JSON-RPC error — the shape
-    /// that left the session cached and the provider half-initialised (ledger A0049).
+    /// that left the session cached and the provider half-initialised.
     private let failFirstInitialize: Bool
     private var initializeAttempts = 0
 

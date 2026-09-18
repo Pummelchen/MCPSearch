@@ -334,7 +334,7 @@ jobs:
       - name: Secret scan (full history)
         run: gitleaks detect --source . --log-opts=--all --redact
       # A second pass for this project's own credential shapes. One config cannot carry both:
-      # `useDefault = true` makes gitleaks ignore its own `[[rules]]` (ledger A0005).
+      # `useDefault = true` makes gitleaks ignore its own `[[rules]]`.
       - name: Secret scan — project credential shapes
         run: gitleaks detect --source . --log-opts=--all --redact --config .gitleaks-project.toml
 

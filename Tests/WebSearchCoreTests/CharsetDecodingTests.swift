@@ -8,7 +8,7 @@ import XCTest
 /// `mimeType(from:)` keeps only the part before `;`, so the `charset` parameter never reached the
 /// decoder and the body fell straight to UTF-8-then-Latin-1. Latin-1 cannot fail, so a page served
 /// as windows-1251, Shift_JIS or GBK was silently decoded into mojibake — wrong characters
-/// presented as success, with no warning and no truncation flag (ledger A0012).
+/// presented as success, with no warning and no truncation flag.
 final class CharsetDecodingTests: XCTestCase {
     private let cyrillic = "Привет мир"
 

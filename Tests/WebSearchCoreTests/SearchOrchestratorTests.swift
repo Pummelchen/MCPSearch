@@ -573,7 +573,7 @@ final class SearchOrchestratorTests: XCTestCase {
     /// `CancellationError` let the transport's shape fall into the generic arm, where
     /// `HTTPStatusMapper` called it a transient network failure and `recordFailure` charged it to
     /// the breaker: three client disconnects opened a breaker on a provider that never failed, and
-    /// the half-open probe the attempt had claimed was never given back (ledger A0030/A0048).
+    /// the half-open probe the attempt had claimed was never given back.
     func testATransportCancellationIsNotChargedToTheBreaker() async throws {
         let clock = TestClock()
         let health = ProviderHealth(clock: clock)

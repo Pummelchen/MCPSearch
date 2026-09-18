@@ -3,7 +3,7 @@ import XCTest
 
 @testable import WebSearchCore
 
-/// The check that stands in for address pinning (ledger A0017, tracker T4).
+/// The check that stands in for address pinning.
 ///
 /// `URLSession` cannot be told to connect to the address the SSRF policy validated, so the fetcher reads
 /// the address the connection actually used off the task metrics and refuses the body when it was not

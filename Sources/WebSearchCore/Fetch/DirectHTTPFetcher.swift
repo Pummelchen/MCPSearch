@@ -176,7 +176,7 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
     /// itself and cannot be arranged in a test; taking `validated` as an argument is what lets a test
     /// inject that divergence and drive everything after it — the real socket, the real task metrics,
     /// and this comparison — rather than leaving the check covered only through the decision it
-    /// delegates to (ledger A0017, tracker T4).
+    /// delegates to.
     func perform(_ request: HTTPRequest, validated: [IPAddress]) async throws -> HTTPResponse {
         var urlRequest = URLRequest(url: request.url)
         urlRequest.httpMethod = request.method
@@ -188,7 +188,7 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
 
         // The address the connection actually used, so the response can be refused if it did not come
         // from one the policy validated. `URLSession` gives no way to pin the address, so this is the
-        // check that stands in for pinning (ledger A0017).
+        // check that stands in for pinning.
         let recorder = PeerAddressRecorder()
 
         let (data, response): (Data, URLResponse)
@@ -204,7 +204,7 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
 
             // The address the connection actually used, checked against what the policy resolved.
             // `URLSession` gives no way to pin the address it connects to, so this stands in for
-            // pinning: a body from a peer the policy never validated is refused (ledger A0017).
+            // pinning: a body from a peer the policy never validated is refused.
             //
             // Only when the policy resolved addresses. With `allowPrivateNetwork` — every loopback
             // test — an IP literal, or a name that did not resolve, there is nothing the connection
@@ -319,7 +319,7 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
     /// `mimeType(from:)` throws away everything after `;`, so the charset parameter was discarded and
     /// decoding fell straight to UTF-8-then-Latin-1. Latin-1 cannot fail, so a page served as
     /// windows-1251, Shift_JIS or GBK was silently decoded into mojibake with no warning and no
-    /// truncation flag — wrong characters presented as success (ledger A0012).
+    /// truncation flag — wrong characters presented as success.
     ///
     /// Latin-1 stays as the last resort precisely because it cannot fail: a caller is better served
     /// by an approximate body than by an error, and the order above means it is reached only when

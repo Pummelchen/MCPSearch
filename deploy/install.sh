@@ -113,7 +113,7 @@ run() {
 # `cp source "$BIN"` truncates the destination before it writes, so a copy that failed part-way — a
 # full disk, an interrupt — destroyed the working binary and put a truncated file in its place. The
 # `|| die` reported that but could not undo it, so a failed install left the operator with no server
-# at all (ledger A0010). Copying beside the destination and moving it into place makes the path
+# at all. Copying beside the destination and moving it into place makes the path
 # always either the old binary or the new one, because `mv` within a filesystem is atomic.
 install_binary() {
     local source="$1" staged
@@ -226,7 +226,7 @@ print(len(data["results"]))
 # `[ -n "$results" ]` is true for the string "0", which `searxng_answers` prints when the instance
 # answers with an empty result array. An instance whose engines are all failing was therefore adopted
 # as "a working SearXNG" and reported as having "answered a real query: 0 results" — the installer's
-# central claim, passing while false (ledger A0035).
+# central claim, passing while false.
 has_results() {
     case "${1:-}" in
         '' | *[!0-9]*) return 1 ;;
@@ -272,7 +272,7 @@ install_searxng_docker() {
 
     # The secret reaches the container through a file, not `-e`. As an argument it sits in the argv
     # of `docker` for the life of the container start — readable with `ps` by any local user — and
-    # `docker inspect` exposes it afterwards (ledger A0037). The file is 600 in a 700 directory and
+    # `docker inspect` exposes it afterwards. The file is 600 in a 700 directory and
     # is removed whether the run succeeds or fails.
     local secret_file status
     secret_file="$(umask 077 && mktemp "${TMPDIR:-/tmp}/mcps-searxng-secret.XXXXXX")" || return 1
@@ -283,7 +283,7 @@ install_searxng_docker() {
 
     # The host side of the publish mapping is the operator's `--bind`, not a constant: it was
     # hardcoded to 127.0.0.1 while the native path honoured BIND, so `--bind 0.0.0.0` was
-    # accepted, reported as applied, and silently dropped by this method (ledger A0039).
+    # accepted, reported as applied, and silently dropped by this method.
     run env ${DOCKER_CONFIG_DIR:+DOCKER_CONFIG="$DOCKER_CONFIG_DIR"} docker run -d \
         --name "$CONTAINER_NAME" \
         --restart unless-stopped \
@@ -317,7 +317,7 @@ install_searxng_native() {
 
     # Through `run`, like every other mutation: `run`'s comment says `--dry-run` is honest rather than
     # decorative, and this bare call created the SearXNG directory even when the operator asked for
-    # nothing to change (ledger A0044).
+    # nothing to change.
     run mkdir -p "${SEARXNG_DIR}" || return 1
     # Guard on the checkout's content, not on `.git`: an interrupted run leaves a valid empty
     # repository behind, and treating that as done fails later with "does not appear to be a
@@ -342,7 +342,7 @@ install_searxng_native() {
             # such environment, so the key is written here — generated per install, never tracked —
             # and the bind narrows to loopback, which the container gets from its port mapping.
             # The secret is passed in the environment, not as an argument: an argument is in the argv
-            # of `python3` and readable with `ps` by any local user (ledger A0037). The environment of
+            # of `python3` and readable with `ps` by any local user. The environment of
             # another user's process is not readable without root, and the script writes the value
             # straight into a 600 file.
             SEARXNG_SECRET="$secret" python3 - "${REPO_ROOT}/deploy/searxng/settings.yml" "${SEARXNG_DIR}/etc/settings.yml" "$PORT" "$BIND" <<'PY' || return 1
@@ -574,7 +574,7 @@ if [ "$DRY_RUN" -eq 0 ] && [ "$VERIFY_ONLY" -eq 0 ]; then
         # `|| true` here swallowed a grep that *failed*. Exit 1 is "no line survived the filter",
         # which is a legitimate result; anything above it is a failure to read the base file, and the
         # `|| true` then left `$staged` empty for the installer to move over `$CFG` — dropping every
-        # API key, which is the one thing this block exists to prevent (ledger A0038).
+        # API key, which is the one thing this block exists to prevent.
         grep -v '^[[:space:]]*SEARXNG_BASE_URL=' "$base" > "$staged"
         case "$?" in
             0 | 1) ;;
@@ -643,7 +643,7 @@ if not reply:
     print("timeout"); sys.exit(0)
 # A JSON-RPC error reply carries no "result", so `reply.get("result", {})` produced an empty dict,
 # `isError` read as false, and this gate printed "ok: 0 result blocks" and passed while the server
-# could not search at all — the one thing it exists to prove (ledger A0036).
+# could not search at all — the one thing it exists to prove.
 if "error" in reply:
     print("error: JSON-RPC error: " + str(reply["error"])[:200].replace("\n", " ")); sys.exit(0)
 res = reply.get("result")

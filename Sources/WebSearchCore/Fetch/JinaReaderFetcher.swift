@@ -49,7 +49,7 @@ public struct JinaReaderFetcher: Sendable {
         // service this repository does not control and that necessarily logs what it fetches. A
         // fragment is dropped, because no server ever receives one and no reader needs it; userinfo
         // and credential-shaped query parameters cause the fallback to be declined instead, which
-        // costs the caller a rendered page rather than their token (ledger A0013).
+        // costs the caller a rendered page rather than their token.
         if let withheld = Self.credentialToWithhold(from: request.url) {
             throw SearchError.invalidRequest(
                 "refusing to forward a target URL carrying \(withheld) to the third-party reader"
@@ -137,7 +137,7 @@ public struct JinaReaderFetcher: Sendable {
         // The target URL has now left this machine and was fetched by a third party. A URL carrying
         // userinfo or a credential-shaped parameter never reaches here — it is withheld above — so
         // this discloses the ordinary case rather than warning about a disclosure that was refused
-        // (ledger A0013).
+        // .
         var warnings: [String] = [
             "Used Jina Reader (\(baseURL.host() ?? baseURL.absoluteString)), "
                 + "a third-party service that fetched this URL remotely."
@@ -232,7 +232,7 @@ public struct JinaReaderFetcher: Sendable {
     /// credential-shaped names rather than a heuristic on values, because guessing from a value would
     /// withhold the reader from ordinary pages: a name like `key` or `code` is deliberately **not**
     /// here, since it is far more often a benign parameter than a secret, and a false positive costs
-    /// the caller a rendered page (ledger A0013).
+    /// the caller a rendered page.
     static func credentialToWithhold(from url: URL) -> String? {
         if let user = url.user, !user.isEmpty { return "userinfo" }
         let credentialNames: Set<String> = [

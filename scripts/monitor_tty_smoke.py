@@ -241,7 +241,7 @@ class Session:
             # Both descriptors are open before anything else in here can fail, so a raise
             # between the `openpty` above and the close below — a leaked credential in the
             # environment, a spawn error — leaked both ends of the PTY, and the failed run
-            # left descriptors behind as well (ledger A0022).
+            # left descriptors behind as well.
             os.close(self.master)
             with contextlib.suppress(OSError):
                 os.close(slave)
@@ -610,7 +610,7 @@ def check_ctrl_c_quits_cleanly(binary: str) -> None:
     finally:
         # A failing `require` inside the loop used to skip this, leaking the stub's listening
         # socket and its thread — and a bound port that then made the next run fail too
-        # (ledger A0023).
+        # .
         stub.stop()
 
 

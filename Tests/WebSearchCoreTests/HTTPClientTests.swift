@@ -53,7 +53,7 @@ final class LoopbackServer: @unchecked Sendable {
     ///
     /// The drip loop stops when `send` reports the peer is gone, so this is how a test can tell
     /// whether a client that stopped reading also closed the connection — the difference between a
-    /// transfer that was capped and one that was merely abandoned (ledger A0016).
+    /// transfer that was capped and one that was merely abandoned.
     private var _bytesSent = 0
     private var _requestMethods: [String] = []
     private var _requestPaths: [String] = []
@@ -118,7 +118,7 @@ final class LoopbackServer: @unchecked Sendable {
     ///
     /// A computed property cannot `try`, so the force-unwrap here could not become an `XCTUnwrap`
     /// without making every one of its readers throwing. Building it in `init`, which already throws,
-    /// turns the impossible case into a reportable error instead of a crash (ledger A0003).
+    /// turns the impossible case into a reportable error instead of a crash.
     let baseURL: URL
 
     var bytesSent: Int {
@@ -272,7 +272,7 @@ final class HTTPClientTests: XCTestCase {
     /// This is the timing the mitigation rests on. `didFinishCollecting` is delivered when the task
     /// completes, and a check that reads `addresses` too early sees an empty list — which would either
     /// refuse a good response or, worse, pass a bad one as unverifiable. Measured rather than assumed
-    /// (ledger A0017).
+    /// .
     func testThePeerAddressIsAvailableWhenTheBodyHasBeenRead() async throws {
         let server = try LoopbackServer(responses: [.init(status: 200, body: "hello")])
         let session = URLSession(configuration: .ephemeral)
@@ -302,7 +302,7 @@ final class HTTPClientTests: XCTestCase {
         )
     }
 
-    /// The comparison that stands in for address pinning (ledger A0017).
+    /// The comparison that stands in for address pinning.
     ///
     /// The fetcher refuses a body whose peer was not one the policy validated. This is the decision
     /// itself: a peer the policy did not validate must be reported, and a peer that merely *looks*
@@ -374,7 +374,7 @@ final class HTTPClientTests: XCTestCase {
     /// `BoundedResponseBody.read` throws at the cap, which abandons the byte sequence. Whether that
     /// also closes the connection is what the finding recorded as UNSURE: if it does, the server's next
     /// `send` fails and the drip loop stops; if it does not, the server streams the rest of the body
-    /// into a socket nobody is reading (ledger A0016).
+    /// into a socket nobody is reading.
     func testAnOverCapTransferStopsTheServerSending() async throws {
         let chunk = 4 * 1024
         let chunks = 64

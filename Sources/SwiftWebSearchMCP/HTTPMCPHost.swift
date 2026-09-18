@@ -116,7 +116,7 @@ final class HTTPMCPHost: @unchecked Sendable {
     /// `initialize` creates a session and only `DELETE` releases it, so without a bound an
     /// unauthenticated client could open sessions until the process exhausted memory — each one
     /// holding a `Server` and a transport. Sixty-four is far more than the handful of clients this
-    /// host is for, and small enough that the worst case is bounded (ledger A0028).
+    /// host is for, and small enough that the worst case is bounded.
     static let defaultMaximumLiveSessions = 64
 
     /// Reserved session slots, counting sessions that are being created as well as live ones.
@@ -127,7 +127,7 @@ final class HTTPMCPHost: @unchecked Sendable {
     private let liveSessions = OSAllocatedUnfairLock<Int>(initialState: 0)
 
     /// The cap in force for this host, injectable so a test can reach it with a handful of
-    /// sessions rather than sixty-five (ledger A0028).
+    /// sessions rather than sixty-five.
     private let maximumLiveSessions: Int
 
     /// Take a slot, or report that the host is full.
@@ -153,7 +153,7 @@ final class HTTPMCPHost: @unchecked Sendable {
     /// Shutdown is requested from the signal path *and* from the task parked in `waitUntilStopped()`,
     /// so it runs twice. The second call re-entered `group.shutdownGracefully()` and looked for a
     /// continuation that the first call had already resumed and cleared — the process then neither
-    /// exited nor served, which is why the signal handler could not simply be added (ledger A0009).
+    /// exited nor served, which is why the signal handler could not simply be added.
     private let hasStopped = OSAllocatedUnfairLock<Bool>(initialState: false)
 
     struct SessionContext: Sendable {
@@ -290,7 +290,7 @@ final class HTTPMCPHost: @unchecked Sendable {
             log.error("HTTP session could not be started", metadata: ["error": "\(error)"])
             await transport.disconnect()
             // The slot was reserved before the work began and no session was registered, so nothing
-            // else will release it (ledger A0028).
+            // else will release it.
             releaseSessionSlot()
             return .error(statusCode: 500, .internalError("Could not start an MCP session."))
         }
@@ -387,7 +387,7 @@ final class HTTPMCPHost: @unchecked Sendable {
 
     /// Stop listening and release resources.
     func stop() async {
-        // Once only, whichever caller gets here first (ledger A0009).
+        // Once only, whichever caller gets here first.
         let firstCall = hasStopped.withLock { stopped -> Bool in
             if stopped { return false }
             stopped = true
@@ -405,7 +405,7 @@ final class HTTPMCPHost: @unchecked Sendable {
             return values
         }
         // The sweep bypasses `closeSession`, so it releases the slots itself; otherwise the counter
-        // would stay above zero for the life of the process (ledger A0028).
+        // would stay above zero for the life of the process.
         liveSessions.withLock { $0 = 0 }
         for session in live {
             await session.transport.disconnect()
@@ -822,7 +822,7 @@ private final class SSEStreamRelay: @unchecked Sendable {
     /// The relay ends when the *client* goes away, not only when the stream does. Without that, a task
     /// parked in `for try await frame in stream` waited for a next frame that, for a long-lived MCP
     /// session stream, may never arrive: a disconnected client left a suspended task holding the
-    /// channel and the stream, and the session it belonged to could not make progress (ledger A0029).
+    /// channel and the stream, and the session it belonged to could not make progress.
     /// `closeFuture` is NIO's own signal and completes on every close path, including a peer that
     /// vanished mid-response.
     func relay(_ stream: AsyncThrowingStream<Data, Swift.Error>) {
@@ -842,7 +842,7 @@ private final class SSEStreamRelay: @unchecked Sendable {
             } catch is CancellationError {
                 // The client disconnected: there is no one to finish the response for, and the
                 // session's own teardown is what cleans up. Reaching this instead of hanging is the
-                // whole point (ledger A0029).
+                // whole point.
                 log.debug("SSE client disconnected; relay stopped")
             } catch {
                 log.debug("SSE stream ended with an error", metadata: ["error": "\(error)"])

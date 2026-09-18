@@ -8,7 +8,7 @@ import XCTest
 /// The `.queryItem` allowed mask includes `+` because RFC 3986 lists it as a sub-delimiter, so
 /// `q=C++` was sent as written. DuckDuckGo, Startpage and SearXNG are form-style GET endpoints that
 /// decode `+` as a space, so the engine received `C` and answered a different question than the one
-/// asked (ledger A0050). Six providers built their URL the same way, and nothing asserted the
+/// asked. Six providers built their URL the same way, and nothing asserted the
 /// encoding.
 final class QueryItemEncodingTests: XCTestCase {
     private let configuration = Fixtures.configuration()

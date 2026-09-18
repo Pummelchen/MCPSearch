@@ -9,7 +9,7 @@ All notable changes to this project are documented here. The format follows
 Security and correctness work from a pre-production audit of the whole tree. Most of it is not new
 capability: it is behaviour that was documented but not implemented, checks that could not fail, and one
 bypass in a guard that existed to stop a crash. Every finding, including the ones with no user-visible
-effect, is in [`AUDIT/ledger.md`](AUDIT/ledger.md).
+effect, was processed into this release; the audit material itself has since been retired.
 
 ### Security
 

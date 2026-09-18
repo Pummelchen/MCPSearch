@@ -46,8 +46,7 @@ public enum MarkupDepth {
     /// The same single scan as `exceedsLimit`, reporting how deep it got instead of only whether it
     /// got too deep. It exists so the model can be **measured against the tree SwiftSoup actually
     /// builds**: a bound is only sound if this number is never below the real depth, and only usable
-    /// if it is not far above it. Without this, "the model is close enough" is an assertion (ledger
-    /// A0011).
+    /// if it is not far above it. Without this, "the model is close enough" is an assertion.
     ///
     /// Saturating rather than exact: the scan still stops as soon as the limit is passed, so a hostile
     /// document costs a few kilobytes of reading rather than a full pass. Pass a large `limit` to
@@ -161,7 +160,7 @@ public enum MarkupDepth {
     /// parser closed, and over-counting refuses a page rather than letting a deep one through. Measured
     /// against 37 real pages, omitting these was not neutral — it under-counted 18 of them, because
     /// `ul > li > ul > li` is ordinary markup and the walk was popping straight through the inner list
-    /// (ledger A0011).
+    /// .
     private static let impliedEndTagBoundaries: [[UInt8]] = [
         "ul", "ol", "menu", "dl", "table", "caption", "td", "th", "template",
         "button", "select", "object", "marquee", "applet", "html",
@@ -221,7 +220,7 @@ public enum MarkupDepth {
     /// unconditionally — "a closing tag always returns to the parent, even if it never matched one" —
     /// and that is false. `<div></p>` repeated exploits it: the `</p>` closes nothing in the real
     /// tree, so the `div`s nest 100 000 deep while the counter reads 0 or 1. A stray end tag is now
-    /// ignored, exactly as a parser ignores it (ledger A0011).
+    /// ignored, exactly as a parser ignores it.
     static func scan<Bytes: RandomAccessCollection>(
         _ bytes: Bytes,
         limit: Int
@@ -258,7 +257,7 @@ public enum MarkupDepth {
         /// Scoped to the innermost table, not to the whole stack. A global check looked right and was
         /// not: in `<table><tr><td><table><tr>…` the *outer* section suppressed the inner table's
         /// implicit one, and nested tables then read 7 deep where the parser builds 14 — an
-        /// under-count, which is the bypass direction (ledger A0011).
+        /// under-count, which is the bypass direction.
         func sectionOpenInsideInnermostTable() -> Bool {
             var slot = depth - 1
             while slot >= 0 {
@@ -392,7 +391,7 @@ public enum MarkupDepth {
             // Not counting it read one level short on four of 37 real pages, all of them SVG icons
             // (`<circle/>`, `<line/>`) inside a button — and `<br>`, `<img>` and `<input>` are the same
             // shape, so the same shortfall applied to ordinary markup the hand-written corpus happened
-            // never to nest deeply (ledger A0011).
+            // never to nest deeply.
             if selfClosing || matchesAny(bytes, from: tagBody, to: tagNameEnd, in: voidElements) {
                 if depth + 1 > deepest { deepest = depth + 1 }
                 if depth + 1 > limit { return depth + 1 }
@@ -408,7 +407,7 @@ public enum MarkupDepth {
                 }
                 // A `<tr>` with no open table section gets an implicit `<tbody>`: the parser inserts
                 // one, so not counting it under-counts every table by a level — and under-counting is
-                // the bypass, not a rounding error (ledger A0011).
+                // the bypass, not a rounding error.
                 if matchesAny(bytes, from: tagBody, to: tagNameEnd, in: tableRowElements),
                     !sectionOpenInsideInnermostTable()
                 {
@@ -450,7 +449,7 @@ public enum MarkupDepth {
             // `>` terminates too: an end tag's name is measured up to the bracket, and the start-tag
             // caller already passes the bracket as its limit, so this only makes the helper safe for
             // both. Without it, `</div>` measured as the name `div>…` up to the next whitespace, so no
-            // closing tag ever matched and every ordinary page over-counted (ledger A0011).
+            // closing tag ever matched and every ordinary page over-counted.
             if byte == UInt8(ascii: " ") || byte == UInt8(ascii: "\t") || byte == UInt8(ascii: "\n")
                 || byte == UInt8(ascii: "\r") || byte == UInt8(ascii: "/") || byte == UInt8(ascii: ">")
             {

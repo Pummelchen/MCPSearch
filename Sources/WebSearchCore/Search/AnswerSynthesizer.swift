@@ -488,7 +488,7 @@ public struct AnswerSynthesizer: Sendable {
                 // Sanitised exactly like the full block above. These two lines were the one place a
                 // page-supplied string entered the corpus raw, so a title carrying a fence delimiter could
                 // close the block and put instructions outside it — the injection the comment above says
-                // the three fields must not be trusted with (ledger A0032).
+                // the three fields must not be trusted with.
                 blocks.append(
                     "[\(index)] \(Self.sanitiseFences(result.title))\n"
                         + "URL: \(Self.sanitiseFences(result.url.absoluteString))\n"

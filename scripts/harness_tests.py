@@ -251,7 +251,7 @@ class SoakArgumentTests(unittest.TestCase):
             config.write_text("TAVILY_API_KEY=tvly-fromfile\nBRAVE_SEARCH_API_KEY=b-fromfile\n")
             # The repository-root fallback is pointed at an empty directory. `load_secret_values`
             # reads the developer's own config.env by design, so without this the assertion below
-            # about an absent key passes in CI and fails on any machine that has one (ledger A0025).
+            # about an absent key passes in CI and fails on any machine that has one.
             empty_root = Path(directory) / "no-config-here"
             empty_root.mkdir()
             # A credential already exported must not win over the file for a variable the file

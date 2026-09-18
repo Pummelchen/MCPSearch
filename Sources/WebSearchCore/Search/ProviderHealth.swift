@@ -124,7 +124,7 @@ public actor ProviderHealth {
         // if the call never reaches the provider: only the cancellation path used to release it, so
         // a local rate-limit refusal left the breaker half-open with `probeInFlight` set and every
         // later `authorize` answered `.circuitOpen` — the provider was never tried again until a
-        // manual reset (ledger A0031).
+        // manual reset.
         var probeClaimed = false
         if let breaker = breakers[provider] {
             let snapshot = await breaker.snapshot()

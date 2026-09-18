@@ -43,7 +43,7 @@ opt_in_rules:
   # deliberate force-unwrap fail `swiftlint --strict`. Every finding it produced was fixed rather than
   # suppressed: 20 sites in `Tests/`, none in `Sources/` — 15 `URL(string:)!`, two
   # `ResultNormalizer.make(...)!`, `diagnostics!`, `hit!`, and two sites that needed a decision because
-  # a computed property cannot `try` (ledger A0003).
+  # a computed property cannot `try`.
   #
   # The other opt-in rules remain off deliberately. Each is a policy choice with its own findings
   # across a 15 000-line tree, and adopting one belongs in its own task with its own fixes rather than

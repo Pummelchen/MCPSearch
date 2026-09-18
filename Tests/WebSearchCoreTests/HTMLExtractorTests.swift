@@ -306,7 +306,7 @@ final class ScraperTests: XCTestCase {
     /// The markers were matched against the whole response body, which includes the echoed query and
     /// every result title and snippet, so an ordinary search for "blocked", "captcha" or "anomaly
     /// detection" discarded its own results and reported a bot challenge — a transient failure that
-    /// also counted against the provider's circuit breaker (ledger A0047).
+    /// also counted against the provider's circuit breaker.
     func testAResultsPageContainingAChallengeMarkerIsNotAChallenge() throws {
         let html = """
             <html><body>
