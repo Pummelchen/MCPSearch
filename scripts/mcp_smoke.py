@@ -514,6 +514,18 @@ def _health_report(body: bytes, url: str) -> dict[str, str]:
     return typed
 
 
+def close_child_pipes(process: subprocess.Popen[str]) -> None:
+    """Close a child's pipes once it has exited.
+
+    `Popen.poll()` reaps the process but leaves `stdout` and `stderr` open, so a retry loop that
+    only polls leaks two descriptors per attempt (ledger A0027).
+    """
+    for stream in (process.stdout, process.stderr):
+        if stream is not None:
+            with contextlib.suppress(OSError, ValueError):
+                stream.close()
+
+
 def wait_for_health(port: int, process: subprocess.Popen[str], timeout: float = 20.0) -> None:
     """Poll /health until the HTTP transport is accepting connections.
 
@@ -619,9 +631,12 @@ def start_http_server(binary: str) -> tuple[int, subprocess.Popen[str]]:
         try:
             wait_for_health(port, process)
         except BindRace as race:
-            # BindRace is only raised for a child that has already exited, so there is
-            # nothing to clean up before re-picking a port. Print it rather than retrying
-            # silently, so a run that keeps racing is visible in the smoke log.
+            # The child has exited *and* been reaped: `poll()` inside `wait_for_health` does that,
+            # and a second `waitpid` afterwards raises ChildProcessError — measured, because this
+            # finding originally claimed the opposite (ledger A0027). What `poll()` does not do is
+            # close the child's pipes, so both descriptors leaked on every retry. Print the race
+            # rather than retrying silently, so a run that keeps racing is visible in the log.
+            close_child_pipes(process)
             last_race = race
             print(f"  note: lost the bind race on port {port}; retrying on a fresh port")
             continue
@@ -631,6 +646,7 @@ def start_http_server(binary: str) -> tuple[int, subprocess.Popen[str]]:
             if process.poll() is None:
                 process.kill()
                 process.wait(timeout=10)
+            close_child_pipes(process)
             raise
         return port, process
 
