@@ -799,13 +799,13 @@
       "location": "Sources/WebSearchCore/Providers/ScraperSupport.swift:38-52",
       "title": "Bot-challenge markers are substring-matched against the whole page, so ordinary queries are discarded as challenges",
       "category": "correctness/false-positive",
-      "status": "OPEN",
+      "status": "DONE",
       "host": "Node1",
       "discovered_by": "Providers tier A review (subagent)",
       "evidence_before": "challengeMarkers.contains { lowered.contains($0) } against the entire response body, which includes the echoed query and every result title and snippet. Searching \"anomaly detection\", \"captcha\", \"blocked\" or \"anubis\" makes a legitimate results page contain the marker, so parse returns .botChallenge with zero results and DuckDuckGo:119-121 / Startpage:104-106 throw providerUnavailable — transient, so it also counts toward the circuit breaker. The single word \"blocked\" makes this routine.",
-      "fix_summary": "",
-      "evidence_after": "",
-      "commit": "",
+      "fix_summary": "`parse` parses first and reports a block only when the page yielded no results, choosing `.botChallenge` vs `.unknownMarkup` at that point, instead of matching markers against the whole response body before parsing.",
+      "evidence_after": "With the source fix stashed the new test fails on both symptoms: XCTAssertNil failed: \"botChallenge\" and (\"0\") != (\"1\"). With it, it passes and both existing interstitial tests still detect theirs. Suite green at 599 tests (557 + 42), 6 skipped, 0 failures, 0 warnings; both linters exit 0.",
+      "commit": "4310e93",
       "blocked_reason": ""
     },
     {

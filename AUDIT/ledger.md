@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 53 — done 7 · open 43 · blocked 3**
+**total 53 — done 8 · open 42 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 3 | 26 | 1 |
+| S1 | 30 | 4 | 25 | 1 |
 | S2 | 16 | 1 | 15 | 0 |
 | S3 | 3 | 1 | 2 | 0 |
 
-Status tally: OPEN 42, PROGRESS 1, DONE 7, BLOCKED 3
+Status tally: OPEN 41, PROGRESS 1, DONE 8, BLOCKED 3
 
 ## Tasks
 
@@ -55,7 +55,7 @@ Status tally: OPEN 42, PROGRESS 1, DONE 7, BLOCKED 3
 | A0038 | S1 | A | OPEN | `|| true` swallows a grep error and the truncated staging file then replaces config.env, dropping every API key |
 | A0041 | S1 | A | OPEN | The release-notes gate names NOT_CHECKED in its failure message but never checks for it |
 | A0046 | S1 | A | DONE | Include and exclude domains are space-joined but Mojeek documents comma separation, so the filters never apply |
-| A0047 | S1 | A | OPEN | Bot-challenge markers are substring-matched against the whole page, so ordinary queries are discarded as challenges |
+| A0047 | S1 | A | DONE | Bot-challenge markers are substring-matched against the whole page, so ordinary queries are discarded as challenges |
 | A0048 | S1 | A | OPEN | Cancellation is mapped to a transient network failure, so a caller cancel is charged to the provider's breaker |
 | A0049 | S1 | A | OPEN | A handshake that was assigned a session id and then failed leaves sessionID set, so initialization is never retried |
 | A0050 | S1 | A | OPEN | URL query construction drops '+', so queries containing it are corrupted |
@@ -402,12 +402,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0047 — Bot-challenge markers are substring-matched against the whole page, so ordinary queries are discarded as challenges
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `Sources/WebSearchCore/Providers/ScraperSupport.swift:38-52`
 - **Category:** correctness/false-positive
 - **Host:** Node1
 - **Discovered by:** Providers tier A review (subagent)
 - **Evidence before:** challengeMarkers.contains { lowered.contains($0) } against the entire response body, which includes the echoed query and every result title and snippet. Searching "anomaly detection", "captcha", "blocked" or "anubis" makes a legitimate results page contain the marker, so parse returns .botChallenge with zero results and DuckDuckGo:119-121 / Startpage:104-106 throw providerUnavailable — transient, so it also counts toward the circuit breaker. The single word "blocked" makes this routine.
+- **Fix:** `parse` parses first and reports a block only when the page yielded no results, choosing `.botChallenge` vs `.unknownMarkup` at that point, instead of matching markers against the whole response body before parsing.
+- **Evidence after:** With the source fix stashed the new test fails on both symptoms: XCTAssertNil failed: "botChallenge" and ("0") != ("1"). With it, it passes and both existing interstitial tests still detect theirs. Suite green at 599 tests (557 + 42), 6 skipped, 0 failures, 0 warnings; both linters exit 0.
+- **Commit:** `4310e93`
 
 ### A0048 — Cancellation is mapped to a transient network failure, so a caller cancel is charged to the provider's breaker
 
