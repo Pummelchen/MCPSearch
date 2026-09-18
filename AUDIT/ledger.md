@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 39 · open 12 · blocked 3**
+**total 54 — done 40 · open 11 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
 | S1 | 30 | 27 | 2 | 1 |
-| S2 | 16 | 8 | 8 | 0 |
+| S2 | 16 | 9 | 7 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 10, PROGRESS 2, DONE 39, BLOCKED 3
+Status tally: OPEN 9, PROGRESS 2, DONE 40, BLOCKED 3
 
 ## Tasks
 
@@ -69,7 +69,7 @@ Status tally: OPEN 10, PROGRESS 2, DONE 39, BLOCKED 3
 | A0026 | S2 | C | OPEN | No read timeout, and the early-close path blocks on stderr of a possibly-live child |
 | A0033 | S2 | A | DONE | A rejected URL-valued setting is echoed verbatim into a diagnostic that is logged, contradicting the type's own contract |
 | A0034 | S2 | A | DONE | A repeated name in SEARCH_PROVIDER_ORDER is not deduplicated, so one provider can vote twice |
-| A0039 | S2 | A | OPEN | --bind is accepted and silently dropped by the docker method |
+| A0039 | S2 | A | DONE | --bind is accepted and silently dropped by the docker method |
 | A0040 | S2 | A | DONE | The documented invocation puts the sudo password on a command line and into the child environment |
 | A0042 | S2 | A | DONE | `rm -rf $STAGE/$VERSION` runs even after the identity gate failed, and VERSION is never validated in this script |
 | A0043 | S2 | A | DONE | The test-suite count is reported as PASS without checking that it parsed |
@@ -613,12 +613,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0039 — --bind is accepted and silently dropped by the docker method
 
-- **Severity / tier / status:** S2 / A / OPEN
-- **Location:** `deploy/install.sh:247`
+- **Severity / tier / status:** S2 / A / DONE
+- **Location:** `deploy/install.sh:269-284`
 - **Category:** config-ignored
 - **Host:** Node1
 - **Discovered by:** installer/release shell tier A review (subagent)
 - **Evidence before:** install_searxng_docker hardcodes -p 127.0.0.1:${PORT}:8080 and never uses BIND, so --bind 0.0.0.0 binds loopback only whenever the method resolves to docker. The sibling adopt path warns explicitly when --bind was not applied, so this is an unintended silent drop rather than a stated limitation: a node is unreachable from other machines while the install reports success.
+- **Fix:** The publish mapping is `-p "${BIND}:${PORT}:8080"` and the message names the same address, so the docker method honours `--bind` as the native one does.
+- **Evidence after:** Committed in 63b4abd. The `docker run` command extracted and run against a stub `docker` that prints the `-p` argument: before, both BINDs gave 127.0.0.1:8888:8080; after, 127.0.0.1 is unchanged (the control) and 0.0.0.0 gives 0.0.0.0:8888:8080. bash -n and shellcheck clean; 18 harness tests pass. Two harness mistakes and one shell mistake were made and corrected while proving it, and are recorded in the commit.
+- **Commit:** `63b4abd`
 
 ### A0040 — The documented invocation puts the sudo password on a command line and into the child environment
 
