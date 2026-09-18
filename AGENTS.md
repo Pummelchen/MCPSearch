@@ -18,8 +18,8 @@ credential is optional, and the server starts and explains what is missing. Thre
 products share one package — `SwiftWebSearchMCP` (the MCP server, over stdio or
 Streamable HTTP), `mcps-mon` (a live terminal dashboard), and `WebSearchCore` (the
 library). **All search, fetch and reliability logic lives in `WebSearchCore`, which
-contains no MCP code**, so it is testable without a transport. Released `1.2.0`
-(2026-09-17) with prebuilt arm64 binaries and `SHA256SUMS`; there is no Node or
+contains no MCP code**, so it is testable without a transport. Released `1.3.0`
+(2026-09-18) with prebuilt arm64 binaries and `SHA256SUMS`; there is no Node or
 Python runtime. Swift 6.4 / Xcode 27, Apple Silicon only (M1–M6, native `arm64`, no
 Intel slice).
 
@@ -33,7 +33,7 @@ Intel slice).
   breaker), `Fetch/` (`URLPolicy` SSRF layer, `HTMLExtractor`, `JinaReaderFetcher`),
   `Support/` (`HTTPClient`, config, loopback/Origin policy, the generated
   `BuildVersion.swift`), `Monitor/`.
-- `Tests/WebSearchCoreTests/` (582) and `Tests/MCPSMonitorTests/` (42) — fixtures
+- `Tests/WebSearchCoreTests/` (585) and `Tests/MCPSMonitorTests/` (42) — fixtures
   are inline Swift literals, not a resource bundle.
 - `VERSION` — the authoritative version at the repository root. See Identity.
 - `tools/` — the release machinery: `sync-version.sh` (writes the mirrors from
@@ -79,7 +79,7 @@ the server actually uses. The installer checks the JSON API, not the health endp
 
 ```bash
 swift build                     # release: swift build -c release
-swift test                      # 624 tests, 7 skipped
+swift test                      # 627 tests, 7 skipped
 SEARCH_LIVE_TESTS=1 swift test --filter LiveProviderTests   # opt-in, needs a key
 
 swift run mcps-mon              # --probe adds provider latency

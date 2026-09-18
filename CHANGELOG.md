@@ -4,10 +4,12 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to
 [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [1.3.0] — 2026-09-18
 
-Security and correctness work from the pre-production audit. The complete set of findings — including
-the ones with no user-visible effect — is in [`AUDIT/ledger.md`](AUDIT/ledger.md).
+Security and correctness work from a pre-production audit of the whole tree. Most of it is not new
+capability: it is behaviour that was documented but not implemented, checks that could not fail, and one
+bypass in a guard that existed to stop a crash. Every finding, including the ones with no user-visible
+effect, is in [`AUDIT/ledger.md`](AUDIT/ledger.md).
 
 ### Security
 
@@ -16,17 +18,57 @@ the ones with no user-visible effect — is in [`AUDIT/ledger.md`](AUDIT/ledger.
   and the connection — DNS rebinding — could still land on a private address. The fetch now reads the
   address the connection used from the task metrics and refuses the body unless it was one the policy
   resolved for that host. This is **detection, not prevention**: the connection is still made, but the
-  attacker does not receive the response. Not in `v1.2.0`.
-
-### Fixed
-
+  attacker does not receive the response.
 - **The markup-nesting guard could be walked past.** It decremented a counter on every closing tag,
   under the comment *"a closing tag always returns to the parent, even if it never matched one"* — which
   is false for real HTML. `<div></p>` repeated nests 100 000 deep while the counter read 0 or 1, and that
   document did not finish parsing within ten minutes. The guard now tracks open element names on a stack,
   ignores a closing tag that matches nothing open, and models HTML's implied end tags. Measured against
-  37 real pages, no page now reads shallower than the tree the parser builds. `v1.2.0` has the older,
-  unsound model.
+  37 real pages, no page reads shallower than the tree the parser builds.
+- **Credentials in a target URL were forwarded to the third-party reader.** The full URL, query and
+  fragment included, went to `r.jina.ai` on the fallback path. They are stripped before the fallback.
+- **The generated SearXNG secret was passed as a command-line argument**, where `ps` could read it. It
+  now travels through a file with restrictive permissions.
+- **The credential-leak scan ran only on the fully successful path** and only over stderr, so a failure
+  that echoed a credential was never scanned. It runs on every path now.
+- **A page title could close the untrusted-data fence.** Length-omitted results entered the fenced prompt
+  unsanitised. Fence markers are neutralised in every result, omitted length included.
+- An unauthenticated client could grow the HTTP session registry without limit; it is bounded now.
+- A rejected URL-valued setting was echoed verbatim into a diagnostic that is logged.
+
+### Fixed
+
+- **`web_search` through SearXNG discarded every result.** The JSON API answers with `[String]` and the
+  decoder expected objects, so an instance that answered correctly produced nothing.
+- **`GET /health` returned a hardcoded `ok`** and was wired to nothing. It reports real readiness, and
+  the check that consumes it reads the body rather than the status code.
+- **The installer could drop every API key.** A `|| true` swallowed a `grep` error, and the truncated
+  staging file then replaced `config.env`.
+- **Cancellation was mapped to a provider failure**, so a caller who cancelled was charged to the
+  provider's circuit breaker, and a cancelled fetch could return a stale success.
+- **The charset was discarded**, so a page declaring anything other than UTF-8 was decoded as Latin-1.
+- A `+` in a query was dropped while building the URL, corrupting the search.
+- An empty extraction was returned as a success, discarding the real failure reason.
+- Bot-challenge markers were substring-matched against the whole page, so ordinary pages were discarded
+  as challenges.
+- Mojeek's include and exclude domains were space-joined where it documents commas, so the filters never
+  applied.
+- Installing overwrote the previous binary in place with no rollback; `--bind` was silently dropped by
+  the container method; a repeated provider in `SEARCH_PROVIDER_ORDER` was not deduplicated.
+- A half-open circuit-breaker probe was never released when the local rate limiter denied, wedging the
+  breaker; a failed handshake left `sessionID` set so initialization never retried.
+
+### Changed
+
+- **`-warnings-as-errors` is in the build config**, SwiftLint rejects force-unwraps, and Ruff selects
+  `S101` — the language-standard proof the release process claimed was not actually in force.
+- **The secret scan is two-pass.** `gitleaks` was blind to the credential pattern this repository
+  actually uses, and one config cannot carry both the defaults and custom rules in this version.
+- The gates that could not fail now can: the mandatory-SearXNG proof rejects an instance returning zero
+  results, the end-to-end gate no longer accepts a JSON-RPC error as success, and the test-suite count is
+  no longer reported as `PASS` without parsing it.
+- Test and soak harnesses no longer deadlock on an undrained pipe, hang on an unanswered query, leak PTY
+  descriptors, or kill the run with `SIGPIPE`.
 
 ## [1.2.0] — 2026-09-17
 
