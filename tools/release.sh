@@ -179,6 +179,9 @@ else
     fi
     if command -v gitleaks >/dev/null 2>&1; then
         run_gate "gitleaks (full history)" gitleaks detect --source . --log-opts=--all --redact
+        # A second pass for this project's own credential shapes: one config cannot carry both the
+        # defaults and custom rules in this gitleaks version (ledger A0005).
+        run_gate "gitleaks (project credential shapes)" gitleaks detect --source . --log-opts=--all --redact --config .gitleaks-project.toml
     else
         skip "gitleaks" "not installed"
     fi

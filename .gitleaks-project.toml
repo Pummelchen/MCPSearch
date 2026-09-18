@@ -1,0 +1,69 @@
+# gitleaks configuration — MCPSearch's own credential shapes.
+#
+# This file exists because the two halves of secret scanning cannot live in one config in gitleaks
+# 8.30.1: `[extend] useDefault = true` makes the scanner ignore the config's own `[[rules]]`, and
+# `[extend] path` cannot be combined with `useDefault` — the binary says so itself: "unable to load
+# config due to extend.path and extend.useDefault being set". Verified four ways: a rule alone fires,
+# the same rule beside `useDefault = true` fires only the defaults in every arrangement tried.
+#
+# So the scan runs twice. `.gitleaks.toml` carries the defaults and the written waiver for the
+# synthetic test keys; this file carries the provider-shaped rules below and nothing else. Both must
+# pass. Vendoring the default ruleset into one file was the alternative and was rejected: a copy of
+# the scanner's own rules drifts the moment the scanner updates, silently.
+#
+# The body is alphanumeric only, with no `-` or `_` in the class, and Tavily's `dev-` environment
+# segment is matched explicitly. A first version allowed `-` in the class and matched 18 placeholder
+# strings across test fixtures and audit documents — `tvly-placeholder-…` and the like — because a
+# hyphen inside the class lets ordinary words satisfy `{16,}`. Removing it fixed those but then missed
+# a real `tvly-dev-<random>` key, which the negative control caught: `dev-` contains a hyphen, so the
+# run of 20 alphanumerics has to start after it. Both halves are load-bearing and both were measured.
+
+# Why these rules exist at all (ledger A0005): the default ruleset caught exactly one of four
+# synthetic keys placed in the shapes this project's providers issue — it matched a 32-character hex
+# value, not the provider — and missed Tavily, Brave and Jina entirely. The credential that actually
+# leaked into this repository's history is a Tavily key, so the full-history scan run to prove "no
+# secrets" could not have found the credential it was looking for.
+
+[[rules]]
+id = "mcps-tavily-api-key"
+description = "Tavily API key"
+regex = '''tvly-(?:dev-)?[A-Za-z0-9]{20,}'''
+keywords = ["tvly-"]
+
+[[rules]]
+id = "mcps-brave-api-key"
+description = "Brave Search API key"
+regex = '''BSA[A-Za-z0-9]{20,}'''
+keywords = ["bsa"]
+
+[[rules]]
+id = "mcps-jina-api-key"
+description = "Jina Reader API key"
+regex = '''jina_[A-Za-z0-9]{20,}'''
+keywords = ["jina_"]
+
+[[rules]]
+id = "mcps-deepseek-api-key"
+description = "DeepSeek API key"
+regex = '''sk-[A-Za-z0-9]{20,}'''
+keywords = ["sk-"]
+
+# Synthetic, non-credential literals in test fixtures, waived in writing for the same reason and in
+# the same shape as the waiver in `.gitleaks.toml`: `condition = "AND"` means a finding is waived only
+# when the path is one of these files *and* the value is that exact literal. A real key anywhere else
+# still fires, which is the negative control for this waiver — the tightened rules caught 18
+# placeholder strings before this, and 3 after, all of them fixtures. `sk-0{20,}` is the
+# `Fixtures.syntheticDeepSeekKey` the other waiver already describes.
+[[allowlists]]
+description = "Synthetic non-credential literals in test fixtures"
+condition = "AND"
+paths = [
+  '''Tests/MCPSMonitorTests/MonitorActorTests\.swift''',
+  '''Tests/WebSearchCoreTests/TestSupport\.swift''',
+  '''Tests/WebSearchCoreTests/LiveProviderTests\.swift''',
+]
+regexes = [
+  '''sk-0{20,}''',
+  '''tvly-abcdefghijklmnopqrstuvwxyz0123456789''',
+  '''tvly-dev-0123456789abcdefghijklmnopqrstuvwxyz''',
+]
