@@ -178,7 +178,7 @@ class Server:
         except json.JSONDecodeError as error:
             raise Failure(
                 f"stdout is not valid JSON (protocol stream corrupted): {error}\n"
-                f"offending line: {line!r}"
+                f"the line was {len(line)} characters long"
             ) from error
         if not isinstance(message, dict):
             raise Failure(f"expected a JSON object on stdout, got: {line!r}")

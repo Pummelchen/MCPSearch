@@ -226,7 +226,7 @@ class Server:
             # closed stdout instead.
             raise RuntimeError(
                 f"stdout is not valid JSON (protocol stream corrupted): {error}; "
-                f"offending line: {line!r}"
+                f"the line was {len(line)} characters long"
             ) from error
 
     def request(self, method: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
