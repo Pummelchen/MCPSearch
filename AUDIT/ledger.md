@@ -10,25 +10,25 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 10 — done 0 · open 9 · blocked 1**
+**total 10 — done 1 · open 8 · blocked 1**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 1 | 0 | 0 | 1 |
-| S1 | 7 | 0 | 7 | 0 |
+| S1 | 7 | 1 | 6 | 0 |
 | S2 | 2 | 0 | 2 | 0 |
 
-Status tally: OPEN 9, BLOCKED 1
+Status tally: OPEN 7, PROGRESS 1, DONE 1, BLOCKED 1
 
 ## Tasks
 
 | id | sev | tier | status | title |
 | --- | --- | --- | --- | --- |
 | A0001 | S0 | A | BLOCKED | A live-looking Tavily credential prefix is in public git history and cannot be un-published |
-| A0002 | S1 | A | OPEN | Warnings-as-errors is not in the build config, so the Swift standard is not in force at the build level |
+| A0002 | S1 | A | DONE | Warnings-as-errors is not in the build config, so the Swift standard is not in force at the build level |
 | A0003 | S1 | A | OPEN | SwiftLint cannot reject a force-unwrap, so the §1 Swift standard proof fails |
 | A0004 | S1 | A | OPEN | Ruff does not select S101, so `assert` used for validation is unchecked |
-| A0005 | S1 | A | OPEN | The secret-scan delegation is unproven: gitleaks is blind to the credential pattern this repository actually leaked |
+| A0005 | S1 | A | PROGRESS | The secret-scan delegation is unproven: gitleaks is blind to the credential pattern this repository actually leaked |
 | A0007 | S1 | A | OPEN | /health returns a hardcoded ok, so the production health surface is wired to nothing |
 | A0008 | S1 | C | OPEN | The only check that consumes /health reads the status code and never the body, so it cannot fail |
 | A0009 | S1 | A | OPEN | The HTTP server installs no signal handler, and its graceful-shutdown helper is dead code |
@@ -49,12 +49,15 @@ Status tally: OPEN 9, BLOCKED 1
 
 ### A0002 — Warnings-as-errors is not in the build config, so the Swift standard is not in force at the build level
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `Package.swift:64,77,86,95,103`
 - **Category:** language-standard
 - **Host:** Node1
 - **Discovered by:** Phase A build-config review (§1)
 - **Evidence before:** Every target declares swiftLanguageMode(.v6) but no target declares treatAllWarnings(as: .error). Warnings only fail because CI and tools/release.sh pass -Xswiftc -warnings-as-errors per invocation; a plain `swift build` emits warnings and exits 0. §1 requires enforcement in build config, not per invocation.
+- **Fix:** Added `.treatAllWarnings(as: .error)` to all five targets' swiftSettings in Package.swift, so SwiftPM fails the build on a warning rather than only the CI invocation doing so.
+- **Evidence after:** Same scratch file, same command: `swift build --target WebSearchCore` exits 1 (was 0). Clean tree builds (exit 0); full suite green — 593 tests (551 + 42), 6 skipped, 0 failures, 0 warnings; swift-format and swiftlint still clean.
+- **Commit:** `b51a7fc`
 
 ### A0003 — SwiftLint cannot reject a force-unwrap, so the §1 Swift standard proof fails
 
@@ -76,12 +79,13 @@ Status tally: OPEN 9, BLOCKED 1
 
 ### A0005 — The secret-scan delegation is unproven: gitleaks is blind to the credential pattern this repository actually leaked
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / PROGRESS
 - **Location:** `.gitleaks.toml`
 - **Category:** tool-coverage
 - **Host:** Node1
 - **Discovered by:** L4 tool-coverage proof (§1)
 - **Evidence before:** gitleaks detect --log-opts=--all on full history: 0 findings. Pointed directly at the historical blob (gitleaks detect --no-git --source <blob>) which contains six tvly-prefixed literals: 0 findings. A tool that stays silent does not cover the check.
+- **Fix:** Added a `tavily-api-key` rule to .gitleaks.toml. It fires on 17 history findings, so the delegation is no longer silent — but the regex does not yet fire on the historical fixture blob even though Python's `re` matches 6 literals there, so the rule is not yet understood well enough to trust. Open: why gitleaks and Python disagree on the same bytes.
 
 ### A0007 — /health returns a hardcoded ok, so the production health surface is wired to nothing
 
