@@ -210,7 +210,15 @@ print(total, bundles, skipped)
 PY
 )"
         read -r total bundles skipped <<<"$counts"
-        pass "test suite: $total tests across $bundles bundles, $skipped skipped, 0 failures"
+        # A parser that found nothing is not a passing suite. `swift test` exits 0 above, but the
+        # count is derived from its *output*, and a format change or a Python error yields zeros — which
+        # were then reported as "test suite: 0 tests across 0 bundles, 0 skipped, 0 failures", the most
+        # reassuring possible way to say the suite did not run (ledger A0043).
+        if [ "${bundles:-0}" -ge 1 ] && [ "${total:-0}" -ge 1 ]; then
+            pass "test suite: $total tests across $bundles bundles, $skipped skipped, 0 failures"
+        else
+            fail "test suite ran but its count could not be read from $suite_log (parsed ${total:-0} tests across ${bundles:-0} bundles)"
+        fi
     else
         fail "test suite — see $suite_log"
         tail -20 "$suite_log" | sed 's/^/      /' >&2
