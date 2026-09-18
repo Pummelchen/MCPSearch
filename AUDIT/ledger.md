@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 38 · open 13 · blocked 3**
+**total 54 — done 39 · open 12 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
 | S1 | 30 | 27 | 2 | 1 |
-| S2 | 16 | 7 | 9 | 0 |
+| S2 | 16 | 8 | 8 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 11, PROGRESS 2, DONE 38, BLOCKED 3
+Status tally: OPEN 10, PROGRESS 2, DONE 39, BLOCKED 3
 
 ## Tasks
 
@@ -71,7 +71,7 @@ Status tally: OPEN 11, PROGRESS 2, DONE 38, BLOCKED 3
 | A0034 | S2 | A | DONE | A repeated name in SEARCH_PROVIDER_ORDER is not deduplicated, so one provider can vote twice |
 | A0039 | S2 | A | OPEN | --bind is accepted and silently dropped by the docker method |
 | A0040 | S2 | A | DONE | The documented invocation puts the sudo password on a command line and into the child environment |
-| A0042 | S2 | A | OPEN | `rm -rf $STAGE/$VERSION` runs even after the identity gate failed, and VERSION is never validated in this script |
+| A0042 | S2 | A | DONE | `rm -rf $STAGE/$VERSION` runs even after the identity gate failed, and VERSION is never validated in this script |
 | A0043 | S2 | A | DONE | The test-suite count is reported as PASS without checking that it parsed |
 | A0044 | S2 | A | DONE | `--dry-run` creates the SearXNG directory, so it does change the filesystem |
 | A0051 | S2 | A | OPEN | Mojeek timestamp is read but never requested, so publishedAt is always nil (UNSURE) |
@@ -634,12 +634,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0042 — `rm -rf $STAGE/$VERSION` runs even after the identity gate failed, and VERSION is never validated in this script
 
-- **Severity / tier / status:** S2 / A / OPEN
-- **Location:** `tools/release.sh:226`
+- **Severity / tier / status:** S2 / A / DONE
+- **Location:** `tools/release.sh:76,233-235`
 - **Category:** destructive-without-validation
 - **Host:** Node1
 - **Discovered by:** installer/release shell tier A review (subagent)
 - **Evidence before:** VERSION is only whitespace-stripped; the only X.Y.Z validation is tools/check-version.sh via run_gate, which records FAIL and continues. A VERSION containing .. or / therefore reaches the deletion with a path outside the staging directory (VERSION=.. deletes the release cache root, including the gate logs). ${:?} covers empty/unset only. Publication is still blocked by fails, so the consequence is deletion rather than a bad release. UNSURE on exploitability: VERSION is reviewed input.
+- **Fix:** `VERSION` must match `^[0-9]+\.[0-9]+\.[0-9]+$` or the script exits 2, and the stage is cleared only when `fails` is zero; otherwise it is reported NOT CHECKED.
+- **Evidence after:** Committed in e6c6e1c. Blocks extracted from the script: VERSION — `1.2.3` accepted, `1.2`/`../..`/`1.2.3/../../etc`/`v1.2.3` refused. Stage with a sentinel from a previous run — fails=0 destroys it (control), fails=1 leaves it and reports NOT CHECKED. bash -n and shellcheck clean; 18 harness tests pass. My first stage-evidence attempt set `STAGE` rather than `RELEASE_STAGE`, so it ran against the default cache path; it removed and recreated an empty `release/1.2.3`, which was confirmed empty and removed.
+- **Commit:** `e6c6e1c`
 
 ### A0043 — The test-suite count is reported as PASS without checking that it parsed
 
