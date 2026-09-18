@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 52 — done 3 · open 47 · blocked 2**
+**total 53 — done 4 · open 47 · blocked 2**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 1 | 1 |
-| S1 | 30 | 1 | 28 | 1 |
+| S1 | 30 | 2 | 27 | 1 |
 | S2 | 16 | 0 | 16 | 0 |
-| S3 | 2 | 0 | 2 | 0 |
+| S3 | 3 | 0 | 3 | 0 |
 
-Status tally: OPEN 45, PROGRESS 2, DONE 3, BLOCKED 2
+Status tally: OPEN 45, PROGRESS 2, DONE 4, BLOCKED 2
 
 ## Tasks
 
@@ -33,7 +33,7 @@ Status tally: OPEN 45, PROGRESS 2, DONE 3, BLOCKED 2
 | A0003 | S1 | A | OPEN | SwiftLint cannot reject a force-unwrap, so the §1 Swift standard proof fails |
 | A0004 | S1 | A | OPEN | Ruff does not select S101, so `assert` used for validation is unchecked |
 | A0005 | S1 | A | PROGRESS | The secret-scan delegation is unproven: gitleaks is blind to the credential pattern this repository actually leaked |
-| A0008 | S1 | C | OPEN | The only check that consumes /health reads the status code and never the body, so it cannot fail |
+| A0008 | S1 | C | DONE | The only check that consumes /health reads the status code and never the body, so it cannot fail |
 | A0009 | S1 | A | OPEN | The HTTP server installs no signal handler, and its graceful-shutdown helper is dead code |
 | A0012 | S1 | A | OPEN | The response charset is discarded, so non-UTF-8 pages are silently decoded as Latin-1 |
 | A0013 | S1 | A | OPEN | Credentials in the target URL's query or fragment are forwarded to the third-party reader |
@@ -77,6 +77,7 @@ Status tally: OPEN 45, PROGRESS 2, DONE 3, BLOCKED 2
 | A0051 | S2 | A | OPEN | Mojeek timestamp is read but never requested, so publishedAt is always nil (UNSURE) |
 | A0027 | S3 | C | OPEN | A lost bind race abandons the exited child unreaped |
 | A0052 | S3 | C | OPEN | The documented test count is stale after A0045 added three tests |
+| A0053 | S3 | A | OPEN | /health readiness reflects configuration, not reachability |
 
 ---
 
@@ -189,12 +190,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0008 — The only check that consumes /health reads the status code and never the body, so it cannot fail
 
-- **Severity / tier / status:** S1 / C / OPEN
+- **Severity / tier / status:** S1 / C / DONE
 - **Location:** `scripts/mcp_smoke.py:466-470`
 - **Category:** check-cannot-fail
 - **Host:** Node1
 - **Discovered by:** L7 ops + §5 facade hunt (subagent), corroborated by reading the function
 - **Evidence before:** wait_for_health opens the health URL and returns as soon as response.status == 200. It never reads or asserts the body. Since the body is a constant (A0007), "the server is healthy" is proven by "a socket is bound": a process that bound the port and then bricked still passes the smoke test and CI. NOTE: after A0007 the body is derived and carries version plus provider counts, so this is now cheap to close — the gate should read the body it already fetches and assert status/version rather than only that a socket answered.
+- **Fix:** `wait_for_health` parses the body and asserts status, version == VERSION, and that provider counts are present; a non-object or non-JSON body is a named failure.
+- **Evidence after:** Against the pre-A0007 release binary (which still has the hardcoded body) the gate fails with 'SMOKE TEST FAILED: /health reported version None, expected '1.2.0' from VERSION'. Against the current binary both stdio and --http modes pass. ruff clean, pyright strict 0 errors, 17 harness tests pass.
+- **Commit:** `pending-ledger-commit`
 
 ### A0009 — The HTTP server installs no signal handler, and its graceful-shutdown helper is dead code
 
@@ -583,3 +587,12 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 - **Host:** Node1
 - **Discovered by:** the audit's own change (A0045 bumped 593 to 596)
 - **Evidence before:** AGENTS.md and README.md state 593 tests; the suite is now 554 + 42 = 596 after the three SearXNG answer-shape tests. §6: code the audit's own changes orphaned.
+
+### A0053 — /health readiness reflects configuration, not reachability
+
+- **Severity / tier / status:** S3 / A / OPEN
+- **Location:** `Sources/SwiftWebSearchMCP/main.swift (the health source)`
+- **Category:** ops/health-scope
+- **Host:** Node1
+- **Discovered by:** residual of the audit's own A0007 fix (§6)
+- **Evidence before:** After A0007 the body is derived, so it is no longer a facade, but `ready` is computed from `configured` alone: a provider that is configured and unreachable still reports ok. That is a deliberate limit — probing a provider inside a liveness endpoint adds network latency and a new failure mode to the probe — but it means an operator cannot distinguish 'configured' from 'working' without calling web_search_status. Recorded so the limit is a decision on the record rather than an unstated gap, and so nobody later reads a 200 as proof that search works.
