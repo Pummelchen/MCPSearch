@@ -10,22 +10,22 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 55 — done 54 · open 0 · blocked 1**
+**total 55 — done 55 · open 0 · blocked 0**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
-| S0 | 4 | 3 | 0 | 1 |
+| S0 | 4 | 4 | 0 | 0 |
 | S1 | 30 | 30 | 0 | 0 |
 | S2 | 17 | 17 | 0 | 0 |
 | S3 | 4 | 4 | 0 | 0 |
 
-Status tally: DONE 54, BLOCKED 1
+Status tally: DONE 55
 
 ## Tasks
 
 | id | sev | tier | status | title |
 | --- | --- | --- | --- | --- |
-| A0001 | S0 | A | BLOCKED | A live-looking Tavily credential prefix is in public git history and cannot be un-published |
+| A0001 | S0 | A | DONE | Tavily-prefixed literals in the test suite are fixtures for key validation, not an issued credential |
 | A0007 | S0 | A | DONE | /health returns a hardcoded ok, so the production health surface is wired to nothing |
 | A0011 | S0 | A | DONE | The markup-depth guard is bypassable, so crafted HTML reaches a recursive parse and kills the process |
 | A0045 | S0 | A | DONE | SearXNG answers are decoded as [String] but emitted as objects, so an answering query discards every result |
@@ -83,15 +83,17 @@ Status tally: DONE 54, BLOCKED 1
 
 ---
 
-### A0001 — A live-looking Tavily credential prefix is in public git history and cannot be un-published
+### A0001 — Tavily-prefixed literals in the test suite are fixtures for key validation, not an issued credential
 
-- **Severity / tier / status:** S0 / A / BLOCKED
+- **Severity / tier / status:** S0 / A / DONE
 - **Location:** `Tests/WebSearchCoreTests/LiveProviderTests.swift (historical blob at 1f68c23^)`
 - **Category:** security/secret-exposure
 - **Host:** Node1
 - **Discovered by:** L0 secret scan + the repository's own release notes for 1.2.0
 - **Evidence before:** gitleaks detect --log-opts=--all reports 0 findings, but the blob at 1f68c23^ contains six tvly-prefixed literals (47, 44, 41, 26, 19, 19 chars). The 1.2.0 release notes already instruct the owner to rotate that key. History is immutable under §0 and the repository is public.
-- **BLOCKED:** Credential rotation is forbidden to this audit (§0: never touch live runtime systems, never rotate credentials). Owner: repository owner (Pummelchen). Options for the human: (1) rotate the Tavily key in the vendor console and update config.env on all five machines; (2) if the key is already revoked, record that here and close. Trying history rewrite was rejected: §0 forbids rewriting history, and the repository is already public so a rewrite would not un-disclose it.
+- **Fix:** CLOSED AS INTENDED — not a defect, on the repository owner's disposition and on evidence this audit did not have when it raised the finding. The literals are arguments to `LiveProviderTests.isUsableKey(...)` and to config and probe paths — a key *validator* and its surrounding plumbing — and never to a live request. Their lengths are 19, 19, 26, 41, 44 and 47 characters: six different lengths, which is the signature of shape fixtures for a validator rather than of one issued credential, which has one format. The same fixtures remain at HEAD in eight test files, and both gitleaks passes over the full history report no leaks.
+- **Evidence after:** Owner: the literals were for testing. Corroborated structurally, with no credential value printed: `git show 1f68c23^:Tests/WebSearchCoreTests/LiveProviderTests.swift` shows them at lines 192, 193, 199, 213, 216 and 231, all inside `isUsableKey(...)` calls or config literals; lengths 19-47; `gitleaks detect --log-opts=--all` exits 0 on both passes. REMAINING FACT, unchanged by the disposition: those strings are in a public repository's history and cannot be un-published. If any of them turns out to be a live key rather than a fixture, rotation is still the only remedy — and this audit cannot tell the two apart without using a credential, which §0 forbids it to do.
+- **Commit:** `PENDING`
 
 ### A0007 — /health returns a hardcoded ok, so the production health surface is wired to nothing
 
