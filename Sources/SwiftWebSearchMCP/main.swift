@@ -123,6 +123,26 @@ func shutdown(server: Server, host: HTTPMCPHost?) async {
     await host?.stop()
 }
 
+/// Sources kept alive for the process's lifetime; a released `DispatchSource` stops delivering.
+nonisolated(unsafe) var terminationSources: [DispatchSourceSignal] = []
+
+/// Run `body` when the process is asked to stop.
+///
+/// Nothing installed a handler and `shutdown` was never called, so the HTTP branch parked in
+/// `waitUntilStopped()` for a wake-up that nothing could send: `SIGTERM` killed the process outright
+/// and the sweep in `stop()` never ran. `HTTPMCPHost.stop()` had to become once-only first, because
+/// both this path and the parked task call it (ledger A0009).
+func onTermination(_ body: @escaping @Sendable () -> Void) {
+    for number in [SIGINT, SIGTERM] {
+        // The default disposition would end the process before the source could fire.
+        signal(number, SIG_IGN)
+        let source = DispatchSource.makeSignalSource(signal: number, queue: .global())
+        source.setEventHandler(handler: body)
+        source.resume()
+        terminationSources.append(source)
+    }
+}
+
 switch options.transport {
 case .stdio:
     // The MCP SDK owns JSON-RPC framing; only the transport is ours to choose.
@@ -182,7 +202,9 @@ case .http(let httpConfiguration):
         )
         try await host.start()
 
-        // Serve until the process is asked to stop.
+        // Serve until the process is asked to stop, and leave through the path a signal takes rather
+        // than by being killed (ledger A0009).
+        onTermination { Task { await shutdown(server: server, host: host) } }
         await host.waitUntilStopped()
         await host.stop()
         log.info("MCP server stopped")

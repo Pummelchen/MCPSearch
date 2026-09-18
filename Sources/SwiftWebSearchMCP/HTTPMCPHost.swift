@@ -148,6 +148,14 @@ final class HTTPMCPHost: @unchecked Sendable {
     /// Resumed by `stop()` so `waitUntilStopped()` can park the process.
     private let shutdown = OSAllocatedUnfairLock<CheckedContinuation<Void, Never>?>(initialState: nil)
 
+    /// Whether `stop()` has already run.
+    ///
+    /// Shutdown is requested from the signal path *and* from the task parked in `waitUntilStopped()`,
+    /// so it runs twice. The second call re-entered `group.shutdownGracefully()` and looked for a
+    /// continuation that the first call had already resumed and cleared — the process then neither
+    /// exited nor served, which is why the signal handler could not simply be added (ledger A0009).
+    private let hasStopped = OSAllocatedUnfairLock<Bool>(initialState: false)
+
     struct SessionContext: Sendable {
         let server: Server
         let transport: StatefulHTTPServerTransport
@@ -379,6 +387,14 @@ final class HTTPMCPHost: @unchecked Sendable {
 
     /// Stop listening and release resources.
     func stop() async {
+        // Once only, whichever caller gets here first (ledger A0009).
+        let firstCall = hasStopped.withLock { stopped -> Bool in
+            if stopped { return false }
+            stopped = true
+            return true
+        }
+        guard firstCall else { return }
+
         if let channel {
             try? await channel.close().get()
         }
