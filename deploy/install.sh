@@ -297,7 +297,10 @@ install_searxng_native() {
         return 1
     }
 
-    mkdir -p "${SEARXNG_DIR}" || return 1
+    # Through `run`, like every other mutation: `run`'s comment says `--dry-run` is honest rather than
+    # decorative, and this bare call created the SearXNG directory even when the operator asked for
+    # nothing to change (ledger A0044).
+    run mkdir -p "${SEARXNG_DIR}" || return 1
     # Guard on the checkout's content, not on `.git`: an interrupted run leaves a valid empty
     # repository behind, and treating that as done fails later with "does not appear to be a
     # Python project".
