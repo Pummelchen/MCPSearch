@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 53 — done 15 · open 35 · blocked 3**
+**total 53 — done 17 · open 33 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 10 | 19 | 1 |
+| S1 | 30 | 12 | 17 | 1 |
 | S2 | 16 | 2 | 14 | 0 |
 | S3 | 3 | 1 | 2 | 0 |
 
-Status tally: OPEN 34, PROGRESS 1, DONE 15, BLOCKED 3
+Status tally: OPEN 32, PROGRESS 1, DONE 17, BLOCKED 3
 
 ## Tasks
 
@@ -40,8 +40,8 @@ Status tally: OPEN 34, PROGRESS 1, DONE 15, BLOCKED 3
 | A0014 | S1 | A | OPEN | An empty extraction is returned as a success, discarding the real failure reason |
 | A0015 | S1 | A | OPEN | Cancellation is swallowed on the reader path, so a cancelled fetch can return a stale success |
 | A0017 | S1 | A | BLOCKED | DNS-rebinding TOCTOU between validation and connect (documented, no local fix) |
-| A0018 | S1 | A | OPEN | The soak's stdio read has no timeout, so one unanswered query hangs the whole run |
-| A0019 | S1 | A | OPEN | The child's stderr pipe is not drained until exit, which deadlocks against the stdout read |
+| A0018 | S1 | A | DONE | The soak's stdio read has no timeout, so one unanswered query hangs the whole run |
+| A0019 | S1 | A | DONE | The child's stderr pipe is not drained until exit, which deadlocks against the stdout read |
 | A0020 | S1 | A | OPEN | The credential-leak scan is stderr-only and only runs on the fully successful path |
 | A0021 | S1 | A | OPEN | A non-JSON stdout line is embedded in a raised exception, reaching an unscanned traceback |
 | A0028 | S1 | A | OPEN | The HTTP session registry is unbounded, so an unauthenticated client can grow it without limit |
@@ -264,21 +264,27 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0018 — The soak's stdio read has no timeout, so one unanswered query hangs the whole run
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `scripts/soak.py:167,181-193`
 - **Category:** reliability/hang
 - **Host:** Node1
 - **Discovered by:** Python scripts tier review (subagent), statically verified against the code
 - **Evidence before:** line = self.process.stdout.readline() with no timeout, deadline or watchdog on any read path. The only timeout is process.wait(timeout=30) in close(), which is unreachable if a read never returns. A server that stops answering without closing stdout hangs all 50 queries and produces no verdict at all.
+- **Fix:** stdout is drained on a daemon thread into a queue, so `read(timeout=...)` waits with a deadline and raises a named RuntimeError instead of blocking in `readline` with no bound.
+- **Evidence after:** A stub that stays alive and never answers trips the deadline: "the server did not answer within 2s; abandoning the run rather than hanging". The default is 120s, so a hung server now produces a verdict instead of nothing. ruff and pyright clean; 17 harness tests pass.
+- **Commit:** `e50729b`
 
 ### A0019 — The child's stderr pipe is not drained until exit, which deadlocks against the stdout read
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `scripts/soak.py:152,209`
 - **Category:** reliability/deadlock
 - **Host:** Node1
 - **Discovered by:** Python scripts tier review (subagent), statically verified against the code
 - **Evidence before:** stderr=subprocess.PIPE and read() only in close() after wait(). macOS pipe capacity is ~16 KiB; SEARCH_LOG_LEVEL=warning is set deliberately so warnings are retained, and 50 queries against rate-limited providers emit them. Once the child blocks writing stderr it stops answering stdout and the parent blocks in readline() — a deadlock, not a timeout. The Swift harness drains stderr as it is produced for exactly this reason (Tests/WebSearchCoreTests/TestSupport.swift:205-209).
+- **Fix:** A daemon thread drains stderr continuously into a lock-guarded buffer that `close` returns, so the pipe never fills and the child never blocks writing.
+- **Evidence after:** A stub writing 2 000 lines to stderr then answering: with the fix it answers in 0.32s and 122 893 characters of stderr are retained for the leak scan; with the fix stashed and a 20s wall clock it was killed (exit=124) because the parent never read the reply. ruff and pyright clean. NOT VERIFIED: a full live soak was not run.
+- **Commit:** `e50729b`
 
 ### A0020 — The credential-leak scan is stderr-only and only runs on the fully successful path
 
