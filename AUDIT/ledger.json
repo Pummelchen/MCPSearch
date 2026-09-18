@@ -429,14 +429,16 @@
       "location": "scripts/harness_tests.py:265",
       "title": "The test depends on the developer's ambient config.env and contradicts the function it tests",
       "category": "test-portability",
-      "status": "OPEN",
+      "status": "DONE",
       "host": "Node1",
       "discovered_by": "Python scripts tier review (subagent), statically verified against the code",
       "evidence_before": "assertNotIn(\"MOJEEK_API_KEY\", values) after load_secret_values(), which unconditionally appends <repo>/config.env as a candidate (soak.py:301-302). The temp config defines only TAVILY and BRAVE, so MOJEEK falls through to the repository file: a developer whose git-ignored config.env defines MOJEEK_API_KEY fails locally while CI passes.",
-      "fix_summary": "",
-      "evidence_after": "",
-      "commit": "",
-      "blocked_reason": ""
+      "fix_summary": "`load_secret_values` takes an optional `repository_root`, and the test points it at an empty directory. Production behaviour is unchanged: without the argument the repository-root `config.env` is still scanned.",
+      "evidence_after": "Committed in 3379a46. With an ambient MOJEEK_API_KEY appended to the real config.env: before, the test failed with \"'MOJEEK_API_KEY' unexpectedly found in {...}\"; after, all 18 harness tests pass. The real config.env was backed up and verified byte-identical afterwards. ruff, ruff-format and pyright clean.",
+      "commit": "3379a46",
+      "blocked_reason": "",
+      "detail": "`load_secret_values` always adds the repository-root `config.env` as a fallback, so the assertion that MOJEEK_API_KEY is absent depended on the machine: it passed in CI and failed for any developer who keeps keys in `config.env`, which is the documented setup. The assertion also contradicted the function, which includes that fallback on purpose.",
+      "why_it_matters": "A suite that fails on a correctly configured developer machine teaches people to ignore it, and the same non-hermeticity makes a real credential-leak assertion depend on ambient state."
     },
     {
       "id": "A0026",

@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 37 · open 14 · blocked 3**
+**total 54 — done 38 · open 13 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
 | S1 | 30 | 27 | 2 | 1 |
-| S2 | 16 | 6 | 10 | 0 |
+| S2 | 16 | 7 | 9 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 12, PROGRESS 2, DONE 37, BLOCKED 3
+Status tally: OPEN 11, PROGRESS 2, DONE 38, BLOCKED 3
 
 ## Tasks
 
@@ -65,7 +65,7 @@ Status tally: OPEN 12, PROGRESS 2, DONE 37, BLOCKED 3
 | A0022 | S2 | C | OPEN | The PTY master and slave fds leak when the spawn raises |
 | A0023 | S2 | C | OPEN | A failed signal case leaks the stub's socket and thread |
 | A0024 | S2 | C | OPEN | Per-instance stub state lives on the handler class, so two concurrent stubs would share it |
-| A0025 | S2 | C | OPEN | The test depends on the developer's ambient config.env and contradicts the function it tests |
+| A0025 | S2 | C | DONE | The test depends on the developer's ambient config.env and contradicts the function it tests |
 | A0026 | S2 | C | OPEN | No read timeout, and the early-close path blocks on stderr of a possibly-live child |
 | A0033 | S2 | A | DONE | A rejected URL-valued setting is echoed verbatim into a diagnostic that is logged, contradicting the type's own contract |
 | A0034 | S2 | A | DONE | A repeated name in SEARCH_PROVIDER_ORDER is not deduplicated, so one provider can vote twice |
@@ -568,12 +568,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0025 — The test depends on the developer's ambient config.env and contradicts the function it tests
 
-- **Severity / tier / status:** S2 / C / OPEN
+- **Severity / tier / status:** S2 / C / DONE
 - **Location:** `scripts/harness_tests.py:265`
 - **Category:** test-portability
 - **Host:** Node1
 - **Discovered by:** Python scripts tier review (subagent), statically verified against the code
 - **Evidence before:** assertNotIn("MOJEEK_API_KEY", values) after load_secret_values(), which unconditionally appends <repo>/config.env as a candidate (soak.py:301-302). The temp config defines only TAVILY and BRAVE, so MOJEEK falls through to the repository file: a developer whose git-ignored config.env defines MOJEEK_API_KEY fails locally while CI passes.
+- **Fix:** `load_secret_values` takes an optional `repository_root`, and the test points it at an empty directory. Production behaviour is unchanged: without the argument the repository-root `config.env` is still scanned.
+- **Evidence after:** Committed in 3379a46. With an ambient MOJEEK_API_KEY appended to the real config.env: before, the test failed with "'MOJEEK_API_KEY' unexpectedly found in {...}"; after, all 18 harness tests pass. The real config.env was backed up and verified byte-identical afterwards. ruff, ruff-format and pyright clean.
+- **Commit:** `3379a46`
 
 ### A0026 — No read timeout, and the early-close path blocks on stderr of a possibly-live child
 
