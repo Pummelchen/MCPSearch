@@ -833,13 +833,13 @@
       "location": "Sources/WebSearchCore/Providers/ParallelMCPProvider.swift:178,187-192,311-313",
       "title": "A handshake that was assigned a session id and then failed leaves sessionID set, so initialization is never retried",
       "category": "state-machine",
-      "status": "OPEN",
+      "status": "DONE",
       "host": "Node1",
       "discovered_by": "Providers tier A review (subagent)",
       "evidence_before": "send captures MCP-Session-Id (311) before the caller interprets the body, so if performHandshake then throws — a JSON-RPC error returned (:208-214) or an unparsable body (:318-322, thrown after 311) — ensureInitialized clears only `handshake`, leaving sessionID non-nil. Every later call returns at 178 and never sends notifications/initialized (:222) or re-runs tools/list (:225), so the provider stays half-initialized for the process lifetime. The doc comment at :175-176 (\"A failed handshake is not cached, so the next caller retries it\") is therefore false. Related: a 404 for an expired session is mapped to providerUnavailable and never clears sessionID, though the MCP spec requires re-initialize on 404.",
-      "fix_summary": "",
-      "evidence_after": "",
-      "commit": "",
+      "fix_summary": "A failed handshake clears sessionID/resolvedToolName/resolvedToolSupportsMaxResults as well as the cached task, and a 404 clears sessionID and handshake so the next caller re-initialises.",
+      "evidence_after": "Before: the new test failed with (\"1\") != (\"2\") — the second search never re-handshook. After: it issues its own initialize. Suite green at 604 tests (562 + 42), 0 failures, 0 warnings; both linters exit 0.",
+      "commit": "9113cd6",
       "blocked_reason": ""
     },
     {

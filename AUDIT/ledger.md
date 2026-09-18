@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 53 — done 18 · open 32 · blocked 3**
+**total 53 — done 19 · open 31 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 13 | 16 | 1 |
+| S1 | 30 | 14 | 15 | 1 |
 | S2 | 16 | 2 | 14 | 0 |
 | S3 | 3 | 1 | 2 | 0 |
 
-Status tally: OPEN 31, PROGRESS 1, DONE 18, BLOCKED 3
+Status tally: OPEN 30, PROGRESS 1, DONE 19, BLOCKED 3
 
 ## Tasks
 
@@ -57,7 +57,7 @@ Status tally: OPEN 31, PROGRESS 1, DONE 18, BLOCKED 3
 | A0046 | S1 | A | DONE | Include and exclude domains are space-joined but Mojeek documents comma separation, so the filters never apply |
 | A0047 | S1 | A | DONE | Bot-challenge markers are substring-matched against the whole page, so ordinary queries are discarded as challenges |
 | A0048 | S1 | A | DONE | Cancellation is mapped to a transient network failure, so a caller cancel is charged to the provider's breaker |
-| A0049 | S1 | A | OPEN | A handshake that was assigned a session id and then failed leaves sessionID set, so initialization is never retried |
+| A0049 | S1 | A | DONE | A handshake that was assigned a session id and then failed leaves sessionID set, so initialization is never retried |
 | A0050 | S1 | A | DONE | URL query construction drops '+', so queries containing it are corrupted |
 | A0006 | S2 | A | OPEN | Validation is written as `assert`, which python -O strips |
 | A0010 | S2 | A | OPEN | Installing overwrites the previous binary in place with no rollback path |
@@ -447,12 +447,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0049 — A handshake that was assigned a session id and then failed leaves sessionID set, so initialization is never retried
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `Sources/WebSearchCore/Providers/ParallelMCPProvider.swift:178,187-192,311-313`
 - **Category:** state-machine
 - **Host:** Node1
 - **Discovered by:** Providers tier A review (subagent)
 - **Evidence before:** send captures MCP-Session-Id (311) before the caller interprets the body, so if performHandshake then throws — a JSON-RPC error returned (:208-214) or an unparsable body (:318-322, thrown after 311) — ensureInitialized clears only `handshake`, leaving sessionID non-nil. Every later call returns at 178 and never sends notifications/initialized (:222) or re-runs tools/list (:225), so the provider stays half-initialized for the process lifetime. The doc comment at :175-176 ("A failed handshake is not cached, so the next caller retries it") is therefore false. Related: a 404 for an expired session is mapped to providerUnavailable and never clears sessionID, though the MCP spec requires re-initialize on 404.
+- **Fix:** A failed handshake clears sessionID/resolvedToolName/resolvedToolSupportsMaxResults as well as the cached task, and a 404 clears sessionID and handshake so the next caller re-initialises.
+- **Evidence after:** Before: the new test failed with ("1") != ("2") — the second search never re-handshook. After: it issues its own initialize. Suite green at 604 tests (562 + 42), 0 failures, 0 warnings; both linters exit 0.
+- **Commit:** `9113cd6`
 
 ### A0050 — URL query construction drops '+', so queries containing it are corrupted
 
