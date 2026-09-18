@@ -117,7 +117,7 @@ final class HTTPMCPHost: @unchecked Sendable {
     /// unauthenticated client could open sessions until the process exhausted memory — each one
     /// holding a `Server` and a transport. Sixty-four is far more than the handful of clients this
     /// host is for, and small enough that the worst case is bounded (ledger A0028).
-    static let maximumLiveSessions = 64
+    static let defaultMaximumLiveSessions = 64
 
     /// Reserved session slots, counting sessions that are being created as well as live ones.
     ///
@@ -126,10 +126,14 @@ final class HTTPMCPHost: @unchecked Sendable {
     /// makes the bound exact rather than approximate.
     private let liveSessions = OSAllocatedUnfairLock<Int>(initialState: 0)
 
+    /// The cap in force for this host, injectable so a test can reach it with a handful of
+    /// sessions rather than sixty-five (ledger A0028).
+    private let maximumLiveSessions: Int
+
     /// Take a slot, or report that the host is full.
     private func reserveSessionSlot() -> Bool {
         liveSessions.withLock { live in
-            guard live < Self.maximumLiveSessions else { return false }
+            guard live < maximumLiveSessions else { return false }
             live += 1
             return true
         }
@@ -163,12 +167,14 @@ final class HTTPMCPHost: @unchecked Sendable {
         makeServer: @escaping SessionFactory,
         requestCompletionTimeout: Duration,
         health: @escaping HealthSource,
+        maximumLiveSessions: Int = HTTPMCPHost.defaultMaximumLiveSessions,
         log: Log
     ) {
         self.configuration = configuration
         self.makeServer = makeServer
         self.requestCompletionTimeout = requestCompletionTimeout
         self.health = health
+        self.maximumLiveSessions = maximumLiveSessions
         self.log = log
         // The same validation for every session: origin, Accept, content type, protocol
         // version and session header. Origin validation costs nothing for server-to-server
@@ -251,7 +257,7 @@ final class HTTPMCPHost: @unchecked Sendable {
         guard reserveSessionSlot() else {
             log.error(
                 "refusing a new HTTP session",
-                metadata: ["cap": "\(Self.maximumLiveSessions)"]
+                metadata: ["cap": "\(maximumLiveSessions)"]
             )
             return .error(statusCode: 503, .internalError("Too many live MCP sessions."))
         }
