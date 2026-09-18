@@ -301,6 +301,41 @@ final class ScraperTests: XCTestCase {
         XCTAssertEqual(page.detectedBlock, .botChallenge)
     }
 
+    /// A results page whose own content contains a challenge marker is still a results page.
+    ///
+    /// The markers were matched against the whole response body, which includes the echoed query and
+    /// every result title and snippet, so an ordinary search for "blocked", "captcha" or "anomaly
+    /// detection" discarded its own results and reported a bot challenge — a transient failure that
+    /// also counted against the provider's circuit breaker (ledger A0047).
+    func testAResultsPageContainingAChallengeMarkerIsNotAChallenge() throws {
+        let html = """
+            <html><body>
+            <div class="links_main links_deep result__body">
+              <h2 class="result__title">
+                <a rel="nofollow" class="result__a" href="https://example.com/anomaly">
+                  Anomaly detection: why the request was blocked
+                </a>
+              </h2>
+              <a class="result__snippet" href="https://example.com/anomaly">
+                A page about blocked traffic and captcha avoidance.
+              </a>
+            </div>
+            </body></html>
+            """
+        let page = try ScraperSupport.parse(
+            html: html,
+            containerSelectors: DuckDuckGoProvider.containerSelectors,
+            linkSelectors: DuckDuckGoProvider.linkSelectors,
+            snippetSelectors: DuckDuckGoProvider.snippetSelectors,
+            base: "https://duckduckgo.com",
+            excludeHosts: ["duckduckgo.com"],
+            provider: .duckDuckGo
+        )
+
+        XCTAssertNil(page.detectedBlock)
+        XCTAssertEqual(page.results.count, 1)
+    }
+
     func testStructuralFallbackFindsResultLikeAnchors() throws {
         // Unknown markup: the parser must still degrade usefully rather than fail.
         let unknown = """

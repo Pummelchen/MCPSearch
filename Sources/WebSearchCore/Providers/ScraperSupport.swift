@@ -141,10 +141,6 @@ enum ScraperSupport {
             throw SearchError.malformedResponse(provider)
         }
 
-        if detectChallenge(in: html) {
-            return ParsedPage(results: [], detectedBlock: .botChallenge)
-        }
-
         var parsed: [ParsedResult] = []
         var seen: Set<String> = []
 
@@ -195,10 +191,22 @@ enum ScraperSupport {
             )
         }
 
-        return ParsedPage(
-            results: parsed,
-            detectedBlock: parsed.isEmpty ? .unknownMarkup : nil
-        )
+        // A marker only means an interstitial when the page produced no results. The markers were
+        // previously matched against the whole response body — which contains the echoed query and
+        // every result title and snippet — so an ordinary search for "blocked", "captcha" or
+        // "anomaly detection" made a genuine results page look like a bot challenge: the results
+        // were discarded and the provider reported `providerUnavailable`, which is transient and so
+        // also counted against the circuit breaker (ledger A0047). A page that did yield results is
+        // a results page, whatever words its content contains.
+        let block: BlockKind? =
+            if !parsed.isEmpty {
+                nil
+            } else if detectChallenge(in: html) {
+                .botChallenge
+            } else {
+                .unknownMarkup
+            }
+        return ParsedPage(results: parsed, detectedBlock: block)
     }
 
     /// Last-resort extraction: find anchors that look like result links.
