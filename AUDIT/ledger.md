@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 53 — done 5 · open 45 · blocked 3**
+**total 53 — done 6 · open 44 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
 | S1 | 30 | 3 | 26 | 1 |
 | S2 | 16 | 0 | 16 | 0 |
-| S3 | 3 | 0 | 3 | 0 |
+| S3 | 3 | 1 | 2 | 0 |
 
-Status tally: OPEN 44, PROGRESS 1, DONE 5, BLOCKED 3
+Status tally: OPEN 43, PROGRESS 1, DONE 6, BLOCKED 3
 
 ## Tasks
 
@@ -76,7 +76,7 @@ Status tally: OPEN 44, PROGRESS 1, DONE 5, BLOCKED 3
 | A0044 | S2 | A | OPEN | `--dry-run` creates the SearXNG directory, so it does change the filesystem |
 | A0051 | S2 | A | OPEN | Mojeek timestamp is read but never requested, so publishedAt is always nil (UNSURE) |
 | A0027 | S3 | C | OPEN | A lost bind race abandons the exited child unreaped |
-| A0052 | S3 | C | OPEN | The documented test count is stale after A0045 added three tests |
+| A0052 | S3 | C | DONE | The documented test count is stale after A0045 added three tests |
 | A0053 | S3 | A | OPEN | /health readiness reflects configuration, not reachability |
 
 ---
@@ -591,12 +591,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0052 — The documented test count is stale after A0045 added three tests
 
-- **Severity / tier / status:** S3 / C / OPEN
+- **Severity / tier / status:** S3 / C / DONE
 - **Location:** `AGENTS.md:80, README.md:201, docs/release-notes-v1.2.0.md, wiki Home.md`
 - **Category:** docs/stale-number
 - **Host:** Node1
 - **Discovered by:** the audit's own change (A0045 bumped 593 to 596)
 - **Evidence before:** AGENTS.md and README.md state 593 tests; the suite is now 554 + 42 = 596 after the three SearXNG answer-shape tests. §6: code the audit's own changes orphaned.
+- **Fix:** AGENTS.md (both the layout count and the `swift test` comment), README.md and the wiki Home page now say 597 tests (555 + 42). The v1.2.0 release notes were checked and do not state a count, so no historical record was touched.
+- **Evidence after:** grep for the stale strings returns nothing in AGENTS.md, README.md or wiki Home.md.
+- **Commit:** `db39cb7 (repo) + 1d9c47d (wiki)`
 
 ### A0053 — /health readiness reflects configuration, not reachability
 
