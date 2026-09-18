@@ -70,7 +70,7 @@ public struct StartpageProvider: SearchProvider {
         if let withDate = StartpageProvider.dateFilter(for: request.recency) {
             items.append(URLQueryItem(name: "with_date", value: withDate))
         }
-        components.queryItems = items
+        components.setQueryItemsEscapingPlus(items)
 
         guard let url = components.url else {
             throw SearchError.unsupportedRequest(.startpage, "could not build request URL")

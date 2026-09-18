@@ -70,7 +70,7 @@ public struct OpenWebSearchProvider: SearchProvider {
         if let locale = request.locale {
             items.append(URLQueryItem(name: "locale", value: locale.identifier))
         }
-        components.queryItems = items
+        components.setQueryItemsEscapingPlus(items)
 
         guard let url = components.url else {
             throw SearchError.unsupportedRequest(.openWebSearch, "invalid endpoint URL")

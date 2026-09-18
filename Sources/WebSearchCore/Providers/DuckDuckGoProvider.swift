@@ -74,7 +74,7 @@ public struct DuckDuckGoProvider: SearchProvider {
         if let df = DuckDuckGoProvider.dateFilter(for: request.recency) {
             items.append(URLQueryItem(name: "df", value: df))
         }
-        components.queryItems = items
+        components.setQueryItemsEscapingPlus(items)
 
         guard let url = components.url else {
             throw SearchError.unsupportedRequest(.duckDuckGo, "could not build request URL")

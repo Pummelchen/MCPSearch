@@ -93,7 +93,7 @@ public struct MojeekProvider: SearchProvider {
                 )
             )
         }
-        components.queryItems = items
+        components.setQueryItemsEscapingPlus(items)
 
         guard let url = components.url else {
             throw SearchError.unsupportedRequest(.mojeek, "could not build request URL")

@@ -80,7 +80,7 @@ public struct BraveProvider: SearchProvider {
                 items.append(URLQueryItem(name: "ui_lang", value: locale.identifier))
             }
         }
-        components.queryItems = items
+        components.setQueryItemsEscapingPlus(items)
 
         guard let url = components.url else {
             throw SearchError.unsupportedRequest(.brave, "could not build request URL")

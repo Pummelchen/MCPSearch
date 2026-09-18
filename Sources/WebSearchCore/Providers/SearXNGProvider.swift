@@ -63,7 +63,7 @@ public struct SearXNGProvider: SearchProvider {
         if let locale = request.locale {
             items.append(URLQueryItem(name: "language", value: locale.language))
         }
-        components.queryItems = items
+        components.setQueryItemsEscapingPlus(items)
 
         guard let url = components.url else {
             throw SearchError.unsupportedRequest(.searxng, "invalid SearXNG base URL")
