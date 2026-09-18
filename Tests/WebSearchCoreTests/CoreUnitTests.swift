@@ -289,6 +289,22 @@ final class ConfigurationTests: XCTestCase {
         XCTAssertEqual(configuration.providerOrder.count, ProviderID.allCases.count)
     }
 
+    /// A repeated name in the operator's list must not survive into the order.
+    ///
+    /// `seen` was seeded from the parsed list while the list itself was kept intact, so
+    /// `tavily,tavily,brave` produced two Tavily entries: `balanced` fanned out to Tavily twice and
+    /// never to Brave, and fusion counted Tavily's results twice because its duplicate guard is per
+    /// response. The neighbouring test only ever used a list without repeats, which is why nothing
+    /// caught it (ledger A0034).
+    func testARepeatedProviderNameIsDeduplicated() {
+        let configuration = AppConfiguration.parse([
+            "SEARCH_PROVIDER_ORDER": "tavily,tavily,brave"
+        ])
+        XCTAssertEqual(Array(configuration.providerOrder.prefix(2)), [.tavily, .brave])
+        XCTAssertEqual(configuration.providerOrder.count, ProviderID.allCases.count)
+        XCTAssertEqual(Set(configuration.providerOrder), Set(ProviderID.allCases))
+    }
+
     func testDisabledProvidersAreParsed() {
         let configuration = AppConfiguration.parse([
             "SEARCH_DISABLED_PROVIDERS": "duckduckgo, startpage"

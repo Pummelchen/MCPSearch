@@ -351,6 +351,34 @@ extension AppConfiguration {
 
     /// Parse a resolved key/value map into a configuration. Kept pure so it can be
     /// unit tested without touching the process environment.
+    /// The operator's stated provider order, deduplicated, with every remaining provider appended
+    /// so an operator cannot accidentally make one unreachable.
+    ///
+    /// Deduplicating the operator's own list matters as much as the appended defaults: a repeated
+    /// name used to survive into the order, so the provider held two slots, `balanced` fanned out
+    /// to it twice and never to a provider further down, and fusion counted its results twice
+    /// because its duplicate guard is per response (ledger A0034). `jina` is deliberately absent
+    /// from `defaultProviderOrder`: it is a fetch provider and never participates in search.
+    private static func resolvedProviderOrder(from raw: String) -> [ProviderID] {
+        let parsed =
+            raw
+            .split(separator: ",")
+            .compactMap { ProviderID(rawValue: $0.trimmingCharacters(in: .whitespaces).lowercased()) }
+        guard !parsed.isEmpty else { return [] }
+
+        // `insert` reports whether the element was new, so this deduplicates while preserving the
+        // operator's stated order.
+        var seen = Set<ProviderID>()
+        var full: [ProviderID] = []
+        for provider in parsed where seen.insert(provider).inserted {
+            full.append(provider)
+        }
+        for provider in defaultProviderOrder where seen.insert(provider).inserted {
+            full.append(provider)
+        }
+        return full
+    }
+
     public static func parse(_ values: [String: String]) -> AppConfiguration {
         var issues: [ConfigurationIssue] = []
 
@@ -437,25 +465,11 @@ extension AppConfiguration {
         }
 
         if let order = string(.providerOrder) {
-            let parsed =
-                order
-                .split(separator: ",")
-                .compactMap { ProviderID(rawValue: $0.trimmingCharacters(in: .whitespaces).lowercased()) }
-            if !parsed.isEmpty {
-                // Keep every known provider reachable even if the operator only
-                // listed some of them, preserving their stated order first.
-                var seen = Set(parsed)
-                var full = parsed
-                // Append the remaining *search* providers so an operator cannot
-                // accidentally make one unreachable. `jina` is deliberately excluded:
-                // it is a fetch/extraction provider and never participates in search.
-                for provider in defaultProviderOrder
-                where !seen.contains(provider) {
-                    full.append(provider)
-                    seen.insert(provider)
-                }
-                configuration.providerOrder = full
-            }
+            // Resolved in a helper: the dedup and the append loop are five branches that belong to
+            // this question, not to the whole of `parse`, whose cyclomatic complexity the envelope
+            // in .swiftlint.yml already sits against (ledger A0034).
+            let resolved = Self.resolvedProviderOrder(from: order)
+            if !resolved.isEmpty { configuration.providerOrder = resolved }
         }
 
         if let disabled = string(.disabledProviders) {
