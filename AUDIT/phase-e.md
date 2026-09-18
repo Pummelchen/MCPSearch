@@ -149,7 +149,7 @@ reference to the second.
 
 | | |
 |---|---|
-| Commit verified | `44ced26a520637e9b08fbdc0cf742a1fbc543293` |
+| Commit verified | `bcc29bc9752aaeed6ce06334a514cdc68e2f4866` |
 | Branch | `audit/2026-09-18` — `main` still at `992a27f`, 142 ahead, 0 behind |
 | Clone | fresh, from the bundle, `git status --porcelain` empty |
 | Primary host | `Node1`, macOS 27.0, Swift 6.4 |
@@ -159,9 +159,18 @@ The clone's `HEAD` was compared with the primary host's before any gate ran, bec
 resolved to the wrong commit would make every row below meaningless:
 
 ```
-primary     44ced26a520637e9b08fbdc0cf742a1fbc543293
-independent 44ced26a520637e9b08fbdc0cf742a1fbc543293
+primary     bcc29bc9752aaeed6ce06334a514cdc68e2f4866
+independent bcc29bc9752aaeed6ce06334a514cdc68e2f4866
 ```
+
+**This run was performed twice, and the first attempt is the reason.** It first verified `44ced26`,
+which was the commit that closed A0011 and A0017. Re-reading the goal afterwards showed a change made
+*after* that commit which was not part of this record: `AGENTS.md` and `README.md` still carried the
+old test counts, and this audit's own test additions are what moved them. Correcting documentation is
+still a change to the verified tree, and "the gate would not read a README" is an argument, not a
+verification — so the bundle was rebuilt from the corrected commit and the whole table was run again
+rather than carrying the first result forward. The first attempt's numbers are not quoted anywhere
+below, because they belong to a commit that is not the final one.
 
 ## Every gate
 
@@ -205,6 +214,7 @@ three — each of which first read as a failure:
 | `shellcheck deploy/… tools/*.sh` | exit 1, 4 findings | CI and `release.sh` both run **`shellcheck -S warning`**. At the default severity the four are `info`, and shellcheck exits non-zero on any finding. With `-S warning`: exit 0. |
 | `mcp_smoke.py <bin-dir>` | "server binary not found at …/Products/Debug" | CI passes the **binary**, `"$(swift build -c release --show-bin-path)/SwiftWebSearchMCP"`. With the binary: PASS. |
 | `dual_client_contract.py <bin-dir>` | — | This one I got right, having learned it in run 1: it takes the directory, not the binary. |
+| `swift build -c release > +/dev/null` | four harnesses: "no binary at …" | A **typo in my gate script**, `+/dev/null` for `/dev/null`. The redirect failed, so the release build never ran and the four binary harnesses had nothing to run. They passed once it did. |
 
 So the argument conventions are not uniform across the four harnesses, and two of the three are the
 opposite of each other. That is worth knowing, and it is recorded here rather than in a message.
@@ -227,6 +237,9 @@ linter is at `-S warning`" is not a reason a reader should have to take on trust
 The commit that closes A0011 and A0017 builds warning-free and passes every static gate, the full
 Swift suite, all four Python harnesses and the version check **on a machine other than the one it was
 written on**, from a clean checkout at the verified commit. Both halves of the completion condition
-therefore hold on `44ced26`: the ledger's non-terminal count is **zero** (54 DONE, 1 BLOCKED with a
+therefore hold on `bcc29bc`: the ledger's non-terminal count is **zero** (54 DONE, 1 BLOCKED with a
 named owner — A0001, rotating a live credential, which this audit does not touch), and Phase E passes
 end to end on an independent host.
+
+The only commit after `bcc29bc` is this record's own update, so the diff following verification is the
+audit's documentation and nothing else — the same arrangement as runs 1 and 2.
