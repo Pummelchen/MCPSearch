@@ -134,9 +134,15 @@ final class MarkupDepthTests: XCTestCase {
         // `Array(...)[...]` is an `ArraySlice<UInt8>`: contiguous storage, but a non-zero
         // `startIndex` in general and not the same collection type as `UnsafeBufferPointer`.
         let copiedBytes = Array(deepMarkup.utf8)
-        XCTAssertTrue(MarkupDepth.scan(copiedBytes[...], limit: MarkupDepth.maximumNesting))
-        XCTAssertFalse(
-            MarkupDepth.scan(Array(shallowMarkup.utf8)[...], limit: MarkupDepth.maximumNesting)
+        // `scan` reports the depth it reached rather than a verdict, so the comparison is the
+        // verdict. The assertion is unchanged in meaning: deep exceeds, shallow does not.
+        XCTAssertGreaterThan(
+            MarkupDepth.scan(copiedBytes[...], limit: MarkupDepth.maximumNesting),
+            MarkupDepth.maximumNesting
+        )
+        XCTAssertLessThanOrEqual(
+            MarkupDepth.scan(Array(shallowMarkup.utf8)[...], limit: MarkupDepth.maximumNesting),
+            MarkupDepth.maximumNesting
         )
 
         // A slice that starts partway into a buffer is what a non-contiguous view can produce;
@@ -146,7 +152,10 @@ final class MarkupDepthTests: XCTestCase {
         let padded = Array("padding".utf8) + copiedBytes
         let offsetSlice = padded.dropFirst("padding".utf8.count)
         XCTAssertEqual(offsetSlice.startIndex, "padding".utf8.count, "the slice must be offset")
-        XCTAssertTrue(MarkupDepth.scan(offsetSlice, limit: MarkupDepth.maximumNesting))
+        XCTAssertGreaterThan(
+            MarkupDepth.scan(offsetSlice, limit: MarkupDepth.maximumNesting),
+            MarkupDepth.maximumNesting
+        )
     }
 
     /// The projection of `markupDepthExceeded` onto the shared taxonomy and the model-visible

@@ -31,8 +31,23 @@ public enum MarkupDepth {
     /// a tag. The scan stops as soon as the limit is exceeded, so a hostile document costs a
     /// few kilobytes of reading rather than a full parse.
     public static func exceedsLimit(_ html: String, limit: Int = maximumNesting) -> Bool {
-        if let exceeded = html.utf8.withContiguousStorageIfAvailable({ scan($0, limit: limit) }) {
-            return exceeded
+        maximumDepth(html, limit: limit) > limit
+    }
+
+    /// The deepest nesting `html` reaches, saturating at `limit + 1`.
+    ///
+    /// The same single scan as `exceedsLimit`, reporting how deep it got instead of only whether it
+    /// got too deep. It exists so the model can be **measured against the tree SwiftSoup actually
+    /// builds**: a bound is only sound if this number is never below the real depth, and only usable
+    /// if it is not far above it. Without this, "the model is close enough" is an assertion (ledger
+    /// A0011).
+    ///
+    /// Saturating rather than exact: the scan still stops as soon as the limit is passed, so a hostile
+    /// document costs a few kilobytes of reading rather than a full pass. Pass a large `limit` to
+    /// measure a real document's depth in full.
+    public static func maximumDepth(_ html: String, limit: Int = maximumNesting) -> Int {
+        if let depth = html.utf8.withContiguousStorageIfAvailable({ scan($0, limit: limit) }) {
+            return depth
         }
         // Non-contiguous UTF-8: one copy is the price of a single code path. `String.utf8`
         // is contiguous for every String this package builds from network data, so this is
@@ -83,12 +98,13 @@ public enum MarkupDepth {
         Array("noscript".utf8), Array("plaintext".utf8),
     ]
 
-    /// Count nesting on bytes. No recursion, no per-tag allocation, early exit.
+    /// Measure nesting on bytes. No recursion, early exit, saturating at `limit + 1`.
     static func scan<Bytes: RandomAccessCollection>(
         _ bytes: Bytes,
         limit: Int
-    ) -> Bool where Bytes.Element == UInt8, Bytes.Index == Int {
+    ) -> Int where Bytes.Element == UInt8, Bytes.Index == Int {
         var depth = 0
+        var deepest = 0
         var index = bytes.startIndex
         let end = bytes.endIndex
 
@@ -156,11 +172,12 @@ public enum MarkupDepth {
 
             if !selfClosing, !matchesAny(bytes, from: tagBody, to: tagNameEnd, in: voidElements) {
                 depth += 1
-                if depth > limit { return true }
+                if depth > deepest { deepest = depth }
+                if depth > limit { return depth }
             }
             index = min(cursor + 1, end)
         }
-        return false
+        return deepest
     }
 
     /// Where the tag name ends: the first whitespace or `/`.
