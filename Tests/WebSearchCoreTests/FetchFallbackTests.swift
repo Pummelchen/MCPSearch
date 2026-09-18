@@ -179,6 +179,35 @@ final class FetchFallbackTests: XCTestCase {
         }
     }
 
+    /// A target URL carrying a credential must not be handed to the third-party reader.
+    ///
+    /// The reader takes the target URL verbatim, so everything in it goes to `r.jina.ai` — a service
+    /// this repository does not control and that necessarily logs what it fetches. The existing
+    /// thin-page test is the positive control: with an ordinary URL the reader *is* consulted, so
+    /// this test's empty request list is the fix and not a broken fixture (ledger A0013).
+    func testACredentialBearingURLIsNotForwardedToTheReader() async throws {
+        let server = try htmlServer(thinHTML())
+        let jinaHTTP = MockHTTPClient()
+        jinaHTTP.respondJSON(#"{"data":"rendered"}"#)
+        let fetcher = WebFetcher(
+            direct: directFetcher(allowPrivateNetwork: true),
+            jina: jinaFetcher(jinaHTTP),
+            log: .disabled
+        )
+        let url = try XCTUnwrap(
+            URL(string: server.baseURL.absoluteString + "?token=super-secret-value")
+        )
+
+        let result = try await fetcher.open(FetchRequest(url: url))
+
+        XCTAssertTrue(
+            jinaHTTP.requests.isEmpty,
+            "the reader was consulted with a credential in the URL: "
+                + "\(jinaHTTP.requests.map(\.url.absoluteString))"
+        )
+        XCTAssertEqual(result.method, .htmlExtraction)
+    }
+
     func testThinNativeExtractionFallsBackToTheReader() async throws {
         let server = try htmlServer(thinHTML())
         let jinaHTTP = MockHTTPClient()

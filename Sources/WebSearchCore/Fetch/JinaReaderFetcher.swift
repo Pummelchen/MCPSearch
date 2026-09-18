@@ -43,9 +43,23 @@ public struct JinaReaderFetcher: Sendable {
         // The reader takes the target URL as the *rest of the path*, so it must be appended
         // verbatim. `appendingPathComponent` percent-encodes `?` and `#` into the path, which
         // asked the reader for a different resource — `/page%3Fq=1` instead of `/page?q=1`
+        // A credential in the target URL must not be handed to a third party.
+        //
+        // The reader takes the target URL verbatim, so everything in it goes to `r.jina.ai` — a
+        // service this repository does not control and that necessarily logs what it fetches. A
+        // fragment is dropped, because no server ever receives one and no reader needs it; userinfo
+        // and credential-shaped query parameters cause the fallback to be declined instead, which
+        // costs the caller a rendered page rather than their token (ledger A0013).
+        if let withheld = Self.credentialToWithhold(from: request.url) {
+            throw SearchError.invalidRequest(
+                "refusing to forward a target URL carrying \(withheld) to the third-party reader"
+            )
+        }
+        let target = Self.withoutFragment(request.url)
+
         var readerURL = baseURL.absoluteString
         if !readerURL.hasSuffix("/") { readerURL += "/" }
-        guard let target = URL(string: readerURL + request.url.absoluteString) else {
+        guard let readerRequest = URL(string: readerURL + target.absoluteString) else {
             throw SearchError.invalidRequest("could not build a reader URL for \(request.url)")
         }
 
@@ -70,7 +84,7 @@ public struct JinaReaderFetcher: Sendable {
         }
 
         let response = try await http.send(
-            HTTPRequest.get(target, headers: headers, label: "jina.reader"),
+            HTTPRequest.get(readerRequest, headers: headers, label: "jina.reader"),
             maxBytes: configuration.maxFetchedPageBytes
         )
 
@@ -120,10 +134,10 @@ public struct JinaReaderFetcher: Sendable {
         }
 
         let clipped = DirectHTTPFetcher.clip(trimmed, to: maxCharacters)
-        // The target URL — including any userinfo, token or signed query the caller chose —
-        // has now left this machine and was fetched by a third party. `web_open` accepts
-        // authorisation-bearing URLs and the model cannot be relied on to avoid them, so the
-        // disclosure travels with every reader result rather than only the thin-native path
+        // The target URL has now left this machine and was fetched by a third party. A URL carrying
+        // userinfo or a credential-shaped parameter never reaches here — it is withheld above — so
+        // this discloses the ordinary case rather than warning about a disclosure that was refused
+        // (ledger A0013).
         var warnings: [String] = [
             "Used Jina Reader (\(baseURL.host() ?? baseURL.absoluteString)), "
                 + "a third-party service that fetched this URL remotely."
@@ -211,4 +225,33 @@ public struct JinaReaderFetcher: Sendable {
             let content: String?
         }
     }
+
+    /// A part of the target URL that carries a credential, if any.
+    ///
+    /// Userinfo is unambiguous. Query parameter names are matched against a closed list of
+    /// credential-shaped names rather than a heuristic on values, because guessing from a value would
+    /// withhold the reader from ordinary pages: a name like `key` or `code` is deliberately **not**
+    /// here, since it is far more often a benign parameter than a secret, and a false positive costs
+    /// the caller a rendered page (ledger A0013).
+    static func credentialToWithhold(from url: URL) -> String? {
+        if let user = url.user, !user.isEmpty { return "userinfo" }
+        let credentialNames: Set<String> = [
+            "token", "access_token", "refresh_token", "id_token", "api_key", "apikey", "secret",
+            "client_secret", "password", "passwd", "authorization", "sig", "signature", "session",
+            "sessionid", "session_id",
+        ]
+        let items = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+        for item in items where credentialNames.contains(item.name.lowercased()) {
+            return "the \(item.name) parameter"
+        }
+        return nil
+    }
+
+    /// The same URL without its fragment.
+    static func withoutFragment(_ url: URL) -> URL {
+        var components = URLComponents(url: url, resolvingAgainstBaseURL: false)
+        components?.fragment = nil
+        return components?.url ?? url
+    }
+
 }
