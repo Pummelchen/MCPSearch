@@ -362,3 +362,75 @@ The skip is the default-suite behaviour working as designed, not a check that wa
 Run 3 recorded three argument conventions — `shellcheck` needs `-S warning`; the smoke and monitor
 harnesses take the **binary**; the contract harness takes the **directory**. This run used them and
 needed no correction, which is the point of writing them down rather than remembering them.
+
+---
+
+# Phase E — run 5, on the released tag
+
+Runs 3 and 4 verified commits, not releases. This one verifies **`v1.3.0`** — the tag the published
+archive was built from — because a release is the artifact other people run, and it is the first thing
+in this audit whose correctness is not only ours.
+
+| | |
+|---|---|
+| Commit verified | `22600d302c88a566c000940cd7d07da1d26e18c0` — tag `v1.3.0` |
+| Published release | <https://github.com/Pummelchen/MCPSearch/releases/tag/v1.3.0>, three assets |
+| Clone | fresh, from a bundle, `git describe --tags` = `v1.3.0`, tree clean |
+| Independent host | `MacBook-AB.local`, macOS 27.0, Swift 6.4 (`swiftlang-6.4.0.34.1`), `arm64` |
+
+`HEAD` was compared before any gate ran, and `git describe` was checked as well as the hash — the tag is
+the thing being verified, so a checkout that landed on the right commit under the wrong ref would be
+worth knowing about.
+
+## Every gate
+
+| Gate | Result |
+|---|---|
+| `swift build --build-tests -Xswiftc -warnings-as-errors` | PASS — exit 0, no warnings |
+| `swift test` | PASS — **585 + 42 tests, 7 skipped, 0 failures** |
+| `swift-format lint --recursive --strict` | PASS |
+| `swiftlint lint --strict` | PASS |
+| `tools/check-version.sh` | PASS — 1.3.0 |
+| `ruff check` / `ruff format --check scripts` | PASS |
+| `pyright scripts` | PASS |
+| `scripts/harness_tests.py` | PASS |
+| `gitleaks`, both passes, full history | PASS |
+| `osv-scanner scan source -r .` | PASS |
+| `semgrep --error` | PASS |
+| `bash -n` + `shellcheck -S warning` | PASS |
+| the real-page depth measurement | PASS — 34 exact, 3 over, **0 under** |
+| `scripts/mcp_smoke.py <bin>` (stdio) | PASS |
+| `scripts/mcp_smoke.py --http <bin>` | PASS |
+| `scripts/dual_client_contract.py <bin-dir>` | PASS |
+| `scripts/monitor_tty_smoke.py <bin>` | PASS |
+
+**19 gates, 0 failures.**
+
+## The limitation run 4 named is closed here
+
+Run 4 copied the corpus to the independent host and said so, because a copy verifies the model against
+the same pages on a different machine rather than against an independent fetch. This run **fetched its
+own corpus on that host** — 37 pages, 12 MB, the same URL list — and reproduced the measurement:
+
+```
+A0011 corpus: 37 pages, 34 exact, 3 over, 0 under
+```
+
+The limit that remains is narrower and stated: the URL list is the same one, so this is an independent
+*fetch* rather than an independent *sample of the web*. Two hosts agreeing on the same list is stronger
+than one host alone; it is not the same as a corpus chosen without knowing what the first one showed.
+
+## What this run does not cover
+
+Unchanged from earlier runs, and worth repeating now that a release exists:
+
+- **Live provider traffic.** No live provider test ran on either host; `SEARCH_LIVE_TESTS` is unset and
+  no usable credential is present. The release notes say the same thing in the section the release gate
+  renders.
+- **The installer.** `deploy/install.sh` was not executed — it installs software and needs a SearXNG.
+- **The published archive itself.** This ran from the tag's source, which is what the archive was built
+  from; it did not download the published tarball and run the binaries inside it. Those binaries were
+  asserted `arm64` by `release.sh` and exercised by its smoke tests at publish time, on the primary host.
+
+This commit carries only this record, so the diff after the verified tag is the verification record and
+nothing else — the same arrangement as runs 1 through 4.
