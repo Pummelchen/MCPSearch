@@ -111,6 +111,36 @@ final class HTTPMCPHost: @unchecked Sendable {
     /// because the request path is entered from NIO handlers.
     private let sessions = OSAllocatedUnfairLock<[String: SessionContext]>(initialState: [:])
 
+    /// The most sessions this host keeps at once.
+    ///
+    /// `initialize` creates a session and only `DELETE` releases it, so without a bound an
+    /// unauthenticated client could open sessions until the process exhausted memory — each one
+    /// holding a `Server` and a transport. Sixty-four is far more than the handful of clients this
+    /// host is for, and small enough that the worst case is bounded (ledger A0028).
+    static let maximumLiveSessions = 64
+
+    /// Reserved session slots, counting sessions that are being created as well as live ones.
+    ///
+    /// A plain `sessions.count` check would be a race: two concurrent `initialize` requests both read
+    /// a count below the cap and both insert. Reserving a slot under the lock before the work starts
+    /// makes the bound exact rather than approximate.
+    private let liveSessions = OSAllocatedUnfairLock<Int>(initialState: 0)
+
+    /// Take a slot, or report that the host is full.
+    private func reserveSessionSlot() -> Bool {
+        liveSessions.withLock { live in
+            guard live < Self.maximumLiveSessions else { return false }
+            live += 1
+            return true
+        }
+    }
+
+    private func releaseSessionSlot() {
+        liveSessions.withLock { live in
+            if live > 0 { live -= 1 }
+        }
+    }
+
     /// Resumed by `stop()` so `waitUntilStopped()` can park the process.
     private let shutdown = OSAllocatedUnfairLock<CheckedContinuation<Void, Never>?>(initialState: nil)
 
@@ -218,6 +248,13 @@ final class HTTPMCPHost: @unchecked Sendable {
 
     /// Create a session's `Server` and transport, then hand it this request.
     private func createSession(request: MCP.HTTPRequest, log: Log) async -> MCP.HTTPResponse {
+        guard reserveSessionSlot() else {
+            log.error(
+                "refusing a new HTTP session",
+                metadata: ["cap": "\(Self.maximumLiveSessions)"]
+            )
+            return .error(statusCode: 503, .internalError("Too many live MCP sessions."))
+        }
         let sessionID = UUID().uuidString
         let transport = StatefulHTTPServerTransport(
             sessionIDGenerator: FixedSessionIDGenerator(sessionID: sessionID),
@@ -238,6 +275,9 @@ final class HTTPMCPHost: @unchecked Sendable {
         } catch {
             log.error("HTTP session could not be started", metadata: ["error": "\(error)"])
             await transport.disconnect()
+            // The slot was reserved before the work began and no session was registered, so nothing
+            // else will release it (ledger A0028).
+            releaseSessionSlot()
             return .error(statusCode: 500, .internalError("Could not start an MCP session."))
         }
     }
@@ -245,6 +285,7 @@ final class HTTPMCPHost: @unchecked Sendable {
     /// Release a session, if it is still registered.
     private func closeSession(id: String) async {
         guard let session = sessions.withLock({ $0.removeValue(forKey: id) }) else { return }
+        releaseSessionSlot()
         await session.transport.disconnect()
         await session.server.stop()
         log.info("HTTP session released", metadata: ["sessions": "\(sessions.withLock { $0.count })"])
@@ -341,6 +382,9 @@ final class HTTPMCPHost: @unchecked Sendable {
             dictionary.removeAll()
             return values
         }
+        // The sweep bypasses `closeSession`, so it releases the slots itself; otherwise the counter
+        // would stay above zero for the life of the process (ledger A0028).
+        liveSessions.withLock { $0 = 0 }
         for session in live {
             await session.transport.disconnect()
             await session.server.stop()
