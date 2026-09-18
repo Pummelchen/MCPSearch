@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 55 — done 52 · open 0 · blocked 3**
+**total 55 — done 52 · open 1 · blocked 2**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
-| S0 | 4 | 2 | 0 | 2 |
+| S0 | 4 | 2 | 1 | 1 |
 | S1 | 30 | 29 | 0 | 1 |
 | S2 | 17 | 17 | 0 | 0 |
 | S3 | 4 | 4 | 0 | 0 |
 
-Status tally: DONE 52, BLOCKED 3
+Status tally: PROGRESS 1, DONE 52, BLOCKED 2
 
 ## Tasks
 
@@ -27,7 +27,7 @@ Status tally: DONE 52, BLOCKED 3
 | --- | --- | --- | --- | --- |
 | A0001 | S0 | A | BLOCKED | A live-looking Tavily credential prefix is in public git history and cannot be un-published |
 | A0007 | S0 | A | DONE | /health returns a hardcoded ok, so the production health surface is wired to nothing |
-| A0011 | S0 | A | BLOCKED | The markup-depth guard is bypassable, so crafted HTML reaches a recursive parse and kills the process |
+| A0011 | S0 | A | PROGRESS | The markup-depth guard is bypassable, so crafted HTML reaches a recursive parse and kills the process |
 | A0045 | S0 | A | DONE | SearXNG answers are decoded as [String] but emitted as objects, so an answering query discards every result |
 | A0002 | S1 | A | DONE | Warnings-as-errors is not in the build config, so the Swift standard is not in force at the build level |
 | A0003 | S1 | A | DONE | SwiftLint cannot reject a force-unwrap, so the §1 Swift standard proof fails |
@@ -107,7 +107,7 @@ Status tally: DONE 52, BLOCKED 3
 
 ### A0011 — The markup-depth guard is bypassable, so crafted HTML reaches a recursive parse and kills the process
 
-- **Severity / tier / status:** S0 / A / BLOCKED
+- **Severity / tier / status:** S0 / A / PROGRESS
 - **Location:** `Sources/WebSearchCore/Fetch/MarkupDepth.swift:114-115,137`
 - **Category:** security/dos
 - **Host:** Node1
@@ -117,16 +117,9 @@ Status tally: DONE 52, BLOCKED 3
 MEASURED 2026-09-18: a scratch test parsed 100 000 repetitions of the bypass (`<div></p>`, ~900 KB — inside the 10 MiB body cap) through `SwiftSoup.parse` directly, with no SwiftSoupException and no crash: the run HAD TO BE KILLED after 10 minutes. So the guard's blind spot is not only a stack-depth hazard — the parse of unmatched-closer-heavy markup does not complete in any useful time, which is a resource-exhaustion/hang DoS reachable by any fetched page, and it happens on the server's own thread. The scratch test was deleted and no test process was left behind.
 
 ANALYSIS of what actually bounds this, worked through rather than guessed: the bypass nests because each `<div>` really is an open element (real tree depth grows by one per repetition) while the guard is talked out of counting it by the `</p>`. So the tree can nest as deeply as the number of *start tags*, and bounding unmatched closers alone does NOT bound depth. The sound bound is therefore the start-tag count — which at 512 (the depth budget) would refuse ordinary pages, and ordinary large pages carry tens of thousands of tags, so any tag cap that is safe for the ~20 000-level fatal figure sits inside the range real pages occupy. A tight bound needs HTML's implied-end-tag rules (a `</ul>` closing open `li`s, `<li>` auto-closing the previous `<li>`) modelled accurately, or the parse must be bounded by work rather than by shape, which SwiftSoup does not expose. This is the irreducible tension, stated so the next attempt does not re-derive it: there is no cheap check that is both sound and free of false rejections.
-- **Fix:** Planned, not yet implemented. The bound must be unfoolable rather than model-matching: count start tags without any decrement, since every element in the tree was opened by some start tag, so start-tag count is a sound upper bound on tree depth. That costs a behaviour change (a very tag-heavy but shallow page would also be refused), so the limit needs choosing against the ~20 000 level figure the file already records as fatal, and the byte cap stays. Rejected alternatives: teaching the scan HTML's implied end-tag and self-closing rules (still model-matching, still bypassable), and making our own walk iterative (does not help: SwiftSoup's parse is recursive and runs first).
-
-REFINED PLAN (better than the first): do NOT change the existing depth semantics — 24 tests in MarkupDepthTests assert them (testClosingTagsReturnToTheParent, testNestingAtTheLimitIsAccepted, and others), and redefining depth would mean rewriting those tests, which risks looking like weakening. Instead make the guard ADDITIVE: in the same single pass, keep `depth` exactly as it is for the early-exit heuristic, and add a monotonic `startTags` counter that is never decremented and never reduced by a closing tag. Every element in the parsed tree was opened by some start tag, so startTags is a sound upper bound on tree depth and cannot be fooled by an unmatched closing tag or by `<div foo=/>`. Fail when either bound is exceeded. The existing depth tests keep their meaning, and the new bound needs its own tests: `<div></p>` repeated past the limit must be rejected, and an ordinary page must still pass. The trade-off is unchanged and must be stated in the code: a page with more start tags than the limit is refused even if it is shallow, because the limit must stay below the ~20 000 level figure the file records as fatal, and a crash reachable by any fetched page is worse than refusing an absurd one.
-
-CORRECTION TO THE REFINED PLAN, after reading the constant: maximumNesting is 512, not ~20 000. The file records ~20 000 *levels* as fatal; 512 is the depth budget. So a monotonic start-tag bound sharing that limit would reject almost every real page, and a bound set below the fatal depth (~20 000) would still land in the range ordinary large pages occupy — a 1 MB page of markup carries tens of thousands of tags. The sound bound is therefore NOT usable as a naive patch, and implementing the refined plan as written would trade a remotely triggerable crash for refusing normal pages. That is a worse product, and it is exactly the kind of 'fix' this audit exists to prevent.
-
-OPEN DESIGN QUESTION, to be settled before any code: the depth bound must be sound without rejecting tag-heavy but shallow documents. Candidate directions, none verified: (a) bound the number of *unmatched* closing tags rather than total tags, since the bypass needs closing tags that close nothing — targeted at the mechanism, but ordinary sloppy HTML has some; (b) confirm whether SwiftSoup's tree builder recurses per nesting level and, if the recursion is ours alone, make the walk iterative and raise the depth budget; (c) run the parse with a deliberately large stack and a much higher tag bound, accepting memory cost; (d) parse with a depth-limited builder if SwiftSoup exposes one. The next round must EVIDENCE which of these is sound (the SwiftSoup internals are in .build/checkouts) rather than pick one.
-
-BEST DIRECTION, on the measured evidence: bound the *unmatched closing tags*, not the total tag count. The experiment shows unmatched closers are the fuel for both the depth inflation and the pathological parse, and ordinary HTML has very few of them while ordinary pages have tens of thousands of matched tags — so a threshold there is discriminating where a total-tag bound is not. A simple stack of open tag names is enough to count them. This still needs evidence for the threshold on real pages before it is written. Making our own `walk` iterative is necessary regardless (it is our recursion at HTMLExtractor.swift:259,288) but is NOT sufficient on its own, because the hang is inside `SwiftSoup.parse` and happens before `walk` is reached.
-- **BLOCKED:** Owner: repository owner (Pummelchen) — a product decision, not an unimplemented patch. NOT FIXED: this S0 ships unless the owner chooses an option below. WHAT WAS TRIED: (1) make our own recursive walk iterative — necessary but NOT sufficient, the hang is inside SwiftSoup.parse before walk is reached; (2) a monotonic start-tag bound — withdrawn, because at maximumNesting = 512 it refuses ordinary pages and a cap safe for the ~20 000-level fatal figure sits inside the range real pages occupy; (3) bounding unmatched closing tags — measured reasoning shows it does not bound depth, since each <div> really is an open element and the tree nests once per start tag; (4) measured the blind spot directly: 100 000 repetitions of `<div></p>` (~900 KB, inside the 10 MiB cap) through SwiftSoup.parse did not crash and did not finish — killed after 10 minutes. OPTIONS: (a) accept a false-rejection cap — bound total start tags around 12 000, sound because it sits below the fatal depth, at the cost of refusing very tag-heavy but legitimate pages; (b) model HTML's implied-end-tag rules accurately enough to bound real depth tightly (a project-sized task, and the only option with no false rejections); (c) move extraction to a work-bounded or process-isolated parse (a watchdog plus a bounded stack) if SwiftSoup exposes a seam, accepting the complexity. RECOMMENDATION: (b) if a correct bound matters, (a) if a release must ship now and the owner accepts refusing the largest pages. Doing nothing leaves a remotely triggerable denial of service reachable from any fetched page.
+- **Fix:** OWNER CHOSE OPTION 2: model HTML's implied-end-tag and auto-closing rules accurately enough to bound real depth tightly — the only option with no false rejections. PLAN, in order: (1) DONE — `MarkupDepth.maximumDepth(_:limit:)` reports the depth the scan reached, saturating at limit+1, so the model can be measured against the tree SwiftSoup builds instead of asserted about. (2) Replace the unconditional closing-tag decrement with a stack of open element names, ignoring a stray end tag that matches nothing — that alone refuses the `<div></p>` bypass. (3) Add the optional-end-tag rules (`p` closed by the block set, `li` by `li`, `dt`/`dd` by each other, `option`/`optgroup`, `tr`, `td`/`th`, the table sections), because `<p>` without `</p>` is ordinary HTML and not modelling it would refuse normal pages. (4) A soundness harness: for a corpus, assert the model's depth is never below the real max depth of the parsed tree and not far above it. (5) Choose the threshold from that evidence. (6) Make our own `walk` iterative at HTMLExtractor.swift — necessary regardless, though not sufficient, since the hang is inside `SwiftSoup.parse`.
+- **Evidence after:** Committed in 6fedc04: step (1) only. `maximumDepth` exists, the early exit is preserved, and the full suite is green at 616 tests (574 + 42), 0 failures, both linters exit 0. NOT YET FIXED: the guard's model is unchanged, so `<div></p>` still nests 100 000 deep without tripping it. A0017 is also being implemented under the same goal.
+- **Commit:** `6fedc04`
 
 ### A0045 — SearXNG answers are decoded as [String] but emitted as objects, so an answering query discards every result
 
