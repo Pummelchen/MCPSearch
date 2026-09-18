@@ -437,6 +437,49 @@ final class ProviderContractTests: XCTestCase {
         http.assertNoCredentialLeak("mojeek-secret")
     }
 
+    /// Mojeek's `fi`/`fe` are comma-separated lists, not space-separated ones.
+    ///
+    /// The provider joined them with a space, which Mojeek reads as a single malformed domain: the
+    /// caller's filter was silently ignored and unfiltered results came back as though it had
+    /// applied. The repository's own `docs/provider-api-notes.md` records the comma, and nothing
+    /// asserted the encoding, so the two disagreed without any check noticing (ledger A0046).
+    func testMojeekDomainFiltersAreCommaSeparated() async throws {
+        let http = MockHTTPClient()
+        http.respondJSON(
+            #"{"response":{"status":"OK","head":{"results":0,"start":1,"return":10},"results":[]}}"#
+        )
+        let provider = MojeekProvider(
+            apiKey: "mojeek-secret",
+            http: http,
+            configuration: configuration
+        )
+
+        _ = try await provider.search(
+            SearchRequest(
+                query: "swift concurrency",
+                includeDomains: ["example.com", "example.org"],
+                excludeDomains: ["spam.test"]
+            )
+        )
+
+        // Compared through `queryItems`, which decodes percent-encoding, so the assertion is about
+        // the value Mojeek receives and not about how Foundation chose to escape it.
+        let request = try XCTUnwrap(http.requests.first)
+        let items = try XCTUnwrap(
+            URLComponents(url: request.url, resolvingAgainstBaseURL: false)?
+                .queryItems)
+        XCTAssertEqual(
+            items.first { $0.name == "fi" }?.value,
+            "example.com,example.org",
+            "include domains must be comma-separated"
+        )
+        XCTAssertEqual(
+            items.first { $0.name == "fe" }?.value,
+            "spam.test",
+            "exclude domains must be comma-separated"
+        )
+    }
+
     func testMojeekBadKeyInside200ResponseIsAuthentication() async {
         // Mojeek returns HTTP 200 with an error string for an invalid key.
         let http = MockHTTPClient()

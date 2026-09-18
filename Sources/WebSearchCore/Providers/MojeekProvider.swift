@@ -75,8 +75,11 @@ public struct MojeekProvider: SearchProvider {
             items.append(
                 URLQueryItem(
                     name: "fi",
+                    // Mojeek takes a comma-separated list. A space-joined list is sent as one
+                    // malformed domain, so the filter silently does nothing and the caller gets
+                    // unfiltered results while believing the filter applied (ledger A0046).
                     value: request.includeDomains.prefix(MojeekProvider.maxDomains)
-                        .joined(separator: " ")
+                        .joined(separator: ",")
                 )
             )
         }
@@ -84,8 +87,9 @@ public struct MojeekProvider: SearchProvider {
             items.append(
                 URLQueryItem(
                     name: "fe",
+                    // Comma-separated, like `fi` above.
                     value: request.excludeDomains.prefix(MojeekProvider.maxDomains)
-                        .joined(separator: " ")
+                        .joined(separator: ",")
                 )
             )
         }
