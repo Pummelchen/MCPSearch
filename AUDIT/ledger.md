@@ -183,21 +183,8 @@ BEST DIRECTION, on the measured evidence: bound the *unmatched closing tags*, no
 - **Host:** Node1
 - **Discovered by:** L4 tool-coverage proof (§1)
 - **Evidence before:** gitleaks detect --log-opts=--all on full history: 0 findings. Pointed directly at the historical blob (gitleaks detect --no-git --source <blob>) which contains six tvly-prefixed literals: 0 findings. A tool that stays silent does not cover the check.
-- **Fix:** Added a `tavily-api-key` rule to .gitleaks.toml. It fires on 17 history findings, so the delegation is no longer silent — but the regex does not yet fire on the historical fixture blob even though Python's `re` matches 6 literals there, so the rule is not yet understood well enough to trust. Open: why gitleaks and Python disagree on the same bytes.
-
-RULE TEXT TO RE-APPLY (reverted uncommitted because it makes the CI gitleaks gate fail on 17 history findings with no waiver yet):
-
-[[rules]]
-id = "tavily-api-key"
-description = "Tavily API key or key prefix"
-# `{10,}` and not `{8,}`: the shortest real literal in the leaked blob has a 14-character body,
-# while the prose "tvly-prefixed" has 8 — the first draft of this rule fired on this very
-# document, which is how the bound was chosen. A disclosure shorter than 10 body characters is
-# not usable as a credential.
-regex = '''\btvly-[A-Za-z0-9_-]{10,}'''
-keywords = ["tvly-"]
-
-REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture blob while Python's re matches 6 literals in the same bytes — until then the rule is not trusted; (2) decide the waiver: the 17 findings are real disclosures in immutable history, so they need either a narrow allowlist keyed on commit SHA plus path (never on the secret value, which must not be written into a committed file) plus a written waiver, or acceptance that CI stays red until A0001 is rotated.
+- **Fix:** IN PROGRESS. The blind spot is now measured rather than asserted, and four provider-shaped rules have been written and shown to fire in isolation. They cannot simply be added to `.gitleaks.toml`: in gitleaks 8.30.1 `[extend] useDefault = true` DROPS a config's own `[[rules]]`, verified three ways — my rule alone fires; my rule plus `useDefault = true` fires only the default; reversing the TOML order changes nothing. Extending by `path` keeps the custom rule but loses the defaults. The edit was reverted rather than left in place, because a change that has no effect must not look like a fix.
+- **Evidence after:** Measured on a scratch git repository with four synthetic provider-shaped keys, default config: 1 finding, `generic-api-key` on the Mojeek-shaped line; TAVILY, BRAVE and JINA all MISSED. With a custom `tvly-` rule in a config of its own: the rule fires on the Tavily line. With the same rule under `[extend] useDefault = true`: only `generic-api-key` fires, so the custom rule is dropped. REMAINING: a configuration that yields the default ruleset AND the project's rules — vendoring the defaults, or a rules directory — then proving both fire together and that the repository's own full history still reports zero.
 
 ### A0008 — The only check that consumes /health reads the status code and never the body, so it cannot fail
 
