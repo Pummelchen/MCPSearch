@@ -1,7 +1,6 @@
 import Foundation
 import SwiftSoup
 import XCTest
-
 @testable import WebSearchCore
 
 extension MarkupDepthTests {
