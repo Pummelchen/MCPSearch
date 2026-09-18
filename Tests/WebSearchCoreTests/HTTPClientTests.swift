@@ -302,6 +302,55 @@ final class HTTPClientTests: XCTestCase {
         )
     }
 
+    /// The comparison that stands in for address pinning (ledger A0017).
+    ///
+    /// The fetcher refuses a body whose peer was not one the policy validated. This is the decision
+    /// itself: a peer the policy did not validate must be reported, and a peer that merely *looks*
+    /// different — another port, another presentation form of the same IPv6 address — must not be.
+    func testUnvalidatedPeers() throws {
+        let validated = [
+            try XCTUnwrap(IPAddress("93.184.216.34")),
+            try XCTUnwrap(IPAddress("2606:2800:220:1:248:1893:25c8:1946")),
+        ]
+
+        // Validated peers pass, with a port, without one, and bracketed.
+        XCTAssertEqual(BoundedResponseBody.unvalidatedPeers(["93.184.216.34:443"], validated: validated), [])
+        XCTAssertEqual(BoundedResponseBody.unvalidatedPeers(["93.184.216.34"], validated: validated), [])
+        XCTAssertEqual(
+            BoundedResponseBody.unvalidatedPeers(
+                ["[2606:2800:220:1:248:1893:25c8:1946]:443"],
+                validated: validated
+            ),
+            []
+        )
+        // The same address in another presentation form is the same peer, not a stranger.
+        XCTAssertEqual(
+            BoundedResponseBody.unvalidatedPeers(
+                ["[0:0:0:0:0:0:0:1]:80"],
+                validated: [try XCTUnwrap(IPAddress("::1"))]
+            ),
+            []
+        )
+        // A peer the policy never validated is reported, whole, so the error can name it.
+        XCTAssertEqual(
+            BoundedResponseBody.unvalidatedPeers(["10.0.0.1:80"], validated: validated),
+            ["10.0.0.1:80"]
+        )
+        // Anything that will not parse counts as unvalidated rather than as a match.
+        XCTAssertEqual(
+            BoundedResponseBody.unvalidatedPeers(["not-an-address"], validated: validated),
+            ["not-an-address"]
+        )
+        // One bad peer among good ones is still reported.
+        XCTAssertEqual(
+            BoundedResponseBody.unvalidatedPeers(
+                ["93.184.216.34:443", "192.168.1.1:80"],
+                validated: validated
+            ),
+            ["192.168.1.1:80"]
+        )
+    }
+
     /// The address is split from its port for both literal forms.
     func testRemoteAddressParsing() {
         XCTAssertEqual(BoundedResponseBody.host(ofRemoteAddress: "93.184.216.34:443"), "93.184.216.34")

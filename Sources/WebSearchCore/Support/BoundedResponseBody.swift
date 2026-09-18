@@ -64,6 +64,19 @@ final class PeerAddressRecorder: NSObject, URLSessionTaskDelegate, @unchecked Se
 }
 
 extension BoundedResponseBody {
+    /// The peers that were **not** among the addresses the policy validated.
+    ///
+    /// Compared as addresses rather than as strings: `IPAddress` parses presentation form, so
+    /// `::1` and `0:0:0:0:0:0:0:1` are the same peer, and a peer that will not parse counts as
+    /// unvalidated rather than as a match (ledger A0017).
+    static func unvalidatedPeers(_ peers: [String], validated: [IPAddress]) -> [String] {
+        let allowed = Set(validated)
+        return peers.filter { peer in
+            guard let address = IPAddress(host(ofRemoteAddress: peer)) else { return true }
+            return !allowed.contains(address)
+        }
+    }
+
     /// The address part of a `host:port` remote address, without allocating a URL.
     ///
     /// IPv6 literals come bracketed (`[::1]:443`), so the closing bracket is the separator there and
@@ -94,9 +107,13 @@ enum BoundedResponseBody {
     static func read(
         _ session: URLSession,
         _ request: URLRequest,
-        limit: Int
+        limit: Int,
+        recorder: PeerAddressRecorder? = nil
     ) async throws -> (Data, URLResponse) {
-        let (stream, response) = try await session.bytes(for: request)
+        // The delegate is attached whether or not the caller asked for the peer, because
+        // `bytes(for:delegate:)` is the only form that reports it and a second code path would be a
+        // second thing to keep in step.
+        let (stream, response) = try await session.bytes(for: request, delegate: recorder)
         var body = Data()
         body.reserveCapacity(min(limit, 256 * 1024))
         for try await byte in stream {

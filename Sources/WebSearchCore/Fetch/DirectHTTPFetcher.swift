@@ -80,7 +80,9 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
                 label: "web_open"
             )
 
-            let response = try await perform(httpRequest)
+            // What the policy resolved for this hop, so the connection can be checked against it.
+            let validated = currentURL.host().flatMap { resolutions.addresses(for: $0) } ?? []
+            let response = try await perform(httpRequest, validated: validated)
 
             // Handle redirects ourselves, validating each destination.
             if (300..<400).contains(response.statusCode),
@@ -167,7 +169,7 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
 
     // MARK: - Transport
 
-    private func perform(_ request: HTTPRequest) async throws -> HTTPResponse {
+    private func perform(_ request: HTTPRequest, validated: [IPAddress]) async throws -> HTTPResponse {
         var urlRequest = URLRequest(url: request.url)
         urlRequest.httpMethod = request.method
         urlRequest.timeoutInterval = requestTimeout.seconds
@@ -176,6 +178,11 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
             urlRequest.setValue(value, forHTTPHeaderField: name)
         }
 
+        // The address the connection actually used, so the response can be refused if it did not come
+        // from one the policy validated. `URLSession` gives no way to pin the address, so this is the
+        // check that stands in for pinning (ledger A0017).
+        let recorder = PeerAddressRecorder()
+
         let (data, response): (Data, URLResponse)
         do {
             // Capped during the transfer, not after it: a page the model asked to open can
@@ -183,8 +190,36 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
             (data, response) = try await BoundedResponseBody.read(
                 session,
                 urlRequest,
-                limit: maxBytes
+                limit: maxBytes,
+                recorder: recorder
             )
+
+            // The address the connection actually used, checked against what the policy resolved.
+            // `URLSession` gives no way to pin the address it connects to, so this stands in for
+            // pinning: a body from a peer the policy never validated is refused (ledger A0017).
+            //
+            // Only when the policy resolved addresses. With `allowPrivateNetwork` — every loopback
+            // test — an IP literal, or a name that did not resolve, there is nothing the connection
+            // could be checked against, and refusing there would break fetches the policy allows.
+            if !validated.isEmpty {
+                let peers = recorder.addresses
+                guard !peers.isEmpty else {
+                    // The policy made a judgement and the connection did not confirm it. Failing
+                    // closed is deliberate: an unverified connection is what the check exists for.
+                    throw SearchError.fetchFailed(
+                        request.url,
+                        reason: "the connection's address could not be verified"
+                    )
+                }
+                let unvalidated = BoundedResponseBody.unvalidatedPeers(peers, validated: validated)
+                guard unvalidated.isEmpty else {
+                    throw SearchError.fetchFailed(
+                        request.url,
+                        reason: "the connection went to "
+                            + "\(unvalidated.joined(separator: ", ")), which this URL's policy did not validate"
+                    )
+                }
+            }
         } catch let error as URLError {
             // These are fetch failures, not search-provider failures: `web_open`
             // connects straight to the target host, so the error is scoped to the URL
