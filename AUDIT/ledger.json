@@ -850,13 +850,13 @@
       "location": "Providers/BraveProvider.swift:83, DuckDuckGoProvider.swift:77, MojeekProvider.swift:92, OpenWebSearchProvider.swift:73, SearXNGProvider.swift:66, StartpageProvider.swift:73",
       "title": "URL query construction drops '+', so queries containing it are corrupted",
       "category": "correctness/encoding",
-      "status": "OPEN",
+      "status": "DONE",
       "host": "Node1",
       "discovered_by": "Providers tier A review (subagent)",
       "evidence_before": "components.queryItems = items at all six sites. Foundation's queryItems setter validates with the .queryItem allowed mask, which includes '+', so q=C++ is emitted literally instead of C%2B%2B. DuckDuckGo, Startpage and SearXNG are form-style GET endpoints that decode '+' as a space, so the query becomes 'C' and the results are wrong for C++, A+B and regex queries. No test asserts query percent-encoding.",
-      "fix_summary": "",
-      "evidence_after": "",
-      "commit": "",
+      "fix_summary": "`URLComponents.setQueryItemsEscapingPlus(_:)` escapes `+` to `%2B` after assigning query items; all six providers that built a request URL this way now use it.",
+      "evidence_after": "Before: the request URL was `?q=C++%20concurrency`. After: `q=C%2B%2B%20concurrency`. A second test pins that a comma in a value is left alone, so the helper is not a general re-encoder. Suite green at 603 tests (561 + 42), 0 failures, 0 warnings; both linters exit 0.",
+      "commit": "81f1618",
       "blocked_reason": ""
     },
     {

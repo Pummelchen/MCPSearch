@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 53 — done 17 · open 33 · blocked 3**
+**total 53 — done 18 · open 32 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 12 | 17 | 1 |
+| S1 | 30 | 13 | 16 | 1 |
 | S2 | 16 | 2 | 14 | 0 |
 | S3 | 3 | 1 | 2 | 0 |
 
-Status tally: OPEN 32, PROGRESS 1, DONE 17, BLOCKED 3
+Status tally: OPEN 31, PROGRESS 1, DONE 18, BLOCKED 3
 
 ## Tasks
 
@@ -58,7 +58,7 @@ Status tally: OPEN 32, PROGRESS 1, DONE 17, BLOCKED 3
 | A0047 | S1 | A | DONE | Bot-challenge markers are substring-matched against the whole page, so ordinary queries are discarded as challenges |
 | A0048 | S1 | A | DONE | Cancellation is mapped to a transient network failure, so a caller cancel is charged to the provider's breaker |
 | A0049 | S1 | A | OPEN | A handshake that was assigned a session id and then failed leaves sessionID set, so initialization is never retried |
-| A0050 | S1 | A | OPEN | URL query construction drops '+', so queries containing it are corrupted |
+| A0050 | S1 | A | DONE | URL query construction drops '+', so queries containing it are corrupted |
 | A0006 | S2 | A | OPEN | Validation is written as `assert`, which python -O strips |
 | A0010 | S2 | A | OPEN | Installing overwrites the previous binary in place with no rollback path |
 | A0016 | S2 | A | OPEN | An over-cap transfer may keep streaming after the cap is hit (UNSURE) |
@@ -456,12 +456,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0050 — URL query construction drops '+', so queries containing it are corrupted
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `Providers/BraveProvider.swift:83, DuckDuckGoProvider.swift:77, MojeekProvider.swift:92, OpenWebSearchProvider.swift:73, SearXNGProvider.swift:66, StartpageProvider.swift:73`
 - **Category:** correctness/encoding
 - **Host:** Node1
 - **Discovered by:** Providers tier A review (subagent)
 - **Evidence before:** components.queryItems = items at all six sites. Foundation's queryItems setter validates with the .queryItem allowed mask, which includes '+', so q=C++ is emitted literally instead of C%2B%2B. DuckDuckGo, Startpage and SearXNG are form-style GET endpoints that decode '+' as a space, so the query becomes 'C' and the results are wrong for C++, A+B and regex queries. No test asserts query percent-encoding.
+- **Fix:** `URLComponents.setQueryItemsEscapingPlus(_:)` escapes `+` to `%2B` after assigning query items; all six providers that built a request URL this way now use it.
+- **Evidence after:** Before: the request URL was `?q=C++%20concurrency`. After: `q=C%2B%2B%20concurrency`. A second test pins that a comma in a value is left alone, so the helper is not a general re-encoder. Suite green at 603 tests (561 + 42), 0 failures, 0 warnings; both linters exit 0.
+- **Commit:** `81f1618`
 
 ### A0006 — Validation is written as `assert`, which python -O strips
 
