@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 32 · open 19 · blocked 3**
+**total 54 — done 33 · open 18 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 24 | 5 | 1 |
+| S1 | 30 | 25 | 4 | 1 |
 | S2 | 16 | 4 | 12 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 17, PROGRESS 2, DONE 32, BLOCKED 3
+Status tally: OPEN 16, PROGRESS 2, DONE 33, BLOCKED 3
 
 ## Tasks
 
@@ -53,7 +53,7 @@ Status tally: OPEN 17, PROGRESS 2, DONE 32, BLOCKED 3
 | A0036 | S1 | A | DONE | The end-to-end gate accepts a JSON-RPC error reply as success and never asserts the result count |
 | A0037 | S1 | A | DONE | The generated SearXNG secret is passed as a command-line argument, where ps can read it |
 | A0038 | S1 | A | DONE | `|| true` swallows a grep error and the truncated staging file then replaces config.env, dropping every API key |
-| A0041 | S1 | A | OPEN | The release-notes gate names NOT_CHECKED in its failure message but never checks for it |
+| A0041 | S1 | A | DONE | The release-notes gate names NOT_CHECKED in its failure message but never checks for it |
 | A0046 | S1 | A | DONE | Include and exclude domains are space-joined but Mojeek documents comma separation, so the filters never apply |
 | A0047 | S1 | A | DONE | Bot-challenge markers are substring-matched against the whole page, so ordinary queries are discarded as challenges |
 | A0048 | S1 | A | DONE | Cancellation is mapped to a transient network failure, so a caller cancel is charged to the provider's breaker |
@@ -433,12 +433,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0041 — The release-notes gate names NOT_CHECKED in its failure message but never checks for it
 
-- **Severity / tier / status:** S1 / A / OPEN
-- **Location:** `tools/release.sh:349-353`
+- **Severity / tier / status:** S1 / A / DONE
+- **Location:** `tools/release.sh:349-354,391-395`
 - **Category:** release-gate
 - **Host:** Node1
 - **Discovered by:** installer/release shell tier A review (subagent)
 - **Evidence before:** Neither grep condition looks for NOT_CHECKED_PENDING, and the renderer only substitutes a line starting with it. A notes file with the checksum block but without that placeholder passes every gate, so any gate that skip()ed (pyright, semgrep, gitleaks, osv-scanner) is absent from the published notes while the script still prints PUBLISHED. That contradicts RELEASE.md §1.2.7/§1.8. The console summary lists them; the irreversible artifact does not.
+- **Fix:** The source notes must carry `NOT_CHECKED_PENDING`, and a second check confirms the rendered notes carry the not-checked section, so the marker cannot be dropped between staging and publication.
+- **Evidence after:** Committed in d8e7a13. The gate condition extracted from the script, run against a notes file with the marker and one without: before → PASS/PASS (the defect), after → PASS/FAIL. The `with` case is the control against over-rejection. bash -n and shellcheck clean over install.sh, provision-node.sh and tools/*.sh; 18 harness tests pass.
+- **Commit:** `d8e7a13`
 
 ### A0046 — Include and exclude domains are space-joined but Mojeek documents comma separation, so the filters never apply
 
