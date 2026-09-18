@@ -433,6 +433,25 @@ BIND_FAILURE_MARKER = "Could not bind"
 HTTP_START_ATTEMPTS = 3
 
 
+def _health_report(body: bytes, url: str) -> dict[str, str]:
+    """The `/health` body as a string-valued object, or a Failure naming what arrived instead.
+
+    Every value is compared as a string, so this rejects a body that is not a JSON object at all
+    rather than letting a list or a bare number through to a `.get` that would raise AttributeError
+    somewhere less useful.
+    """
+    try:
+        parsed = json.loads(body)
+    except ValueError as error:
+        raise Failure(f"{url} did not answer JSON: {body[:200]!r} ({error})") from error
+    if not isinstance(parsed, dict):
+        raise Failure(f"{url} answered {type(parsed).__name__}, not a JSON object")
+    typed = {str(key): str(value) for key, value in cast("dict[str, Any]", parsed).items()}
+    if not typed:
+        raise Failure(f"{url} answered an empty JSON object")
+    return typed
+
+
 def wait_for_health(port: int, process: subprocess.Popen[str], timeout: float = 20.0) -> None:
     """Poll /health until the HTTP transport is accepting connections.
 
@@ -465,8 +484,31 @@ def wait_for_health(port: int, process: subprocess.Popen[str], timeout: float = 
         try:
             # nosemgrep: dynamic-urllib-use-detected
             with urllib.request.urlopen(health_url, timeout=2) as response:
-                if response.status == 200:
-                    return
+                if response.status != 200:
+                    continue
+                # Read the body, not only the status. Until A0007 the body was the hardcoded
+                # string {"status":"ok"}, so accepting any 200 meant "a socket is bound": a
+                # process that bound the port and then bricked passed this gate and CI
+                # (ledger A0008). The endpoint now derives the body from the process, so the
+                # body is the part worth asserting.
+                report = _health_report(response.read(4096), health_url)
+                if report.get("status") != "ok":
+                    raise Failure(f"/health reported {report.get('status')!r}, not ok: {report}")
+                # The version in this body comes from VERSION through the running process, so a
+                # constant body cannot satisfy this, and it is checked before the handshake
+                # rather than only after it.
+                expected = expected_version()
+                if report.get("version") != expected:
+                    raise Failure(
+                        f"/health reported version {report.get('version')!r}, expected "
+                        f"{expected!r} from VERSION"
+                    )
+                if (
+                    report.get("providers_total") is None
+                    or report.get("providers_configured") is None
+                ):
+                    raise Failure(f"/health did not report the provider state: {report}")
+                return
         except urllib.error.URLError, ConnectionError, OSError:
             time.sleep(0.25)
     raise Failure(f"HTTP transport did not become healthy on port {port}")
