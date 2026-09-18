@@ -151,7 +151,7 @@ public struct SearXNGProvider: SearchProvider {
         return ProviderSearchResponse(
             provider: .searxng,
             results: results,
-            answer: payload.answers?.first(where: { !$0.isEmpty }),
+            answer: payload.answers?.lazy.compactMap(\.text).first,
             upstreamEngines: upstreamEngines.sorted(),
             latencyMilliseconds: elapsed,
             warnings: warnings
@@ -177,9 +177,48 @@ public struct SearXNGProvider: SearchProvider {
     /// code path, so they are not decoded either.
     struct SearXNGResponse: Decodable {
         let results: [Item]
-        let answers: [String]?
+        let answers: [Answer]?
         /// Array of `[engineName, errorMessage]` pairs.
         let unresponsiveEngines: [[String]]?
+
+        /// One entry of SearXNG's `answers`.
+        ///
+        /// The wire type is a list of **objects**: `get_json_response` builds
+        /// `[answer.as_dict() for answer in answers]`, and `as_dict()` returns
+        /// `{"answer": …, "url": …, "engine": …}`. Decoding it as `[String]` did not merely
+        /// return nil on such a payload — `decodeIfPresent` *throws* `typeMismatch` — so
+        /// `Data.decodeJSON` turned it into `.malformedResponse(.searxng)` and the valid
+        /// `results` beside it were discarded for the whole query. Plain strings are still
+        /// accepted because answers are an optional extra on a response this provider does not
+        /// control, and an unrecognised element must never cost the caller its results.
+        enum Answer: Decodable {
+            case text(String)
+            case object(String?)
+
+            init(from decoder: any Decoder) throws {
+                let container = try decoder.singleValueContainer()
+                if let text = try? container.decode(String.self) {
+                    self = .text(text)
+                } else {
+                    self = .object(try? container.decode(AnswerObject.self).answer)
+                }
+            }
+
+            /// The answer text, or nil when the entry carries none.
+            var text: String? {
+                let value: String? =
+                    switch self {
+                    case .text(let text): text
+                    case .object(let text): text
+                    }
+                guard let value, !value.isEmpty else { return nil }
+                return value
+            }
+
+            private struct AnswerObject: Decodable {
+                let answer: String?
+            }
+        }
 
         /// SearXNG writes snake_case for `unresponsive_engines`, so the mapping is
         /// explicit rather than uniform.
