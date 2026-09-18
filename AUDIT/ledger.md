@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 53 — done 19 · open 31 · blocked 3**
+**total 53 — done 20 · open 30 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
 | S1 | 30 | 14 | 15 | 1 |
-| S2 | 16 | 2 | 14 | 0 |
+| S2 | 16 | 3 | 13 | 0 |
 | S3 | 3 | 1 | 2 | 0 |
 
-Status tally: OPEN 30, PROGRESS 1, DONE 19, BLOCKED 3
+Status tally: OPEN 29, PROGRESS 1, DONE 20, BLOCKED 3
 
 ## Tasks
 
@@ -67,7 +67,7 @@ Status tally: OPEN 30, PROGRESS 1, DONE 19, BLOCKED 3
 | A0024 | S2 | C | OPEN | Per-instance stub state lives on the handler class, so two concurrent stubs would share it |
 | A0025 | S2 | C | OPEN | The test depends on the developer's ambient config.env and contradicts the function it tests |
 | A0026 | S2 | C | OPEN | No read timeout, and the early-close path blocks on stderr of a possibly-live child |
-| A0033 | S2 | A | OPEN | A rejected URL-valued setting is echoed verbatim into a diagnostic that is logged, contradicting the type's own contract |
+| A0033 | S2 | A | DONE | A rejected URL-valued setting is echoed verbatim into a diagnostic that is logged, contradicting the type's own contract |
 | A0034 | S2 | A | DONE | A repeated name in SEARCH_PROVIDER_ORDER is not deduplicated, so one provider can vote twice |
 | A0039 | S2 | A | OPEN | --bind is accepted and silently dropped by the docker method |
 | A0040 | S2 | A | DONE | The documented invocation puts the sudo password on a command line and into the child environment |
@@ -543,12 +543,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0033 — A rejected URL-valued setting is echoed verbatim into a diagnostic that is logged, contradicting the type's own contract
 
-- **Severity / tier / status:** S2 / A / OPEN
+- **Severity / tier / status:** S2 / A / DONE
 - **Location:** `Sources/WebSearchCore/Support/AppConfiguration.swift:401 (also :373,:385); Sources/SwiftWebSearchMCP/main.swift:44-50`
 - **Category:** security/credential-in-log
 - **Host:** Node1
 - **Discovered by:** MCP surface tier A review (subagent) and Search + Support tier A review (subagent)
 - **Evidence before:** record(.invalidURL, key, "'\(raw)' is not an http(s) URL with a host") interpolates the raw value, and main.swift logs issue.detail. Four keys are URL-typed and may carry an embedded token; a schemeless value such as search.example.com/mcp?token=... is realistic. This contradicts AppConfiguration.swift:106-107 ("Never contains a credential") and the comment at main.swift:44. Reported independently by two review agents; UNSURE whether operators embed secrets in those settings.
+- **Fix:** The three `record(...)` sites report the key and the reason only, so no diagnostic can carry a configured value. The key is still named, so an operator loses nothing they need.
+- **Evidence after:** Before: the test failed with the token in the diagnostic — "the value reached a loggable diagnostic: 'search.example.com/mcp?token=s3cr3t-token-value' is not an http(s) URL with a host". After: it passes. Suite green at 605 tests (563 + 42), 0 failures, 0 warnings; both linters exit 0.
+- **Commit:** `219762f`
 
 ### A0034 — A repeated name in SEARCH_PROVIDER_ORDER is not deduplicated, so one provider can vote twice
 

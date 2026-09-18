@@ -561,13 +561,13 @@
       "location": "Sources/WebSearchCore/Support/AppConfiguration.swift:401 (also :373,:385); Sources/SwiftWebSearchMCP/main.swift:44-50",
       "title": "A rejected URL-valued setting is echoed verbatim into a diagnostic that is logged, contradicting the type's own contract",
       "category": "security/credential-in-log",
-      "status": "OPEN",
+      "status": "DONE",
       "host": "Node1",
       "discovered_by": "MCP surface tier A review (subagent) and Search + Support tier A review (subagent)",
       "evidence_before": "record(.invalidURL, key, \"'\\(raw)' is not an http(s) URL with a host\") interpolates the raw value, and main.swift logs issue.detail. Four keys are URL-typed and may carry an embedded token; a schemeless value such as search.example.com/mcp?token=... is realistic. This contradicts AppConfiguration.swift:106-107 (\"Never contains a credential\") and the comment at main.swift:44. Reported independently by two review agents; UNSURE whether operators embed secrets in those settings.",
-      "fix_summary": "",
-      "evidence_after": "",
-      "commit": "",
+      "fix_summary": "The three `record(...)` sites report the key and the reason only, so no diagnostic can carry a configured value. The key is still named, so an operator loses nothing they need.",
+      "evidence_after": "Before: the test failed with the token in the diagnostic — \"the value reached a loggable diagnostic: 'search.example.com/mcp?token=s3cr3t-token-value' is not an http(s) URL with a host\". After: it passes. Suite green at 605 tests (563 + 42), 0 failures, 0 warnings; both linters exit 0.",
+      "commit": "219762f",
       "blocked_reason": ""
     },
     {
