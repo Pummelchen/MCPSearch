@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 24 · open 27 · blocked 3**
+**total 54 — done 25 · open 26 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 17 | 12 | 1 |
+| S1 | 30 | 18 | 11 | 1 |
 | S2 | 16 | 3 | 13 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 26, PROGRESS 1, DONE 24, BLOCKED 3
+Status tally: OPEN 25, PROGRESS 1, DONE 25, BLOCKED 3
 
 ## Tasks
 
@@ -38,7 +38,7 @@ Status tally: OPEN 26, PROGRESS 1, DONE 24, BLOCKED 3
 | A0012 | S1 | A | DONE | The response charset is discarded, so non-UTF-8 pages are silently decoded as Latin-1 |
 | A0013 | S1 | A | OPEN | Credentials in the target URL's query or fragment are forwarded to the third-party reader |
 | A0014 | S1 | A | DONE | An empty extraction is returned as a success, discarding the real failure reason |
-| A0015 | S1 | A | OPEN | Cancellation is swallowed on the reader path, so a cancelled fetch can return a stale success |
+| A0015 | S1 | A | DONE | Cancellation is swallowed on the reader path, so a cancelled fetch can return a stale success |
 | A0017 | S1 | A | BLOCKED | DNS-rebinding TOCTOU between validation and connect (documented, no local fix) |
 | A0018 | S1 | A | DONE | The soak's stdio read has no timeout, so one unanswered query hangs the whole run |
 | A0019 | S1 | A | DONE | The child's stderr pipe is not drained until exit, which deadlocks against the stdout read |
@@ -159,9 +159,7 @@ BEST DIRECTION, on the measured evidence: bound the *unmatched closing tags*, no
 - **Host:** Node1
 - **Discovered by:** Phase A language-standard proof (§1)
 - **Evidence before:** The config enables no opt-in rules ('Opt-in rules are deliberately not enabled by this task', .swiftlint.yml:40), so force_unwrapping is off and `swiftlint lint --strict` accepts a `!` force-unwrap. §1 requires that a force-unwrap fail SwiftLint --strict.
-- **Fix:** ATTEMPTED AND REVERTED. Enabling `- force_unwrapping` in .swiftlint.yml produced 20 findings, all in Tests/ and none in Sources/. A delegated mechanical fix converted most sites to `try XCTUnwrap` but did not compile: it left a throwing `baseURL` ambiguous at 7 call sites in FetchRedirectTests.swift, and left formatting broken in FusionAndReliabilityTests.swift. Reverted rather than committed half-done, so the rule stays off and the task stays open.
-
-REMAINING WORK: enable the rule, then convert the 20 sites — they were enumerated and are reproducible with `swiftlint lint --strict` once the rule is on. Prefer `try XCTUnwrap` with `throws` added to the enclosing test method; for helpers that cannot throw, restructure so no optional arises. Forbidden: `!`, `try!`, inline swiftlint disables, editing the config to excuse the sites, or deleting/weakening a test. Must finish with swiftlint --strict 0 findings, swift-format --strict exit 0, and 551 + 42 tests still green.
+- **Fix:** INVENTORY TAKEN, RULE STILL OFF. The rule identifier is `force_unwrapping` (not `force_unwrap`). With it enabled there are exactly 20 findings, all in Tests/, none in Sources/. The sites are: 15 x `URL(string: X)!` (AnswerSynthesizerTests:24, MonitorActorTests:59, CoreUnitTests:93, FetchRedirectTests:114, HTTPClientTests:107, URLPolicyTests:52,77,86,126,146,157,194,210, FusionAndReliabilityTests:137,138,316,403,723,734,968), plus `diagnostics!` and `hit!` in FusionAndReliabilityTests:968. REMAINING WORK: convert each to `try XCTUnwrap(...)` where the enclosing context throws, and restructure the two that cannot throw — `HTTPClientTests:107` is a computed property `var baseURL: URL` and `AnswerSynthesizerTests:24` is a default argument. Then add `force_unwrapping` to `.swiftlint.yml` and prove the §1 standard: a deliberate force-unwrap must fail `swiftlint --strict`.
 
 ### A0004 — Ruff does not select S101, so `assert` used for validation is unchecked
 
@@ -252,12 +250,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0015 — Cancellation is swallowed on the reader path, so a cancelled fetch can return a stale success
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `Sources/WebSearchCore/Fetch/WebFetcher.swift:175; JinaReaderFetcher.swift:69`
 - **Category:** concurrency/cancellation
 - **Host:** Node1
 - **Discovered by:** Fetch tier A manual review (subagent)
 - **Evidence before:** The generic `catch` around the reader fallback also catches CancellationError and returns a normal FetchResult instead of propagating, and `try? await Task.sleep(...)` discards cancellation. ToolHandlers.swift:188 is written to report CancellationError as 'Fetch cancelled', which this path can bypass. Partly masked because the HTTP client re-checks cancellation first, so the outbound request usually is not sent.
+- **Fix:** A `catch let error where Self.isCancellation(error)` arm ahead of the broad catch rethrows, so a cancelled reader fetch propagates instead of returning the native extraction as a fallback result.
+- **Evidence after:** Committed in 7ff2eeb. Before: the new test's XCTFail fired — a cancelled fetch returned a result instead of propagating. After: the cancellation propagates. The test drives the real fallback chain with a thin native page, so the reader is genuinely consulted. Suite green at 612 tests (570 + 42), 0 failures, 0 warnings; both linters exit 0.
+- **Commit:** `7ff2eeb`
 
 ### A0017 — DNS-rebinding TOCTOU between validation and connect (documented, no local fix)
 
