@@ -28,12 +28,15 @@ With no argument the binary is located via ``swift build --show-bin-path``.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
+import queue
 import re
 import socket
 import subprocess
 import sys
+import threading
 import time
 import urllib.error
 import urllib.parse
@@ -157,6 +160,40 @@ class Server:
             bufsize=1,
         )
         self._next_id = 0
+        # Drain both pipes on daemon threads rather than reading them where they are used.
+        #
+        # stderr: `/search` on a rate-limited provider writes warnings, and the log level is
+        # set to `warning` deliberately; the pipe holds about 16 KiB, so a child that filled it
+        # would block in `write`, stop answering stdout, and leave this process blocked in
+        # `readline`. The diagnostic path called `stderr.read()`, which waits for EOF from a
+        # child possibly still alive, so the message meant to explain the hang was part of it
+        # (ledger A0026).
+        #
+        # stdout: `readline` has no timeout of its own, so a child that stopped answering without
+        # closing the stream hung the smoke test with no verdict. A reader thread turns the wait
+        # into a queue get with a deadline.
+        self._stderr_chunks: list[str] = []
+        self._stderr_lock = threading.Lock()
+        threading.Thread(target=self._drain_stderr, daemon=True).start()
+        self._stdout: queue.Queue[str | None] = queue.Queue()
+        threading.Thread(target=self._drain_stdout, daemon=True).start()
+
+    def _drain_stderr(self) -> None:
+        stderr = self.process.stderr
+        if stderr is None:
+            return
+        for line in stderr:
+            with self._stderr_lock:
+                self._stderr_chunks.append(line)
+
+    def _drain_stdout(self) -> None:
+        stdout = self.process.stdout
+        if stdout is not None:
+            for line in stdout:
+                self._stdout.put(line)
+        # End of stream, so a reader blocked on `get` reports a closed stdout rather than waiting
+        # out its deadline.
+        self._stdout.put(None)
 
     def send(self, payload: dict[str, Any]) -> None:
         stdin = self.process.stdin
@@ -165,13 +202,23 @@ class Server:
         stdin.write(json.dumps(payload) + "\n")
         stdin.flush()
 
-    def read_message(self) -> dict[str, Any]:
-        """Read one stdout line and assert it is valid JSON."""
+    def read_message(self, timeout: float = 120.0) -> dict[str, Any]:
+        """Read one stdout line and assert it is valid JSON.
+
+        Raises when the child does not answer within `timeout`, instead of blocking forever: the
+        smoke test exists to produce a verdict, and a hang produces none (ledger A0026).
+        """
         stdout = self.process.stdout
         if stdout is None:
             raise Failure("the child has no stdout pipe")
-        line = stdout.readline()
-        if not line:
+        try:
+            line = self._stdout.get(timeout=timeout)
+        except queue.Empty:
+            raise Failure(
+                f"the server did not answer within {timeout:.0f}s; stderr:\n{self.stderr_text()}"
+            ) from None
+        if line is None:
+            line = ""
             raise Failure(f"server closed stdout early; stderr:\n{self.stderr_text()}")
         try:
             message = json.loads(line)
@@ -206,19 +253,26 @@ class Server:
         self.send({"jsonrpc": "2.0", "method": method})
 
     def stderr_text(self) -> str:
-        stderr = self.process.stderr
-        if stderr is None:
-            return "<unavailable>"
-        try:
-            return stderr.read()
-        except OSError, ValueError:  # pragma: no cover - best effort in a failure path
-            return "<unavailable>"
+        """Whatever the child has written to stderr so far.
+
+        Never blocks. This used to call `stderr.read()`, which waits for end of stream, from a
+        child that may still be running — on the very path whose purpose is to explain why it is
+        not answering (ledger A0026).
+        """
+        with self._stderr_lock:
+            return "".join(self._stderr_chunks)
 
     def close(self) -> int:
         stdin = self.process.stdin
         if stdin is not None:
-            stdin.close()
-        return self.process.wait(timeout=30)
+            with contextlib.suppress(OSError, ValueError):
+                stdin.close()
+        try:
+            return self.process.wait(timeout=30)
+        except subprocess.TimeoutExpired:
+            # A child that will not exit must not turn the smoke test into a hang of its own.
+            self.process.kill()
+            return self.process.wait(timeout=10)
 
 
 def expected_version() -> str:
