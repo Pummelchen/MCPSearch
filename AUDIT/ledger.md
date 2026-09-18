@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 53 — done 11 · open 39 · blocked 3**
+**total 53 — done 13 · open 37 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 7 | 22 | 1 |
-| S2 | 16 | 1 | 15 | 0 |
+| S1 | 30 | 8 | 21 | 1 |
+| S2 | 16 | 2 | 14 | 0 |
 | S3 | 3 | 1 | 2 | 0 |
 
-Status tally: OPEN 38, PROGRESS 1, DONE 11, BLOCKED 3
+Status tally: OPEN 36, PROGRESS 1, DONE 13, BLOCKED 3
 
 ## Tasks
 
@@ -51,7 +51,7 @@ Status tally: OPEN 38, PROGRESS 1, DONE 11, BLOCKED 3
 | A0032 | S1 | A | OPEN | Length-omitted results enter the fenced prompt unsanitised, so a page title can close the untrusted-data fence |
 | A0035 | S1 | A | OPEN | The mandatory-SearXNG proof passes on an instance that returns zero results |
 | A0036 | S1 | A | OPEN | The end-to-end gate accepts a JSON-RPC error reply as success and never asserts the result count |
-| A0037 | S1 | A | OPEN | The generated SearXNG secret is passed as a command-line argument, where ps can read it |
+| A0037 | S1 | A | DONE | The generated SearXNG secret is passed as a command-line argument, where ps can read it |
 | A0038 | S1 | A | OPEN | `|| true` swallows a grep error and the truncated staging file then replaces config.env, dropping every API key |
 | A0041 | S1 | A | OPEN | The release-notes gate names NOT_CHECKED in its failure message but never checks for it |
 | A0046 | S1 | A | DONE | Include and exclude domains are space-joined but Mojeek documents comma separation, so the filters never apply |
@@ -70,7 +70,7 @@ Status tally: OPEN 38, PROGRESS 1, DONE 11, BLOCKED 3
 | A0033 | S2 | A | OPEN | A rejected URL-valued setting is echoed verbatim into a diagnostic that is logged, contradicting the type's own contract |
 | A0034 | S2 | A | DONE | A repeated name in SEARCH_PROVIDER_ORDER is not deduplicated, so one provider can vote twice |
 | A0039 | S2 | A | OPEN | --bind is accepted and silently dropped by the docker method |
-| A0040 | S2 | A | OPEN | The documented invocation puts the sudo password on a command line and into the child environment |
+| A0040 | S2 | A | DONE | The documented invocation puts the sudo password on a command line and into the child environment |
 | A0042 | S2 | A | OPEN | `rm -rf $STAGE/$VERSION` runs even after the identity gate failed, and VERSION is never validated in this script |
 | A0043 | S2 | A | OPEN | The test-suite count is reported as PASS without checking that it parsed |
 | A0044 | S2 | A | OPEN | `--dry-run` creates the SearXNG directory, so it does change the filesystem |
@@ -369,12 +369,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0037 — The generated SearXNG secret is passed as a command-line argument, where ps can read it
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `deploy/install.sh:250,295`
 - **Category:** security/credential-disclosure
 - **Host:** Node1
 - **Discovered by:** installer/release shell tier A review (subagent)
 - **Evidence before:** `-e SEARXNG_SECRET=${secret}` on the docker run, and the same value as an argv to python3. On a real run the secret is in the argv of docker/python3 for the life of the process, readable by any local user via ps, and later exposed by docker inspect. The script keeps the secret 600 everywhere else; this is the one place it is exposed.
+- **Fix:** Docker path passes the secret with `--env-file` on a 600 file removed on both paths; the native path passes it in the environment and reads it with `os.environ["SEARXNG_SECRET"]`.
+- **Evidence after:** No value is an argument anywhere; bash -n and shellcheck -S warning clean on both scripts; the native heredoc body was extracted and executed exactly as the installer runs it and wrote secret, bind and port, exit 0. NOT VERIFIED: the installer itself was not run (it installs software; this host runs a live SearXNG), and the docker `--env-file` path was checked by reading and shellcheck, not by starting a container.
+- **Commit:** `f84cd47`
 
 ### A0038 — `|| true` swallows a grep error and the truncated staging file then replaces config.env, dropping every API key
 
@@ -552,12 +555,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0040 — The documented invocation puts the sudo password on a command line and into the child environment
 
-- **Severity / tier / status:** S2 / A / OPEN
+- **Severity / tier / status:** S2 / A / DONE
 - **Location:** `deploy/provision-node.sh:6`
 - **Category:** security/credential-disclosure
 - **Host:** Node1
 - **Discovered by:** installer/release shell tier A review (subagent)
 - **Evidence before:** The header example is ssh node1@node1.local 'SUDO_PASSWORD=... bash -s'. sshd runs that through the user's shell, so the value is in the shell's argv on the node (readable via ps) and in the local ssh argv, and it is inherited by every child. The code itself is correct (it pipes the password to sudo -S from stdin); the leak is created by the documented interface.
+- **Fix:** The documented invocation reads the password from a 600 file on the node: `ssh ... 'SUDO_PASSWORD="$(cat ~/.mcps-sudo)" bash -s'`, so the value lands in the environment rather than in any argv, local or remote. The script body was already correct (it pipes the password to `sudo -S` on stdin).
+- **Evidence after:** The header no longer contains a literal password placeholder in the command string; the only thing the remote argv carries is the filename. bash -n and shellcheck -S warning clean.
+- **Commit:** `f84cd47`
 
 ### A0042 — `rm -rf $STAGE/$VERSION` runs even after the identity gate failed, and VERSION is never validated in this script
 
