@@ -112,7 +112,7 @@ final class RankFusionTests: XCTestCase {
         XCTAssertEqual(diagnostics?.providers, [.tavily])
     }
 
-    func testAggregatorAloneIsDiscountedAgainstIndependentIndex() {
+    func testAggregatorAloneIsDiscountedAgainstIndependentIndex() throws {
         // SearXNG is an aggregator; Brave is an independent index. Same URL from both
         // must not score as two independent confirmations.
         let fused = RankFusion.fuse(
@@ -134,8 +134,8 @@ final class RankFusionTests: XCTestCase {
         // source, not two, so it must not count as independently corroborated. Folding needs
         // per-result engines; with only a response-level list the vote is discounted but the
         // family cannot be folded, which is recorded on the tracker.
-        XCTAssertEqual(Set(diagnostics!.providers), Set([.brave, .searxng]))
-        XCTAssertFalse(diagnostics!.hasIndependentCorroboration)
+        XCTAssertEqual(Set(try XCTUnwrap(diagnostics).providers), Set([.brave, .searxng]))
+        XCTAssertFalse(try XCTUnwrap(diagnostics).hasIndependentCorroboration)
     }
 
     func testTwoIndependentProvidersBothRankAboveAggregatorOnlyResult() {
@@ -309,11 +309,11 @@ final class RankFusionTests: XCTestCase {
     /// SearXNG reports the engine behind each result, and one instance can serve one page
     /// from Brave while another came from an engine nobody else covers. Discounting the
     /// whole response punished the second page for the first page's provenance.
-    func testAggregatorDiscountUsesPerResultEngines() {
-        func aggregatorResult(url: String, rank: Int, engines: [String]?) -> SearchResult {
+    func testAggregatorDiscountUsesPerResultEngines() throws {
+        func aggregatorResult(url: String, rank: Int, engines: [String]?) throws -> SearchResult {
             SearchResult(
                 title: "T",
-                url: URL(string: url)!,
+                url: try XCTUnwrap(URL(string: url)),
                 provider: .searxng,
                 providerRank: rank,
                 upstreamEngines: engines
@@ -337,8 +337,8 @@ final class RankFusionTests: XCTestCase {
         let attributed = ProviderSearchResponse(
             provider: .searxng,
             results: [
-                aggregatorResult(url: "https://resold.example.com/", rank: 1, engines: ["brave"]),
-                aggregatorResult(
+                try aggregatorResult(url: "https://resold.example.com/", rank: 1, engines: ["brave"]),
+                try aggregatorResult(
                     url: "https://fresh.example.com/",
                     rank: 2,
                     engines: ["wikipedia"]
@@ -349,8 +349,8 @@ final class RankFusionTests: XCTestCase {
         let unattributed = ProviderSearchResponse(
             provider: .searxng,
             results: [
-                aggregatorResult(url: "https://resold.example.com/", rank: 1, engines: nil),
-                aggregatorResult(url: "https://fresh.example.com/", rank: 2, engines: nil),
+                try aggregatorResult(url: "https://resold.example.com/", rank: 1, engines: nil),
+                try aggregatorResult(url: "https://fresh.example.com/", rank: 2, engines: nil),
             ],
             upstreamEngines: ["wikipedia"]
         )
@@ -396,11 +396,11 @@ final class RankFusionTests: XCTestCase {
     /// carry their own attribution, and only one of them resold that index. ORing the two levels
     /// discounted every sibling of the one resold page, so two results with different provenance
     /// got the same weight. The per-result attribution must win.
-    func testAggregatorDiscountIsPerResultEvenWhenTheResponseNamesAnOwnedIndex() {
-        func aggregatorResult(url: String, rank: Int, engines: [String]?) -> SearchResult {
+    func testAggregatorDiscountIsPerResultEvenWhenTheResponseNamesAnOwnedIndex() throws {
+        func aggregatorResult(url: String, rank: Int, engines: [String]?) throws -> SearchResult {
             SearchResult(
                 title: "T",
-                url: URL(string: url)!,
+                url: try XCTUnwrap(URL(string: url)),
                 provider: .searxng,
                 providerRank: rank,
                 upstreamEngines: engines
@@ -423,8 +423,8 @@ final class RankFusionTests: XCTestCase {
         let aggregator = ProviderSearchResponse(
             provider: .searxng,
             results: [
-                aggregatorResult(url: "https://resold.example.com/", rank: 1, engines: ["brave"]),
-                aggregatorResult(
+                try aggregatorResult(url: "https://resold.example.com/", rank: 1, engines: ["brave"]),
+                try aggregatorResult(
                     url: "https://fresh.example.com/",
                     rank: 2,
                     engines: ["wikipedia"]
@@ -958,14 +958,14 @@ final class SearchCacheTests: XCTestCase {
         return SearchResponse(query: query, results: [result], providersUsed: [.tavily])
     }
 
-    func testStoresAndRetrievesWithinTTL() async {
+    func testStoresAndRetrievesWithinTTL() async throws {
         let cache = SearchCache(clock: TestClock())
         let key = SearchCache.Key(request: Fixtures.request("swift"), providers: [.tavily])
         await cache.store(makeResponse("swift"), for: key, ttl: .seconds(60))
 
         let hit = await cache.get(key)
         XCTAssertNotNil(hit)
-        XCTAssertTrue(hit!.servedFromCache)
+        XCTAssertTrue(try XCTUnwrap(hit).servedFromCache)
     }
 
     func testExpiresAfterTTL() async {

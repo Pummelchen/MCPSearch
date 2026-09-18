@@ -111,7 +111,7 @@ final class FetchRedirectTests: XCTestCase {
         // The target server exists only so the redirect can name a real port; it must never be
         // asked for anything, which the final assertion checks.
         let target = try LoopbackServer(responses: [Self.page("should never be reached")])
-        let credentialed = URL(string: "http://user:secret@127.0.0.1:\(target.port)/private")!
+        let credentialed = try XCTUnwrap(URL(string: "http://user:secret@127.0.0.1:\(target.port)/private"))
         let server = try LoopbackServer(responses: [Self.redirect(to: credentialed.absoluteString)])
 
         do {

@@ -36,7 +36,7 @@ final class URLPolicyTests: XCTestCase {
 
     // MARK: Schemes
 
-    func testRejectsNonWebSchemes() {
+    func testRejectsNonWebSchemes() throws {
         let subject = policy()
         for raw in [
             "file:///etc/passwd",
@@ -49,7 +49,7 @@ final class URLPolicyTests: XCTestCase {
             // nosemgrep: javascript.lang.security.detect-insecure-websocket.detect-insecure-websocket
             "ws://example.com/socket",
         ] {
-            let decision = subject.validateLexically(URL(string: raw)!)
+            let decision = subject.validateLexically(try XCTUnwrap(URL(string: raw)))
             XCTAssertFalse(decision.allowed, "\(raw) must be rejected")
         }
     }
@@ -62,7 +62,7 @@ final class URLPolicyTests: XCTestCase {
 
     // MARK: Hostnames
 
-    func testRejectsLoopbackNamesAndTheirTricks() {
+    func testRejectsLoopbackNamesAndTheirTricks() throws {
         let subject = policy()
         for raw in [
             "http://localhost/",
@@ -74,16 +74,16 @@ final class URLPolicyTests: XCTestCase {
             "http://instance-data/latest/meta-data/",
         ] {
             XCTAssertFalse(
-                subject.validateLexically(URL(string: raw)!).allowed,
+                subject.validateLexically(try XCTUnwrap(URL(string: raw))).allowed,
                 "\(raw) must be rejected"
             )
         }
     }
 
-    func testRejectsInternalNameSuffixes() {
+    func testRejectsInternalNameSuffixes() throws {
         let subject = policy()
         for raw in ["http://wiki.internal/", "http://printer.local/", "http://x.corp/"] {
-            XCTAssertFalse(subject.validateLexically(URL(string: raw)!).allowed, "\(raw)")
+            XCTAssertFalse(subject.validateLexically(try XCTUnwrap(URL(string: raw))).allowed, "\(raw)")
         }
     }
 
@@ -100,7 +100,7 @@ final class URLPolicyTests: XCTestCase {
 
     // MARK: IP literals
 
-    func testRejectsLoopbackAndPrivateIPLiterals() {
+    func testRejectsLoopbackAndPrivateIPLiterals() throws {
         let subject = policy()
         for raw in [
             "http://127.0.0.1/",
@@ -123,7 +123,7 @@ final class URLPolicyTests: XCTestCase {
             "http://[fd00:ec2::254]/",
         ] {
             XCTAssertFalse(
-                subject.validateLexically(URL(string: raw)!).allowed,
+                subject.validateLexically(try XCTUnwrap(URL(string: raw))).allowed,
                 "\(raw) must be rejected as non-public"
             )
         }
@@ -134,7 +134,7 @@ final class URLPolicyTests: XCTestCase {
     /// The comment used to name `/24` while the code tested two octets, which reads as a bug; the
     /// range is kept deliberately and now says so, because it holds IETF assignments,
     /// TEST-NET-1 and the 6to4 relay anycast block — none of which a page fetch should reach.
-    func testRejectsTheEntireProtocolAssignmentSixteen() {
+    func testRejectsTheEntireProtocolAssignmentSixteen() throws {
         let subject = policy()
         for raw in [
             "http://192.0.0.1/",
@@ -143,18 +143,18 @@ final class URLPolicyTests: XCTestCase {
             "http://192.0.255.254/",
         ] {
             XCTAssertFalse(
-                subject.validateLexically(URL(string: raw)!).allowed,
+                subject.validateLexically(try XCTUnwrap(URL(string: raw))).allowed,
                 "\(raw) must be rejected as non-public"
             )
         }
     }
 
-    func testRejectsObfuscatedIntegerAndHexForms() {
+    func testRejectsObfuscatedIntegerAndHexForms() throws {
         let subject = policy()
         // Resolvers sometimes accept these; the policy must not.
         for raw in ["http://2130706433/", "http://0x7f000001/", "http://0177.0.0.1/"] {
             XCTAssertFalse(
-                subject.validateLexically(URL(string: raw)!).allowed,
+                subject.validateLexically(try XCTUnwrap(URL(string: raw))).allowed,
                 "\(raw) must be rejected"
             )
         }
@@ -166,7 +166,7 @@ final class URLPolicyTests: XCTestCase {
         XCTAssertTrue(subject.validateLexically(URL(string: "http://[2606:2800:220:1::1]/")!).allowed)
     }
 
-    func testRejectsIPv6LiteralsThatEmbedANonPublicIPv4Address() {
+    func testRejectsIPv6LiteralsThatEmbedANonPublicIPv4Address() throws {
         let subject = policy()
         // Every one of these carries an IPv4 destination inside an IPv6 literal. Judging
         // only the outer form walks straight past the policy: `::ffff:127.0.0.1` reaches
@@ -191,13 +191,13 @@ final class URLPolicyTests: XCTestCase {
             "http://[2001:0:0:0:0:0:80ff:fffe]/",  // Teredo -> 127.0.0.1, inverted
         ] {
             XCTAssertFalse(
-                subject.validateLexically(URL(string: raw)!).allowed,
+                subject.validateLexically(try XCTUnwrap(URL(string: raw))).allowed,
                 "\(raw) embeds a non-public IPv4 address and must be rejected"
             )
         }
     }
 
-    func testAcceptsPublicIPv4MappedLiterals() {
+    func testAcceptsPublicIPv4MappedLiterals() throws {
         let subject = policy()
         // The fix must not over-block: an embedded address that is genuinely public stays
         // fetchable, whatever transport form carries it.
@@ -207,7 +207,7 @@ final class URLPolicyTests: XCTestCase {
             "http://[2002:5db8:d822::]/",  // 6to4 -> 93.184.216.34
         ] {
             XCTAssertTrue(
-                subject.validateLexically(URL(string: raw)!).allowed,
+                subject.validateLexically(try XCTUnwrap(URL(string: raw))).allowed,
                 "\(raw) embeds a public IPv4 address and must remain fetchable"
             )
         }

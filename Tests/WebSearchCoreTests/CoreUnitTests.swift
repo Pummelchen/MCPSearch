@@ -83,14 +83,14 @@ final class URLCanonicalizerTests: XCTestCase {
         XCTAssertEqual(URLCanonicalizer.canonicalize(fileURL), fileURL)
     }
 
-    func testDeduplicatesEquivalentURLs() {
+    func testDeduplicatesEquivalentURLs() throws {
         let variants = [
             "https://Example.com/Article?utm_source=a#top",
             "https://example.com/Article/",
             "http://example.com:80/Article",
             "https://example.com/Article?utm_medium=b",
         ]
-        let keys = Set(variants.map { URLCanonicalizer.key(for: URL(string: $0)!) })
+        let keys = Set(try variants.map { URLCanonicalizer.key(for: try XCTUnwrap(URL(string: $0))) })
         // The http/https pair legitimately differs; everything else must collapse.
         XCTAssertEqual(keys.count, 2, "expected http and https to remain distinct: \(keys)")
     }
@@ -474,7 +474,7 @@ final class ConfigurationTests: XCTestCase {
         return file
     }
 
-    func testUnknownProviderNamesInOrderAreIgnored() {
+    func testUnknownProviderNamesInOrderAreIgnored() throws {
         let configuration = AppConfiguration.parse([
             "SEARCH_PROVIDER_ORDER": "brave,nonsense"
         ])
