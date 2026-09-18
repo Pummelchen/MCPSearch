@@ -380,14 +380,16 @@
       "location": "scripts/monitor_tty_smoke.py:196,230-239",
       "title": "The PTY master and slave fds leak when the spawn raises",
       "category": "resource/leak",
-      "status": "OPEN",
+      "status": "DONE",
       "host": "Node1",
       "discovered_by": "Python scripts tier review (subagent), statically verified against the code",
       "evidence_before": "pty.openpty() then os.close(slave) only after a successful subprocess.Popen. A FileNotFoundError or EMFILE in that gap leaks both fds and never closes self.master; check_ctrl_c_quits_cleanly starts three sessions, so several can leak.",
-      "fix_summary": "",
-      "evidence_after": "",
-      "commit": "",
-      "blocked_reason": ""
+      "fix_summary": "Everything after `openpty` is wrapped in `try`/`except BaseException`, and the handler closes both ends before re-raising.",
+      "evidence_after": "Committed in eed50a6. The module loaded directly, `Session` constructed with a nonexistent binary so `Popen` raises: before, fds 4 -> 6 (leak of 2); after, 4 -> 4 across three attempts, counted with `len(os.listdir(\"/dev/fd\"))`. A first attempt at the re-indent corrupted the block via stale line numbers and was reverted and redone. ruff, ruff-format and pyright clean; 18 harness tests pass.",
+      "commit": "eed50a6",
+      "blocked_reason": "",
+      "detail": "`pty.openpty()` was the first call in `Session.__init__`, and two things after it can raise before the child's end is closed — the leaked-credential guard, which raises deliberately, and `Popen`. On either path both descriptors stayed open.",
+      "why_it_matters": "A harness that exists to check the monitor's terminal handling leaked the resource it checks whenever it failed for an unrelated reason."
     },
     {
       "id": "A0023",

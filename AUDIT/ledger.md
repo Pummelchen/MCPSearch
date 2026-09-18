@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 41 · open 10 · blocked 3**
+**total 54 — done 42 · open 9 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
 | S1 | 30 | 27 | 2 | 1 |
-| S2 | 16 | 10 | 6 | 0 |
+| S2 | 16 | 11 | 5 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 8, PROGRESS 2, DONE 41, BLOCKED 3
+Status tally: OPEN 7, PROGRESS 2, DONE 42, BLOCKED 3
 
 ## Tasks
 
@@ -62,7 +62,7 @@ Status tally: OPEN 8, PROGRESS 2, DONE 41, BLOCKED 3
 | A0006 | S2 | A | DONE | Validation is written as `assert`, which python -O strips |
 | A0010 | S2 | A | DONE | Installing overwrites the previous binary in place with no rollback path |
 | A0016 | S2 | A | OPEN | An over-cap transfer may keep streaming after the cap is hit (UNSURE) |
-| A0022 | S2 | C | OPEN | The PTY master and slave fds leak when the spawn raises |
+| A0022 | S2 | C | DONE | The PTY master and slave fds leak when the spawn raises |
 | A0023 | S2 | C | OPEN | A failed signal case leaks the stub's socket and thread |
 | A0024 | S2 | C | OPEN | Per-instance stub state lives on the handler class, so two concurrent stubs would share it |
 | A0025 | S2 | C | DONE | The test depends on the developer's ambient config.env and contradicts the function it tests |
@@ -544,12 +544,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0022 — The PTY master and slave fds leak when the spawn raises
 
-- **Severity / tier / status:** S2 / C / OPEN
+- **Severity / tier / status:** S2 / C / DONE
 - **Location:** `scripts/monitor_tty_smoke.py:196,230-239`
 - **Category:** resource/leak
 - **Host:** Node1
 - **Discovered by:** Python scripts tier review (subagent), statically verified against the code
 - **Evidence before:** pty.openpty() then os.close(slave) only after a successful subprocess.Popen. A FileNotFoundError or EMFILE in that gap leaks both fds and never closes self.master; check_ctrl_c_quits_cleanly starts three sessions, so several can leak.
+- **Fix:** Everything after `openpty` is wrapped in `try`/`except BaseException`, and the handler closes both ends before re-raising.
+- **Evidence after:** Committed in eed50a6. The module loaded directly, `Session` constructed with a nonexistent binary so `Popen` raises: before, fds 4 -> 6 (leak of 2); after, 4 -> 4 across three attempts, counted with `len(os.listdir("/dev/fd"))`. A first attempt at the re-indent corrupted the block via stale line numbers and was reverted and redone. ruff, ruff-format and pyright clean; 18 harness tests pass.
+- **Commit:** `eed50a6`
 
 ### A0023 — A failed signal case leaks the stub's socket and thread
 
