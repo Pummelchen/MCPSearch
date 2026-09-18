@@ -359,13 +359,13 @@
       "location": "scripts/soak.py:176-179",
       "title": "A non-JSON stdout line is embedded in a raised exception, reaching an unscanned traceback",
       "category": "security/credential-detection",
-      "status": "OPEN",
+      "status": "DONE",
       "host": "Node1",
       "discovered_by": "Python scripts tier review (subagent), statically verified against the code",
       "evidence_before": "RuntimeError(f\"...; offending line: {line!r}\") with no handler in main (only KeyboardInterrupt, 534-538), so Python prints the raw server line to stderr — and by A0020 nothing scans that traceback. Reachability is UNSURE: it requires the server to write credential material on stdout, which is itself what the soak probes for.",
-      "fix_summary": "",
-      "evidence_after": "",
-      "commit": "",
+      "fix_summary": "Both sites report the malformed line's length instead of its contents, so server-controlled text no longer reaches a traceback that the credential scan does not cover. The JSON error still carries the position.",
+      "evidence_after": "Committed in 5767d8b. Before: a stub whose malformed stdout line carried the configured TAVILY_API_KEY put it in the output once. After: zero occurrences, replaced by \"the line was 48 characters long\". ruff, ruff-format and pyright clean; 18 harness tests pass; stdio smoke passes. REMAINING: the evidence is a manual reproduction, so CI does not re-run it — a harness test with such a stub would make it permanent.",
+      "commit": "5767d8b",
       "blocked_reason": ""
     },
     {

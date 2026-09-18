@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 29 · open 22 · blocked 3**
+**total 54 — done 30 · open 21 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 21 | 8 | 1 |
+| S1 | 30 | 22 | 7 | 1 |
 | S2 | 16 | 4 | 12 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 21, PROGRESS 1, DONE 29, BLOCKED 3
+Status tally: OPEN 20, PROGRESS 1, DONE 30, BLOCKED 3
 
 ## Tasks
 
@@ -43,7 +43,7 @@ Status tally: OPEN 21, PROGRESS 1, DONE 29, BLOCKED 3
 | A0018 | S1 | A | DONE | The soak's stdio read has no timeout, so one unanswered query hangs the whole run |
 | A0019 | S1 | A | DONE | The child's stderr pipe is not drained until exit, which deadlocks against the stdout read |
 | A0020 | S1 | A | DONE | The credential-leak scan is stderr-only and only runs on the fully successful path |
-| A0021 | S1 | A | OPEN | A non-JSON stdout line is embedded in a raised exception, reaching an unscanned traceback |
+| A0021 | S1 | A | DONE | A non-JSON stdout line is embedded in a raised exception, reaching an unscanned traceback |
 | A0028 | S1 | A | OPEN | The HTTP session registry is unbounded, so an unauthenticated client can grow it without limit |
 | A0029 | S1 | A | OPEN | A disconnected SSE client leaks a suspended relay task and wedges the session |
 | A0030 | S1 | A | DONE | A cancelled provider request is recorded as a transient failure and can open a circuit breaker |
@@ -316,12 +316,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0021 — A non-JSON stdout line is embedded in a raised exception, reaching an unscanned traceback
 
-- **Severity / tier / status:** S1 / A / OPEN
+- **Severity / tier / status:** S1 / A / DONE
 - **Location:** `scripts/soak.py:176-179`
 - **Category:** security/credential-detection
 - **Host:** Node1
 - **Discovered by:** Python scripts tier review (subagent), statically verified against the code
 - **Evidence before:** RuntimeError(f"...; offending line: {line!r}") with no handler in main (only KeyboardInterrupt, 534-538), so Python prints the raw server line to stderr — and by A0020 nothing scans that traceback. Reachability is UNSURE: it requires the server to write credential material on stdout, which is itself what the soak probes for.
+- **Fix:** Both sites report the malformed line's length instead of its contents, so server-controlled text no longer reaches a traceback that the credential scan does not cover. The JSON error still carries the position.
+- **Evidence after:** Committed in 5767d8b. Before: a stub whose malformed stdout line carried the configured TAVILY_API_KEY put it in the output once. After: zero occurrences, replaced by "the line was 48 characters long". ruff, ruff-format and pyright clean; 18 harness tests pass; stdio smoke passes. REMAINING: the evidence is a manual reproduction, so CI does not re-run it — a harness test with such a stub would make it permanent.
+- **Commit:** `5767d8b`
 
 ### A0028 — The HTTP session registry is unbounded, so an unauthenticated client can grow it without limit
 
