@@ -305,6 +305,30 @@ final class ConfigurationTests: XCTestCase {
         XCTAssertEqual(Set(configuration.providerOrder), Set(ProviderID.allCases))
     }
 
+    /// A rejected setting must not be echoed into the diagnostic that gets logged.
+    ///
+    /// `ConfigurationIssue.detail` promises it "never contains a credential", and this file carried
+    /// that promise while interpolating the raw value at three sites. Four keys are URL-typed and
+    /// may legitimately carry an embedded token, so a schemeless value with a token in its query —
+    /// a realistic operator mistake — was rejected here and then logged verbatim by `main.swift`
+    /// (ledger A0033).
+    func testARejectedValueIsNotEchoedIntoTheDiagnostic() {
+        let secret = "s3cr3t-token-value"
+        let configuration = AppConfiguration.parse([
+            "OPEN_WEB_SEARCH_URL": "search.example.com/mcp?token=\(secret)"
+        ])
+
+        let details = configuration.issues.map(\.detail).joined(separator: " | ")
+        XCTAssertFalse(details.contains(secret), "the value reached a loggable diagnostic: \(details)")
+        XCTAssertFalse(details.contains("search.example.com"), details)
+        // The key is still named, and the reason is still stated, which is what an operator needs.
+        XCTAssertTrue(
+            configuration.issues.contains { $0.key == "OPEN_WEB_SEARCH_URL" },
+            "\(configuration.issues)"
+        )
+        XCTAssertTrue(details.contains("not an http(s) URL"), details)
+    }
+
     func testDisabledProvidersAreParsed() {
         let configuration = AppConfiguration.parse([
             "SEARCH_DISABLED_PROVIDERS": "duckduckgo, startpage"

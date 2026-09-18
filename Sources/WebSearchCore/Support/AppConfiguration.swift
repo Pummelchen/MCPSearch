@@ -398,7 +398,13 @@ extension AppConfiguration {
         func int(_ key: Key) -> Int? {
             guard let raw = string(key) else { return nil }
             guard let value = Int(raw) else {
-                record(.unparseableValue, key, "'\(raw)' is not a whole number")
+                // The value is deliberately absent. `ConfigurationIssue.detail` promises it "never
+                // contains a credential", and this file already carried that promise while
+                // interpolating the raw value at three sites. Four keys are URL-typed and may carry
+                // an embedded token — a schemeless `host/path?token=...` is rejected here and was
+                // logged verbatim by `main.swift` (ledger A0033). The key is named, which is what
+                // an operator needs to fix it.
+                record(.unparseableValue, key, "is not a whole number")
                 return nil
             }
             return value
@@ -410,7 +416,7 @@ extension AppConfiguration {
             case "1", "true", "yes", "on", "enabled": return true
             case "0", "false", "no", "off", "disabled": return false
             default:
-                record(.unparseableValue, key, "'\(raw)' is not a yes/no value")
+                record(.unparseableValue, key, "is not a yes/no value")
                 return nil
             }
         }
@@ -426,7 +432,7 @@ extension AppConfiguration {
                 scheme == "http" || scheme == "https",
                 let host = parsed.host(), !host.isEmpty
             else {
-                record(.invalidURL, key, "'\(raw)' is not an http(s) URL with a host")
+                record(.invalidURL, key, "is not an http(s) URL with a host")
                 return nil
             }
             return parsed
