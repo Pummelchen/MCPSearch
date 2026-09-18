@@ -133,16 +133,10 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
             let body = response.body
             let extraction: HTMLDocument.Extraction
             if mimeType.contains("html") || mimeType.contains("xhtml") {
-                let html =
-                    String(data: body, encoding: .utf8)
-                    ?? String(data: body, encoding: .isoLatin1)
-                    ?? ""
+                let html = DirectHTTPFetcher.decodeText(body, contentType: contentType)
                 extraction = try HTMLExtractor.extract(html: html)
             } else {
-                let text =
-                    String(data: body, encoding: .utf8)
-                    ?? String(data: body, encoding: .isoLatin1)
-                    ?? ""
+                let text = DirectHTTPFetcher.decodeText(body, contentType: contentType)
                 extraction = HTMLDocument.Extraction(
                     title: nil,
                     text: text
@@ -251,6 +245,77 @@ public final class DirectHTTPFetcher: @unchecked Sendable {
         contentType?
             .split(separator: ";").first
             .map { $0.trimmingCharacters(in: .whitespaces).lowercased() }
+    }
+
+    /// The `charset` parameter of a `Content-Type`, lowercased and unquoted.
+    static func charset(from contentType: String?) -> String? {
+        guard let contentType else { return nil }
+        for parameter in contentType.split(separator: ";").dropFirst() {
+            let pair = parameter.split(separator: "=", maxSplits: 1)
+            guard pair.count == 2,
+                pair[0].trimmingCharacters(in: .whitespaces).lowercased() == "charset"
+            else { continue }
+            let name = pair[1]
+                .trimmingCharacters(in: CharacterSet(charactersIn: " \"'"))
+                .lowercased()
+            return name.isEmpty ? nil : name
+        }
+        return nil
+    }
+
+    /// A Foundation encoding for an IANA charset name, or nil when the name is not one.
+    static func encoding(for charset: String) -> String.Encoding? {
+        let converted = CFStringConvertIANACharSetNameToEncoding(charset as CFString)
+        guard converted != kCFStringEncodingInvalidId else { return nil }
+        return String.Encoding(rawValue: CFStringConvertEncodingToNSStringEncoding(converted))
+    }
+
+    /// Decode a body using, in order: the declared charset, then UTF-8, then the charset the markup
+    /// declares for itself, then Latin-1.
+    ///
+    /// `mimeType(from:)` throws away everything after `;`, so the charset parameter was discarded and
+    /// decoding fell straight to UTF-8-then-Latin-1. Latin-1 cannot fail, so a page served as
+    /// windows-1251, Shift_JIS or GBK was silently decoded into mojibake with no warning and no
+    /// truncation flag — wrong characters presented as success (ledger A0012).
+    ///
+    /// Latin-1 stays as the last resort precisely because it cannot fail: a caller is better served
+    /// by an approximate body than by an error, and the order above means it is reached only when
+    /// nothing better was declared.
+    static func decodeText(_ body: Data, contentType: String?) -> String {
+        if let name = charset(from: contentType), let encoding = encoding(for: name),
+            let text = String(data: body, encoding: encoding)
+        {
+            return text
+        }
+        if let text = String(data: body, encoding: .utf8) { return text }
+        if let text = decodeUsingDeclaredMetaCharset(body) { return text }
+        return String(data: body, encoding: .isoLatin1) ?? ""
+    }
+
+    /// Decode using the charset the document declares for itself, if it declares one.
+    ///
+    /// Only the first few kilobytes are examined: a `<meta charset>` that appears later than that is
+    /// outside what a browser honours, so looking further would find declarations nothing else acts
+    /// on.
+    private static func decodeUsingDeclaredMetaCharset(_ body: Data) -> String? {
+        let head = body.prefix(4_096)
+        guard let ascii = String(data: head, encoding: .isoLatin1),
+            let marker = ascii.range(of: "charset", options: .caseInsensitive)
+        else { return nil }
+        let afterMarker = ascii[marker.upperBound...]
+        guard let equals = afterMarker.firstIndex(of: "=") else { return nil }
+        // `<meta charset="windows-1251">` is the common form, so the opening quote has to be stepped
+        // over before the name starts; taking the prefix straight after `=` stops on the quote and
+        // yields nothing.
+        var value = afterMarker[afterMarker.index(after: equals)...]
+        if let first = value.first, first == "\"" || first == "'" {
+            value = value.dropFirst()
+        }
+        let name = String(
+            value.prefix { $0.isLetter || $0.isNumber || $0 == "-" || $0 == "_" }
+        ).lowercased()
+        guard !name.isEmpty, let encoding = encoding(for: name) else { return nil }
+        return String(data: body, encoding: encoding)
     }
 
     static func isTextual(_ mimeType: String, allowedPrefixes: [String]) -> Bool {
