@@ -5,6 +5,13 @@
 // `xcode-27` image in `.github/workflows/ci.yml`, with warnings as errors. Strict concurrency is
 // pinned per target with `swiftLanguageMode(.v6)`, not by this line.
 //
+// Both halves of that standard are enforced by the target settings below, not by the command line
+// that happens to invoke the build: `swiftLanguageMode(.v6)` puts each target in Swift 6 language
+// mode (complete concurrency checking), and `treatAllWarnings(as: .error)` makes a warning fail the
+// build. Before `treatAllWarnings` existed here, warnings failed only because CI and
+// `tools/release.sh` passed `-Xswiftc -warnings-as-errors`; a plain `swift build` printed the
+// warning, exited 0, and a developer could ship it.
+//
 // This line has been 6.4, 6.3 and now 6.4 again. The round trip is worth recording because it is not
 // visible from here: GitHub's CodeQL *default setup* builds with the runner image's Swift 6.3.3 and
 // cannot parse a 6.4 manifest, so raising the floor silently removed the repository's CodeQL SAST
@@ -61,7 +68,7 @@ let package = Package(
             dependencies: [
                 .product(name: "SwiftSoup", package: "SwiftSoup")
             ],
-            swiftSettings: [.swiftLanguageMode(.v6)]
+            swiftSettings: [.swiftLanguageMode(.v6), .treatAllWarnings(as: .error)]
         ),
 
         // The MCP surface. Knows about MCP; knows almost nothing about vendors.
@@ -74,7 +81,7 @@ let package = Package(
                 .product(name: "NIOPosix", package: "swift-nio"),
                 .product(name: "NIOHTTP1", package: "swift-nio"),
             ],
-            swiftSettings: [.swiftLanguageMode(.v6)]
+            swiftSettings: [.swiftLanguageMode(.v6), .treatAllWarnings(as: .error)]
         ),
 
         .testTarget(
@@ -83,7 +90,7 @@ let package = Package(
             // No resource bundle: every test fixture is an inline Swift literal. A
             // `.copy("Fixtures")` declaration previously pointed at a directory that
             // was not tracked in git, which broke clean checkouts.
-            swiftSettings: [.swiftLanguageMode(.v6)]
+            swiftSettings: [.swiftLanguageMode(.v6), .treatAllWarnings(as: .error)]
         ),
 
         // A live terminal dashboard for providers and nodes. Runs on the machine the
@@ -92,7 +99,7 @@ let package = Package(
         .executableTarget(
             name: "MCPSMonitor",
             dependencies: ["WebSearchCore"],
-            swiftSettings: [.swiftLanguageMode(.v6)]
+            swiftSettings: [.swiftLanguageMode(.v6), .treatAllWarnings(as: .error)]
         ),
 
         // Options parsing lives in the executable, so testing it needs the executable as
@@ -100,7 +107,7 @@ let package = Package(
         .testTarget(
             name: "MCPSMonitorTests",
             dependencies: ["MCPSMonitor"],
-            swiftSettings: [.swiftLanguageMode(.v6)]
+            swiftSettings: [.swiftLanguageMode(.v6), .treatAllWarnings(as: .error)]
         ),
     ]
 )
