@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 45 · open 6 · blocked 3**
+**total 54 — done 46 · open 5 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
 | S1 | 30 | 27 | 2 | 1 |
 | S2 | 16 | 14 | 2 | 0 |
-| S3 | 4 | 2 | 2 | 0 |
+| S3 | 4 | 3 | 1 | 0 |
 
-Status tally: OPEN 4, PROGRESS 2, DONE 45, BLOCKED 3
+Status tally: OPEN 3, PROGRESS 2, DONE 46, BLOCKED 3
 
 ## Tasks
 
@@ -75,7 +75,7 @@ Status tally: OPEN 4, PROGRESS 2, DONE 45, BLOCKED 3
 | A0043 | S2 | A | DONE | The test-suite count is reported as PASS without checking that it parsed |
 | A0044 | S2 | A | DONE | `--dry-run` creates the SearXNG directory, so it does change the filesystem |
 | A0051 | S2 | A | OPEN | Mojeek timestamp is read but never requested, so publishedAt is always nil (UNSURE) |
-| A0027 | S3 | C | OPEN | A lost bind race abandons the exited child unreaped |
+| A0027 | S3 | C | DONE | A lost bind race leaks the child's pipes (the finding's original claim was wrong) |
 | A0052 | S3 | C | DONE | The documented test count is stale after A0045 added three tests |
 | A0053 | S3 | A | OPEN | /health readiness reflects configuration, not reachability |
 | A0054 | S3 | C | DONE | The documented test count drifted from the suite as the audit added tests |
@@ -695,14 +695,17 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 - **Discovered by:** Providers tier A review (subagent)
 - **Evidence before:** item.timestamp is read, but Mojeek's `date` flag is opt-in and defaults to 0 and the provider sends no date=1 (it sends no such parameter at :55-69), so every Mojeek result may have a nil date. The repo's notes say timestamp appears only when the flag is requested. UNSURE: settled by one live request with and without date=1.
 
-### A0027 — A lost bind race abandons the exited child unreaped
+### A0027 — A lost bind race leaks the child's pipes (the finding's original claim was wrong)
 
-- **Severity / tier / status:** S3 / C / OPEN
+- **Severity / tier / status:** S3 / C / DONE
 - **Location:** `scripts/mcp_smoke.py:517-523`
 - **Category:** resource/leak
 - **Host:** Node1
 - **Discovered by:** Python scripts tier review (subagent), statically verified against the code
 - **Evidence before:** Under except BindRace the code records last_race and continues; only the except Failure branch cleans up. The child has exited (that is what makes it a BindRace) but is never waited and its pipes are never closed; up to HTTP_START_ATTEMPTS = 3 sets leak per run.
+- **Fix:** A `close_child_pipes` helper closes stdout and stderr on both failure paths.
+- **Evidence after:** Committed in b45747d. `start_http_server` with `wait_for_health` patched to raise BindRace every attempt and HTTP_START_ATTEMPTS=3: before, fds 4 -> 6 (delta 2, not 6, because `Popen.__del__` closes earlier attempts' pipes); after, 4 -> 4. The original claim of "unreaped" was disproved by measurement and the title corrected rather than inherited. ruff, ruff-format and pyright clean; 18 harness tests pass.
+- **Commit:** `b45747d`
 
 ### A0052 — The documented test count is stale after A0045 added three tests
 
