@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 51 — done 2 · open 47 · blocked 2**
+**total 52 — done 2 · open 48 · blocked 2**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 1 | 2 | 1 |
 | S1 | 30 | 1 | 28 | 1 |
 | S2 | 16 | 0 | 16 | 0 |
-| S3 | 1 | 0 | 1 | 0 |
+| S3 | 2 | 0 | 2 | 0 |
 
-Status tally: OPEN 45, PROGRESS 2, DONE 2, BLOCKED 2
+Status tally: OPEN 46, PROGRESS 2, DONE 2, BLOCKED 2
 
 ## Tasks
 
@@ -76,6 +76,7 @@ Status tally: OPEN 45, PROGRESS 2, DONE 2, BLOCKED 2
 | A0044 | S2 | A | OPEN | `--dry-run` creates the SearXNG directory, so it does change the filesystem |
 | A0051 | S2 | A | OPEN | Mojeek timestamp is read but never requested, so publishedAt is always nil (UNSURE) |
 | A0027 | S3 | C | OPEN | A lost bind race abandons the exited child unreaped |
+| A0052 | S3 | C | OPEN | The documented test count is stale after A0045 added three tests |
 
 ---
 
@@ -564,3 +565,12 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 - **Host:** Node1
 - **Discovered by:** Python scripts tier review (subagent), statically verified against the code
 - **Evidence before:** Under except BindRace the code records last_race and continues; only the except Failure branch cleans up. The child has exited (that is what makes it a BindRace) but is never waited and its pipes are never closed; up to HTTP_START_ATTEMPTS = 3 sets leak per run.
+
+### A0052 — The documented test count is stale after A0045 added three tests
+
+- **Severity / tier / status:** S3 / C / OPEN
+- **Location:** `AGENTS.md:80, README.md:201, docs/release-notes-v1.2.0.md, wiki Home.md`
+- **Category:** docs/stale-number
+- **Host:** Node1
+- **Discovered by:** the audit's own change (A0045 bumped 593 to 596)
+- **Evidence before:** AGENTS.md and README.md state 593 tests; the suite is now 554 + 42 = 596 after the three SearXNG answer-shape tests. §6: code the audit's own changes orphaned.

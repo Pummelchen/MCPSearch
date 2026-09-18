@@ -875,6 +875,23 @@
       "evidence_after": "",
       "commit": "",
       "blocked_reason": ""
+    },
+    {
+      "id": "A0052",
+      "severity": "S3",
+      "tier": "C",
+      "project": "MCPSearch",
+      "location": "AGENTS.md:80, README.md:201, docs/release-notes-v1.2.0.md, wiki Home.md",
+      "title": "The documented test count is stale after A0045 added three tests",
+      "category": "docs/stale-number",
+      "status": "OPEN",
+      "host": "Node1",
+      "discovered_by": "the audit's own change (A0045 bumped 593 to 596)",
+      "evidence_before": "AGENTS.md and README.md state 593 tests; the suite is now 554 + 42 = 596 after the three SearXNG answer-shape tests. §6: code the audit's own changes orphaned.",
+      "fix_summary": "",
+      "evidence_after": "",
+      "commit": "",
+      "blocked_reason": ""
     }
   ]
 }
