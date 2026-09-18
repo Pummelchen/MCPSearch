@@ -115,6 +115,48 @@ public enum MarkupDepth {
     /// reported as over the limit rather than grown further.
     static let maximumTrackedDepth = 4096
 
+    /// Elements whose start tag closes an open `<p>`.
+    ///
+    /// HTML lets `</p>` be omitted, and a parser closes the open paragraph when one of these starts.
+    /// `<p>one<p>two<p>three` is three paragraphs at depth one, not one paragraph three deep — and a
+    /// model that keeps them open over-counts by one per omitted tag, without bound.
+    private static let closesParagraph: [[UInt8]] = [
+        "address", "article", "aside", "blockquote", "center", "details", "dialog", "dir", "div",
+        "dl", "dt", "dd", "fieldset", "figcaption", "figure", "footer", "form", "h1", "h2", "h3",
+        "h4", "h5", "h6", "header", "hgroup", "hr", "li", "listing", "main", "menu", "nav", "ol",
+        "p", "plaintext", "pre", "search", "section", "summary", "table", "ul", "xmp",
+    ].map { Array($0.utf8) }
+
+    /// The paragraph element, for the block-closer pass.
+    private static let paragraphElement: [[UInt8]] = [Array("p".utf8)]
+
+    /// Table structure, for the section a `<tr>` implies.
+    private static let tableSectionElements: [[UInt8]] = ["thead", "tbody", "tfoot"].map {
+        Array($0.utf8)
+    }
+    private static let tableRowElements: [[UInt8]] = ["tr"].map { Array($0.utf8) }
+    private static let impliedTableSection: [UInt8] = Array("tbody".utf8)
+
+    /// Elements that close an open element of their own kind.
+    ///
+    /// Each rule is `(what starts, what it closes)`, and each closes the innermost match. Only the
+    /// sets measured to matter are modelled. Finding no match is deliberate and safe: the parser would
+    /// still close something, so the model is left **over**-counting rather than under-counting, and
+    /// under-counting is the bypass.
+    private static let impliedEndTagRules: [(starts: [[UInt8]], closes: [[UInt8]])] = [
+        (["p"].map { Array($0.utf8) }, ["p"].map { Array($0.utf8) }),
+        (["li"].map { Array($0.utf8) }, ["li"].map { Array($0.utf8) }),
+        (["dt", "dd"].map { Array($0.utf8) }, ["dt", "dd"].map { Array($0.utf8) }),
+        (["option"].map { Array($0.utf8) }, ["option"].map { Array($0.utf8) }),
+        (["optgroup"].map { Array($0.utf8) }, ["optgroup"].map { Array($0.utf8) }),
+        (["td", "th"].map { Array($0.utf8) }, ["td", "th"].map { Array($0.utf8) }),
+        (["tr"].map { Array($0.utf8) }, ["tr"].map { Array($0.utf8) }),
+        (
+            ["thead", "tbody", "tfoot"].map { Array($0.utf8) },
+            ["thead", "tbody", "tfoot"].map { Array($0.utf8) }
+        ),
+    ]
+
     /// Measure nesting on bytes. No recursion, early exit, saturating at `limit + 1`.
     ///
     /// The open elements are a **stack of names**, not a counter, because a counter cannot tell a
@@ -137,6 +179,55 @@ public enum MarkupDepth {
         var lengths = [UInt8](repeating: 0, count: capacity)
         var depth = 0
         var deepest = 0
+
+        /// Whether the name in slot `slot` is exactly `candidate`. Stored names are lowercased.
+        func slotIs(_ slot: Int, _ candidate: [UInt8]) -> Bool {
+            let stored = Int(lengths[slot])
+            guard stored != Int(unmatchedNameLength), stored == candidate.count else { return false }
+            let base = slot * nameSlotBytes
+            var offset = 0
+            while offset < candidate.count {
+                if arena[base + offset] != candidate[offset] { return false }
+                offset += 1
+            }
+            return true
+        }
+
+        /// Pop to the innermost open element matching one of `candidates`, and report whether one was
+        /// found. Popping the match takes everything opened inside it, which is what the parser's
+        /// "generate implied end tags" plus its pop amounts to.
+        /// Whether any open element matches `candidates`, without popping.
+        func containsAny(_ candidates: [[UInt8]]) -> Bool {
+            var slot = depth - 1
+            while slot >= 0 {
+                for candidate in candidates where slotIs(slot, candidate) { return true }
+                slot -= 1
+            }
+            return false
+        }
+
+        /// Open a level for an element the parser inserts rather than one the bytes contain.
+        func pushName(_ name: [UInt8]) {
+            guard depth < capacity else { return }
+            let base = depth * nameSlotBytes
+            for offset in 0..<name.count { arena[base + offset] = name[offset] }
+            lengths[depth] = UInt8(name.count)
+            depth += 1
+            if depth > deepest { deepest = depth }
+        }
+
+        @discardableResult
+        func popThroughAny(_ candidates: [[UInt8]]) -> Bool {
+            var slot = depth - 1
+            while slot >= 0 {
+                for candidate in candidates where slotIs(slot, candidate) {
+                    depth = slot
+                    return true
+                }
+                slot -= 1
+            }
+            return false
+        }
 
         while index < end {
             guard bytes[index] == UInt8(ascii: "<") else {
@@ -162,19 +253,11 @@ public enum MarkupDepth {
                 let nameStart = afterBracket + 1
                 let close = skip(bytes, from: nameStart, until: ">", end: end)
                 let nameFinish = nameEnd(in: bytes, from: nameStart, to: min(close, end))
-                var slot = depth - 1
-                while slot >= 0 {
-                    let stored = Int(lengths[slot])
-                    if stored != Int(unmatchedNameLength), stored == nameFinish - nameStart,
-                        sameSlotName(bytes, from: nameStart, to: nameFinish, arena: arena, slot: slot)
-                    {
-                        // Popping the matched element takes everything above it with it, which is
-                        // what `generate implied end tags` plus the pop amounts to.
-                        depth = slot
-                        break
-                    }
-                    slot -= 1
-                }
+                // The name as lowercased bytes, so one comparison serves both paths.
+                var name: [UInt8] = []
+                name.reserveCapacity(nameFinish - nameStart)
+                for offset in nameStart..<nameFinish { name.append(lowercased(bytes[offset])) }
+                popThroughAny([name])
                 index = close
                 continue
             }
@@ -217,6 +300,23 @@ public enum MarkupDepth {
             }
 
             if !selfClosing, !matchesAny(bytes, from: tagBody, to: tagNameEnd, in: voidElements) {
+                // An element this start tag implies the end of: close the innermost match first, so
+                // the new element opens at the depth the parser gives it and not one level deeper.
+                if matchesAny(bytes, from: tagBody, to: tagNameEnd, in: closesParagraph) {
+                    popThroughAny(paragraphElement)
+                }
+                // A `<tr>` with no open table section gets an implicit `<tbody>`: the parser inserts
+                // one, so not counting it under-counts every table by a level — and under-counting is
+                // the bypass, not a rounding error (ledger A0011).
+                if matchesAny(bytes, from: tagBody, to: tagNameEnd, in: tableRowElements),
+                    !containsAny(tableSectionElements)
+                {
+                    pushName(impliedTableSection)
+                }
+                for rule in impliedEndTagRules
+                where matchesAny(bytes, from: tagBody, to: tagNameEnd, in: rule.starts) {
+                    popThroughAny(rule.closes)
+                }
                 guard depth < capacity else { return limit + 1 }
                 let length = tagNameEnd - tagBody
                 if length <= nameSlotBytes {
@@ -235,23 +335,6 @@ public enum MarkupDepth {
             index = min(cursor + 1, end)
         }
         return deepest
-    }
-
-    /// Whether the name in `bytes` matches the name stored in `arena` at `slot`, case-insensitively.
-    private static func sameSlotName<Bytes: RandomAccessCollection>(
-        _ bytes: Bytes,
-        from start: Int,
-        to end: Int,
-        arena: [UInt8],
-        slot: Int
-    ) -> Bool where Bytes.Element == UInt8, Bytes.Index == Int {
-        let base = slot * nameSlotBytes
-        var offset = 0
-        while start + offset < end {
-            if lowercased(bytes[start + offset]) != arena[base + offset] { return false }
-            offset += 1
-        }
-        return true
     }
 
     /// Where the tag name ends: the first whitespace or `/`.

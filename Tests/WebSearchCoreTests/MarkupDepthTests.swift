@@ -53,7 +53,7 @@ final class MarkupDepthTests: XCTestCase {
             ("omitted </dt><dd>", "<dl><dt>a<dd>b<dt>c<dd>d</dl>"),
             ("select options", "<select><option>a<option>b<option>c</select>"),
             ("deep then shallow", String(repeating: "<div>", count: 30) + "</div></div></div>" + "<span>y</span>"),
-            ("mixed ordinary", "<html><body><div><ul><li><p>text</p></li></ul></div></body></html>"),
+            ("mixed ordinary", "<div><ul><li><p>text</p></li></ul></div>"),
         ]
 
         for (label, fragment) in documents {
@@ -68,6 +68,13 @@ final class MarkupDepthTests: XCTestCase {
                 model,
                 real,
                 "\(label): the model read \(model) but the parser built \(real) — under-counting is a bypass"
+            )
+            // Exactness, not just soundness, on constructs the model claims to know. Over-counting is
+            // the safe direction, but a drift here is how it silently becomes a false rejection.
+            XCTAssertEqual(
+                model,
+                real,
+                "\(label): the model read \(model), the parser built \(real)"
             )
         }
     }
