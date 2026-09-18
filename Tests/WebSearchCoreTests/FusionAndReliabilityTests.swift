@@ -97,7 +97,7 @@ final class RankFusionTests: XCTestCase {
         XCTAssertEqual(page?.provider, .brave)
     }
 
-    func testSameProviderListingDuplicateURLOnlyVotesOnce() {
+    func testSameProviderListingDuplicateURLOnlyVotesOnce() throws {
         let duplicate = response(
             .tavily,
             [
@@ -265,7 +265,7 @@ final class RankFusionTests: XCTestCase {
     /// result list outranks another's and fusion degenerates into provider preference.
     /// That was observed live: Tavily's 6th result outranked Parallel's 1st by 1.82x,
     /// and the fused output was 100% Tavily despite Parallel ranking better on the query.
-    func testAggregatorIsDiscountedOnlyWhenItResellsAnOwnedIndex() {
+    func testAggregatorIsDiscountedOnlyWhenItResellsAnOwnedIndex() throws {
         let configuration = RankFusion.Configuration()
         XCTAssertEqual(configuration.duplicatedAggregatorWeight, 0.7, accuracy: 0.0001)
 
@@ -709,29 +709,31 @@ final class RankFusionTests: XCTestCase {
         XCTAssertEqual(build(), build())
     }
 
-    func testRichestSnippetAndEarliestDateArePreserved() {
+    func testRichestSnippetAndEarliestDateArePreserved() throws {
         var seen: Set<String> = []
-        let short = ResultNormalizer.make(
-            provider: .tavily,
-            rank: 1,
-            title: "T",
-            urlString: "https://example.com/p",
-            snippet: "short",
-            publishedAt: Date(timeIntervalSince1970: 2000),
-            request: Fixtures.request(),
-            seenKeys: &seen
-        )!
+        let short = try XCTUnwrap(
+            ResultNormalizer.make(
+                provider: .tavily,
+                rank: 1,
+                title: "T",
+                urlString: "https://example.com/p",
+                snippet: "short",
+                publishedAt: Date(timeIntervalSince1970: 2000),
+                request: Fixtures.request(),
+                seenKeys: &seen
+            ))
         var seen2: Set<String> = []
-        let rich = ResultNormalizer.make(
-            provider: .brave,
-            rank: 1,
-            title: "T",
-            urlString: "https://example.com/p",
-            snippet: "a much longer and more informative snippet",
-            publishedAt: Date(timeIntervalSince1970: 1000),
-            request: Fixtures.request(),
-            seenKeys: &seen2
-        )!
+        let rich = try XCTUnwrap(
+            ResultNormalizer.make(
+                provider: .brave,
+                rank: 1,
+                title: "T",
+                urlString: "https://example.com/p",
+                snippet: "a much longer and more informative snippet",
+                publishedAt: Date(timeIntervalSince1970: 1000),
+                request: Fixtures.request(),
+                seenKeys: &seen2
+            ))
 
         let fused = RankFusion.fuse(
             responses: [
@@ -938,7 +940,7 @@ final class RateLimiterTests: XCTestCase {
         XCTAssertTrue(third)
     }
 
-    func testScraperPolicyIsStricterThanAPIPolicy() {
+    func testScraperPolicyIsStricterThanAPIPolicy() throws {
         XCTAssertLessThan(RateLimiter.Policy.scraper.requestsPerMinute, RateLimiter.Policy.apiDefault.requestsPerMinute)
         XCTAssertNotNil(RateLimiter.Policy.scraper.minimumInterval)
         XCTAssertNil(RateLimiter.Policy.apiDefault.minimumInterval)

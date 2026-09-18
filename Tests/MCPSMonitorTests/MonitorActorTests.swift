@@ -53,10 +53,10 @@ final class MonitorActorTests: XCTestCase {
 
     /// `isLocal` defaults to the port-1111 convention these tests already used; pass it
     /// explicitly when the local-versus-remote distinction is what is under test.
-    private func target(_ name: String, _ port: Int, isLocal: Bool? = nil) -> NodeProbe.Target {
+    private func target(_ name: String, _ port: Int, isLocal: Bool? = nil) throws -> NodeProbe.Target {
         NodeProbe.Target(
             name: name,
-            baseURL: URL(string: "http://127.0.0.1:\(port)")!,
+            baseURL: try XCTUnwrap(URL(string: "http://127.0.0.1:\(port)")),
             isLocal: isLocal ?? (port == 1111)
         )
     }
@@ -88,9 +88,9 @@ final class MonitorActorTests: XCTestCase {
     /// The dashboard populates on the first refresh, and a later unattended refresh must not
     /// spend a provider credit. Node health is still checked, because that is free — only the
     /// provider probe is gated, which is what the contract `Options.shouldProbeProviders` states.
-    func testTheFirstRefreshProbesProvidersAndALaterOneDoesNot() async {
+    func testTheFirstRefreshProbesProvidersAndALaterOneDoesNot() async throws {
         let monitor = Monitor(
-            options: options(nodes: [target("this-mac", 1111)], probeProviders: false),
+            options: options(nodes: [try target("this-mac", 1111)], probeProviders: false),
             configuration: configuration(),
             http: StubHTTPClient(handlers: [endpoint(1111): payload(up: true, unavailable: "")]),
             log: .disabled
@@ -149,8 +149,8 @@ final class MonitorActorTests: XCTestCase {
 
     /// A node result folds into the running `checks`/`failures` counters, and the state the
     /// dashboard shows is the latest probe's.
-    func testNodeResultsFoldIntoTheCounters() async {
-        let nodes = [target("this-mac", 1111), target("node1", 2222)]
+    func testNodeResultsFoldIntoTheCounters() async throws {
+        let nodes = [try target("this-mac", 1111), try target("node1", 2222)]
         let client = StubHTTPClient(handlers: [
             endpoint(1111): payload(up: true, unavailable: ""),
             endpoint(2222): payload(up: false, unavailable: ""),
@@ -180,8 +180,8 @@ final class MonitorActorTests: XCTestCase {
 
     /// The counters accumulate across refreshes rather than being replaced, and a provider
     /// that answered stays healthy on the pass that does not re-probe it.
-    func testCountersAccumulateAcrossRefreshes() async {
-        let nodes = [target("this-mac", 1111)]
+    func testCountersAccumulateAcrossRefreshes() async throws {
+        let nodes = [try target("this-mac", 1111)]
         let client = StubHTTPClient(handlers: [
             endpoint(1111): payload(up: false, unavailable: "")
         ])
@@ -209,9 +209,9 @@ final class MonitorActorTests: XCTestCase {
     /// The three operator warnings are aggregated from the model, not from one node's view:
     /// a down node, an engine failing on at least half the fleet, and providers with no
     /// credentials.
-    func testWarningsAggregateAcrossNodesAndProviders() async {
+    func testWarningsAggregateAcrossNodesAndProviders() async throws {
         let unavailable = #"["duckduckgo","CAPTCHA"]"#
-        let nodes = [target("this-mac", 1111), target("node1", 2222), target("node2", 3333)]
+        let nodes = [try target("this-mac", 1111), try target("node1", 2222), try target("node2", 3333)]
         let client = StubHTTPClient(handlers: [
             endpoint(1111): payload(up: true, unavailable: unavailable),
             endpoint(2222): payload(up: false, unavailable: unavailable),
@@ -252,8 +252,8 @@ final class MonitorActorTests: XCTestCase {
 
     /// A single node whose sole engine fails produces no engine warning: the threshold is
     /// `max(2, nodes/2)`, so one node cannot make an engine look fleet-wide broken.
-    func testASingleFailingEngineDoesNotWarn() async {
-        let nodes = [target("this-mac", 1111)]
+    func testASingleFailingEngineDoesNotWarn() async throws {
+        let nodes = [try target("this-mac", 1111)]
         let client = StubHTTPClient(handlers: [
             endpoint(1111): payload(up: true, unavailable: #"["duckduckgo","CAPTCHA"]"#)
         ])
@@ -276,8 +276,8 @@ final class MonitorActorTests: XCTestCase {
     /// It is not the same problem as a remote node being unreachable: if the local instance is
     /// down, the server *on this host* has lost its local provider. Reporting it only as one more
     /// entry in "node(s) unreachable" buries the one that matters most.
-    func testALocalNodeDownIsCalledOutOnItsOwn() async {
-        let nodes = [target("node1", 1111), target("node2", 2222)]
+    func testALocalNodeDownIsCalledOutOnItsOwn() async throws {
+        let nodes = [try target("node1", 1111), try target("node2", 2222)]
         let client = StubHTTPClient(handlers: [
             endpoint(2222): payload(up: true, unavailable: "")
         ])
