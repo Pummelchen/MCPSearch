@@ -194,48 +194,58 @@ class Session:
 
     def __init__(self, binary: str, base_url: str) -> None:
         self.master, slave = pty.openpty()
-        # A known window size: the renderer lays out to whatever it is told, and a PTY
-        # without a size would silently fall back to the same default anyway.
-        fcntl.ioctl(
-            self.master,
-            termios.TIOCSWINSZ,
-            struct.pack("HHHH", ROWS, COLUMNS, 0, 0),
-        )
+        try:
+            # A known window size: the renderer lays out to whatever it is told, and a PTY
+            # without a size would silently fall back to the same default anyway.
+            fcntl.ioctl(
+                self.master,
+                termios.TIOCSWINSZ,
+                struct.pack("HHHH", ROWS, COLUMNS, 0, 0),
+            )
 
-        environment = {
-            "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
-            "SEARXNG_BASE_URL": base_url,
-            "SEARCH_LOG_LEVEL": "warning",
-            # Scrubbing is no longer enough. Providers that need no credential are on by default,
-            # and this dashboard probes the configured providers on its first frame — so with a
-            # bare environment that frame waited on a live DuckDuckGo request. Measured: first
-            # frame at 0.03s with these off, 2.02s with them on, while this harness polls at 0.4s,
-            # so it saw no frame and the release gate failed. It also made a smoke test depend on
-            # the network and on a search engine's mood, which is what the scrub list above exists
-            # to prevent. They are switched off explicitly here.
-            "SEARCH_ENABLE_SCRAPERS": "false",
-            "SEARCH_ENABLE_PARALLEL": "false",
-        }
-        # Prove the scrub rather than assume it: the dictionary above is built from scratch, so no
-        # provider variable can be present. Popping keys that were never there asserted nothing.
-        # The two flags are deliberately present — set to `false`, which is what keeps this child
-        # off the network — so they are excluded here rather than dropped from
-        # `SCRUBBED_VARIABLES`.
-        deliberate = {"SEARCH_ENABLE_SCRAPERS", "SEARCH_ENABLE_PARALLEL"}
-        leaked = set(environment) & (set(SCRUBBED_VARIABLES) - deliberate)
-        if leaked:
-            raise Failure(f"the child environment still carries {sorted(leaked)}")
+            environment = {
+                "PATH": os.environ.get("PATH", "/usr/bin:/bin"),
+                "SEARXNG_BASE_URL": base_url,
+                "SEARCH_LOG_LEVEL": "warning",
+                # Scrubbing is no longer enough. Credential-free providers are on by default,
+                # and this dashboard probes the configured providers on its first frame — so with a
+                # bare environment that frame waited on a live DuckDuckGo request. Measured: first
+                # first frame at 0.03s off, 2.02s on, while the harness polls at 0.4s,
+                # so it saw no frame and the gate failed. It also made a smoke test depend on
+                # the network and on an engine's mood, which the scrub list above exists
+                # to prevent. They are switched off explicitly here.
+                "SEARCH_ENABLE_SCRAPERS": "false",
+                "SEARCH_ENABLE_PARALLEL": "false",
+            }
+            # Prove the scrub rather than assume it: the dictionary above is built fresh, so no
+            # provider variable can be present. Popping keys that were never there asserted nothing.
+            # The two flags are deliberately present — set to `false`, which keeps this child
+            # off the network — so they are excluded here rather than dropped from
+            # `SCRUBBED_VARIABLES`.
+            deliberate = {"SEARCH_ENABLE_SCRAPERS", "SEARCH_ENABLE_PARALLEL"}
+            leaked = set(environment) & (set(SCRUBBED_VARIABLES) - deliberate)
+            if leaked:
+                raise Failure(f"the child environment still carries {sorted(leaked)}")
 
-        self.transcript = ""
-        self.process = subprocess.Popen(
-            [binary, "--node", f"stub={base_url}", "--interval", "1"],
-            stdin=slave,
-            stdout=slave,
-            stderr=slave,
-            env=environment,
-            start_new_session=True,
-            close_fds=True,
-        )
+            self.transcript = ""
+            self.process = subprocess.Popen(
+                [binary, "--node", f"stub={base_url}", "--interval", "1"],
+                stdin=slave,
+                stdout=slave,
+                stderr=slave,
+                env=environment,
+                start_new_session=True,
+                close_fds=True,
+            )
+        except BaseException:
+            # Both descriptors are open before anything else in here can fail, so a raise
+            # between the `openpty` above and the close below — a leaked credential in the
+            # environment, a spawn error — leaked both ends of the PTY, and the failed run
+            # left descriptors behind as well (ledger A0022).
+            os.close(self.master)
+            with contextlib.suppress(OSError):
+                os.close(slave)
+            raise
         os.close(slave)
         os.set_blocking(self.master, False)
 
