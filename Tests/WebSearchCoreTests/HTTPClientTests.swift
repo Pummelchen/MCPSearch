@@ -90,6 +90,10 @@ final class LoopbackServer: @unchecked Sendable {
 
         self.socketFD = fd
         self.port = UInt16(bigEndian: actual.sin_port)
+        guard let baseURL = URL(string: "http://127.0.0.1:\(self.port)/") else {
+            throw ServerError.invalidBaseURL(port: self.port)
+        }
+        self.baseURL = baseURL
 
         // Accept connections on a background thread for the server's lifetime.
         Thread.detachNewThread { [weak self] in
@@ -104,7 +108,12 @@ final class LoopbackServer: @unchecked Sendable {
         close(socketFD)
     }
 
-    var baseURL: URL { URL(string: "http://127.0.0.1:\(port)/")! }
+    /// The server's base URL, built once in the initialiser.
+    ///
+    /// A computed property cannot `try`, so the force-unwrap here could not become an `XCTUnwrap`
+    /// without making every one of its readers throwing. Building it in `init`, which already throws,
+    /// turns the impossible case into a reportable error instead of a crash (ledger A0003).
+    let baseURL: URL
 
     var requestCount: Int {
         lock.lock()
@@ -223,6 +232,7 @@ final class LoopbackServer: @unchecked Sendable {
         case socketCreationFailed
         case bindFailed
         case listenFailed
+        case invalidBaseURL(port: UInt16)
     }
 }
 

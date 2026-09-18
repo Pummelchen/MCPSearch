@@ -12,6 +12,25 @@ final class AnswerSynthesizerTests: XCTestCase {
 
     // MARK: Fixtures
 
+    /// A URL from a fixture literal, without a force-unwrap.
+    ///
+    /// `URL(string:)` is the only string initialiser and it is failable, and this fixture is reached
+    /// from a computed property, which cannot `try`. Failing the assertion and returning a sentinel
+    /// keeps the failure visible and localised: the test that uses the result is already marked failed
+    /// here, so nothing can pass on the sentinel, and a malformed literal no longer takes the whole
+    /// suite down with it (ledger A0003).
+    private func fixtureURL(
+        _ string: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) -> URL {
+        guard let url = URL(string: string) else {
+            XCTFail("not a URL: \(string)", file: file, line: line)
+            return URL(fileURLWithPath: "/dev/null")
+        }
+        return url
+    }
+
     private func result(
         _ title: String,
         _ url: String,
@@ -21,7 +40,7 @@ final class AnswerSynthesizerTests: XCTestCase {
     ) -> SearchResult {
         SearchResult(
             title: title,
-            url: URL(string: url)!,
+            url: fixtureURL(url),
             snippet: snippet,
             provider: providers.first ?? .tavily,
             providerRank: 1,

@@ -37,9 +37,17 @@ disabled_rules:
   - todo  # work is tracked in issues, not in comments; the three `todo` hits that
           # prompted this line were in SwiftPM-generated `.build` code, not in this repository
 
-# Opt-in rules are deliberately not enabled by this task. Each one is a policy choice with its own
-# findings across a 15 000-line tree, and adopting them belongs in its own task with its own fixes
-# rather than smuggled into a configuration change.
+opt_in_rules:
+  - force_unwrapping
+  # The one opt-in rule this repository adopts, because the audit's Swift standard (§1) requires that a
+  # deliberate force-unwrap fail `swiftlint --strict`. Every finding it produced was fixed rather than
+  # suppressed: 20 sites in `Tests/`, none in `Sources/` — 15 `URL(string:)!`, two
+  # `ResultNormalizer.make(...)!`, `diagnostics!`, `hit!`, and two sites that needed a decision because
+  # a computed property cannot `try` (ledger A0003).
+  #
+  # The other opt-in rules remain off deliberately. Each is a policy choice with its own findings
+  # across a 15 000-line tree, and adopting one belongs in its own task with its own fixes rather than
+  # being smuggled into a configuration change.
 
 # Accepted envelope, measured at the commit that introduced this file. These numbers are stated
 # rather than hidden: the gate
