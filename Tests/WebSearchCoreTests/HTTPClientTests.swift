@@ -49,6 +49,12 @@ final class LoopbackServer: @unchecked Sendable {
     private let lock = NSLock()
     private var responses: [Response]
     private var _requestCount = 0
+    /// Body bytes this server has handed to the socket.
+    ///
+    /// The drip loop stops when `send` reports the peer is gone, so this is how a test can tell
+    /// whether a client that stopped reading also closed the connection — the difference between a
+    /// transfer that was capped and one that was merely abandoned (ledger A0016).
+    private var _bytesSent = 0
     private var _requestMethods: [String] = []
     private var _requestPaths: [String] = []
     private var running = true
@@ -115,6 +121,12 @@ final class LoopbackServer: @unchecked Sendable {
     /// turns the impossible case into a reportable error instead of a crash (ledger A0003).
     let baseURL: URL
 
+    var bytesSent: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return _bytesSent
+    }
+
     var requestCount: Int {
         lock.lock()
         defer { lock.unlock() }
@@ -152,6 +164,19 @@ final class LoopbackServer: @unchecked Sendable {
             var clientAddress = sockaddr()
             var clientLength = socklen_t(MemoryLayout<sockaddr>.size)
             let client = accept(socketFD, &clientAddress, &clientLength)
+            // `send` to a socket the peer has closed raises SIGPIPE, whose default disposition is to
+            // terminate the process — so a client that stops reading at a byte cap killed the whole
+            // test run with signal 13 instead of the server's loop seeing the failure. `SO_NOSIGPIPE`
+            // is the macOS way to make that write return an error, which is what the drip loop's
+            // `if sent <= 0 { break }` is written to handle.
+            var noSIGPIPE: Int32 = 1
+            setsockopt(
+                client,
+                SOL_SOCKET,
+                SO_NOSIGPIPE,
+                &noSIGPIPE,
+                socklen_t(MemoryLayout<Int32>.size)
+            )
             guard client >= 0 else { return }
 
             // Read the request line so the test can assert on method and path.
@@ -197,6 +222,9 @@ final class LoopbackServer: @unchecked Sendable {
                         send(client, $0.baseAddress, $0.count, 0)
                     }
                     if sent <= 0 { break }
+                    lock.lock()
+                    _bytesSent += sent
+                    lock.unlock()
                     offset = end
                     if drip.pauseMilliseconds > 0 {
                         Thread.sleep(forTimeInterval: Double(drip.pauseMilliseconds) / 1000)
@@ -238,6 +266,49 @@ final class LoopbackServer: @unchecked Sendable {
 
 /// Transport-level retry, timeout and size policy.
 final class HTTPClientTests: XCTestCase {
+
+    /// Does a capped transfer also stop the server sending?
+    ///
+    /// `BoundedResponseBody.read` throws at the cap, which abandons the byte sequence. Whether that
+    /// also closes the connection is what the finding recorded as UNSURE: if it does, the server's next
+    /// `send` fails and the drip loop stops; if it does not, the server streams the rest of the body
+    /// into a socket nobody is reading (ledger A0016).
+    func testAnOverCapTransferStopsTheServerSending() async throws {
+        let chunk = 4 * 1024
+        let chunks = 64
+        let server = try LoopbackServer(responses: [
+            .init(
+                status: 200,
+                body: String(repeating: "x", count: chunk * chunks),
+                drip: .init(chunkBytes: chunk, pauseMilliseconds: 30, holdOpenSeconds: 2)
+            )
+        ])
+        let session = URLSession(configuration: .ephemeral)
+        defer { session.invalidateAndCancel() }
+
+        let limit = 8 * 1024
+        do {
+            _ = try await BoundedResponseBody.read(
+                session,
+                URLRequest(url: server.baseURL),
+                limit: limit
+            )
+            XCTFail("the cap must be enforced")
+        } catch is ResponseBodyTooLarge {
+            // Expected.
+        }
+
+        // Let a server that is still sending have every chance to prove it.
+        try await Task.sleep(for: .milliseconds(900))
+        let sent = server.bytesSent
+        let whole = chunk * chunks
+        XCTAssertLessThan(
+            sent,
+            whole / 4,
+            "the server sent \(sent) of \(whole) bytes after the cap was hit at \(limit)"
+        )
+        print("      A0016: read capped at \(limit); server sent \(sent) of \(whole) bytes")
+    }
 
     private func makeClient(
         configuration: AppConfiguration,
