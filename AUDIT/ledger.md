@@ -10,16 +10,16 @@ edit the JSON and re-render, so the two cannot disagree (§8, §9).
 
 ## Counts
 
-**total 54 — done 33 · open 18 · blocked 3**
+**total 54 — done 34 · open 17 · blocked 3**
 
 | Severity | Total | Done | Open | Blocked |
 | --- | --- | --- | --- | --- |
 | S0 | 4 | 2 | 0 | 2 |
-| S1 | 30 | 25 | 4 | 1 |
+| S1 | 30 | 26 | 3 | 1 |
 | S2 | 16 | 4 | 12 | 0 |
 | S3 | 4 | 2 | 2 | 0 |
 
-Status tally: OPEN 16, PROGRESS 2, DONE 33, BLOCKED 3
+Status tally: OPEN 15, PROGRESS 2, DONE 34, BLOCKED 3
 
 ## Tasks
 
@@ -48,7 +48,7 @@ Status tally: OPEN 16, PROGRESS 2, DONE 33, BLOCKED 3
 | A0029 | S1 | A | PROGRESS | A disconnected SSE client leaks a suspended relay task and wedges the session |
 | A0030 | S1 | A | DONE | A cancelled provider request is recorded as a transient failure and can open a circuit breaker |
 | A0031 | S1 | A | DONE | A claimed half-open probe is never released when the local rate limiter denies, wedging the breaker |
-| A0032 | S1 | A | OPEN | Length-omitted results enter the fenced prompt unsanitised, so a page title can close the untrusted-data fence |
+| A0032 | S1 | A | DONE | Length-omitted results enter the fenced prompt unsanitised, so a page title can close the untrusted-data fence |
 | A0035 | S1 | A | DONE | The mandatory-SearXNG proof passes on an instance that returns zero results |
 | A0036 | S1 | A | DONE | The end-to-end gate accepts a JSON-RPC error reply as success and never asserts the result count |
 | A0037 | S1 | A | DONE | The generated SearXNG secret is passed as a command-line argument, where ps can read it |
@@ -376,12 +376,15 @@ REMAINING WORK: (1) explain why gitleaks stays silent on the historical fixture 
 
 ### A0032 — Length-omitted results enter the fenced prompt unsanitised, so a page title can close the untrusted-data fence
 
-- **Severity / tier / status:** S1 / A / OPEN
-- **Location:** `Sources/WebSearchCore/Search/AnswerSynthesizer.swift:485-489`
+- **Severity / tier / status:** S1 / A / DONE
+- **Location:** `Sources/WebSearchCore/Search/AnswerSynthesizer.swift:488`
 - **Category:** security/prompt-injection
 - **Host:** Node1
 - **Discovered by:** Search + Support tier A review (subagent)
 - **Evidence before:** Every other insertion sanitises the delimiter (:482-484), but this branch appends result.title and the URL verbatim. web_answer passes up to 20 fused results; with a 14 000-character budget and 1 200 per result roughly half take this branch, and ResultNormalizer.cleanText does not remove the literal delimiter. A hostile page title containing </untrusted-search-results> is emitted inside the block, letting the remainder read as text outside the fence — the escape the fence exists to prevent.
+- **Fix:** The omitted branch applies `sanitiseFences` to the title and the URL, as the full block always did. The result is still numbered, so citation markers stay aligned.
+- **Evidence after:** Committed in 05c98c1. Before: the new test failed with "the bomb title reached the corpus raw". After: it passes and the title carries "[delimiter removed]". Two fixture mistakes were corrected first — a Markdown fence instead of this corpus's XML-ish tag pair, and a budget loose enough that the result was never omitted — both caught because the test failed identically before and after. Suite green at 614 tests (572 + 42), 0 failures; both linters exit 0.
+- **Commit:** `05c98c1`
 
 ### A0035 — The mandatory-SearXNG proof passes on an instance that returns zero results
 
